@@ -276,16 +276,14 @@
     }
 
     .nav-section {
-      padding: 8px 16px 4px;
-      margin-top: 8px;
-      font-size: 10.5px;
+      padding: 8px 12px;
+      margin: 6px 6px 2px;
+      font-size: 11px;
       font-weight: 700;
-      color: #94A3B8;
-      letter-spacing: 0.8px;
+      color: #64748B;
+      letter-spacing: 0.5px;
       text-transform: uppercase;
-      max-height: 40px;
-      overflow: hidden;
-      transition: max-height .25s .05s, opacity .2s .05s, margin .25s .05s, padding .25s .05s;
+      transition: all .2s cubic-bezier(.16, 1, .3, 1);
     }
 
     /* ── Sidebar head: logo ↔ hamburguesa ───────────────────── */
@@ -401,34 +399,92 @@
       pointer-events: auto;
     }
 
-    .sidebar.collapsed .nav-item {
-      justify-content: center;
-      padding: 13px 0;
-      border-left: 3px solid transparent !important;
-    }
-
-    .sidebar.collapsed .nav-item .nav-label {
-      max-width: 0;
-      opacity: 0;
-      transition: max-width .2s, opacity .15s;
-    }
-
-    .sidebar.collapsed .nav-item i {
-      font-size: 17px;
-      width: auto;
-    }
-
-    .sidebar.collapsed .nav-item.active {
-      border-left-color: transparent !important;
-      border-right: 3px solid var(--accent-cyan);
-    }
-
+    /* Secciones en sidebar colapsado: icono centrado */
     .sidebar.collapsed .nav-section {
-      max-height: 0;
-      opacity: 0;
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      margin: 4px auto !important;
+      padding: 0 !important;
+      border-radius: 10px;
+      cursor: pointer;
+      position: relative;
+      color: #64748B;
+      max-height: none !important;
+      opacity: 1 !important;
+      overflow: visible !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .sidebar.collapsed .nav-section:hover {
+      background: var(--bg-soft, #F5F3FF);
+      color: var(--color-purple-700, #6D28D9);
+      transform: scale(1.05);
+    }
+
+    .sidebar.collapsed .nav-section.active-section {
+      background: var(--accent-lavender-subtle, #EDE9FE);
+      color: var(--accent-lavender, #7C3AED);
+      box-shadow: 0 0 0 1.5px rgba(124, 58, 237, 0.25);
+    }
+
+    .sidebar.collapsed .nav-section-title span,
+    .sidebar.collapsed .section-chevron {
+      display: none !important;
+    }
+
+    .sidebar.collapsed .nav-section-icon {
+      font-size: 16px;
+      width: auto;
       margin: 0;
-      padding: 0;
-      transition: max-height .2s, opacity .15s, margin .2s, padding .2s;
+    }
+
+    .sidebar.collapsed .nav-section.active-section .nav-section-icon {
+      color: var(--accent-lavender, #7C3AED);
+    }
+
+    /* Ocultar items normales en el sidebar colapsado (se muestran en el flyout flotante) */
+    .sidebar.collapsed .nav-item:not([data-standalone="true"]) {
+      display: none !important;
+    }
+
+    /* Items independientes como Dashboard en modo colapsado */
+    .sidebar.collapsed .nav-item[data-standalone="true"] {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      margin: 4px auto;
+      padding: 0 !important;
+      border-radius: 10px;
+      border-left: none !important;
+      position: relative;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .sidebar.collapsed .nav-item[data-standalone="true"]:hover {
+      background: var(--bg-soft, #F5F3FF);
+      transform: scale(1.05);
+    }
+
+    .sidebar.collapsed .nav-item[data-standalone="true"] .nav-label {
+      display: none !important;
+    }
+
+    .sidebar.collapsed .nav-item[data-standalone="true"] i {
+      font-size: 16px;
+      width: auto;
+      margin: 0;
+    }
+
+    .sidebar.collapsed .nav-item[data-standalone="true"].active {
+      background: var(--accent-lavender-subtle, #EDE9FE);
+      color: var(--accent-lavender, #7C3AED);
+      border-right: none !important;
+      box-shadow: 0 0 0 1.5px rgba(124, 58, 237, 0.25);
     }
 
     .sidebar.collapsed .sidebar-footer-text {
@@ -1660,37 +1716,60 @@
       -webkit-user-select: none;
          -moz-user-select: none;
               user-select: none;
-      padding: 8px 16px !important;
-      margin-top: 10px !important;
-      font-size: 11px !important;
-      font-weight: 700 !important;
-      color: var(--text-muted) !important;
-      letter-spacing: 1.2px !important;
-      text-transform: uppercase !important;
+      padding: 8px 12px;
+      margin: 6px 6px 2px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748B;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
       border-radius: 8px;
-      transition: all 0.25s ease !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .nav-section:hover {
-      color: var(--accent-violet-strong) !important;
-      background: rgba(99, 102, 241, 0.04);
-      box-shadow: inset 0 0 0 1px var(--border-soft);
+      background: var(--bg-soft, #F5F3FF);
+      color: var(--color-purple-700, #6D28D9);
     }
 
     .nav-section.active-section {
-      color: var(--accent-violet-strong) !important;
-      background: rgba(99, 102, 241, 0.08);
-      box-shadow: inset 0 0 0 1px var(--border-soft);
+      color: var(--color-purple-700, #6D28D9);
+      background: rgba(124, 58, 237, 0.07);
     }
 
-    .nav-section i {
+    .nav-section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .nav-section-icon {
+      font-size: 13px;
+      width: 18px;
+      text-align: center;
+      color: #8B5CF6;
+      flex-shrink: 0;
+      transition: color 0.2s ease;
+    }
+
+    .nav-section:hover .nav-section-icon,
+    .nav-section.active-section .nav-section-icon {
+      color: var(--accent-lavender, #7C3AED);
+    }
+
+    .section-chevron {
+      font-size: 9px;
       transition: transform 0.2s ease;
-      font-size: 10px;
+      color: #94A3B8;
+      flex-shrink: 0;
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-DCrYNAwI.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/style-Nb3BfCjV.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-B7uh32ku.css">
+  <script type="module" crossorigin src="/assets/main-BxnzFviu.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/style-KRGlCZfZ.js">
+  <link rel="stylesheet" crossorigin href="/assets/style-DUqRb1aD.css">
   <link rel="stylesheet" crossorigin href="/assets/main-Dgihpmma.css">
 </head>
 
@@ -1901,11 +1980,17 @@
         <div class="h-px" style="background:var(--border-soft)"></div>
       </div>
       <nav class="flex-1 overflow-y-auto px-2 py-1" id="nav-menu">
-        <div class="nav-item active" data-page="dashboard" data-label="Dashboard">
+        <div class="nav-item active" data-page="dashboard" data-label="Dashboard" data-standalone="true">
           <i class="fas fa-gauge-high"></i><span class="nav-label">Dashboard</span>
         </div>
-        <div class="nav-section" data-section="maestros"><span>Maestros</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+
+        <div class="nav-section" data-section="maestros" data-label="Maestros" data-icon="fas fa-folder-tree">
+          <div class="nav-section-title">
+            <i class="fas fa-folder-tree nav-section-icon"></i>
+            <span>Maestros</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="plan-cuentas" data-label="Plan de Cuentas">
           <i class="fas fa-sitemap"></i><span class="nav-label">Plan de Cuentas</span>
         </div>
@@ -1919,8 +2004,13 @@
           <i class="fas fa-list-check"></i><span class="nav-label">Tipos de Transacción</span>
         </div>
 
-        <div class="nav-section" data-section="contabilidad"><span>Contabilidad e Impuestos</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="contabilidad" data-label="Contabilidad e Impuestos" data-icon="fas fa-calculator">
+          <div class="nav-section-title">
+            <i class="fas fa-calculator nav-section-icon"></i>
+            <span>Contabilidad e Impuestos</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="consulta-tx" data-label="Consulta Transacciones" data-module="contabilidad">
           <i class="fas fa-magnifying-glass"></i><span class="nav-label">Consulta Transacciones</span>
         </div>
@@ -1941,8 +2031,13 @@
           <i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Información Exógena</span>
         </div>
 
-        <div class="nav-section" data-section="inventarios"><span>Inventarios y Catálogo</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="inventarios" data-label="Inventarios y Catálogo" data-icon="fas fa-boxes-stacked">
+          <div class="nav-section-title">
+            <i class="fas fa-boxes-stacked nav-section-icon"></i>
+            <span>Inventarios y Catálogo</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="productos" data-label="Productos y Servicios" data-module="inventarios">
           <i class="fas fa-box-open"></i><span class="nav-label">Productos y Servicios</span>
         </div>
@@ -1965,8 +2060,14 @@
           data-module="inventarios">
           <i class="fas fa-handshake"></i><span class="nav-label">Consignaciones</span>
         </div>
-        <div class="nav-section" data-section="compras"><span>Gestión de Compras</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+
+        <div class="nav-section" data-section="compras" data-label="Gestión de Compras" data-icon="fas fa-cart-shopping">
+          <div class="nav-section-title">
+            <i class="fas fa-cart-shopping nav-section-icon"></i>
+            <span>Gestión de Compras</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="compras" data-label="Compras" data-module="inventarios">
           <i class="fas fa-cart-flatbed"></i><span class="nav-label">Compras</span>
         </div>
@@ -1977,8 +2078,13 @@
           <i class="fas fa-wand-magic-sparkles"></i><span class="nav-label">Compra Sugerida</span>
         </div>
 
-        <div class="nav-section" data-section="ventas"><span>Gestión de Ventas</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="ventas" data-label="Gestión de Ventas" data-icon="fas fa-receipt">
+          <div class="nav-section-title">
+            <i class="fas fa-receipt nav-section-icon"></i>
+            <span>Gestión de Ventas</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="pedidos" data-label="Pedidos" data-module="comercial">
           <i class="fas fa-file-signature"></i><span class="nav-label">Pedidos y Cotizaciones</span>
         </div>
@@ -1992,8 +2098,13 @@
           <i class="fas fa-percent"></i><span class="nav-label">Comisiones</span>
         </div>
 
-        <div class="nav-section" data-section="crm-especiales"><span>CRM y Especiales</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="crm-especiales" data-label="CRM y Especiales" data-icon="fas fa-gem">
+          <div class="nav-section-title">
+            <i class="fas fa-gem nav-section-icon"></i>
+            <span>CRM y Especiales</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="crm" data-label="Seguimiento CRM" data-module="crm">
           <i class="fas fa-funnel-dollar"></i><span class="nav-label">Seguimiento CRM</span>
         </div>
@@ -2008,8 +2119,13 @@
           <i class="fas fa-spa"></i><span class="nav-label">Spa de Belleza Humana</span>
         </div>
 
-        <div class="nav-section" data-section="finanzas"><span>Tesorería</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="finanzas" data-label="Tesorería" data-icon="fas fa-landmark">
+          <div class="nav-section-title">
+            <i class="fas fa-landmark nav-section-icon"></i>
+            <span>Tesorería</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="recaudos" data-label="Recaudos" data-module="tesoreria">
           <i class="fas fa-hand-holding-dollar"></i><span class="nav-label">Recaudos (RC)</span>
         </div>
@@ -2026,8 +2142,13 @@
           <i class="fas fa-calendar-day"></i><span class="nav-label">Agenda de Pagos</span>
         </div>
 
-        <div class="nav-section" data-section="copropiedades"><span>Copropiedades</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="copropiedades" data-label="Copropiedades" data-icon="fas fa-building">
+          <div class="nav-section-title">
+            <i class="fas fa-building nav-section-icon"></i>
+            <span>Copropiedades</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="copro-facturacion" data-label="Facturación PH" data-module="copropiedades">
           <i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Facturación PH</span>
         </div>
@@ -2047,8 +2168,13 @@
           <i class="fas fa-comments"></i><span class="nav-label">PQRs PH</span>
         </div>
 
-        <div class="nav-section" data-section="inmobiliarias"><span>Inmobiliaria</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="inmobiliarias" data-label="Inmobiliaria" data-icon="fas fa-house-chimney-window">
+          <div class="nav-section-title">
+            <i class="fas fa-house-chimney-window nav-section-icon"></i>
+            <span>Inmobiliaria</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="inmobiliarias" data-label="Gestión Inmobiliaria" data-module="inmobiliarias">
           <i class="fas fa-house-chimney-window"></i><span class="nav-label">Gestión Inmuebles</span>
         </div>
@@ -2065,8 +2191,13 @@
           <i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Liquidación</span>
         </div>
 
-        <div class="nav-section" data-section="logistica"><span>Logística e Importaciones</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="logistica" data-label="Logística e Importaciones" data-icon="fas fa-truck-fast">
+          <div class="nav-section-title">
+            <i class="fas fa-truck-fast nav-section-icon"></i>
+            <span>Logística e Importaciones</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="importaciones" data-label="Importaciones" data-module="logistica">
           <i class="fas fa-ship"></i><span class="nav-label">Importaciones</span>
         </div>
@@ -2091,8 +2222,13 @@
           <i class="fas fa-calendar-check"></i><span class="nav-label">Control de Rutas (Admin)</span>
         </div>
 
-        <div class="nav-section" data-section="nomina"><span>Nómina y Talento</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="nomina" data-label="Nómina y Talento" data-icon="fas fa-users-gear">
+          <div class="nav-section-title">
+            <i class="fas fa-users-gear nav-section-icon"></i>
+            <span>Nómina y Talento</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="nomina-empleados" data-label="Empleados" data-module="nomina">
           <i class="fas fa-users-gear"></i><span class="nav-label">Empleados</span>
         </div>
@@ -2120,8 +2256,13 @@
           <i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Nómina Electrónica</span>
         </div>
 
-        <div class="nav-section" data-section="niif" data-module="niif"><span>Gestión NIIF (IFRS)</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="niif" data-module="niif" data-label="Gestión NIIF (IFRS)" data-icon="fas fa-scale-balanced">
+          <div class="nav-section-title">
+            <i class="fas fa-scale-balanced nav-section-icon"></i>
+            <span>Gestión NIIF (IFRS)</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="niif-diagnostico" data-label="Diagnóstico y Grupo" data-module="niif">
           <i class="fas fa-stethoscope"></i><span class="nav-label">Diagnóstico y Grupo</span>
         </div>
@@ -2141,8 +2282,13 @@
           <i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Estados Financieros NIIF</span>
         </div>
 
-        <div class="nav-section" data-section="activos_fijos" data-module="activos_fijos"><span>Activos Fijos</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="activos_fijos" data-module="activos_fijos" data-label="Activos Fijos" data-icon="fas fa-tags">
+          <div class="nav-section-title">
+            <i class="fas fa-tags nav-section-icon"></i>
+            <span>Activos Fijos</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="fixed-assets-catalogo" data-label="Catálogo de Activos"
           data-module="activos_fijos">
           <i class="fas fa-list-check"></i><span class="nav-label">Catálogo de Activos</span>
@@ -2160,8 +2306,13 @@
           <i class="fas fa-qrcode"></i><span class="nav-label">Inventario QR</span>
         </div>
 
-        <div class="nav-section" data-section="reportes"><span>Reportes y Admin</span><i
-            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-section" data-section="reportes" data-label="Reportes y Admin" data-icon="fas fa-chart-pie">
+          <div class="nav-section-title">
+            <i class="fas fa-chart-pie nav-section-icon"></i>
+            <span>Reportes y Admin</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
+        </div>
         <div class="nav-item" data-page="reportes" data-label="Reportes">
           <i class="fas fa-chart-pie"></i><span class="nav-label">Reportes</span>
         </div>

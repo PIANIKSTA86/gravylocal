@@ -419,8 +419,9 @@ function openPhUnpostPeriodModal(container) {
         Esta acción quitará la contabilización de todas las facturas del período <strong>${fmtPeriod(period)}</strong>.
       </p>
       <ul class="text-sm list-disc pl-5" style="color:#6B7280">
-        <li>Facturas en estado Contabilizada/Pagada pasarán a Borrador.</li>
-        <li>Se eliminarán completamente los comprobantes contables asociados en el módulo de Contabilidad.</li>
+        <li>Facturas en estado Contabilizada pasarán a Borrador.</li>
+        <li>Se eliminarán completamente los comprobantes contables de causación asociados en el módulo de Contabilidad.</li>
+        <li><strong class="text-amber-600">Nota:</strong> Las facturas con recaudos registrados (pagadas) están protegidas y no se revertirán.</li>
       </ul>
       <div class="form-group mb-0">
         <label class="form-label">Confirma escribiendo el período</label>
@@ -473,6 +474,7 @@ function openPhDeletePeriodModal(container) {
       <ul class="text-sm list-disc pl-5" style="color:#DC2626">
         <li>Se eliminarán cabeceras y líneas de factura del período.</li>
         <li>Se eliminarán definitivamente los comprobantes contables en el módulo de Contabilidad.</li>
+        <li>Las facturas con pagos/recaudos registrados no pueden eliminarse (debe anular sus recibos de caja primero).</li>
         <li>Esta acción no se puede deshacer.</li>
       </ul>
       <div class="form-group mb-0">
@@ -830,35 +832,121 @@ async function postPhInvoiceConfirm(invoiceId, btn) {
   }
 }
 
-async function markPhPaidConfirm(invoiceId, btn) {
-  if (btn && (btn.dataset.submitting === 'true' || btn.disabled)) return;
-  if (!confirm('¿Marcar esta factura como pagada?')) return;
-  if (btn) {
-    btn.dataset.submitting = 'true';
-    btn.disabled = true;
-  }
+async function openPhPayInvoiceModal(invoiceId, btn) {
   try {
-    await API.markPhInvoicePaid(invoiceId);
-    showToast('Factura marcada como pagada.', 'success');
-    const row = document.querySelector(`tr[data-id="${CSS.escape(invoiceId)}"]`);
-    if (row) {
-      row.querySelector('td:nth-child(7)').innerHTML = `<span class="badge badge-blue">Pagada</span>`;
-      row.querySelector('td:nth-child(8)').innerHTML = `
-        <div class="flex gap-1">
-          <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
-          <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(invoiceId)}" title="Descargar PDF" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf"></i></button>
-          ${can('canApprove') ? `<button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(invoiceId)}" title="Descontabilizar factura"
-            style="color:#7C3AED;border-color:#DDD6FE"><i class="fas fa-rotate-left"></i></button>` : ''}
-        </div>`;
-      attachPhInvActions();
-    }
-  } catch (err) {
-    showToast(err.message || 'Error.', 'error');
-    if (btn) {
-      btn.dataset.submitting = 'false';
-      btn.disabled = false;
-    }
+    const [inv, accounts] = await Promise.all([
+      pb.get('ph_invoices', invoiceId, { expand: 'property_id,property_id.owner_id' }),
+      API.getAccounts(true).catch(() => []),
+    ]);
+
+    const prop = inv.expand?.property_id;
+    const owner = prop?.expand?.owner_id;
+    const tesoreriaAccounts = (accounts || [])
+      .filter((a: any) => a.active !== false && String(a.code || '').startsWith('11') && Number(a.level || 0) >= 3)
+      .sort((a: any, b: any) => String(a.code || '').localeCompare(String(b.code || '')));
+
+    const today = new Date().toISOString().slice(0, 10);
+    const totalFmt = fmt(inv.total || 0);
+
+    openModal(
+      `Registrar Recaudo — Factura ${inv.number}`,
+      `<div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3 p-3 rounded-xl text-xs" style="background:#F8FAFF;border:1px solid #E2E8F0">
+          <div><p class="text-gray-500">Unidad</p><p class="font-bold text-gray-800">${esc(prop?.name || prop?.code || '—')}</p></div>
+          <div><p class="text-gray-500">Propietario</p><p class="font-semibold text-gray-800">${esc(owner?.name || '—')}</p></div>
+          <div><p class="text-gray-500">Período</p><p class="font-semibold text-gray-800">${fmtPeriod(inv.period)}</p></div>
+          <div><p class="text-gray-500">Total a Recaudar</p><p class="font-bold text-sm text-indigo-700">${totalFmt}</p></div>
+        </div>
+
+        <div class="form-group mb-0">
+          <label class="form-label font-semibold">Cuenta de Tesorería (Caja / Bancos) <span class="text-red-500">*</span></label>
+          <select id="ph-pay-acc" class="form-input text-xs font-mono">
+            ${tesoreriaAccounts.map((a: any) => `<option value="${esc(a.id)}">${esc(a.code)} — ${esc(a.name)}</option>`).join('')}
+            ${!tesoreriaAccounts.length ? '<option value="">Sin cuentas de Disponible (11) activas</option>' : ''}
+          </select>
+          <p class="text-xs text-gray-500 mt-1">Cuenta donde ingresa el dinero (se debitará en el Recibo de Caja RC).</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="form-group mb-0">
+            <label class="form-label font-semibold">Fecha de Pago</label>
+            <input id="ph-pay-date" type="date" class="form-input text-xs" value="${today}">
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label font-semibold">Referencia / Comprobante</label>
+            <input id="ph-pay-ref" class="form-input text-xs" placeholder="Ej. Transf. Bancolombia #1234">
+          </div>
+        </div>
+
+        <div class="p-3 rounded-lg border bg-gray-50 text-xs text-gray-600 flex items-center gap-2">
+          <input type="checkbox" id="ph-pay-skip-accounting" style="width:16px;height:16px;cursor:pointer">
+          <label for="ph-pay-skip-accounting" class="cursor-pointer">
+            Solo cambiar estado a <strong>Pagada</strong> sin generar comprobante contable (para pagos históricos o migración).
+          </label>
+        </div>
+      </div>`,
+      `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-primary" id="ph-pay-confirm-btn"><i class="fas fa-coins mr-1"></i>Confirmar Recaudo</button>`
+    );
+
+    setTimeout(() => {
+      document.getElementById('ph-pay-confirm-btn')?.addEventListener('click', async () => {
+        const accId = (document.getElementById('ph-pay-acc') as HTMLSelectElement)?.value;
+        const date = (document.getElementById('ph-pay-date') as HTMLInputElement)?.value;
+        const ref = (document.getElementById('ph-pay-ref') as HTMLInputElement)?.value;
+        const skipAcc = (document.getElementById('ph-pay-skip-accounting') as HTMLInputElement)?.checked;
+
+        if (!skipAcc && !accId) {
+          showToast('Selecciona la cuenta de Caja o Bancos.', 'warning');
+          return;
+        }
+
+        const confirmBtn = document.getElementById('ph-pay-confirm-btn') as HTMLButtonElement;
+        if (confirmBtn) {
+          confirmBtn.disabled = true;
+          confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Procesando recaudo...';
+        }
+
+        try {
+          const res = await API.payPhInvoice(invoiceId, {
+            paymentAccountId: accId,
+            date: date || today,
+            reference: ref || '',
+            skipAccounting: !!skipAcc,
+          });
+
+          showToast(res.txNumber ? `Recaudo registrado exitosamente (RC ${res.txNumber}).` : 'Factura marcada como pagada.', 'success');
+          closeModal();
+
+          const row = document.querySelector(`tr[data-id="${CSS.escape(invoiceId)}"]`);
+          if (row) {
+            row.querySelector('td:nth-child(7)').innerHTML = `<span class="badge badge-blue">Pagada</span>`;
+            row.querySelector('td:nth-child(8)').innerHTML = `
+              <div class="flex gap-1">
+                <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
+                <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(invoiceId)}" title="Descargar PDF" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf"></i></button>
+                ${can('canApprove') ? `<button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(invoiceId)}" title="Descontabilizar factura"
+                  style="color:#7C3AED;border-color:#DDD6FE"><i class="fas fa-rotate-left"></i></button>` : ''}
+              </div>`;
+            attachPhInvActions();
+          }
+        } catch (err: any) {
+          showToast(err.message || 'Error al procesar recaudo.', 'error');
+          if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '<i class="fas fa-coins mr-1"></i>Confirmar Recaudo';
+          }
+        }
+      });
+    }, 50);
+
+  } catch (err: any) {
+    showToast(err.message || 'Error al cargar datos para recaudo.', 'error');
   }
+}
+
+async function markPhPaidConfirm(invoiceId, btn) {
+  return openPhPayInvoiceModal(invoiceId, btn);
 }
 
 async function unpostPhInvoiceConfirm(invoiceId, btn) {
@@ -1102,16 +1190,15 @@ async function renderPhCartera(c) {
               generatedAt: new Date().toLocaleString('es-CO'),
             };
         const doc = new jsPdfCtor({ orientation: 'landscape', unit: 'pt', format: 'letter' });
-        const unitSel = document.getElementById('ph-cartera-unit-filter');
+        const unitSel = document.getElementById('ph-cartera-unit-filter') as HTMLSelectElement;
         const unitLabel = unitSel?.selectedOptions?.[0]?.textContent?.trim() || 'Todas las unidades';
-        const fromPeriod = document.getElementById('ph-cartera-from')?.value || '—';
-        const toPeriod = document.getElementById('ph-cartera-to')?.value || '—';
+        const toDate = (document.getElementById('ph-cartera-to') as HTMLInputElement)?.value || new Date().toISOString().slice(0, 10);
         const header = typeof drawPdfHeader === 'function'
           ? drawPdfHeader(doc, headerCtx, {
               title: 'Copropiedades - Saldos CxC por Concepto',
               subtitles: [
                 `Unidad: ${unitLabel}`,
-                `Periodo: ${fromPeriod} a ${toPeriod}`,
+                `Fecha de corte: ${toDate}`,
               ],
             })
           : { marginLeft: 24, marginRight: doc.internal.pageSize.getWidth() - 24, startY: 50 };
@@ -1199,16 +1286,15 @@ async function renderPhCartera(c) {
               generatedAt: new Date().toLocaleString('es-CO'),
             };
         const doc = new jsPdfCtor({ orientation: 'landscape', unit: 'pt', format: 'letter' });
-        const unitSel = document.getElementById('ph-cartera-unit-filter');
+        const unitSel = document.getElementById('ph-cartera-unit-filter') as HTMLSelectElement;
         const unitLabel = unitSel?.selectedOptions?.[0]?.textContent?.trim() || 'Todas las unidades';
-        const fromPeriod = document.getElementById('ph-cartera-from')?.value || '—';
-        const toPeriod = document.getElementById('ph-cartera-to')?.value || '—';
+        const toDate = (document.getElementById('ph-cartera-to') as HTMLInputElement)?.value || new Date().toISOString().slice(0, 10);
         const header = typeof drawPdfHeader === 'function'
           ? drawPdfHeader(doc, headerCtx, {
               title: 'Copropiedades - Cartera por Edades',
               subtitles: [
                 `Unidad: ${unitLabel}`,
-                `Periodo: ${fromPeriod} a ${toPeriod}`,
+                `Fecha de corte: ${toDate}`,
               ],
             })
           : { marginLeft: 24, marginRight: doc.internal.pageSize.getWidth() - 24, startY: 50 };
@@ -1851,8 +1937,9 @@ async function openPhUnitModal(unitId, container) {
       unitId ? pb.get('ph_properties', unitId).then(u => { unit = u; }) : Promise.resolve(),
     ]);
     terceros = (terceros || []).filter(t => {
-      if (t.role) return String(t.role).toLowerCase() === 'propietario' || String(t.role).toLowerCase() === 'cliente';
-      if (t.type) return String(t.type).toLowerCase() === 'propietario' || String(t.type).toLowerCase() === 'cliente';
+      if (unit && unit.owner_id === t.id) return true;
+      const role = String(t.role || '').toLowerCase();
+      if (role === 'proveedor' || role === 'empleado') return false;
       return true;
     });
   } catch (err) {
@@ -2200,6 +2287,28 @@ async function openPhResModal(resId, container, areasPreloaded) {
         return;
       }
       if (tTo <= tFrom) { showToast('La hora fin debe ser posterior a la hora inicio.', 'warning'); return; }
+
+      // Validar solapamiento / conflicto horario con otras reservas activas para la misma zona y fecha
+      try {
+        const safeArea = pb.escapeFilterValue(areaId);
+        const safeDate = pb.escapeFilterValue(date);
+        const existing = await pb.listAll('ph_reservations', {
+          filter: `area_id="${safeArea}" && date="${safeDate}" && (status="confirmed" || status="pending" || status="")`,
+        });
+        const conflict = existing.find((ex: any) => {
+          if (res && ex.id === res.id) return false;
+          if (ex.status === 'cancelled') return false;
+          const exFrom = ex.time_from || '00:00';
+          const exTo = ex.time_to || '23:59';
+          return tFrom < exTo && tTo > exFrom;
+        });
+        if (conflict) {
+          showToast(`Conflicto de horario: La zona ya está reservada de ${conflict.time_from} a ${conflict.time_to}.`, 'error');
+          return;
+        }
+      } catch (checkErr) {
+        console.warn('No se pudo verificar disponibilidad previa de zona común:', checkErr);
+      }
 
       const data = {
         area_id: areaId, property_id: propId, date, time_from: tFrom, time_to: tTo,

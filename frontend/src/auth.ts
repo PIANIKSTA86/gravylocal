@@ -300,12 +300,12 @@ function applyModuleVisibility(): void {
         currentSectionCollapsed = collapsed;
         
         // Rotar el chevron
-        const chevron = el.querySelector('.fa-chevron-down');
+        const chevron = el.querySelector('.fa-chevron-down, .section-chevron');
         if (chevron) {
           chevron.style.transform = (collapsed && !isSidebarCollapsed) ? 'rotate(-90deg)' : '';
         }
 
-        // Estilizar sección activa si contiene el ítem activo y el sidebar no está colapsado
+        // Estilizar sección activa si contiene el ítem activo
         let isSectionActive = false;
         let sib = el.nextElementSibling;
         while (sib && !sib.classList.contains('nav-section')) {
@@ -316,7 +316,7 @@ function applyModuleVisibility(): void {
           sib = sib.nextElementSibling;
         }
 
-        if (isSectionActive && !isSidebarCollapsed) {
+        if (isSectionActive) {
           el.classList.add('active-section');
         } else {
           el.classList.remove('active-section');

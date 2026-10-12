@@ -4737,13 +4737,13 @@ const API = {
    * - Elimina permanentemente los comprobantes contables en el módulo de contabilidad.
    * - Regresa las facturas a borrador (draft) y desvincula tx_id.
    */
-  async unpostPhInvoicesByPeriod(period) {
+  async unpostPhInvoicesByPeriod(period, force = false) {
     // ── 0. Intentar motor nativo backend de alto rendimiento ──
     try {
       const res = await fetch(`${pb.baseUrl}/api/ph/unpost-period`, {
         method: 'POST',
         headers: pb.headers(),
-        body: JSON.stringify({ period }),
+        body: JSON.stringify({ period, force: !!force }),
       });
       if (res.ok) {
         return await res.json();
@@ -4762,6 +4762,12 @@ const API = {
     const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
     if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
 
+    const paidInvoices = invoices.filter((i: any) => i.status === 'paid');
+    if (paidInvoices.length > 0 && !force) {
+      const firstNum = paidInvoices[0].number || paidInvoices[0].id;
+      throw new Error(`No se puede descontabilizar el período ${period} porque contiene ${paidInvoices.length} factura(s) con pagos/recaudos registrados (ej. ${firstNum}). Reversa los recibos de caja primero.`);
+    }
+
     let reverted = 0;
     let skipped = 0;
     let txDeleted = 0;
@@ -4769,9 +4775,9 @@ const API = {
     const txIdsToDelete = new Set<string>();
 
     for (const inv of invoices) {
-      if (inv.status === 'draft' || inv.status === 'voided') {
+      if (inv.status === 'draft' || inv.status === 'voided' || (!force && inv.status === 'paid')) {
         skipped++;
-        if (inv.tx_id) txIdsToDelete.add(inv.tx_id);
+        if (inv.tx_id && inv.status !== 'paid') txIdsToDelete.add(inv.tx_id);
         continue;
       }
 
@@ -4828,13 +4834,13 @@ const API = {
    * - Elimina permanentemente todos los comprobantes contables asociados en contabilidad.
    * - Elimina cabeceras y líneas de facturas del período.
    */
-  async deletePhInvoicesByPeriod(period) {
+  async deletePhInvoicesByPeriod(period, force = false) {
     // ── 0. Intentar motor nativo backend de alto rendimiento ──
     try {
       const res = await fetch(`${pb.baseUrl}/api/ph/delete-period`, {
         method: 'POST',
         headers: pb.headers(),
-        body: JSON.stringify({ period }),
+        body: JSON.stringify({ period, force: !!force }),
       });
       if (res.ok) {
         return await res.json();
@@ -4851,6 +4857,12 @@ const API = {
 
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
+
+    const paidInvoices = invoices.filter((i: any) => i.status === 'paid');
+    if (paidInvoices.length > 0 && !force) {
+      const firstNum = paidInvoices[0].number || paidInvoices[0].id;
+      throw new Error(`No se puede eliminar el período ${period} porque contiene ${paidInvoices.length} factura(s) con recaudos registrados (ej. ${firstNum}). Debes anular los recibos de caja antes de eliminar el período.`);
+    }
 
     const txIdsToDelete = new Set<string>();
 
@@ -5280,6 +5292,150 @@ const API = {
     await this.logAudit('PAID', 'PhInvoice', invoiceId, `Marcada como pagada ${inv.number}`);
   },
 
+  /**
+   * Registra el pago / recaudo contable de una factura PH generando el comprobante RC correspondiente.
+   * Debita a cuenta de Tesorería (11%) y acredita a Cartera (13%) cruzando por concepto o total.
+   */
+  async payPhInvoice(invoiceId: string, opts: any = {}) {
+    const inv = await pb.get('ph_invoices', invoiceId, {
+      expand: 'property_id,property_id.owner_id',
+    });
+    if (inv.status === 'paid') throw new Error('La factura ya está marcada como pagada.');
+    if (inv.status === 'voided') throw new Error('No se puede recaudar una factura anulada.');
+    if (inv.status === 'draft') throw new Error('Debes contabilizar la factura antes de registrar su recaudo.');
+
+    const invTotal = Number(inv.total || 0);
+    if (invTotal <= 0) throw new Error('El valor de la factura es inválido.');
+
+    const property = inv.expand?.property_id;
+    const ownerId = property?.owner_id || null;
+    const invNumber = String(inv.number || '').trim();
+    const paymentDate = String(opts.date || new Date().toISOString().slice(0, 10)).trim();
+
+    // Modo opcional: solo cambiar estado sin asiento contable (migración / histórico)
+    if (opts.skipAccounting) {
+      await pb.update('ph_invoices', invoiceId, { status: 'paid' });
+      await this.logAudit('PAID_MANUAL', 'PhInvoice', invoiceId, `Factura ${invNumber} marcada como pagada sin asiento.`);
+      return { success: true, invoiceId };
+    }
+
+    const paymentAccId = String(opts.paymentAccountId || '').trim();
+    if (!paymentAccId) throw new Error('Debes seleccionar la cuenta de Caja o Bancos donde ingresó el dinero.');
+
+    const paymentAcc = await pb.get('accounts', paymentAccId);
+    if (!paymentAcc || !String(paymentAcc.code || '').startsWith('11')) {
+      throw new Error('La cuenta de pago seleccionada debe ser de Disponible / Tesorería (clase 11).');
+    }
+
+    // Obtener cuenta de cartera configurada en PH (default 130505)
+    let phCfg: any = {};
+    try {
+      const rawCfg = await this.getSetting('ph_config_v1');
+      phCfg = rawCfg ? JSON.parse(rawCfg) : {};
+    } catch (_) {}
+    const cxcCode = String(phCfg.cxc_code || '130505').trim();
+
+    const cxcAccRes = await pb.list('accounts', {
+      filter: `code="${pb.escapeFilterValue(cxcCode)}"`,
+      perPage: 1
+    });
+    if (!cxcAccRes.items.length) {
+      throw new Error(`Cuenta de cartera ${cxcCode} no encontrada en el catálogo contable.`);
+    }
+    const cxcAcc = cxcAccRes.items[0];
+
+    // Buscar tipo de transacción para Recibo de Caja (RC)
+    let rcTypeId = '';
+    const rcTypes = await pb.list('transaction_types', {
+      filter: 'code="RC" && active=true',
+      perPage: 1
+    });
+    if (rcTypes.items.length) {
+      rcTypeId = rcTypes.items[0].id;
+    } else {
+      const anyRc = await pb.list('transaction_types', {
+        filter: 'active=true && (code="RC" || prefix="RC" || name~"Recibo" || name~"Caja")',
+        perPage: 1
+      });
+      if (anyRc.items.length) rcTypeId = anyRc.items[0].id;
+    }
+    if (!rcTypeId) {
+      throw new Error('Tipo de comprobante Recibo de Caja (RC) no encontrado.');
+    }
+
+    const lines = await this.getPhInvoiceLines(invoiceId);
+    const txLines: any[] = [];
+    let lineOrder = 1;
+
+    const refNote = opts.reference ? ` - Ref: ${String(opts.reference).trim()}` : '';
+    const descPago = `Recaudo Factura ${invNumber} - ${property?.name || property?.code || ''}${refNote}`;
+
+    // 1. Débito a Disponible (Caja / Bancos) por el total
+    txLines.push({
+      account_id: paymentAcc.id,
+      debit: invTotal,
+      credit: 0,
+      description: descPago,
+      third_party_id: ownerId || null,
+      cross_doc_ref: invNumber,
+      line_order: lineOrder++,
+    });
+
+    // 2. Crédito a Cartera (CxC 13) por cada concepto para trazabilidad
+    if (lines.length > 0) {
+      for (const ln of lines) {
+        const lnAmt = Number(ln.amount || 0);
+        if (lnAmt <= 0) continue;
+        const cCode = String(ln.expand?.concept_id?.code || '').trim().toUpperCase();
+        const normDesc = String(ln.description || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const isMora = cCode === 'MORA' || normDesc.includes('interes') || normDesc.includes('mora');
+        const conceptCode = (cCode || (isMora ? 'MORA' : (normDesc.includes('admin') ? 'ADM' : 'GEN'))).toUpperCase();
+        const refPorConcepto = `${invNumber}-${conceptCode}`;
+
+        txLines.push({
+          account_id: cxcAcc.id,
+          debit: 0,
+          credit: lnAmt,
+          description: `Pago [${conceptCode}] Factura ${invNumber} - ${property?.name || ''}`,
+          third_party_id: ownerId || null,
+          cross_doc_ref: refPorConcepto,
+          line_order: lineOrder++,
+        });
+      }
+    } else {
+      txLines.push({
+        account_id: cxcAcc.id,
+        debit: 0,
+        credit: invTotal,
+        description: descPago,
+        third_party_id: ownerId || null,
+        cross_doc_ref: invNumber,
+        line_order: lineOrder++,
+      });
+    }
+
+    const userId = pb.currentUser?.id || '';
+    const tx = await this.createTransaction({
+      tx_type_id: rcTypeId,
+      number: 'AUTO',
+      date: paymentDate,
+      description: descPago,
+      third_party_id: ownerId || null,
+      status: 'active',
+      user_id: userId || undefined,
+      cross_enabled: true,
+      cross_type: 'ph_invoices',
+      cross_number: invNumber,
+      cross_amount: invTotal,
+      cross_purpose: 'Recaudo',
+    }, txLines);
+
+    await pb.update('ph_invoices', invoiceId, { status: 'paid' });
+    await this.logAudit('PAID_TX', 'PhInvoice', invoiceId, `Factura ${invNumber} recaudada -> RC ${tx.number || tx.id} ($${invTotal})`);
+
+    return { success: true, invoiceId, txId: tx.id, txNumber: tx.number };
+  },
+
   /** Envia factura o estado de cuenta PH por correo individual */
   async sendPhInvoiceEmail(invoiceId, type = 'invoice', email = '', subject = '', message = '') {
     const res = await fetch(`${pb.baseUrl}/api/ph/send-invoice-email`, {
@@ -5576,18 +5732,19 @@ const API = {
     const abonosMap = new Map(); // key: cross_doc_ref, value: total_abono
 
     if (invNumbers.length > 0) {
-      // Optimizamos: traemos lÃ­neas contables que tengan un cross_doc_ref en el set de facturas
-      // y cuya fecha sea <= fecha de corte
+      // Optimizamos: traemos líneas contables que afecten cartera (cuenta 13%) y tengan cross_doc_ref
+      // cuya fecha sea <= fecha de corte. Evitamos que la contrapartida de banco (débito) anule el abono.
       const txLines = await pb.listAll('tx_lines', {
-        filter: `cross_doc_ref!="" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
-        expand: 'tx_id'
+        filter: `cross_doc_ref!="" && account_id.code ~ "13%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
+        expand: 'tx_id,account_id'
       });
 
       for (const tl of txLines) {
-        // IGNORAR la causaciÃ³n original de la factura
+        // IGNORAR la causación original de la factura
         if (causalityTxIds.has(tl.tx_id)) continue;
 
         const ref = String(tl.cross_doc_ref || '').trim().toUpperCase();
+        // En cuenta 13%, el abono o pago reduce la cartera mediante crédito
         const valAbono = Number(tl.credit || 0) - Number(tl.debit || 0);
         if (valAbono === 0) continue;
 
@@ -6001,14 +6158,25 @@ const API = {
     const uniqueAccountIds = Array.from(allSubAccountIds);
     if (!uniqueAccountIds.length) return lines.map(l => ({ ...l, executed: 0, monthly_executed: new Array(12).fill(0) }));
 
+    const accCodeMap = new Map<string, string>();
+    allAccounts.forEach((a: any) => {
+      if (a.id && a.code) accCodeMap.set(a.id, String(a.code).trim());
+    });
+
     const filter = `tx_id.date >= "${startDate}" && tx_id.date <= "${endDate}" && tx_id.status="active"`;
-    // Note: PocketBase filter doesn't support easy "IN" for arrays in strings without joining
-    const accountFilter = uniqueAccountIds.map(id => `account_id="${id}"`).join(' || ');
-    const fullFilter = `(${accountFilter}) && ${filter}`;
+    
+    // Chunking en lotes de 25 para evitar error HTTP 414 URI Too Long en PocketBase
+    const CHUNK_SIZE = 25;
+    const txLines: any[] = [];
+    for (let i = 0; i < uniqueAccountIds.length; i += CHUNK_SIZE) {
+      const chunk = uniqueAccountIds.slice(i, i + CHUNK_SIZE);
+      const accountFilter = chunk.map(id => `account_id="${id}"`).join(' || ');
+      const fullFilter = `(${accountFilter}) && ${filter}`;
+      const batch = await pb.listAll('tx_lines', { filter: fullFilter, expand: 'tx_id' }).catch(() => []);
+      txLines.push(...batch);
+    }
 
-    const txLines = await pb.listAll('tx_lines', { filter: fullFilter, expand: 'tx_id' });
-
-    const executionMap = {}; // accountId -> [jan, feb, ... dec]
+    const executionMap: Record<string, number[]> = {}; // accountId -> [jan, feb, ... dec]
     for (const tl of txLines) {
       const dStr = tl.expand?.tx_id?.date;
       if (!dStr) continue;
@@ -6016,12 +6184,16 @@ const API = {
       if (month < 0 || month >= 12) continue;
       if (!executionMap[tl.account_id]) executionMap[tl.account_id] = new Array(12).fill(0);
 
-      // Simple logic: if account starts with 4 (Income), Credit - Debit. 
-      // If starts with 5 or 6 (Expenses/Costs), Debit - Credit.
-      // We need to fetch account codes to be sure.
-      // For now we'll assume the caller knows the nature. 
-      // Let's just return raw Net (Debit - Credit) and let UI decide.
-      executionMap[tl.account_id][month] += (tl.debit || 0) - (tl.credit || 0);
+      // Naturaleza contable:
+      // Si la cuenta es de Ingresos (Clase 4), la ejecución es Crédito - Débito.
+      // Si es de Gastos / Costos (Clase 5 o 6), la ejecución es Débito - Crédito.
+      const aCode = accCodeMap.get(tl.account_id) || '';
+      const isIngreso = aCode.startsWith('4');
+      const val = isIngreso
+        ? (Number(tl.credit) || 0) - (Number(tl.debit) || 0)
+        : (Number(tl.debit) || 0) - (Number(tl.credit) || 0);
+
+      executionMap[tl.account_id][month] += val;
     }
 
     return lines.map(l => {
@@ -6079,24 +6251,42 @@ const API = {
       };
     }
 
-    const filter = `tx_id.date >= "${startDate}" && tx_id.date <= "${endDate}" && tx_id.status="active"`;
-    const accountFilter = uniqueAccountIds.map(id => `account_id="${id}"`).join(' || ');
-    const fullFilter = `(${accountFilter}) && ${filter}`;
-
-    // Load tx_lines with expand of tx_id, account_id, and third_party_id
-    const txLines = await pb.listAll('tx_lines', { 
-      filter: fullFilter, 
-      expand: 'tx_id,account_id,third_party_id' 
+    const accCodeMap = new Map<string, string>();
+    allAccounts.forEach((a: any) => {
+      if (a.id && a.code) accCodeMap.set(a.id, String(a.code).trim());
     });
 
-    const executionMap = {}; // accountId -> [jan, feb, ... dec]
+    const filter = `tx_id.date >= "${startDate}" && tx_id.date <= "${endDate}" && tx_id.status="active"`;
+    
+    // Chunking en lotes de 25 para evitar HTTP 414
+    const CHUNK_SIZE = 25;
+    const txLines: any[] = [];
+    for (let i = 0; i < uniqueAccountIds.length; i += CHUNK_SIZE) {
+      const chunk = uniqueAccountIds.slice(i, i + CHUNK_SIZE);
+      const accountFilter = chunk.map(id => `account_id="${id}"`).join(' || ');
+      const fullFilter = `(${accountFilter}) && ${filter}`;
+      const batch = await pb.listAll('tx_lines', { 
+        filter: fullFilter, 
+        expand: 'tx_id,account_id,third_party_id' 
+      }).catch(() => []);
+      txLines.push(...batch);
+    }
+
+    const executionMap: Record<string, number[]> = {}; // accountId -> [jan, feb, ... dec]
     for (const tl of txLines) {
       const dStr = tl.expand?.tx_id?.date;
       if (!dStr) continue;
       const month = new Date(dStr + 'T00:00:00Z').getUTCMonth();
       if (month < 0 || month >= 12) continue;
       if (!executionMap[tl.account_id]) executionMap[tl.account_id] = new Array(12).fill(0);
-      executionMap[tl.account_id][month] += (tl.debit || 0) - (tl.credit || 0);
+
+      const aCode = accCodeMap.get(tl.account_id) || '';
+      const isIngreso = aCode.startsWith('4');
+      const val = isIngreso
+        ? (Number(tl.credit) || 0) - (Number(tl.debit) || 0)
+        : (Number(tl.debit) || 0) - (Number(tl.credit) || 0);
+
+      executionMap[tl.account_id][month] += val;
     }
 
     const budgetLines = lines.map(l => {
@@ -8659,15 +8849,22 @@ const API = {
     const contracts = await this.getInmoContracts(true);
     if (!contracts.length) throw new Error('No hay contratos activos registrados.');
 
-    // Validar facturas ya existentes para este perÃ­odo
+    // Validar facturas ya existentes para este período (excluyendo anuladas)
     const existing = await pb.listAll('inmo_invoices', {
       filter: `period="${safePeriod}"`,
       perPage: 200,
     });
-    const existingContractIds = new Set(existing.map(i => i.contract_id));
+    const existingContractIds = new Set(existing.filter(i => i.status !== 'voided').map(i => i.contract_id));
 
-    const toCreate = contracts.filter(c => c.status === 'VIGENTE' && !existingContractIds.has(c.id));
-    if (!toCreate.length) throw new Error(`Todos los contratos vigentes ya tienen factura para el perÃ­odo ${period}.`);
+    // Filtrar contratos vigentes cuyas fechas cubran el período solicitado (formato: YYYY-MM)
+    const toCreate = contracts.filter(c => {
+      if (c.status !== 'VIGENTE' || existingContractIds.has(c.id)) return false;
+      if (c.start_date && c.start_date.slice(0, 7) > period) return false;
+      if (c.end_date && c.end_date.slice(0, 7) < period) return false;
+      return true;
+    });
+
+    if (!toCreate.length) throw new Error(`Todos los contratos vigentes ya tienen factura activa o están fuera de rango para el período ${period}.`);
 
     // Leer configuraciones de Inmobiliaria y Facturación General (prices_include_iva)
     let inmoCfg: any = {};
@@ -8698,19 +8895,50 @@ const API = {
       const commRate = prop?.commission_rate !== undefined && prop?.commission_rate !== null ? Number(prop.commission_rate) : 0;
       const monthlyRent = Number(contract.monthly_rent || 0);
 
+      // Consultar mantenimientos completados y no deducidos para este contrato/inmueble
+      let pendingMnts: any[] = [];
+      try {
+        const propIdFilter = prop?.id ? `property_id="${prop.id}"` : '';
+        const contIdFilter = `contract_id="${contract.id}"`;
+        const orFilter = propIdFilter ? `(${contIdFilter} || ${propIdFilter})` : contIdFilter;
+        pendingMnts = await pb.listAll('inmo_maintenance', {
+          filter: `status="COMPLETADO" && (is_deducted=false || is_deducted=null) && ${orFilter}`
+        });
+      } catch (_) {
+        pendingMnts = [];
+      }
+
+      // Calcular montos de mantenimientos a favor/cargo de inquilino o propietario
+      let ownerMntDeductions = 0;
+      let tenantMntCharges = 0;
+      const ownerMntList: any[] = [];
+      const tenantMntList: any[] = [];
+
+      for (const m of pendingMnts) {
+        const cost = Number(m.actual_cost || m.estimated_cost || 0);
+        if (cost <= 0) continue;
+        if (m.charged_to === 'PROPIETARIO') {
+          ownerMntDeductions += cost;
+          ownerMntList.push(m);
+        } else if (m.charged_to === 'INQUILINO') {
+          tenantMntCharges += cost;
+          tenantMntList.push(m);
+        }
+      }
+
       let rentBase = monthlyRent;
       let taxAmount = 0;
-      let totalAmount = monthlyRent;
+      let totalAmount = monthlyRent + tenantMntCharges;
       let commissionAmount = 0;
       let netToOwner = 0;
 
       if (commRate > 0) {
         // CASO A: MANDATO / INTERMEDIACIÓN (Comisión > 0%)
         commissionAmount = Math.round(monthlyRent * (commRate / 100));
-        netToOwner = monthlyRent - commissionAmount;
+        // Deducir comisión y mantenimientos al propietario
+        netToOwner = Math.max(0, monthlyRent - commissionAmount - ownerMntDeductions);
         rentBase = monthlyRent;
         taxAmount = 0;
-        totalAmount = monthlyRent;
       } else {
         // CASO B: ARRENDAMIENTO ESTÁNDAR DIRECTO (COMISIÓN 0%)
         const rentHasIva = !!inmoCfg.rent_has_iva;
@@ -8719,19 +8947,20 @@ const API = {
         if (rentHasIva && rentIvaRate > 0) {
           if (pricesIncludeIva) {
             // PRECIOS TIENEN IVA INCLUIDO (TAX-IN)
-            totalAmount = monthlyRent;
-            rentBase = Math.round(totalAmount / (1 + (rentIvaRate / 100)));
-            taxAmount = totalAmount - rentBase;
+            const rentWithTax = monthlyRent;
+            rentBase = Math.round(rentWithTax / (1 + (rentIvaRate / 100)));
+            taxAmount = rentWithTax - rentBase;
+            totalAmount = rentWithTax + tenantMntCharges;
           } else {
             // PRECIOS NO INCLUYEN IVA (TAX-OUT)
             rentBase = monthlyRent;
             taxAmount = Math.round(rentBase * (rentIvaRate / 100));
-            totalAmount = rentBase + taxAmount;
+            totalAmount = rentBase + taxAmount + tenantMntCharges;
           }
         } else {
           rentBase = monthlyRent;
           taxAmount = 0;
-          totalAmount = monthlyRent;
+          totalAmount = monthlyRent + tenantMntCharges;
         }
         commissionAmount = 0;
         netToOwner = 0;
@@ -8741,6 +8970,14 @@ const API = {
       const randomPart = String(Date.now()).slice(-4);
       const invoiceNum = `IA-${period.replace('-', '')}-${randomPart}-${created + 1}`;
 
+      const notesArr = [`Facturación canon de arrendamiento período ${period}. Inmueble: ${prop?.title || ''}.`];
+      if (ownerMntDeductions > 0) {
+        notesArr.push(`Deducciones mantenimiento a propietario: -$${ownerMntDeductions.toLocaleString('es-CO')}.`);
+      }
+      if (tenantMntCharges > 0) {
+        notesArr.push(`Cobros adicionales mantenimiento a inquilino: +$${tenantMntCharges.toLocaleString('es-CO')}.`);
+      }
+
       const inv = await pb.create('inmo_invoices', {
         number: invoiceNum,
         period: safePeriod,
@@ -8748,30 +8985,49 @@ const API = {
         date: dateStr,
         due_date: dueDateStr,
         rent_amount: rentBase,
-        other_amount: 0,
+        other_amount: tenantMntCharges,
         tax_amount: taxAmount,
         commission_amount: commissionAmount,
         net_to_owner: netToOwner,
         total: totalAmount,
         status: 'draft',
-        notes: `Facturación canon de arrendamiento período ${period}. Inmueble: ${prop?.title || ''}.`,
+        notes: notesArr.join(' '),
       });
 
-      // Crear líneas de factura
+      let currentOrder = 1;
+      // Línea principal de canon
       await pb.create('inmo_invoice_lines', {
         invoice_id: inv.id,
         description: 'Canon de arrendamiento',
         amount: rentBase,
-        line_order: 1,
+        line_order: currentOrder++,
       });
 
+      // Línea de IVA si aplica
       if (taxAmount > 0) {
         await pb.create('inmo_invoice_lines', {
           invoice_id: inv.id,
           description: `IVA Arrendamiento (${inmoCfg.rent_iva_rate || 19}%)`,
           amount: taxAmount,
-          line_order: 2,
+          line_order: currentOrder++,
         });
+      }
+
+      // Líneas de cobro a inquilino por reparaciones
+      for (const tm of tenantMntList) {
+        await pb.create('inmo_invoice_lines', {
+          invoice_id: inv.id,
+          description: `Reparación / Mantenimiento: ${tm.title || tm.code}`,
+          amount: Number(tm.actual_cost || tm.estimated_cost || 0),
+          line_order: currentOrder++,
+        });
+        // Marcar orden como deducida/facturada
+        await pb.update('inmo_maintenance', tm.id, { is_deducted: true }).catch(() => null);
+      }
+
+      // Marcar órdenes deducidas al propietario
+      for (const om of ownerMntList) {
+        await pb.update('inmo_maintenance', om.id, { is_deducted: true }).catch(() => null);
       }
 
       created++;
@@ -8875,10 +9131,36 @@ const API = {
     return { period, total: invoices.length, reverted, skipped, txDraft, txVoided };
   },
 
+  async deleteInmoInvoice(invoiceId: string) {
+    const inv = await pb.get('inmo_invoices', invoiceId, {
+      expand: 'contract_id,contract_id.property_id'
+    });
+    if (inv.status === 'paid') throw new Error('No se puede eliminar una factura ya pagada.');
+    if (inv.status === 'posted') {
+      throw new Error('La factura está contabilizada. Descontabilízala a borrador antes de eliminarla.');
+    }
+    // Liberar mantenimientos marcados como deducidos vinculados a este contrato/inmueble
+    try {
+      const contractId = inv.contract_id;
+      const propId = inv.expand?.contract_id?.property_id;
+      const filter = `is_deducted=true && (${contractId ? `contract_id="${contractId}"` : ''}${contractId && propId ? ' || ' : ''}${propId ? `property_id="${propId}"` : ''})`;
+      if (contractId || propId) {
+        const mnts = await pb.listAll('inmo_maintenance', { filter });
+        for (const m of mnts) {
+          await pb.update('inmo_maintenance', m.id, { is_deducted: false }).catch(() => null);
+        }
+      }
+    } catch (_) {}
+
+    await pb.delete('inmo_invoices', invoiceId);
+    await this.logAudit('DELETE', 'InmoInvoice', invoiceId, `Factura ${inv.number || invoiceId} eliminada`);
+    return true;
+  },
+
   async deleteInmoInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('inmo_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
+    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
 
     let deleted = 0;
     let txDeleted = 0;
@@ -8895,6 +9177,17 @@ const API = {
         }
       }
 
+      // Liberar mantenimientos que hubiesen sido deducidos
+      try {
+        const contractId = inv.contract_id;
+        if (contractId) {
+          const mnts = await pb.listAll('inmo_maintenance', { filter: `contract_id="${contractId}" && is_deducted=true` });
+          for (const m of mnts) {
+            await pb.update('inmo_maintenance', m.id, { is_deducted: false }).catch(() => null);
+          }
+        }
+      } catch (_) {}
+
       await pb.delete('inmo_invoices', inv.id);
       deleted++;
     }
@@ -8903,7 +9196,7 @@ const API = {
       'DELETE_PERIOD',
       'InmoInvoices',
       period,
-      `PerÃ­odo ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
+      `Período ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
     );
 
     return { period, total: invoices.length, deleted, txDeleted, txVoided };
@@ -8941,12 +9234,12 @@ const API = {
     const commissionIncomeCode = String(inmoCfg.commission_income_code || '413505').trim();
     const cxpOwnerCode = String(inmoCfg.cxp_owner_code || '220505').trim();
 
-    // Buscar tipo de transacciÃ³n IA
+    // Buscar tipo de transacción IA
     const iaTypes = await pb.list('transaction_types', {
       filter: 'code="IA" && active=true',
       perPage: 1,
     });
-    if (!iaTypes.items.length) throw new Error('Tipo de transacciÃ³n IA no encontrado. Reinicia PocketBase para aplicar la migraciÃ³n.');
+    if (!iaTypes.items.length) throw new Error('Tipo de transacción IA no encontrado. Reinicia PocketBase para aplicar la migración.');
     const txType = iaTypes.items[0];
 
     // Terceros involucrados
@@ -8957,29 +9250,32 @@ const API = {
     const accountByCodeCache = {};
     const getAccById = async (id) => {
       const key = String(id || '').trim();
-      if (!key) throw new Error('Cuenta contable invÃ¡lida.');
+      if (!key) throw new Error('Cuenta contable inválida.');
       if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
       return accountByIdCache[key];
     };
     const findAccByCode = async (code) => {
       const key = String(code || '').trim();
-      if (!key) throw new Error('CÃ³digo de cuenta invÃ¡lido.');
+      if (!key) throw new Error('Código de cuenta inválido.');
       if (accountByCodeCache[key]) return accountByCodeCache[key];
       const safeCode = pb.escapeFilterValue(key);
       const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
-      if (!res.items.length) throw new Error(`Cuenta "${code}" no encontrada.`);
-      const acc = res.items[0];
-      accountByCodeCache[key] = acc;
-      accountByIdCache[acc.id] = acc;
-      return acc;
+      if (res.items.length) {
+        const acc = res.items[0];
+        accountByCodeCache[key] = acc;
+        accountByIdCache[acc.id] = acc;
+        return acc;
+      }
+      // Fallback: Si no existe el código exacto, buscar cuenta auxiliar que empiece con este código (ej: 130505 -> 13050501)
+      const prefixRes = await pb.list('accounts', { filter: `code ~ "${safeCode}"`, sort: 'code', perPage: 1 });
+      if (prefixRes.items.length) {
+        const acc = prefixRes.items[0];
+        accountByCodeCache[key] = acc;
+        accountByIdCache[acc.id] = acc;
+        return acc;
+      }
+      throw new Error(`Cuenta contable "${code}" no encontrada en el Plan Único de Cuentas (PUC).`);
     };
-
-    const commissionHasIva = !!inmoCfg.commission_has_iva;
-    const ivaCommissionCode = String(inmoCfg.iva_commission_code || '240810').trim();
-
-    const cxcTenantAcc = await findAccByCode(cxcTenantCode);
-    const commissionIncomeAcc = await findAccByCode(commissionIncomeCode);
-    const cxpOwnerAcc = await findAccByCode(cxpOwnerCode);
 
     const txLines = [];
     const isMandato = (inv.commission_amount || 0) > 0;
@@ -9044,6 +9340,26 @@ const API = {
         cross_doc_ref: inv.number,
       });
 
+      // Compensación / Recuperación de Mantenimientos (si hubo deducciones al propietario o cobros adicionales al inquilino)
+      const currentCredits = txLines.reduce((s, l) => s + (l.credit || 0), 0);
+      const pendingDiff = (inv.total || 0) - currentCredits;
+      if (pendingDiff > 0.01) {
+        let mntOffsetAcc = commissionIncomeAcc;
+        const mntRecoveryCode = String(inmoCfg.maintenance_recovery_code || '425035').trim();
+        try {
+          mntOffsetAcc = await findAccByCode(mntRecoveryCode);
+        } catch (_) {}
+
+        txLines.push({
+          account_id: mntOffsetAcc.id,
+          third_party_id: ownerId,
+          debit: 0,
+          credit: pendingDiff,
+          description: `Recuperación / Compensación Mantenimiento - Factura ${inv.number}`,
+          line_order: currentLineOrder++,
+        });
+      }
+
     } else {
       // ── CASO B: ARRENDAMIENTO ESTÁNDAR / GESTIÓN DIRECTA (COMISIÓN 0%) ──
       const rentHasIva = !!inmoCfg.rent_has_iva;
@@ -9055,10 +9371,10 @@ const API = {
       const rentIncomeAcc = await findAccByCode(rentIncomeCode);
 
       const baseRent = (inv.rent_amount || 0) + (inv.other_amount || 0);
-      const ivaRent = (rentHasIva && rentIvaRate > 0) ? Math.round(baseRent * (rentIvaRate / 100)) : 0;
-      const totalInv = baseRent + ivaRent;
+      const ivaRent = (rentHasIva && rentIvaRate > 0) ? Math.round((inv.rent_amount || 0) * (rentIvaRate / 100)) : 0;
+      const totalInv = inv.total || (baseRent + ivaRent);
 
-      // 1. Débito a CxC Inquilino por el Total (Base + IVA)
+      // 1. Débito a CxC Inquilino por el Total (Base + IVA + Otros)
       txLines.push({
         account_id: cxcTenantAcc.id,
         third_party_id: tenantId,
@@ -9074,10 +9390,12 @@ const API = {
         account_id: rentIncomeAcc.id,
         third_party_id: tenantId,
         debit: 0,
-        credit: baseRent,
+        credit: inv.rent_amount || baseRent,
         description: `Ingreso por Arrendamiento Estándar - Factura ${inv.number}`,
         line_order: 2,
       });
+
+      let currentLineOrder = 3;
 
       // 3. Crédito a IVA Arrendamiento (si aplica)
       if (ivaRent > 0) {
@@ -9088,7 +9406,23 @@ const API = {
           debit: 0,
           credit: ivaRent,
           description: `IVA Arrendamiento ${rentIvaRate}% - Factura ${inv.number}`,
-          line_order: 3,
+          line_order: currentLineOrder++,
+        });
+      }
+
+      // 4. Crédito por otros cobros (Mantenimiento cobrado a inquilino)
+      if ((inv.other_amount || 0) > 0) {
+        let mntAcc = rentIncomeAcc;
+        try {
+          mntAcc = await findAccByCode(inmoCfg.maintenance_recovery_code || '425035');
+        } catch (_) {}
+        txLines.push({
+          account_id: mntAcc.id,
+          third_party_id: tenantId,
+          debit: 0,
+          credit: inv.other_amount,
+          description: `Cobro Reparaciones / Mantenimiento - Factura ${inv.number}`,
+          line_order: currentLineOrder++,
         });
       }
     }
@@ -9097,7 +9431,7 @@ const API = {
     const totalDebit = txLines.reduce((sum, l) => sum + (l.debit || 0), 0);
     const totalCredit = txLines.reduce((sum, l) => sum + (l.credit || 0), 0);
     if (Math.abs(totalDebit - totalCredit) > 1.0) {
-      throw new Error(`Descuadre contable detectado. DÃ©bito: ${totalDebit}, CrÃ©dito: ${totalCredit}.`);
+      throw new Error(`Descuadre contable detectado. Débito: ${totalDebit}, Crédito: ${totalCredit}.`);
     }
 
     const txPayload: any = {

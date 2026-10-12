@@ -668,9 +668,9 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
 
     // 6. Pre-cargar líneas de facturas en 1 solo query agrupado
     const invoiceIds = draftInvoices.map(i => "'" + i.id + "'");
-    const allLinesRows = arrayOf(new DynamicModel({ invoice_id: "", concept_id: "", description: "", amount: -0 }));
+    const allLinesRows = arrayOf(new DynamicModel({ invoice_id: "", concept_id: "", description: "", amount: -0, account_code: "" }));
     $app.db().newQuery(
-      "SELECT invoice_id, concept_id, description, amount " +
+      "SELECT invoice_id, concept_id, description, amount, account_code " +
       "FROM ph_invoice_lines " +
       "WHERE invoice_id IN (" + invoiceIds.join(",") + ") " +
       "ORDER BY line_order ASC"
@@ -767,9 +767,16 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
             if (lnAmt <= 0) continue;
 
             let targetAccId = "";
-            if (ln.concept_id && conceptAccIdMap[ln.concept_id]) {
+            // 1. Prioridad: Cuenta contable específica definida en la línea
+            if (ln.account_code) {
+              const customAcc = getAcc(ln.account_code);
+              if (customAcc) targetAccId = customAcc.id;
+            }
+            // 2. Prioridad: Cuenta asociada al concepto en ph_billing_concepts
+            if (!targetAccId && ln.concept_id && conceptAccIdMap[ln.concept_id]) {
               targetAccId = conceptAccIdMap[ln.concept_id];
             }
+            // 3. Fallback: Cuenta de mora o ingreso por defecto
             if (!targetAccId) {
               const isMora = String(ln.description || "").toLowerCase().includes("mora");
               targetAccId = isMora && lateFeeIncomeAcc ? lateFeeIncomeAcc.id : (defaultIncomeAcc ? defaultIncomeAcc.id : cxcAcc.id);
@@ -916,8 +923,19 @@ routerAdd("POST", "/api/ph/unpost-period", (e) => {
       return e.json(200, { success: true, period: period, reverted: 0, message: "No hay facturas contabilizadas para descontabilizar." });
     }
 
+    // Seguridad contable: Bloquear descontabilización si hay facturas con recaudos registrados a menos que se indique force
+    const force = body.force === true;
+    const paidInvoices = invoices.filter(i => i.getString("status") === "paid");
+    if (paidInvoices.length > 0 && !force) {
+      const firstPaidNum = paidInvoices[0].getString("number") || paidInvoices[0].id;
+      return e.json(400, {
+        message: `No se puede descontabilizar el período ${period} porque contiene ${paidInvoices.length} factura(s) con recaudos registrados (ej. ${firstPaidNum}). Debe reversar los recibos de caja (RC) primero o confirmar forzado.`
+      });
+    }
+
+    const invoicesToRevert = force ? invoices : invoices.filter(i => i.getString("status") === "posted");
     const txIdsToDelete = new Set();
-    for (const inv of invoices) {
+    for (const inv of invoicesToRevert) {
       const txId = inv.getString("tx_id");
       if (txId) txIdsToDelete.add(txId);
     }
@@ -933,7 +951,7 @@ routerAdd("POST", "/api/ph/unpost-period", (e) => {
       }
 
       // 2. Revertir facturas a estado draft y limpiar tx_id
-      for (const inv of invoices) {
+      for (const inv of invoicesToRevert) {
         inv.set("status", "draft");
         inv.set("tx_id", "");
         txApp.save(inv);
@@ -1040,6 +1058,16 @@ routerAdd("POST", "/api/ph/delete-period", (e) => {
 
     if (!invoices.length) {
       return e.json(200, { success: true, period: period, deleted: 0, message: "No hay facturas registradas en este período." });
+    }
+
+    // Seguridad contable: Bloquear eliminación si hay facturas con recaudos registrados a menos que se indique force
+    const force = body.force === true;
+    const paidInvoices = invoices.filter(i => i.getString("status") === "paid");
+    if (paidInvoices.length > 0 && !force) {
+      const firstPaidNum = paidInvoices[0].getString("number") || paidInvoices[0].id;
+      return e.json(400, {
+        message: `No se puede eliminar el período ${period} porque contiene ${paidInvoices.length} factura(s) con recaudos asociados (ej. ${firstPaidNum}). Debe anular los recibos de caja antes de eliminar el período.`
+      });
     }
 
     const txIdsToDelete = new Set();

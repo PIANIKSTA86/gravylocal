@@ -113,8 +113,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Collapsible Sidebar Sections ───────────────────────────
   $$('#nav-menu .nav-section').forEach((section: any) => {
     section.addEventListener('click', () => {
-      // Solo colapsar si el sidebar principal está expandido
-      if ($('#sidebar')?.classList.contains('collapsed')) return;
+      // Si el sidebar principal está colapsado, expandirlo y abrir esta sección
+      if ($('#sidebar')?.classList.contains('collapsed')) {
+        setSidebarCollapsed(false);
+        const sectionId = section.dataset.section;
+        if (sectionId) {
+          $$('#nav-menu .nav-section').forEach((other: any) => {
+            const otherId = other.dataset.section;
+            if (otherId) localStorage.setItem(`section-collapsed-${otherId}`, otherId === sectionId ? '0' : '1');
+          });
+          if (typeof (window as any).applyModuleVisibility === 'function') {
+            (window as any).applyModuleVisibility();
+          }
+        }
+        return;
+      }
       const sectionId = section.dataset.section;
       if (!sectionId) return;
       const isCollapsed = localStorage.getItem(`section-collapsed-${sectionId}`) === '1';
@@ -168,6 +181,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function setSidebarCollapsed(collapsed, animate = true) {
     if (!_sidebar || !_screenApp) return;
+    const flyout = document.getElementById('sidebar-flyout');
+    if (flyout) flyout.classList.remove('show');
     if (!animate) {
       _sidebar.style.transition = 'none';
       requestAnimationFrame(() => { _sidebar.style.transition = ''; });
@@ -270,26 +285,162 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   (window as any).initRoleBottomNav = initRoleBottomNav;
 
-  // ── Tooltips fixed para nav-items en modo colapsado ────────
-  (function () {
-    const tip = document.createElement('div');
-    tip.style.cssText = 'position:fixed;z-index:400;padding:5px 13px;border-radius:8px;font-size:12px;font-weight:600;font-family:Plus Jakarta Sans,sans-serif;color:#fff;background:#111E43;border:1px solid rgba(100,225,255,.25);box-shadow:0 4px 20px rgba(5,8,20,.5);pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;';
-    document.body.appendChild(tip);
+  // ── Flyout Dropdown Submenu para Navegación en Modo Colapsado ────────
+  (function initSidebarFlyout() {
+    let flyout = document.getElementById('sidebar-flyout');
+    if (!flyout) {
+      flyout = document.createElement('div');
+      flyout.id = 'sidebar-flyout';
+      flyout.className = 'sidebar-flyout';
+      flyout.innerHTML = `
+        <div class="sidebar-flyout-inner">
+          <div class="sidebar-flyout-header" id="flyout-header">
+            <i class="flyout-header-icon" id="flyout-icon"></i>
+            <span class="flyout-header-title" id="flyout-title"></span>
+            <span class="flyout-header-count" id="flyout-count" style="display:none"></span>
+          </div>
+          <div class="sidebar-flyout-body" id="flyout-body"></div>
+        </div>
+      `;
+      document.body.appendChild(flyout);
+    }
+
     const nav = $('#nav-menu');
+    let hideTimer: any = null;
+
+    const cancelHide = () => {
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+    };
+
+    const scheduleHide = (delay = 180) => {
+      cancelHide();
+      hideTimer = setTimeout(() => {
+        flyout?.classList.remove('show');
+      }, delay);
+    };
+
+    flyout.addEventListener('mouseenter', cancelHide);
+    flyout.addEventListener('mouseleave', () => scheduleHide(120));
+
+    function showFlyoutFor(targetEl: HTMLElement) {
+      if (!_sidebar?.classList.contains('collapsed') || window.innerWidth <= 768) {
+        flyout?.classList.remove('show');
+        return;
+      }
+      cancelHide();
+
+      const headerEl = flyout?.querySelector('#flyout-header') as HTMLElement;
+      const iconEl = flyout?.querySelector('#flyout-icon') as HTMLElement;
+      const titleEl = flyout?.querySelector('#flyout-title') as HTMLElement;
+      const countEl = flyout?.querySelector('#flyout-count') as HTMLElement;
+      const bodyEl = flyout?.querySelector('#flyout-body') as HTMLElement;
+      if (!headerEl || !iconEl || !titleEl || !countEl || !bodyEl) return;
+
+      const isStandalone = targetEl.classList.contains('nav-item') && targetEl.dataset.standalone === 'true';
+      const isSection = targetEl.classList.contains('nav-section');
+
+      if (!isStandalone && !isSection) return;
+
+      if (isStandalone) {
+        headerEl.className = 'sidebar-flyout-header standalone';
+        iconEl.className = `flyout-header-icon ${targetEl.querySelector('i')?.className || 'fas fa-gauge-high'}`;
+        titleEl.textContent = targetEl.dataset.label || targetEl.textContent?.trim() || '';
+        countEl.style.display = 'none';
+        bodyEl.innerHTML = '';
+        bodyEl.style.display = 'none';
+      } else if (isSection) {
+        headerEl.className = 'sidebar-flyout-header';
+        const sectionIcon = targetEl.dataset.icon || targetEl.querySelector('.nav-section-icon')?.className || 'fas fa-folder-tree';
+        iconEl.className = `flyout-header-icon ${sectionIcon.replace('nav-section-icon', '')}`;
+        titleEl.textContent = targetEl.dataset.label || targetEl.querySelector('.nav-section-title span')?.textContent || targetEl.querySelector('span')?.textContent || 'Sección';
+
+        // Recolectar items visibles de esta sección
+        const childItems: Array<{ page: string; label: string; icon: string; active: boolean }> = [];
+        let next = targetEl.nextElementSibling as HTMLElement | null;
+        while (next && !next.classList.contains('nav-section')) {
+          if (next.classList.contains('nav-item') && next.style.display !== 'none') {
+            const page = next.dataset.page || '';
+            const label = next.dataset.label || next.querySelector('.nav-label')?.textContent?.trim() || page;
+            const icon = next.querySelector('i')?.className || 'fas fa-circle';
+            const active = next.classList.contains('active');
+            childItems.push({ page, label, icon, active });
+          }
+          next = next.nextElementSibling as HTMLElement | null;
+        }
+
+        if (childItems.length === 0) {
+          flyout?.classList.remove('show');
+          return;
+        }
+
+        countEl.textContent = `${childItems.length}`;
+        countEl.style.display = 'inline-block';
+        bodyEl.style.display = 'flex';
+        bodyEl.innerHTML = childItems.map(item => `
+          <div class="flyout-item ${item.active ? 'active' : ''}" data-page="${item.page}">
+            <i class="${item.icon}"></i>
+            <span>${item.label}</span>
+          </div>
+        `).join('');
+
+        bodyEl.querySelectorAll('.flyout-item').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const page = (btn as HTMLElement).dataset.page;
+            flyout?.classList.remove('show');
+            if (page && typeof (window as any).navigate === 'function') {
+              (window as any).navigate(page);
+            }
+          });
+        });
+      }
+
+      // Posicionamiento inteligente
+      const rect = targetEl.getBoundingClientRect();
+      const flyoutX = rect.right + 8;
+      let flyoutY = rect.top;
+
+      if (!flyout) return;
+      flyout.style.left = `${flyoutX}px`;
+      flyout.style.top = `${flyoutY}px`;
+      flyout.classList.add('show');
+
+      // Corrección si excede la altura de pantalla
+      requestAnimationFrame(() => {
+        if (!flyout) return;
+        const fRect = flyout.getBoundingClientRect();
+        if (fRect.bottom > window.innerHeight - 16) {
+          const shift = fRect.bottom - (window.innerHeight - 16);
+          flyoutY = Math.max(16, flyoutY - shift);
+          flyout.style.top = `${flyoutY}px`;
+        }
+      });
+    }
+
     nav?.addEventListener('mouseover', e => {
-      const item = e.target.closest('.nav-item');
-      if (!item || !_sidebar?.classList.contains('collapsed') || !item.dataset.label) return;
-      const r = item.getBoundingClientRect();
-      tip.textContent = item.dataset.label;
-      tip.style.left  = (r.right + 10) + 'px';
-      tip.style.top   = (r.top + r.height / 2) + 'px';
-      tip.style.transform = 'translateY(-50%)';
-      tip.style.opacity = '1';
+      const target = (e.target as HTMLElement).closest('.nav-section, .nav-item[data-standalone="true"]') as HTMLElement | null;
+      if (target) {
+        showFlyoutFor(target);
+      }
     });
+
     nav?.addEventListener('mouseout', e => {
-      if (!e.relatedTarget?.closest?.('.nav-item')) tip.style.opacity = '0';
+      const rel = (e as MouseEvent).relatedTarget as HTMLElement | null;
+      if (!rel?.closest?.('.nav-section, .nav-item[data-standalone="true"], #sidebar-flyout')) {
+        scheduleHide(140);
+      }
     });
-    nav?.addEventListener('mouseleave', () => { tip.style.opacity = '0'; });
+
+    nav?.addEventListener('mouseleave', () => scheduleHide(140));
+    window.addEventListener('scroll', () => flyout?.classList.remove('show'), true);
+    document.addEventListener('click', (e) => {
+      if (!(e.target as HTMLElement).closest('#sidebar, #sidebar-flyout')) {
+        flyout?.classList.remove('show');
+      }
+    });
   })();
 
   // ── Inicializar aplicación ─────────────────────────────────

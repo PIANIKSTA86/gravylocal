@@ -162,21 +162,31 @@ function setupThirdPartyAutocomplete(inputId: string, hiddenId: string, resultsI
   });
 }
 
-// Helper de cuentas contables
+// Helper de cuentas contables con soporte para auxiliares
 async function renderAccountSelect(selectId, defaultCode) {
   const select = document.getElementById(selectId) as HTMLSelectElement;
   if (!select) return;
   try {
     const accounts = await (window as any).API.getAccounts(true);
-    select.innerHTML = accounts.map(a => `
-      <option value="${a.code}" ${a.code === defaultCode ? 'selected' : ''}>
+    let matchedCode = defaultCode;
+    const hasExact = accounts.some(a => a.code === defaultCode);
+    if (!hasExact && defaultCode) {
+      const auxMatch = accounts.find(a => a.code && a.code.startsWith(defaultCode));
+      if (auxMatch) matchedCode = auxMatch.code;
+    }
+    const optionsHtml = accounts.map(a => `
+      <option value="${a.code}" ${a.code === matchedCode ? 'selected' : ''}>
         ${a.code} - ${(window as any).esc(a.name)}
       </option>
     `).join('');
+    select.innerHTML = (hasExact || matchedCode) 
+      ? optionsHtml 
+      : `<option value="">-- Seleccionar Cuenta PUC --</option>${optionsHtml}`;
   } catch (err) {
     console.error(err);
   }
 }
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // RENDER PRINCIPAL
@@ -343,6 +353,7 @@ async function renderInmoMantenimientos(c: HTMLElement) {
                   <td>
                     <span class="font-medium text-gray-800">${(window as any).esc(m.title)}</span>
                     <br><span class="text-[11px] text-gray-500"><i class="fas ${typeMeta.icon} mr-1 text-purple-600"></i>${typeMeta.label}</span>
+                    ${m.attachments && m.attachments.length ? `<span class="badge badge-purple text-[10px] ml-1" title="${m.attachments.length} archivo(s) adjunto(s)"><i class="fas fa-paperclip mr-1"></i>${m.attachments.length}</span>` : ''}
                   </td>
                   <td>${m.scheduled_date ? `<span class="text-xs font-mono font-medium">${m.scheduled_date}</span>` : '<span class="text-gray-400 text-xs">Sin fecha</span>'}</td>
                   <td class="text-xs">${(window as any).esc(prov?.name || 'No asignado')}</td>
@@ -547,6 +558,19 @@ async function openMaintenanceModal(id = '') {
       <div class="form-group mb-0">
         <label class="form-label">Adjuntar Evidencias / Cotización (Fotos, Facturas, PDF)</label>
         <input id="mnt-file-input" type="file" multiple class="form-input text-xs" accept="image/*,.pdf">
+        ${record.attachments && record.attachments.length ? `
+          <div class="mt-2 p-2.5 rounded-xl bg-gray-50 border border-gray-100 text-xs space-y-1">
+            <span class="font-bold text-gray-700 block">Archivos adjuntos actuales:</span>
+            <div class="flex flex-wrap gap-2">
+              ${record.attachments.map((file: string) => {
+                const url = `${(window as any).PB_URL}/api/files/inmo_maintenance/${record.id}/${file}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}`;
+                return `<a href="${url}" target="_blank" class="badge badge-blue text-[11px] hover:underline flex items-center gap-1">
+                  <i class="fas fa-paperclip"></i> ${(window as any).esc(file)}
+                </a>`;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
       </div>
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
@@ -996,6 +1020,7 @@ async function renderInmoInmuebles(c: HTMLElement) {
                       <button class="btn btn-outline btn-sm inmo-edit-btn" data-id="${p.id}" title="Editar Inmueble"><i class="fas fa-pen text-xs"></i></button>
                       <button class="btn btn-outline btn-sm inmo-history-btn text-purple-600 border-purple-200 hover:bg-purple-50" data-id="${p.id}" title="Ver Historial"><i class="fas fa-clock text-xs"></i></button>
                       ${(p.sale_price || 0) > 1 ? `<button class="btn btn-outline btn-sm inmo-sell-btn text-emerald-600 border-emerald-200 hover:bg-emerald-50" data-id="${p.id}" title="Vender / Facturar"><i class="fas fa-receipt text-xs"></i></button>` : ''}
+                      <button class="btn btn-outline btn-sm inmo-del-btn text-red-500 hover:bg-red-50 border-red-200" data-id="${p.id}" title="Eliminar Inmueble"><i class="fas fa-trash text-xs"></i></button>
                     </div>
                   </td>
                 </tr>`;
@@ -1026,6 +1051,24 @@ async function renderInmoInmuebles(c: HTMLElement) {
       btn.addEventListener('click', () => {
         const id = (btn as HTMLElement).dataset.id || '';
         (window as any).openPropertySellModal(id, c);
+      });
+    });
+    document.querySelectorAll('.inmo-del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.id || '';
+        if (!confirm('¿Deseas eliminar este inmueble? Solo se eliminará si no tiene contratos o dependencias activas.')) return;
+        try {
+          const contracts = await (window as any).pb.listAll('inmo_contracts', { filter: `property_id="${id}"` }).catch(() => []);
+          if (contracts.length) {
+            (window as any).showToast('No se puede eliminar el inmueble porque tiene contratos vinculados. Puedes editarlo y desactivarlo.', 'warning');
+            return;
+          }
+          await (window as any).pb.delete('inmo_properties', id);
+          (window as any).showToast('Inmueble eliminado exitosamente.', 'success');
+          renderInmoInmuebles(c);
+        } catch (err: any) {
+          (window as any).showToast(err.message, 'error');
+        }
       });
     });
 
@@ -1278,7 +1321,7 @@ async function openInmuebleModal(id = '') {
 
 (window as any).openPropertyHistoryModal = async function(id: string) {
   try {
-    const [p, contracts, history] = await Promise.all([
+    const [p, contracts, history, maintenances] = await Promise.all([
       (window as any).pb.get('inmo_properties', id, { expand: 'owner_id' }),
       (window as any).pb.listAll('inmo_contracts', {
         filter: `property_id="${id}"`,
@@ -1288,7 +1331,12 @@ async function openInmuebleModal(id = '') {
       (window as any).pb.listAll('inmo_property_history', {
         filter: `property_id="${id}"`,
         sort: '-date'
-      })
+      }),
+      (window as any).pb.listAll('inmo_maintenance', {
+        filter: `property_id="${id}"`,
+        sort: '-scheduled_date',
+        expand: 'provider_id'
+      }).catch(() => [])
     ]);
 
     const owner = p.expand?.owner_id;
@@ -1301,6 +1349,26 @@ async function openInmuebleModal(id = '') {
     if (p.has_balcony) amenities.push('<span class="badge badge-blue"><i class="fas fa-table-cells-large mr-1"></i>Balcón</span>');
     if (p.has_storage) amenities.push('<span class="badge badge-blue"><i class="fas fa-box mr-1"></i>Depósito</span>');
     if (p.pet_friendly) amenities.push('<span class="badge badge-green"><i class="fas fa-paw mr-1"></i>Mascotas OK</span>');
+
+    // Unificar bitácora manual y órdenes de mantenimiento
+    const unifiedEvents = [
+      ...history.map((h: any) => ({
+        date: h.date || '',
+        title: h.title,
+        description: h.description,
+        cost: h.cost || 0,
+        typeLabel: h.event_type === 'MANTENIMIENTO' ? 'Mantenimiento' : (h.event_type === 'MEJORA_ESTRUCTURAL' ? 'Mejora Estructural' : 'Novedad'),
+        badgeClass: h.event_type === 'MANTENIMIENTO' ? 'badge-orange' : (h.event_type === 'MEJORA_ESTRUCTURAL' ? 'badge-blue' : 'badge-gray')
+      })),
+      ...maintenances.map((m: any) => ({
+        date: m.completed_date || m.scheduled_date || '',
+        title: `[${m.code}] ${m.title}`,
+        description: `${m.description || ''}${m.expand?.provider_id?.name ? ` • Técnico: ${m.expand.provider_id.name}` : ''} • A cargo de: ${m.charged_to}`,
+        cost: m.actual_cost || m.estimated_cost || 0,
+        typeLabel: `Orden: ${m.status}`,
+        badgeClass: m.status === 'COMPLETADO' ? 'badge-green' : (m.status === 'EN_EJECUCION' ? 'badge-orange' : 'badge-purple')
+      }))
+    ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
     const bodyHtml = `
       <div class="space-y-6 text-sm" style="color:#374151; text-align: left; max-height:75vh; overflow-y:auto; padding-right:4px;">
@@ -1383,37 +1451,25 @@ async function openInmuebleModal(id = '') {
             </button>
           </div>
           <div class="space-y-3 pt-1">
-            ${history.map((h: any) => {
-              let typeLabel = 'Novedad';
-              let badgeClass = 'badge-gray';
-              if (h.event_type === 'MANTENIMIENTO') {
-                typeLabel = 'Mantenimiento';
-                badgeClass = 'badge-orange';
-              } else if (h.event_type === 'MEJORA_ESTRUCTURAL') {
-                typeLabel = 'Mejora Estructural';
-                badgeClass = 'badge-blue';
-              }
-              
-              return `
-                <div class="p-3 rounded-xl border border-gray-100 bg-white shadow-sm flex items-start justify-between gap-4">
-                  <div class="space-y-1">
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <span class="badge ${badgeClass} text-[10px] font-bold uppercase">${typeLabel}</span>
-                      <span class="text-xs font-mono font-bold text-gray-400">${h.date}</span>
-                    </div>
-                    <p class="font-bold text-gray-800 text-sm mt-1">${(window as any).esc(h.title)}</p>
-                    ${h.description ? `<p class="text-xs text-gray-500 whitespace-pre-line">${(window as any).esc(h.description)}</p>` : ''}
+            ${unifiedEvents.map((h: any) => `
+              <div class="p-3 rounded-xl border border-gray-100 bg-white shadow-sm flex items-start justify-between gap-4">
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="badge ${h.badgeClass} text-[10px] font-bold uppercase">${h.typeLabel}</span>
+                    <span class="text-xs font-mono font-bold text-gray-400">${h.date || 'Sin fecha'}</span>
                   </div>
-                  ${h.cost > 0 ? `
-                    <div class="text-right min-w-[100px]">
-                      <span class="text-[10px] text-gray-400 block font-semibold">Costo asociado</span>
-                      <span class="font-extrabold text-red-600 text-sm">${(window as any).fmt(h.cost)}</span>
-                    </div>
-                  ` : ''}
+                  <p class="font-bold text-gray-800 text-sm mt-1">${(window as any).esc(h.title)}</p>
+                  ${h.description ? `<p class="text-xs text-gray-500 whitespace-pre-line">${(window as any).esc(h.description)}</p>` : ''}
                 </div>
-              `;
-            }).join('')}
-            ${!history.length ? '<div class="text-center py-6 text-gray-400 border border-dashed rounded-xl bg-gray-50/50">No hay eventos registrados en la bitácora</div>' : ''}
+                ${h.cost > 0 ? `
+                  <div class="text-right min-w-[100px]">
+                    <span class="text-[10px] text-gray-400 block font-semibold">Costo asociado</span>
+                    <span class="font-extrabold text-red-600 text-sm">${(window as any).fmt(h.cost)}</span>
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+            ${!unifiedEvents.length ? '<div class="text-center py-6 text-gray-400 border border-dashed rounded-xl bg-gray-50/50">No hay eventos ni mantenimientos registrados en la bitácora</div>' : ''}
           </div>
         </div>
       </div>
@@ -1585,6 +1641,7 @@ async function renderInmoContratos(c: HTMLElement) {
                     <div class="flex gap-2">
                       <button class="btn btn-outline btn-sm contract-edit-btn" data-id="${contract.id}" title="Editar"><i class="fas fa-pen"></i></button>
                       ${isRecibido ? `<button class="btn btn-outline btn-sm" onclick="viewAmortizationTable('${contract.id}')" title="Tabla de Amortización"><i class="fas fa-table-list"></i></button>` : ''}
+                      <button class="btn btn-outline btn-sm contract-del-btn text-red-500 hover:bg-red-50 border-red-200" data-id="${contract.id}" title="Eliminar Contrato"><i class="fas fa-trash text-xs"></i></button>
                     </div>
                   </td>
                 </tr>`;
@@ -1606,6 +1663,31 @@ async function renderInmoContratos(c: HTMLElement) {
     document.getElementById('btn-new-contract')?.addEventListener('click', () => openContractModal());
     document.querySelectorAll('.contract-edit-btn').forEach(btn => {
       btn.addEventListener('click', () => openContractModal((btn as HTMLElement).dataset.id));
+    });
+    document.querySelectorAll('.contract-del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.id || '';
+        if (!confirm('¿Deseas eliminar este contrato? Solo podrá eliminarse si no posee facturas generadas.')) return;
+        try {
+          const invoices = await (window as any).pb.listAll('inmo_invoices', { filter: `contract_id="${id}"` }).catch(() => []);
+          if (invoices.length) {
+            (window as any).showToast('No se puede eliminar el contrato porque ya tiene facturas de arriendo asociadas. Puedes cambiar su estado a Finalizado.', 'warning');
+            return;
+          }
+          const cRecord = await (window as any).pb.get('inmo_contracts', id);
+          await (window as any).pb.delete('inmo_contracts', id);
+          if (cRecord.property_id) {
+            const rem = await (window as any).pb.listAll('inmo_contracts', { filter: `property_id="${cRecord.property_id}" && status="VIGENTE"` }).catch(() => []);
+            if (!rem.length) {
+              await (window as any).pb.update('inmo_properties', cRecord.property_id, { status: 'DISPONIBLE' }).catch(() => null);
+            }
+          }
+          (window as any).showToast('Contrato eliminado exitosamente.', 'success');
+          renderInmoContratos(c);
+        } catch (err: any) {
+          (window as any).showToast(err.message, 'error');
+        }
+      });
     });
 
     const tbl = document.getElementById('table-contratos') as HTMLTableElement;
@@ -1739,7 +1821,10 @@ async function openContractModal(id = '', defaultType = 'EMITIDO') {
           <label class="form-label">Inmueble Asociado <span class="text-red-500">*</span></label>
           <select id="cont-property" class="form-input">
             <option value="">Selecciona inmueble...</option>
-            ${properties.map(p => `<option value="${p.id}" ${record.property_id === p.id ? 'selected' : ''}>${p.code} - ${(window as any).esc(p.title)}</option>`).join('')}
+            ${properties.map(p => {
+              const statusBadge = p.status === 'ARRENDADO' ? ' (Arrendado)' : (p.status === 'DISPONIBLE' ? ' (Disponible)' : ` (${p.status})`);
+              return `<option value="${p.id}" ${record.property_id === p.id ? 'selected' : ''}>${p.code} - ${(window as any).esc(p.title)}${statusBadge}</option>`;
+            }).join('')}
           </select>
         </div>
 
@@ -1869,6 +1954,23 @@ async function openContractModal(id = '', defaultType = 'EMITIDO') {
         return;
       }
 
+      if (end_date < start_date) {
+        (window as any).showToast('La fecha de fin no puede ser anterior a la fecha de inicio del contrato.', 'warning');
+        return;
+      }
+
+      if (status === 'VIGENTE') {
+        try {
+          const filter = `property_id="${property_id}" && status="VIGENTE"${id ? ` && id!="${id}"` : ''}`;
+          const existingActive = await (window as any).pb.listAll('inmo_contracts', { filter });
+          if (existingActive.length > 0) {
+            const activeNum = existingActive[0].number || 'existente';
+            const confirmDup = confirm(`El inmueble seleccionado ya tiene un contrato VIGENTE (${activeNum}). ¿Deseas continuar y registrar otro contrato vigente para este inmueble?`);
+            if (!confirmDup) return;
+          }
+        } catch (_) {}
+      }
+
       payload = {
         ...payload,
         property_id,
@@ -1942,14 +2044,49 @@ async function openContractModal(id = '', defaultType = 'EMITIDO') {
     btn.textContent = 'Guardando...';
 
     try {
+      let oldPropertyId: string | null = null;
+      let oldStatus: string | null = null;
+
       if (id) {
+        try {
+          const oldContract = await (window as any).pb.get('inmo_contracts', id);
+          oldPropertyId = oldContract.property_id || null;
+          oldStatus = oldContract.status || null;
+        } catch (_) {}
+
         await (window as any).pb.update('inmo_contracts', id, payload);
+
+        // Sincronización bidireccional Inmueble ↔ Contrato
+        if (type === 'EMITIDO') {
+          if (status === 'VIGENTE' && payload.property_id) {
+            await (window as any).pb.update('inmo_properties', payload.property_id, { status: 'ARRENDADO' }).catch(() => null);
+          } else if ((status === 'FINALIZADO' || status === 'SUSPENDIDO') && payload.property_id) {
+            // Verificar si quedan otros contratos vigentes en este inmueble
+            const rem = await (window as any).pb.listAll('inmo_contracts', {
+              filter: `property_id="${payload.property_id}" && status="VIGENTE" && id!="${id}"`
+            }).catch(() => []);
+            if (!rem.length) {
+              await (window as any).pb.update('inmo_properties', payload.property_id, { status: 'DISPONIBLE' }).catch(() => null);
+            }
+          }
+
+          // Si cambió de inmueble, liberar el anterior si no tiene otros contratos vigentes
+          if (oldPropertyId && oldPropertyId !== payload.property_id) {
+            const oldRem = await (window as any).pb.listAll('inmo_contracts', {
+              filter: `property_id="${oldPropertyId}" && status="VIGENTE" && id!="${id}"`
+            }).catch(() => []);
+            if (!oldRem.length) {
+              await (window as any).pb.update('inmo_properties', oldPropertyId, { status: 'DISPONIBLE' }).catch(() => null);
+            }
+          }
+        }
+
         (window as any).showToast('Contrato actualizado exitosamente.', 'success');
       } else {
         await (window as any).pb.create('inmo_contracts', payload);
-        // Cambiar estado del inmueble a Arrendado automáticamente si el contrato se pone Vigente
+        // Cambiar estado del inmueble a Arrendado automáticamente si el contrato se crea Vigente
         if (type === 'EMITIDO' && status === 'VIGENTE' && payload.property_id) {
-          await (window as any).pb.update('inmo_properties', payload.property_id, { status: 'ARRENDADO' });
+          await (window as any).pb.update('inmo_properties', payload.property_id, { status: 'ARRENDADO' }).catch(() => null);
         }
         (window as any).showToast('Contrato creado exitosamente.', 'success');
       }
@@ -2113,6 +2250,9 @@ function renderInmoInvRows(invoices) {
           ${inv.status === 'draft' ? `
             <button class="btn btn-sm inmo-inv-post-btn" data-id="${inv.id}" title="Contabilizar" style="background:#ECFDF5;color:#10B981;border:1px solid #A7F3D0;padding: 4px 8px;">
               <i class="fas fa-check"></i>
+            </button>
+            <button class="btn btn-outline btn-sm inmo-inv-del text-red-500 hover:bg-red-50 border-red-200" data-id="${inv.id}" title="Eliminar Borrador" style="padding: 4px 8px;">
+              <i class="fas fa-trash"></i>
             </button>` : ''}
           ${inv.status === 'posted' ? `
             <button class="btn btn-outline btn-sm inmo-inv-unpost" data-id="${inv.id}" title="Descontabilizar" style="color:#3B82F6;border-color:#93C5FD;padding: 4px 8px;">
@@ -2136,6 +2276,25 @@ function attachInmoInvActions() {
     btn.addEventListener('click', async () => {
       const id = (btn as HTMLElement).dataset.id || '';
       (window as any).openInmoPostingChoicesModal(id);
+    });
+  });
+
+  document.querySelectorAll('.inmo-inv-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = (btn as HTMLElement).dataset.id || '';
+      if (!confirm('¿Eliminar esta factura en borrador?')) return;
+      try {
+        await (window as any).API.deleteInmoInvoice(id);
+        (window as any).showToast('Factura eliminada exitosamente.', 'success');
+        const periodFilter = (document.getElementById('inmo-period-filter') as HTMLInputElement)?.value;
+        const safep = (window as any).pb.escapeFilterValue(periodFilter || (window as any).currentPeriod());
+        const res = await (window as any).API.getInmoInvoices({ filter: `period="${safep}"`, perPage: 200 });
+        const tbody = document.getElementById('inmo-inv-tbody');
+        if (tbody) tbody.innerHTML = renderInmoInvRows(res.items || []);
+        attachInmoInvActions();
+      } catch (err: any) {
+        (window as any).showToast(err.message, 'error');
+      }
     });
   });
 
@@ -2759,7 +2918,10 @@ async function openPropertySellModal(propertyId: string, container: HTMLElement)
       } else {
         btn.textContent = 'Procesando Contabilidad...';
         const resPost = await (window as any).API.postInmoInvoice(id, selectedResId);
-        const txId = resPost.tx.id;
+        const txId = resPost?.tx?.id || inv.tx_id || resPost?.inv?.tx_id;
+        if (!txId) {
+          throw new Error('No se encontró el comprobante contable asociado para la transmisión DIAN.');
+        }
         
         btn.textContent = 'Transmitiendo a DIAN...';
         (window as any).showToast('Generando XML UBL 2.1 y transmitiendo a la DIAN...', 'info');

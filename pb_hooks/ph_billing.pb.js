@@ -622,13 +622,16 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
     const defaultIncomeAcc = getAcc(incomeCode);
     const lateFeeIncomeAcc = getAcc(lateFeeIncomeCode) || defaultIncomeAcc;
 
-    // 4. Cachear conceptos de facturación para resolución de cuentas de ingreso y códigos
+    // 4. Cachear conceptos de facturación para resolución de cuentas de cartera (CxC 13), ingreso (4) y códigos
     const conceptRecords = $app.findRecordsByFilter("ph_billing_concepts", "", "", 500, 0) || [];
     const conceptAccIdMap = {};
+    const conceptCxcAccIdMap = {};
     const conceptCodeMap = {};
     for (const cr of conceptRecords) {
       const accId = cr.getString("account_id");
       if (accId) conceptAccIdMap[cr.id] = accId;
+      const cxcId = cr.getString("cxc_account_id");
+      if (cxcId) conceptCxcAccIdMap[cr.id] = cxcId;
       const cCode = cr.getString("code");
       if (cCode) conceptCodeMap[cr.id] = String(cCode).trim().toUpperCase();
     }
@@ -750,9 +753,18 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
             const cCode = resolveLineConceptCode(ln);
             const refConcepto = `${invNumber}-${cCode}`;
 
+            // Determinar cuenta de Cartera específica configurada en el concepto, o fallback a la cuenta global
+            let targetCxcAccId = "";
+            if (ln.concept_id && conceptCxcAccIdMap[ln.concept_id]) {
+              targetCxcAccId = conceptCxcAccIdMap[ln.concept_id];
+            }
+            if (!targetCxcAccId) {
+              targetCxcAccId = cxcAcc.id;
+            }
+
             const debitLine = new Record(txLinesCollection);
             debitLine.set("tx_id", txRec.id);
-            debitLine.set("account_id", cxcAcc.id);
+            debitLine.set("account_id", targetCxcAccId);
             debitLine.set("third_party_id", ownerId);
             debitLine.set("description", `Factura ${invNumber} [${cCode}] - ${period} - Unidad ${propInfo.code || ""}`);
             debitLine.set("debit", lnAmt);

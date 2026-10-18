@@ -257,14 +257,17 @@ onRecordCreateRequest((e) => {
       } else {
         netOpen = isRec ? (d.debit - d.credit) : (d.credit - d.debit);
         if (netOpen < -0.01) {
-          // Saldo a favor (Crédito > Débito) en cuenta de cartera 13
+          // Saldo a favor / Nota Crédito (Crédito > Débito) en cuenta de cartera 13
           d.saldo = Math.abs(netOpen);
           d.isReceivable = false;
-          d.isAnticipo = true;
-          if (cruzarAnt) validItems.push(d);
+          d.isCreditDoc = true;
+          d.isAnticipo = false;
+          validItems.push(d);
         } else if (netOpen > 0.01) {
           d.saldo = netOpen;
           d.isReceivable = true;
+          d.isCreditDoc = false;
+          d.isAnticipo = false;
           validItems.push(d);
         }
       }
@@ -310,35 +313,42 @@ onRecordCreateRequest((e) => {
     const rawDist = Array.isArray(params.distribucion) ? params.distribucion : [];
     for (const d of rawDist) {
       const m = Number(d.monto || 0);
-      if (m > 0.01) {
+      if (m > 0.001) {
         const match = openItems.find(i => i.key === d.key || i.cross_doc_ref === d.cross_doc_ref);
+        const isNCByRef = String(d.cross_doc_ref || '').trim().toUpperCase().startsWith('NC');
+        const isCreditDoc = d.is_credit === true || d.nature === 'CREDITO' || isNCByRef || (match && (match.isCreditDoc || match.saldo < 0 || match.isAnticipo || !match.isReceivable));
+        const absSaldo = match ? Math.abs(match.saldo) : m;
         cashAbonos.push({
           key: d.key || (d.cross_doc_ref + '|' + d.account_id),
           cross_doc_ref: d.cross_doc_ref,
           account_id: d.account_id || (match ? match.account_id : null),
-          monto: match ? Math.min(m, match.saldo) : m,
-          isReceivable: match ? match.isReceivable : true,
-          isAnticipo: match ? match.isAnticipo : false
+          monto: match ? Math.min(m, absSaldo) : m,
+          isReceivable: !isCreditDoc,
+          isAnticipo: match ? match.isAnticipo : false,
+          isCreditDoc: isCreditDoc,
+          nature: isCreditDoc ? 'CREDITO' : 'DEBITO',
+          description: d.description || (isCreditDoc ? ("Cruce Nota Crédito " + d.cross_doc_ref) : ("Abono a " + d.cross_doc_ref))
         });
       }
     }
 
     // Si hay ajuste al peso en modo manual, asegurar que los abonos a cartera cuadren con el total a cancelar
     if (ajustePesoAmt > 0.001 && cashAbonos.length > 0) {
-      const currentCashSum = cashAbonos.reduce((s, a) => s + a.monto, 0);
+      const currentCashSum = cashAbonos.reduce((s, a) => s + (a.isCreditDoc ? -a.monto : a.monto), 0);
       const diffToCover = Math.round((totalCarteraACancelar - currentCashSum) * 100) / 100;
       
       if (Math.abs(diffToCover) > 0.005) {
-        // Encontrar el abono que tiene la diferencia pendiente con respecto a su saldo en cartera
         let targetAbono = null;
         for (const ab of cashAbonos) {
-          const match = openItems.find(i => i.cross_doc_ref === ab.cross_doc_ref);
-          if (match && Math.abs((match.saldo - ab.monto) - diffToCover) < 0.05) {
-            targetAbono = ab;
-            break;
+          if (!ab.isCreditDoc) {
+            const match = openItems.find(i => i.cross_doc_ref === ab.cross_doc_ref);
+            if (match && Math.abs((match.saldo - ab.monto) - diffToCover) < 0.05) {
+              targetAbono = ab;
+              break;
+            }
           }
         }
-        if (!targetAbono) targetAbono = cashAbonos[0];
+        if (!targetAbono) targetAbono = cashAbonos.find(a => !a.isCreditDoc) || cashAbonos[0];
         targetAbono.monto = Math.round((targetAbono.monto + diffToCover) * 100) / 100;
       }
     }
@@ -501,13 +511,39 @@ onRecordCreateRequest((e) => {
   // 2. Abonos con Cash / Medios de Pago a Cartera (CxC / CxP)
   for (const ab of cashAbonos) {
     if (!ab.account_id || ab.monto <= 0) continue;
+    const isCredit = ab.isCreditDoc || ab.nature === 'CREDITO' || (ab.isReceivable === false && !ab.isAnticipo);
+
+    let lineDebit = 0;
+    let lineCredit = 0;
+    let desc = ab.description || ("Abono a " + ab.cross_doc_ref);
+
+    if (isRC) {
+      if (isCredit) {
+        lineDebit = ab.monto;
+        lineCredit = 0;
+        desc = "Cruce / Aplicación Nota Crédito " + ab.cross_doc_ref;
+      } else {
+        lineDebit = 0;
+        lineCredit = ab.monto;
+      }
+    } else {
+      if (isCredit) {
+        lineDebit = 0;
+        lineCredit = ab.monto;
+        desc = "Cruce / Deducción Nota Crédito " + ab.cross_doc_ref;
+      } else {
+        lineDebit = ab.monto;
+        lineCredit = 0;
+      }
+    }
+
     plannedLines.push({
       account_id: ab.account_id,
       third_party_id: third_party_id,
       cross_doc_ref: ab.cross_doc_ref,
-      debit: isRC ? 0 : ab.monto,
-      credit: isRC ? ab.monto : 0,
-      description: ab.description || ("Abono a " + ab.cross_doc_ref)
+      debit: lineDebit,
+      credit: lineCredit,
+      description: desc
     });
   }
 

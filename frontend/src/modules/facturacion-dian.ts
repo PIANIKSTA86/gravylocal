@@ -24,18 +24,59 @@ async function renderFacturacionDIAN(c: HTMLElement) {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
   c = getContainer(c);
   if (!c) return;
-  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando facturación DIAN...</div>`;
+  c.innerHTML = `
+    <div class="animate-pulse space-y-4 p-4">
+      <div class="flex justify-between items-center mb-6">
+        <div class="h-8 w-64 bg-slate-200 rounded-lg"></div>
+        <div class="h-9 w-32 bg-slate-200 rounded-lg"></div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div class="h-24 bg-slate-100 rounded-2xl border border-slate-200"></div>
+        <div class="h-24 bg-slate-100 rounded-2xl border border-slate-200"></div>
+        <div class="h-24 bg-slate-100 rounded-2xl border border-slate-200"></div>
+        <div class="h-24 bg-slate-100 rounded-2xl border border-slate-200"></div>
+      </div>
+      <div class="h-14 bg-slate-100 rounded-2xl border border-slate-200 mb-4"></div>
+      <div class="h-80 bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+        <div class="h-8 bg-slate-100 rounded w-full"></div>
+        <div class="h-8 bg-slate-50 rounded w-full"></div>
+        <div class="h-8 bg-slate-100 rounded w-full"></div>
+        <div class="h-8 bg-slate-50 rounded w-full"></div>
+      </div>
+    </div>
+  `;
   try {
     const loadErrors: string[] = [];
     
-    // Fetch all required tables in parallel
+    // Calibrar ventana temporal para no saturar memoria ni red (últimos 12 meses)
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - 12);
+    const minDateStr = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-01`;
+
+    // Fetch all required tables in parallel with field & date scoping
     const [resolutions, docs, txs, invoices, purchases, inmoInvoices] = await Promise.all([
       pb.listAll('dian_resolutions', { filter: 'active=true' }).catch((err: any) => { loadErrors.push(`resoluciones: ${err.message}`); return []; }),
-      pb.listAll('einvoice_docs', { sort: '-id' }).catch((err: any) => { loadErrors.push(`documentos: ${err.message}`); return []; }),
-      pb.listAll('transactions', { sort: '-date,-id', filter: 'status="active" || status="draft"', expand: 'tx_type_id,third_party_id' }).catch((err: any) => { loadErrors.push(`transacciones: ${err.message}`); return []; }),
-      pb.listAll('invoices', { fields: 'id,tx_id,total' }).catch((err: any) => { loadErrors.push(`facturas: ${err.message}`); return []; }),
-      pb.listAll('purchase_invoices', { fields: 'id,tx_id,total' }).catch((err: any) => { loadErrors.push(`compras: ${err.message}`); return []; }),
-      pb.listAll('inmo_invoices', { fields: 'id,tx_id,total' }).catch((err: any) => { loadErrors.push(`inmobiliarias: ${err.message}`); return []; })
+      pb.listAll('einvoice_docs', { 
+        fields: 'id,tx_id,status,cufe,dian_response,sent_at,ftech_transaction_id',
+        sort: '-id' 
+      }).catch((err: any) => { loadErrors.push(`documentos: ${err.message}`); return []; }),
+      pb.listAll('transactions', { 
+        sort: '-date,-id', 
+        filter: `(status="active" || status="draft") && date >= "${minDateStr}"`, 
+        expand: 'tx_type_id,third_party_id' 
+      }).catch((err: any) => { loadErrors.push(`transacciones: ${err.message}`); return []; }),
+      pb.listAll('invoices', { 
+        fields: 'id,tx_id,total',
+        filter: `tx_id != "" && date >= "${minDateStr}"`
+      }).catch((err: any) => { loadErrors.push(`facturas: ${err.message}`); return []; }),
+      pb.listAll('purchase_invoices', { 
+        fields: 'id,tx_id,total',
+        filter: `tx_id != "" && date >= "${minDateStr}"`
+      }).catch((err: any) => { loadErrors.push(`compras: ${err.message}`); return []; }),
+      pb.listAll('inmo_invoices', { 
+        fields: 'id,tx_id,total',
+        filter: `tx_id != "" && date >= "${minDateStr}"`
+      }).catch((err: any) => { loadErrors.push(`inmobiliarias: ${err.message}`); return []; })
     ]);
 
     // Create maps for quick lookup
@@ -92,16 +133,18 @@ async function renderFacturacionDIAN(c: HTMLElement) {
       };
     });
 
-    // Extract unique periods (YYYY-MM) from transaction dates
-    const periods = Array.from(new Set(items.map(item => (item.date || '').slice(0, 7)))).filter(Boolean).sort().reverse();
-    const activePrefixFilters = Array.from(new Set(items.map(item => item.prefix))).filter(Boolean).sort();
-
-    // Default current month (Hora Colombia)
+    // Extract unique periods (YYYY-MM) from transaction dates and generate recent months
+    const periodsSet = new Set<string>();
     const currentMonth = (window as any).todayStr().slice(0, 7);
-    if (!periods.includes(currentMonth)) {
-      periods.push(currentMonth);
-      periods.sort().reverse();
+    periodsSet.add(currentMonth);
+    for (let i = 1; i <= 12; i++) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      periodsSet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
+    items.forEach(item => { if (item.date) periodsSet.add(item.date.slice(0, 7)); });
+    const periods = Array.from(periodsSet).filter(Boolean).sort().reverse();
+    const activePrefixFilters = Array.from(new Set(items.map(item => item.prefix))).filter(Boolean).sort();
     const defaultPeriod = currentMonth;
 
     c.innerHTML = `

@@ -2740,9 +2740,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const prorationMethod = (document.getElementById('imp-proration-method') as HTMLSelectElement)?.value || 'FOB_VALUE';
     const isConsolidated = (document.getElementById('imp-is-consolidated') as HTMLInputElement)?.checked;
 
-    // Calcular costos desde localStageExpenses o desde linkedTxLines si está en modo inverso
+    // Calcular costos desde localStageExpenses o desde linkedTxLines si está en modo inverso o si existen asientos vinculados
     const getNetConceptCOP = (concept: string) => {
-      const matching = (linkedTxLines || []).filter((l: any) => l.import_concept === concept);
+      const matching = (linkedTxLines || []).filter((l: any) => l.import_concept === concept && l.import_concept !== 'capitalization' && l.import_concept !== 'payment');
       return matching.reduce((sum: number, l: any) => sum + (Number(l.debit || 0) - Number(l.credit || 0)), 0);
     };
 
@@ -2753,21 +2753,28 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const localOtherLines = localStageExpenses['local_other'] || [];
     const bankFeesLines = localStageExpenses['bank_fees'] || [];
 
-    const freightCost = isInverseMode ? 0 : freightLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
-    const insuranceCost = isInverseMode ? 0 : insuranceLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
-    const gastosNacionalizacion = isInverseMode ? 0 : customsLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
-    const transporteNacional = isInverseMode ? 0 : localCarrierLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
-    const otrosGastos = isInverseMode ? 0 : localOtherLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
-    const gastosBancarios = isInverseMode ? 0 : bankFeesLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const freightTxCOP = getNetConceptCOP('freight');
+    const insuranceTxCOP = getNetConceptCOP('insurance');
+    const customsTxCOP = getNetConceptCOP('customs');
+    const localCarrierTxCOP = getNetConceptCOP('local_carrier');
+    const localOtherTxCOP = getNetConceptCOP('local_other');
+    const bankFeesTxCOP = getNetConceptCOP('bank_fees');
 
-    const freightCostCOP = isInverseMode ? getNetConceptCOP('freight') : freightLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-    const insuranceCostCOP = isInverseMode ? getNetConceptCOP('insurance') : insuranceLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const freightCost = (isInverseMode || freightTxCOP > 0) ? (exchangeRate > 0 ? freightTxCOP / exchangeRate : 0) : freightLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const insuranceCost = (isInverseMode || insuranceTxCOP > 0) ? (exchangeRate > 0 ? insuranceTxCOP / exchangeRate : 0) : insuranceLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const gastosNacionalizacion = (isInverseMode || customsTxCOP > 0) ? customsTxCOP : customsLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const transporteNacional = (isInverseMode || localCarrierTxCOP > 0) ? localCarrierTxCOP : localCarrierLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const otrosGastos = (isInverseMode || localOtherTxCOP > 0) ? localOtherTxCOP : localOtherLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const gastosBancarios = (isInverseMode || bankFeesTxCOP > 0) ? bankFeesTxCOP : bankFeesLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+
+    const freightCostCOP = (isInverseMode || freightTxCOP > 0) ? freightTxCOP : freightLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const insuranceCostCOP = (isInverseMode || insuranceTxCOP > 0) ? insuranceTxCOP : insuranceLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
     const totalCIFExpensesCOP = freightCostCOP + insuranceCostCOP;
 
-    const gastosNacCOP = isInverseMode ? getNetConceptCOP('customs') : customsLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-    const transporteCOP = isInverseMode ? getNetConceptCOP('local_carrier') : localCarrierLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-    const otrosGastosCOP = isInverseMode ? getNetConceptCOP('local_other') : localOtherLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-    const gastosBancariosCOP = isInverseMode ? getNetConceptCOP('bank_fees') : bankFeesLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const gastosNacCOP = (isInverseMode || customsTxCOP > 0) ? customsTxCOP : customsLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const transporteCOP = (isInverseMode || localCarrierTxCOP > 0) ? localCarrierTxCOP : localCarrierLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const otrosGastosCOP = (isInverseMode || localOtherTxCOP > 0) ? localOtherTxCOP : localOtherLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const gastosBancariosCOP = (isInverseMode || bankFeesTxCOP > 0) ? bankFeesTxCOP : bankFeesLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
     const totalLocalExpensesCOP = gastosNacCOP + transporteCOP + otrosGastosCOP + gastosBancariosCOP;
 
     const totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
@@ -5422,7 +5429,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 // --- Detalle e Historial de Importación ---
 async function viewImportDetail(importId: string) {
   try {
-    const [imp, lines, invoices, palletConfigs, inventoryPallets, lotConfigs, linkedTxLines] = await Promise.all([
+    const [imp, lines, invoices, palletConfigs, inventoryPallets, lotConfigs, linkedTxLines, payments] = await Promise.all([
       (window as any).pb.get('imports', importId, {
         expand: 'supplier_id,user_id,purchase_invoice_id,tx_fob_id,tx_freight_id,tx_insurance_id,tx_customs_id,tx_local_carrier_id,tx_local_other_id,tx_bank_fees_id,bank_fees_supplier_id'
       }),
@@ -5432,6 +5439,7 @@ async function viewImportDetail(importId: string) {
       (window as any).API.getInventoryPallets(importId).catch(() => []),
       (window as any).API.getImportLotConfigs(importId).catch(() => []),
       (window as any).API.getImportTxLines(importId).catch(() => []),
+      (window as any).API.getImportPayments(importId).catch(() => []),
     ]);
 
     const meta = IMPORT_STATUS[imp.status] || { label: imp.status, badge: 'badge-gray' };
@@ -5441,7 +5449,7 @@ async function viewImportDetail(importId: string) {
 
     // Función inteligente para resolver el costo real en COP (desde movimientos contables o campos persistidos)
     const getConceptCOP = (concept: string, fallback: number) => {
-      const matching = (linkedTxLines || []).filter((l: any) => l.import_concept === concept);
+      const matching = (linkedTxLines || []).filter((l: any) => l.import_concept === concept && l.import_concept !== 'capitalization' && l.import_concept !== 'payment');
       if (matching.length > 0) {
         const sum = matching.reduce((s: number, l: any) => s + (Number(l.debit || 0) - Number(l.credit || 0)), 0);
         if (sum > 0) return sum;
@@ -5454,13 +5462,18 @@ async function viewImportDetail(importId: string) {
       return fallback;
     };
 
-    const fobCostCOP = getConceptCOP('fob', (imp.fob_total || 0) * (imp.exchange_rate || 1));
+    const productsCalculatedFobCOP = (lines || []).reduce((s: number, l: any) => s + (Number(l.qty || 0) * Number(l.fob_price || 0) * Number(imp.exchange_rate || 1)), 0);
+    const fobCostCOP = getConceptCOP('fob', productsCalculatedFobCOP || ((imp.fob_total || 0) * (imp.exchange_rate || 1)));
     const freightCostCOP = getConceptCOP('freight', (imp.freight_cost || 0) * (imp.freight_trm || imp.freight_exchange_rate || imp.exchange_rate || 1));
     const insuranceCostCOP = getConceptCOP('insurance', (imp.insurance_cost || 0) * (imp.insurance_trm || imp.insurance_exchange_rate || imp.exchange_rate || 1));
+    const arancelCostCOP = getConceptCOP('arancel', imp.arancel_total || 0);
     const customsCostCOP = getConceptCOP('customs', imp.gastos_nacionalizacion || 0);
     const carrierCostCOP = getConceptCOP('local_carrier', (imp.transporte_nacional || 0) * (imp.local_carrier_trm || 1));
     const otherCostCOP = getConceptCOP('local_other', (imp.otros_gastos || 0) * (imp.local_other_trm || 1));
     const bankFeesCostCOP = getConceptCOP('bank_fees', (imp.bank_fees_cost || 0) * (imp.bank_fees_trm || 1));
+    const totalLandedCost = (imp.total && imp.total > 0)
+      ? imp.total
+      : (fobCostCOP + freightCostCOP + insuranceCostCOP + arancelCostCOP + customsCostCOP + carrierCostCOP + otherCostCOP + bankFeesCostCOP);
 
     const renderStageTxLink = (label: string, directTx: any, trmText: string = '', concept: string = '') => {
       const txMap = new Map<string, any>();
@@ -5750,7 +5763,7 @@ async function viewImportDetail(importId: string) {
                 <span>Seguro Internacional:</span>
                 <span class="font-bold text-gray-800">${(window as any).fmt(insuranceCostCOP)}</span>
               </div>
-              <div class="flex justify-between"><span>Aranceles Liquidados COP:</span> <span class="font-bold text-gray-800">${(window as any).fmt(imp.arancel_total || 0)}</span></div>
+              <div class="flex justify-between"><span>Aranceles Liquidados COP:</span> <span class="font-bold text-gray-800">${(window as any).fmt(arancelCostCOP)}</span></div>
               <div class="flex justify-between"><span>Gastos Aduana / DIAN COP:</span> <span class="font-bold text-gray-800">${(window as any).fmt(customsCostCOP)}</span></div>
               <div class="flex justify-between">
                 <span>Transporte Local:</span> 
@@ -5769,64 +5782,369 @@ async function viewImportDetail(importId: string) {
 
           <div class="p-4 rounded-xl border flex flex-col justify-center items-center" style="background:#F4F8FF;border-color:#DBEAFE">
             <div class="text-xs text-blue-600 uppercase font-bold tracking-widest">Landed Cost COP (Total)</div>
-            <div class="text-3xl font-extrabold text-blue-900 mt-1">${(window as any).fmt(imp.total)}</div>
+            <div class="text-3xl font-extrabold text-blue-900 mt-1">${(window as any).fmt(totalLandedCost)}</div>
+            <div class="text-[11px] text-blue-700 font-semibold mt-1">
+              <i class="fas fa-boxes-packing mr-1"></i> Costo Total Capitalizable a Inventario
+            </div>
           </div>
         </div>
 
-        <!-- Tabla Detallada de Comprobantes Contables y Facturas de Soporte (Landed Cost) -->
-        ${(linkedTxLines && linkedTxLines.length > 0) ? `
-          <div class="border rounded-xl overflow-hidden bg-white shadow-sm" style="border-color:#E5E7EB">
-            <div class="px-4 py-2.5 flex items-center justify-between bg-slate-50 border-b border-slate-200">
-              <span class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <i class="fas fa-file-invoice text-blue-600"></i> Comprobantes y Facturas de Soporte Contabilizadas (${linkedTxLines.length})
-              </span>
-              <span class="text-xs font-mono font-bold text-slate-500">Desglose Landed Cost</span>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="w-full text-xs text-left border-collapse">
-                <thead>
-                  <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-[9.5px]">
-                    <th class="p-2">Concepto</th>
-                    <th class="p-2">Comprobante Contable</th>
-                    <th class="p-2">Tercero / Proveedor</th>
-                    <th class="p-2">Cuenta</th>
-                    <th class="p-2">Soporte / Factura</th>
-                    <th class="p-2 text-right">Valor Neto (COP)</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 font-mono text-[11px]">
-                  ${linkedTxLines.map((l: any) => {
-                    const tx = l.expand?.tx_id;
-                    const tp = l.expand?.third_party_id;
-                    const acct = l.expand?.account_id;
-                    const net = Number(l.debit || 0) - Number(l.credit || 0);
-                    const conceptMeta = IMPORT_CONCEPTS_META[l.import_concept] || { label: l.import_concept || 'Otro', iconColor: 'text-slate-600', iconBg: 'bg-slate-100' };
-                    return `
-                      <tr class="hover:bg-slate-50">
-                        <td class="p-2">
-                          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${conceptMeta.iconBg} ${conceptMeta.iconColor}">
-                            ${conceptMeta.label}
-                          </span>
-                        </td>
-                        <td class="p-2 font-bold">
-                          ${tx ? `
-                            <button onclick="closeModal(); window.viewStageTx('${tx.id}')" class="text-blue-600 hover:underline cursor-pointer border-0 bg-transparent p-0 font-bold font-mono">
-                              ${(window as any).esc(tx.number)}
-                            </button>
-                          ` : '—'}
-                        </td>
-                        <td class="p-2 font-sans font-medium text-slate-800">${tp ? (window as any).esc(tp.name) : '—'}</td>
-                        <td class="p-2 text-slate-600">${acct ? `<strong>${acct.code}</strong>` : '—'}</td>
-                        <td class="p-2 text-slate-700 font-sans">${(window as any).esc(l.import_invoice_ref || l.cross_doc_ref || tx?.description || '—')}</td>
-                        <td class="p-2 text-right font-bold ${net < 0 ? 'text-rose-600' : 'text-slate-900'}">${(window as any).fmt(net)}</td>
-                      </tr>
-                    `;
-                  }).join('')}
-                </tbody>
-              </table>
+        <!-- Sección de Control de Tesorería: Seguimiento Integral de Desembolsos a Todos los Terceros -->
+        <div class="border rounded-xl overflow-hidden bg-white shadow-sm" style="border-color:#E5E7EB">
+          <div class="px-4 py-3 bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 text-white flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold text-sm border border-emerald-400/30">
+                <i class="fas fa-money-bill-transfer"></i>
+              </div>
+              <div>
+                <h4 class="font-bold text-sm text-white flex items-center gap-2">
+                  Control de Tesorería y Pagos a Terceros de la Importación
+                  <span class="badge badge-emerald text-[10px] py-0.5 px-2">${(payments || []).length} Pago(s) Registrado(s)</span>
+                  <span class="badge badge-blue text-[10px] py-0.5 px-2">Landed Cost: ${(window as any).fmt(totalLandedCost)}</span>
+                </h4>
+                <p class="text-xs text-emerald-200/80">Seguimiento global de egresos aplicados a la importación: proveedores del exterior, navieras, DIAN, agenciamiento aduanero, fletes locales y puertos.</p>
+              </div>
             </div>
           </div>
-        ` : ''}
+
+          <!-- Tarjetas KPI de Tesorería y Secciones Colapsables -->
+          ${(() => {
+            const costTxLines = (linkedTxLines || []).filter((l: any) => l.import_concept !== 'capitalization' && l.import_concept !== 'payment');
+            const totalPagado = (payments || []).reduce((s: number, p: any) => s + Number(p.paidAmount || 0), 0);
+            const saldoTotalPendiente = Math.max(0, totalLandedCost - totalPagado);
+            const pctPagado = totalLandedCost > 0 ? Math.min(100, Math.round((totalPagado / totalLandedCost) * 100)) : (totalPagado > 0 ? 100 : 0);
+
+            // Helper para resolver clave unificada del tercero y evitar duplicidad por variaciones de razón social o NIT
+            const resolveTpKey = (tp: any, fallbackName: string = '', concept: string = '') => {
+              const id = tp?.id || '';
+              const name = (tp?.name || fallbackName || '').trim();
+              const upper = name.toUpperCase();
+
+              // Unificación proveedor FOB internacional (COBOCE)
+              if (upper.includes('COBOCE') || id === imp.supplier_id || concept === 'fob') {
+                return {
+                  key: 'fob_supplier',
+                  name: imp.expand?.supplier_id?.name || 'COBOCE R.L.',
+                  role: 'Proveedor Mercancía Exterior'
+                };
+              }
+              // Unificación DIAN (Tributos / Aranceles)
+              if (upper.includes('DIAN') || upper.includes('IMPUESTOS Y ADUANAS')) {
+                return {
+                  key: 'dian_customs',
+                  name: 'DIRECCION IMPTOS Y ADUANAS NLS',
+                  role: 'Aduana / DIAN / Tributos'
+                };
+              }
+              // Unificación Naviera MSC
+              if (upper.includes('MEDITERRANEAN SHIPPING') || upper.includes('MSC')) {
+                return {
+                  key: 'carrier_msc',
+                  name: 'MEDITERRANEAN SHIPPING COMPANY COLOMBIA S A S',
+                  role: 'Naviera / Flete y Puerto'
+                };
+              }
+              // Unificación Transportador Local (Grupo Occidental)
+              if (upper.includes('OCCIDENTAL') || upper.includes('GOL')) {
+                return {
+                  key: 'carrier_gol',
+                  name: 'GRUPO OCCIDENTAL DE LOGISTICA SAS',
+                  role: 'Transporte Terrestre Local'
+                };
+              }
+              // Unificación Puerto (Sociedad Portuaria BUN)
+              if (upper.includes('PORTUARIA') || upper.includes('SPRBUN')) {
+                return {
+                  key: 'port_sprbun',
+                  name: 'SOCIEDAD PORTUARIA REGIONAL DE BUENAVENTURA S.A. S.P.R. BUN',
+                  role: 'Operador Portuario'
+                };
+              }
+              // Unificación Bancos
+              if (upper.includes('BANCOLOMBIA')) {
+                return {
+                  key: 'bank_fees',
+                  name: 'BANCOLOMBIA SA',
+                  role: 'Comisión Bancaria / SWIFT'
+                };
+              }
+
+              return {
+                key: id || upper || 'unknown',
+                name: name || 'Tercero',
+                role: 'Gasto Importación'
+              };
+            };
+
+            // Mapeo consolidado de obligaciones causadas vs desembolsos por tercero
+            const tpMap = new Map<string, { id: string; name: string; role: string; caused: number; paid: number }>();
+
+            // 1. Acumular costos causados desde linkedTxLines
+            (linkedTxLines || []).forEach((l: any) => {
+              if (l.import_concept === 'capitalization' || l.import_concept === 'payment') return;
+              const tp = l.expand?.third_party_id || l.expand?.tx_id?.expand?.third_party_id;
+              const netAmt = Number(l.debit || 0) - Number(l.credit || 0);
+
+              const resolved = resolveTpKey(tp, tp?.name, l.import_concept);
+
+              let role = resolved.role;
+              if (!role) {
+                if (l.import_concept === 'fob') role = 'Proveedor Mercancía Exterior';
+                else if (l.import_concept === 'freight') role = 'Naviera / Flete Internacional';
+                else if (l.import_concept === 'insurance') role = 'Seguro Internacional';
+                else if (l.import_concept === 'customs' || l.import_concept === 'arancel') role = 'Aduana / DIAN / Agenciamiento';
+                else if (l.import_concept === 'local_carrier') role = 'Transporte Terrestre Local';
+                else if (l.import_concept === 'local_other') role = 'Operador Portuario / Otros';
+                else if (l.import_concept === 'bank_fees') role = 'Comisión Bancaria / SWIFT';
+              }
+
+              if (!tpMap.has(resolved.key)) {
+                tpMap.set(resolved.key, { id: resolved.key, name: resolved.name, role, caused: 0, paid: 0 });
+              }
+              const entry = tpMap.get(resolved.key)!;
+              entry.caused += netAmt;
+              if (role && (!entry.role || entry.role === 'Gasto Importación')) entry.role = role;
+            });
+
+            // 2. Acumular pagos registrados por tercero
+            (payments || []).forEach((p: any) => {
+              const tp = p.expand?.third_party_id || p.thirdParty;
+              const paidAmt = Number(p.paidAmount || 0);
+              const resolved = resolveTpKey(tp, p.thirdPartyName, p.conceptKey);
+
+              if (!tpMap.has(resolved.key)) {
+                tpMap.set(resolved.key, { id: resolved.key, name: resolved.name, role: resolved.role || p.thirdPartyRole || 'Beneficiario Pago', caused: 0, paid: 0 });
+              }
+              const entry = tpMap.get(resolved.key)!;
+              entry.paid += paidAmt;
+              if (resolved.role && (!entry.role || entry.role === 'Gasto Importación')) entry.role = resolved.role;
+            });
+
+            const tpList = Array.from(tpMap.values()).filter(t => t.caused !== 0 || t.paid !== 0).sort((a, b) => b.caused - a.caused);
+
+            return `
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 p-4 bg-slate-50 text-xs">
+              <div class="p-3 bg-white rounded-xl border border-slate-200 shadow-xs">
+                <span class="text-slate-500 font-semibold uppercase text-[10px] tracking-wider block">Total Costo Importación</span>
+                <span class="text-base font-extrabold text-blue-950 font-mono mt-0.5 block">${(window as any).fmt(totalLandedCost)}</span>
+                <span class="text-[10px] text-slate-400">Compromisos Landed Cost totales</span>
+              </div>
+
+              <div class="p-3 bg-white rounded-xl border border-emerald-200 shadow-xs bg-emerald-50/20">
+                <span class="text-emerald-700 font-semibold uppercase text-[10px] tracking-wider block">Total Pagado a Terceros</span>
+                <span class="text-base font-extrabold text-emerald-800 font-mono mt-0.5 block">${(window as any).fmt(totalPagado)}</span>
+                <span class="text-[10px] text-emerald-600 font-semibold">${pctPagado}% del costo total desembolsado</span>
+              </div>
+
+              <div class="p-3 bg-white rounded-xl border ${saldoTotalPendiente > 0 ? 'border-amber-200 bg-amber-50/30' : 'border-emerald-200 bg-emerald-50/30'} shadow-xs">
+                <span class="${saldoTotalPendiente > 0 ? 'text-amber-800' : 'text-emerald-800'} font-semibold uppercase text-[10px] tracking-wider block">Saldo Pendiente por Pagar</span>
+                <span class="text-base font-extrabold ${saldoTotalPendiente > 0 ? 'text-amber-900' : 'text-emerald-700'} font-mono mt-0.5 block">${(window as any).fmt(saldoTotalPendiente)}</span>
+                <span class="text-[10px] ${saldoTotalPendiente > 0 ? 'text-amber-700' : 'text-emerald-600 font-semibold'}">${saldoTotalPendiente > 0 ? 'Pendiente global con terceros' : '✓ 100% Cancelado a terceros'}</span>
+              </div>
+
+              <div class="p-3 bg-white rounded-xl border border-slate-200 shadow-xs">
+                <span class="text-slate-500 font-semibold uppercase text-[10px] tracking-wider block">Gastos Bancarios / SWIFT</span>
+                <span class="text-base font-extrabold text-slate-800 font-mono mt-0.5 block">${(window as any).fmt(bankFeesCostCOP)}</span>
+                <span class="text-[10px] text-slate-400">Comisiones de giro (NIC 2 / Gasto)</span>
+              </div>
+            </div>
+
+            <!-- CONTENEDOR DE SECCIONES COLAPSABLES -->
+            <div class="border-t border-slate-200 divide-y divide-slate-200 bg-white">
+
+              <!-- 1. Colapsable: Comprobantes y Facturas de Soporte Contabilizadas -->
+              ${costTxLines.length > 0 ? `
+                <details class="group">
+                  <summary class="px-4 py-3 bg-slate-50/70 hover:bg-slate-100 cursor-pointer flex items-center justify-between transition-colors select-none list-none [&::-webkit-details-marker]:hidden">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center text-xs">
+                        <i class="fas fa-file-invoice"></i>
+                      </div>
+                      <span class="font-bold text-xs uppercase tracking-wider text-slate-700">Comprobantes y Facturas de Soporte Contabilizadas</span>
+                      <span class="badge badge-blue text-[10px] py-0.5 px-2 font-bold">${costTxLines.length}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-[11px] text-slate-500 font-mono hidden sm:inline">Desglose Landed Cost</span>
+                      <i class="fas fa-chevron-down text-slate-400 group-open:rotate-180 transition-transform duration-200 text-xs"></i>
+                    </div>
+                  </summary>
+                  <div class="overflow-x-auto border-t border-slate-200 bg-white">
+                    <table class="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-[9.5px]">
+                          <th class="p-2.5">Concepto</th>
+                          <th class="p-2.5">Comprobante Contable</th>
+                          <th class="p-2.5">Tercero / Proveedor</th>
+                          <th class="p-2.5">Cuenta</th>
+                          <th class="p-2.5">Soporte / Factura</th>
+                          <th class="p-2.5 text-right">Valor Neto (COP)</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100 font-mono text-[11px]">
+                        ${costTxLines.map((l: any) => {
+                          const tx = l.expand?.tx_id;
+                          const tp = l.expand?.third_party_id;
+                          const acct = l.expand?.account_id;
+                          const net = Number(l.debit || 0) - Number(l.credit || 0);
+                          const conceptMeta = IMPORT_CONCEPTS_META[l.import_concept] || { label: l.import_concept || 'Otro', iconColor: 'text-slate-600', iconBg: 'bg-slate-100' };
+                          return `
+                            <tr class="hover:bg-slate-50">
+                              <td class="p-2.5">
+                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${conceptMeta.iconBg} ${conceptMeta.iconColor}">
+                                  ${conceptMeta.label}
+                                </span>
+                              </td>
+                              <td class="p-2.5 font-bold">
+                                ${tx ? `
+                                  <button onclick="closeModal(); window.viewStageTx('${tx.id}')" class="text-blue-600 hover:underline cursor-pointer border-0 bg-transparent p-0 font-bold font-mono">
+                                    ${(window as any).esc(tx.number)}
+                                  </button>
+                                ` : '—'}
+                              </td>
+                              <td class="p-2.5 font-sans font-medium text-slate-800">${tp ? (window as any).esc(tp.name) : '—'}</td>
+                              <td class="p-2.5 text-slate-600">${acct ? `<strong>${acct.code}</strong>` : '—'}</td>
+                              <td class="p-2.5 text-slate-700 font-sans">${(window as any).esc(l.import_invoice_ref || l.cross_doc_ref || tx?.description || '—')}</td>
+                              <td class="p-2.5 text-right font-bold ${net < 0 ? 'text-rose-600' : 'text-slate-900'}">${(window as any).fmt(net)}</td>
+                            </tr>
+                          `;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              ` : ''}
+
+              <!-- 2. Colapsable: Desglose de Compromisos y Pagos por Tercero -->
+              ${tpList.length > 0 ? `
+                <details class="group">
+                  <summary class="px-4 py-3 bg-slate-50/70 hover:bg-slate-100 cursor-pointer flex items-center justify-between transition-colors select-none list-none [&::-webkit-details-marker]:hidden">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-6 h-6 rounded-md bg-teal-100 text-teal-700 flex items-center justify-center text-xs">
+                        <i class="fas fa-users-gear"></i>
+                      </div>
+                      <span class="font-bold text-xs uppercase tracking-wider text-slate-700">Desglose de Compromisos y Pagos por Tercero / Etapa</span>
+                      <span class="badge badge-emerald text-[10px] py-0.5 px-2 font-bold">${tpList.length}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-[11px] text-slate-500 font-mono hidden sm:inline">Consolidado Cuentas por Pagar vs Egresos</span>
+                      <i class="fas fa-chevron-down text-slate-400 group-open:rotate-180 transition-transform duration-200 text-xs"></i>
+                    </div>
+                  </summary>
+                  <div class="overflow-x-auto border-t border-slate-200 bg-white">
+                    <table class="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-[9.5px]">
+                          <th class="p-2.5">Tercero / Proveedor</th>
+                          <th class="p-2.5">Rol / Etapa Logística</th>
+                          <th class="p-2.5 text-right">Causado / Facturado (COP)</th>
+                          <th class="p-2.5 text-right">Pagado / Abonado (COP)</th>
+                          <th class="p-2.5 text-right">Saldo Pendiente (COP)</th>
+                          <th class="p-2.5 text-center">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100 font-mono text-[11px]">
+                        ${tpList.map((t: any) => {
+                          const bal = t.caused - t.paid;
+                          let badgeClass = 'badge badge-green';
+                          let badgeText = '<i class=\"fas fa-check mr-1\"></i> Pagado';
+                          if (bal > 100) {
+                            if (t.paid > 0) {
+                              badgeClass = 'badge badge-amber';
+                              badgeText = '<i class=\"fas fa-clock mr-1\"></i> Abono Parcial';
+                            } else {
+                              badgeClass = 'badge badge-rose';
+                              badgeText = '<i class=\"fas fa-hourglass-start mr-1\"></i> Pendiente';
+                            }
+                          } else if (bal < -100) {
+                            badgeClass = 'badge badge-blue';
+                            badgeText = 'Mayor Valor Pagado';
+                          }
+                          return `
+                            <tr class="hover:bg-slate-50">
+                              <td class="p-2.5 font-sans font-semibold text-slate-800">${(window as any).esc(t.name)}</td>
+                              <td class="p-2.5 font-sans text-slate-600">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
+                                  ${(window as any).esc(t.role)}
+                                </span>
+                              </td>
+                              <td class="p-2.5 text-right font-bold text-slate-900">${(window as any).fmt(t.caused)}</td>
+                              <td class="p-2.5 text-right font-bold text-emerald-800">${(window as any).fmt(t.paid)}</td>
+                              <td class="p-2.5 text-right font-bold ${bal > 100 ? 'text-amber-800' : 'text-emerald-700'}">${(window as any).fmt(Math.max(0, bal))}</td>
+                              <td class="p-2.5 text-center font-sans">
+                                <span class="${badgeClass} text-[10px] py-0.5 px-2 font-bold">${badgeText}</span>
+                              </td>
+                            </tr>
+                          `;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              ` : ''}
+
+              <!-- 3. Colapsable: Historial de Comprobantes de Egreso y Pagos Realizados -->
+              ${(payments && payments.length > 0) ? `
+                <details class="group">
+                  <summary class="px-4 py-3 bg-slate-50/70 hover:bg-slate-100 cursor-pointer flex items-center justify-between transition-colors select-none list-none [&::-webkit-details-marker]:hidden">
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs">
+                        <i class="fas fa-receipt"></i>
+                      </div>
+                      <span class="font-bold text-xs uppercase tracking-wider text-slate-700">Historial de Comprobantes de Egreso y Pagos Realizados</span>
+                      <span class="badge badge-emerald text-[10px] py-0.5 px-2 font-bold">${payments.length}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-[11px] text-slate-500 font-mono hidden sm:inline">Movimientos de Tesorería</span>
+                      <i class="fas fa-chevron-down text-slate-400 group-open:rotate-180 transition-transform duration-200 text-xs"></i>
+                    </div>
+                  </summary>
+                  <div class="overflow-x-auto border-t border-slate-200 bg-white">
+                    <table class="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-[9.5px]">
+                          <th class="p-2.5">Fecha</th>
+                          <th class="p-2.5">Comprobante Egreso / Pago</th>
+                          <th class="p-2.5">Beneficiario / Proveedor</th>
+                          <th class="p-2.5">Rol / Etapa</th>
+                          <th class="p-2.5">Concepto / Referencia</th>
+                          <th class="p-2.5">Cuenta Bancaria / Origen</th>
+                          <th class="p-2.5 text-right">Monto Pagado (COP)</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100 font-mono text-[11px]">
+                        ${payments.map((p: any) => `
+                          <tr class="hover:bg-slate-50">
+                            <td class="p-2.5 text-slate-600 font-sans">${p.date || '—'}</td>
+                            <td class="p-2.5 font-bold">
+                              <button onclick="closeModal(); window.viewStageTx('${p.id}')" class="text-emerald-700 hover:underline cursor-pointer border-0 bg-transparent p-0 font-bold font-mono">
+                                <i class="fas fa-receipt mr-1 text-emerald-600"></i>${(window as any).esc(p.number)}
+                              </button>
+                            </td>
+                            <td class="p-2.5 font-sans font-medium text-slate-800">${p.expand?.third_party_id?.name ? (window as any).esc(p.expand.third_party_id.name) : (window as any).esc(p.thirdPartyName || '—')}</td>
+                            <td class="p-2.5 font-sans text-slate-600">
+                              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                ${(window as any).esc(p.thirdPartyRole || 'Pago Importación')}
+                              </span>
+                            </td>
+                            <td class="p-2.5 font-sans text-slate-600">${(window as any).esc(p.import_invoice_ref || p.description || 'Abono / Pago importación')}</td>
+                            <td class="p-2.5 text-slate-600 font-sans">${(window as any).esc(p.bankAccountsText || 'Caja / Banco')}</td>
+                            <td class="p-2.5 text-right font-bold text-emerald-800">${(window as any).fmt(p.paidAmount || 0)}</td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              ` : `
+                <div class="p-4 text-center text-xs text-slate-400 bg-white">
+                  <i class="fas fa-info-circle mr-1 text-slate-400"></i> No se han registrado comprobantes de egreso o pagos directos asociados a esta importación.
+                </div>
+              `}
+
+            </div>
+            `;
+          })()}
+        </div>
 
       </div>
     `;

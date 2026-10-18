@@ -638,8 +638,17 @@ export async function renderVentas(container?: HTMLElement) {
 }
 
 async function _loadVentasPage(c: HTMLElement) {
+  // Pre-cargar lapso del mes actual por defecto
+  const today = (window as any).todayStr ? (window as any).todayStr() : new Date().toISOString().slice(0, 10);
+  const [curY, curM] = today.split('-');
+  const defaultFrom = `${curY}-${curM}-01`;
+  const lastDayNum = new Date(Number(curY), Number(curM), 0).getDate();
+  const defaultTo = `${curY}-${curM}-${String(lastDayNum).padStart(2, '0')}`;
+
+  const initialFilter = `date >= "${defaultFrom}" && date <= "${defaultTo} 23:59:59"`;
+
   const [result, soConfig] = await Promise.all([
-    (window as any).API.getInvoices({ page: 1, perPage: 200, sort: '-date,-number' }),
+    (window as any).API.getInvoices({ page: 1, perPage: 500, filter: initialFilter, sort: '-date,-number' }),
     getSalesConfig(),
   ]);
   (window as any).__soConfig = soConfig;
@@ -648,7 +657,7 @@ async function _loadVentasPage(c: HTMLElement) {
   const total = invoices.length;
   const draft = invoices.filter((i: any) => i.status === 'draft').length;
   const posted = invoices.filter((i: any) => i.status === 'posted').length;
-  const totalVal = invoices.filter((i: any) => i.status !== 'voided').reduce((s: number, i: any) => s + (i.payable_total ?? i.total ?? 0), 0);
+  const totalVal = invoices.filter((i: any) => i.status !== 'voided').reduce((s: number, i: any) => s + (Number(i.payable_total ?? i.total ?? 0)), 0);
 
   const prefixes = [...new Set(invoices.map((i: any) => {
     const num = String(i.number || '').trim();
@@ -668,10 +677,10 @@ async function _loadVentasPage(c: HTMLElement) {
       </div>
     </div>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${salesKpi('Total facturas',      total,                     'fas fa-file-invoice-dollar', '#7C3AED', '#EDE9FE')}
-      ${salesKpi('Borradores',          draft,                     'fas fa-pencil',              '#D97706', '#FEF3C7')}
-      ${salesKpi('Contabilizadas',      posted,                    'fas fa-check-circle',        '#059669', '#DCFCE7')}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5" id="so-kpis-container">
+      ${salesKpi('Total facturas',      total,                         'fas fa-file-invoice-dollar', '#7C3AED', '#EDE9FE')}
+      ${salesKpi('Borradores',          draft,                         'fas fa-pencil',              '#D97706', '#FEF3C7')}
+      ${salesKpi('Contabilizadas',      posted,                        'fas fa-check-circle',        '#059669', '#DCFCE7')}
       ${salesKpi('Valor total ventas',  (window as any).fmt(totalVal), 'fas fa-coins',               '#7C3AED', '#EDE9FE')}
     </div>
 
@@ -688,8 +697,15 @@ async function _loadVentasPage(c: HTMLElement) {
         <option value="">Todos los prefijos</option>
         ${prefixes.map(p => `<option value="${p}">${p}</option>`).join('')}
       </select>
-      <input id="so-from" type="date" class="form-input" style="max-width:160px" title="Desde">
-      <input id="so-to"   type="date" class="form-input" style="max-width:160px" title="Hasta">
+      <div class="flex items-center gap-1.5 bg-purple-50/60 p-1.5 rounded-xl border border-purple-200 shrink-0">
+        <span class="text-xs font-bold text-purple-900 ml-1"><i class="fas fa-calendar-day mr-1"></i>Periodo:</span>
+        <input id="so-from" type="date" class="form-input text-xs py-1 px-2 border-purple-300" style="max-width:140px" title="Desde" value="${defaultFrom}">
+        <span class="text-xs text-purple-600 font-semibold">a</span>
+        <input id="so-to"   type="date" class="form-input text-xs py-1 px-2 border-purple-300" style="max-width:140px" title="Hasta" value="${defaultTo}">
+        <button id="btn-apply-so-dates" class="btn btn-primary py-1 px-2.5 text-xs whitespace-nowrap" title="Consultar período seleccionado">
+          <i class="fas fa-filter mr-1"></i>Filtrar
+        </button>
+      </div>
     </div>
 
     <!-- Tabla -->
@@ -711,7 +727,7 @@ async function _loadVentasPage(c: HTMLElement) {
             </tr>
           </thead>
           <tbody id="so-tbody">
-            ${invoices.length ? invoices.map(renderSoRow).join('') : `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-file-invoice-dollar mr-2"></i>No hay facturas de venta.</td></tr>`}
+            ${invoices.length ? invoices.map(renderSoRow).join('') : `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-file-invoice-dollar mr-2"></i>No hay facturas de venta en el período seleccionado.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -721,12 +737,63 @@ async function _loadVentasPage(c: HTMLElement) {
   document.getElementById('btn-new-sales')?.addEventListener('click', () => openSalesForm(null, () => _loadVentasPage(c)));
   document.getElementById('btn-so-config')?.addEventListener('click', () => openSalesSettingsModal(() => _loadVentasPage(c)));
 
+  const reloadInvoicesByDate = async () => {
+    const fromVal = (document.getElementById('so-from') as HTMLInputElement)?.value || '';
+    const toVal = (document.getElementById('so-to') as HTMLInputElement)?.value || '';
+    const tbody = document.getElementById('so-tbody');
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando facturas del período...</td></tr>`;
+    }
+
+    let filterQuery = '';
+    if (fromVal && toVal) {
+      filterQuery = `date >= "${fromVal}" && date <= "${toVal} 23:59:59"`;
+    } else if (fromVal) {
+      filterQuery = `date >= "${fromVal}"`;
+    } else if (toVal) {
+      filterQuery = `date <= "${toVal} 23:59:59"`;
+    }
+
+    try {
+      const res = await (window as any).API.getInvoices({
+        page: 1,
+        perPage: 500,
+        filter: filterQuery,
+        sort: '-date,-number'
+      });
+      const newInvoices = res.items || [];
+      if (tbody) {
+        tbody.innerHTML = newInvoices.length
+          ? newInvoices.map(renderSoRow).join('')
+          : `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-file-invoice-dollar mr-2"></i>No hay facturas de venta en el período seleccionado.</td></tr>`;
+      }
+
+      // Actualizar selector de prefijos con los de este período
+      const prefixSel = document.getElementById('so-prefix-f') as HTMLSelectElement;
+      if (prefixSel) {
+        const curPrefix = prefixSel.value;
+        const newPrefixes = [...new Set(newInvoices.map((i: any) => {
+          const num = String(i.number || '').trim();
+          return num.includes('-') ? num.split('-')[0].toUpperCase() : 'SIN_PREFIJO';
+        }))].filter(Boolean).sort();
+        prefixSel.innerHTML = `<option value="">Todos los prefijos</option>${newPrefixes.map(p => `<option value="${p}"${p === curPrefix ? ' selected' : ''}>${p}</option>`).join('')}`;
+      }
+
+      filterSoTable();
+    } catch (err: any) {
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center py-6 text-red-500">${(window as any).esc(err.message)}</td></tr>`;
+      }
+    }
+  };
+
   const applySoFilter = () => filterSoTable();
   document.getElementById('so-q')?.addEventListener('input', applySoFilter);
   document.getElementById('so-status-f')?.addEventListener('change', applySoFilter);
   document.getElementById('so-prefix-f')?.addEventListener('change', applySoFilter);
-  document.getElementById('so-from')?.addEventListener('change', applySoFilter);
-  document.getElementById('so-to')?.addEventListener('change', applySoFilter);
+  document.getElementById('so-from')?.addEventListener('change', reloadInvoicesByDate);
+  document.getElementById('so-to')?.addEventListener('change', reloadInvoicesByDate);
+  document.getElementById('btn-apply-so-dates')?.addEventListener('click', reloadInvoicesByDate);
 
   const tbl = document.getElementById('so-table') as HTMLTableElement;
   if (tbl) (window as any).makeTableSortable(tbl);
@@ -750,7 +817,7 @@ function renderSoRow(inv: any) {
   const isFirmar = isDianDep && isElec;
 
   return `
-    <tr data-soid="${(window as any).esc(inv.id)}" data-sostatus="${(window as any).esc(inv.status)}" data-sodate="${(window as any).esc(inv.date)}" data-soprefix="${(window as any).esc(prefix)}">
+    <tr data-soid="${(window as any).esc(inv.id)}" data-sostatus="${(window as any).esc(inv.status)}" data-sodate="${(window as any).esc(inv.date)}" data-soprefix="${(window as any).esc(prefix)}" data-sototal="${Number(inv.payable_total ?? inv.total ?? 0)}">
       <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(inv.number)}</span></td>
       <td>${(window as any).esc(inv.date)}</td>
       <td class="font-medium">${client ? (window as any).esc(client.name) : '—'}</td>
@@ -793,12 +860,18 @@ function filterSoTable() {
   const from = (document.getElementById('so-from') as HTMLInputElement)?.value || '';
   const to = (document.getElementById('so-to') as HTMLInputElement)?.value || '';
 
+  let visibleCount = 0;
+  let draftCount = 0;
+  let postedCount = 0;
+  let totalAmount = 0;
+
   const rows = document.querySelectorAll('#so-table tbody tr[data-soid]');
   rows.forEach((row: any) => {
     const text = row.textContent.toLowerCase();
-    const status = row.getAttribute('data-sostatus');
-    const date = row.getAttribute('data-sodate');
-    const prefix = row.getAttribute('data-soprefix');
+    const status = row.getAttribute('data-sostatus') || '';
+    const date = (row.getAttribute('data-sodate') || '').slice(0, 10);
+    const prefix = row.getAttribute('data-soprefix') || '';
+    const total = parseFloat(row.getAttribute('data-sototal') || '0');
 
     const matchesQ = !q || text.includes(q);
     const matchesStatus = !st || status === st;
@@ -806,8 +879,27 @@ function filterSoTable() {
     const matchesFrom = !from || date >= from;
     const matchesTo = !to || date <= to;
 
-    row.style.display = (matchesQ && matchesStatus && matchesPrefix && matchesFrom && matchesTo) ? '' : 'none';
+    const isVisible = matchesQ && matchesStatus && matchesPrefix && matchesFrom && matchesTo;
+    row.style.display = isVisible ? '' : 'none';
+
+    if (isVisible) {
+      visibleCount++;
+      if (status === 'draft') draftCount++;
+      if (status === 'posted') postedCount++;
+      if (status !== 'voided') totalAmount += total;
+    }
   });
+
+  // Actualizar Cards dinámicamente con los registros visibles/filtrados
+  const kpiWrap = document.getElementById('so-kpis-container');
+  if (kpiWrap) {
+    kpiWrap.innerHTML = `
+      ${salesKpi('Total facturas',      visibleCount,                     'fas fa-file-invoice-dollar', '#7C3AED', '#EDE9FE')}
+      ${salesKpi('Borradores',          draftCount,                       'fas fa-pencil',              '#D97706', '#FEF3C7')}
+      ${salesKpi('Contabilizadas',      postedCount,                      'fas fa-check-circle',        '#059669', '#DCFCE7')}
+      ${salesKpi('Valor total ventas',  (window as any).fmt(totalAmount), 'fas fa-coins',               '#7C3AED', '#EDE9FE')}
+    `;
+  }
 }
 
 (window as any).openSalesNotePreModal = async (invoiceId: string, invoiceNum: string) => {
@@ -1310,6 +1402,17 @@ window.soRecalcLine = function(rowIdx: number) {
   const soConfig = (window as any).__soConfig || defaultSalesConfig();
   const pricesIncludeIva = !!soConfig.operational.prices_include_iva;
 
+  const noteCfg = (window as any).__soNoteConfig;
+  const txSelVal = (document.getElementById('so-tx-type') as HTMLSelectElement)?.value || '';
+  const txTypesCache = (window as any).__soTxTypesCache || [];
+  const selectedTxType = txTypesCache.find((t: any) => t.id === txSelVal);
+  const isDocCreditNote = Boolean(
+    noteCfg?.type === 'NC' ||
+    (selectedTxType?.code === 'NC') ||
+    (selectedTxType?.prefix === 'NC') ||
+    (String(selectedTxType?.name || '').toLowerCase().includes('crédito') || String(selectedTxType?.name || '').toLowerCase().includes('credito'))
+  );
+
   tableRows.forEach((row: any) => {
     const idParts = row.id.split('-');
     const idx = idParts[idParts.length - 1];
@@ -1396,7 +1499,7 @@ window.soRecalcLine = function(rowIdx: number) {
       const retId = (document.getElementById(`sol-ret-rule-${idx}`) as HTMLSelectElement)?.value;
       if (retId && (window as any).__soRetRulesCache) {
         const rule = (window as any).__soRetRulesCache.find((r: any) => r.id === retId);
-        if (rule && lineSub >= rule.min_base) {
+        if (rule && (isDocCreditNote || lineSub >= rule.min_base)) {
           lineRet = roundDec(lineSub * (rule.rate / 100));
         }
       }
@@ -1437,19 +1540,19 @@ window.soRecalcLine = function(rowIdx: number) {
         const r = (window as any).__soRetRulesCache.find((x: any) => x.id === rentaId);
         if (r) {
           const base = String(r.base_type || '').toUpperCase() === 'TOTAL' ? totalSum : netSubtotal;
-          if (base >= r.min_base) valRenta = roundDec(base * (r.rate / 100));
+          if (isDocCreditNote || base >= r.min_base) valRenta = roundDec(base * (r.rate / 100));
         }
       }
       if (icaId) {
         const r = (window as any).__soRetRulesCache.find((x: any) => x.id === icaId);
         if (r) {
           const base = String(r.base_type || '').toUpperCase() === 'TOTAL' ? totalSum : netSubtotal;
-          if (base >= r.min_base) valIca = roundDec(base * (r.rate / 100));
+          if (isDocCreditNote || base >= r.min_base) valIca = roundDec(base * (r.rate / 100));
         }
       }
       if (ivaId) {
         const r = (window as any).__soRetRulesCache.find((x: any) => x.id === ivaId);
-        if (r && ivaSum >= r.min_base) valIva = roundDec(ivaSum * (r.rate / 100));
+        if (r && (isDocCreditNote || ivaSum >= r.min_base)) valIva = roundDec(ivaSum * (r.rate / 100));
       }
       retSum = roundDec(valRenta + valIca + valIva);
     }
@@ -1725,7 +1828,14 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
           cross_doc_ref: invNumStr,
           dian_concept: defaultConcept,
           is_loss: isLoss,
+          is_credit_note: noteConfig.type === 'NC',
+          parent_invoice_id: originalInvoice.id,
+          ret_mode: originalInvoice.ret_mode || 'header',
+          ret_rule_renta_id: originalInvoice.ret_rule_renta_id || null,
+          ret_rule_ica_id: originalInvoice.ret_rule_ica_id || null,
+          ret_rule_iva_id: originalInvoice.ret_rule_iva_id || null,
         };
+        (window as any).__soOriginalInvoice = originalInvoice;
         
         existingLines = lines.map((l: any) => {
           // Si la política es bodega específica (ej. averías), va a esa bodega específica.
@@ -1740,6 +1850,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             subtotal: l.subtotal,
             total: l.total,
             account_id: l.account_id || null, // Conserva la cuenta de ingreso exacta de la factura original
+            ret_rule_id: l.ret_rule_id || null, // Conserva la regla de retención por línea de la factura original
             description: l.description || '',
             is_loss: isLoss,
             warehouse_id: lineTargetWh,
@@ -2042,6 +2153,16 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <span>Nota SIN Referencia a Factura</span>
           </label>
         </div>
+        ${noteConfig?.type === 'NC' ? `
+        <div class="w-full mt-2 pt-2 border-t border-red-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-purple-900">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-scale-balanced text-purple-700 text-sm"></i>
+            <span><strong>Reversión Tributaria Proporcional (Art. 1.2.4.16 DUT 1625/2016):</strong> Las retenciones aplicadas en la factura original se reversarán en proporción directa a las unidades/montos devueltos sin exigir base mínima.</span>
+          </div>
+          <span class="inline-flex items-center gap-1 bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-300 whitespace-nowrap self-start sm:self-auto">
+            <i class="fas fa-check text-purple-600"></i> Exento de base mínima
+          </span>
+        </div>` : ''}
       </div>` : ''}
       <div class="rounded-xl p-3" style="background:#F9FAFB;border:1px solid #E5E7EB">
         <!-- Fila 1: Cliente + Fecha + Plazo + Vence + Comprobante + Consecutivo -->
@@ -2537,6 +2658,13 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
             <!-- Col 2: Retenciones -->
             <div id="so-hdr-ret-wrap" class="space-y-2">
+              ${noteConfig?.type === 'NC' ? `
+              <div class="flex items-center justify-between pb-1 mb-1 border-b border-purple-200">
+                <span class="text-[11px] font-bold text-purple-900 flex items-center gap-1">
+                  <i class="fas fa-arrow-rotate-left text-purple-600"></i> Reversión de Retenciones:
+                </span>
+                <span class="text-[10px] text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded font-semibold">Proporcional</span>
+              </div>` : ''}
               <div class="flex items-center justify-between gap-2">
                 <span style="color:#6B7280;white-space:nowrap;font-size:11px">ReteFuente (A favor):</span>
                 <div class="flex items-center gap-1 flex-1 justify-end">
@@ -2565,7 +2693,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
                 </div>
               </div>
               <div class="flex justify-between gap-4 text-orange-600 border-t pt-1" style="border-color:#FED7AA">
-                <span class="font-semibold text-xs">Total Retenciones:</span>
+                <span class="font-semibold text-xs">${noteConfig?.type === 'NC' ? 'Total Retenciones Reversadas:' : 'Total Retenciones:'}</span>
                 <span id="so-total-ret" class="font-bold">$ 0</span>
               </div>
             </div>
@@ -2573,7 +2701,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <!-- Col 3: TOTAL NETO destacado -->
             <div class="flex flex-col justify-end">
               <div class="rounded-xl p-3 text-right" style="background:#F5F3FF;border:1.5px solid #DDD6FE">
-                <p class="text-xs font-bold uppercase tracking-wide mb-1" style="color:#5B21B6">Total Neto (CxC)</p>
+                <p class="text-xs font-bold uppercase tracking-wide mb-1" style="color:#5B21B6">${noteConfig?.type === 'NC' ? 'Total Devolución / A Favor Cliente' : 'Total Neto (CxC)'}</p>
                 <p id="so-total-net" class="text-2xl font-extrabold" style="color:#7C3AED">$ 0</p>
               </div>
             </div>
@@ -2768,6 +2896,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
     if (daysInput) {
       if (payForm.value === '2') {
+        daysInput.value = String(days > 0 ? days : 30);
+      } else if (hasCredit && days > 0) {
         daysInput.value = String(days);
       } else {
         daysInput.value = '0';
@@ -4141,7 +4271,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       lines.forEach(l => {
         if (l.ret_rule_id && (window as any).__soRetRulesCache) {
           const rule = (window as any).__soRetRulesCache.find((r: any) => r.id === l.ret_rule_id);
-          if (rule && l.subtotal >= rule.min_base) {
+          if (rule && (isNC || l.subtotal >= rule.min_base)) {
             retTotal = roundDec(retTotal + (l.subtotal * (rule.rate / 100)));
           }
         }
@@ -4159,7 +4289,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
         const r = (window as any).__soRetRulesCache.find((x: any) => x.id === ruleId);
         if (!r) return;
         const base = kind === 'iva' ? ivaSum : (String(r.base_type || '').toUpperCase() === 'TOTAL' ? totalSum : subtotalSum);
-        if (base >= (r.min_base || 0)) retTotal = roundDec(retTotal + (base * (r.rate / 100)));
+        if (isNC || base >= (r.min_base || 0)) retTotal = roundDec(retTotal + (base * (r.rate / 100)));
       };
       applyHdrRetRule(retRuleRenta, 'renta');
       applyHdrRetRule(retRuleIca, 'ica');
@@ -4270,6 +4400,8 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       ret_rule_renta_id: retRuleRenta,
       ret_rule_ica_id: retRuleIca,
       ret_rule_iva_id: retRuleIva,
+      ret_mode: (window as any).__soRetMode || 'header',
+      parent_invoice_id: (window as any).__soNoteConfig?.originalInvoiceId || inv?.parent_invoice_id || null,
       tx_type_id: txTypeId,
       dian_resolution_id: inv?.dian_resolution_id || null,
       sales_order_id: salesOrderId || null,
@@ -4281,6 +4413,8 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       delivery_fulfillment_status: inv?.delivery_fulfillment_status || (pendingDelivery ? 'PENDIENTE' : 'NO_REQUIERE'),
       status: 'draft',
       is_electronic: isElectronic,
+      dian_concept: (document.getElementById('so-dian-concept') as HTMLSelectElement)?.value || inv?.dian_concept || null,
+      is_loss: (document.getElementById('so-loss-all-chk') as HTMLInputElement)?.checked ?? (inv?.is_loss || false),
     };
 
     const crmDealId = (document.getElementById('so-crm-deal-id') as HTMLInputElement)?.value || null;

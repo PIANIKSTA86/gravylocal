@@ -32,16 +32,41 @@ let _invChart: any      = null;
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/** Anima un número desde 0 hasta `target` en `duration` ms. */
-function animateCounter(el: HTMLElement, target: number, duration = 900): void {
-  if (!el || target === 0) { if (el) el.textContent = '0'; return; }
+/** Formatea un valor numérico a moneda colombiana estricta ($ 0.000.000,00). */
+function formatCOP(n: number): string {
+  if (typeof (window as any).fmt === 'function') {
+    return (window as any).fmt(n);
+  }
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number(n) || 0);
+}
+
+/** Anima un número desde 0 hasta `target` en `duration` ms respetando el formato monetario o numérico oficial. */
+function animateCounter(el: HTMLElement, target: number, duration = 900, isCurrency?: boolean): void {
+  if (!el) return;
+  const shouldFormatCurrency = isCurrency !== undefined 
+    ? isCurrency 
+    : (el.textContent?.trim().startsWith('$') || false);
+
+  const getFmt = (v: number) => {
+    if (shouldFormatCurrency) {
+      return formatCOP(v);
+    }
+    return Math.round(v).toLocaleString('es-CO');
+  };
+
+  if (target === 0) { el.textContent = getFmt(0); return; }
   const start = performance.now();
   const tick  = (now: number) => {
     const elapsed  = now - start;
     const progress = Math.min(elapsed / duration, 1);
     // ease-out cubic
     const eased    = 1 - Math.pow(1 - progress, 3);
-    el.textContent = Math.round(eased * target).toLocaleString('es-CO');
+    el.textContent = getFmt(eased * target);
     if (progress < 1) requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
@@ -133,16 +158,20 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
       }
       .dash-kpi-card {
         background: #fff;
-        border-radius: 14px;
+        border-radius: 16px;
         padding: 20px;
         border: 1px solid var(--border-soft, #EAEFF5);
         position: relative;
         overflow: hidden;
         box-shadow: 0 2px 8px rgba(25, 33, 61, 0.04);
         transition: transform .22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .22s;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 165px;
       }
       .dash-kpi-card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(25, 33, 61, 0.08); border-color: var(--border-strong, #D5DFEB); }
-      .dash-kpi-accent { position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 14px 14px 0 0; }
+      .dash-kpi-accent { position: absolute; top: 0; left: 0; right: 0; height: 3.5px; border-radius: 16px 16px 0 0; }
       .dash-chart-panel {
         background: #fff;
         border-radius: 16px;
@@ -252,49 +281,43 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
 
     <!-- ████  HERO COMPACTO  ████ -->
     <div class="anim-slide-up" style="
-      background: linear-gradient(135deg,rgba(124,102,240,.07) 0%,rgba(56,157,242,.05) 60%,rgba(23,135,84,.04) 100%);
-      border: 1px solid rgba(124,102,240,.14);
-      border-radius: 14px;
-      padding: 12px 20px;
-      margin-bottom: 14px;
+      background: linear-gradient(135deg, rgba(124,58,237,.06) 0%, rgba(37,99,235,.04) 60%, rgba(13,148,136,.04) 100%);
+      border: 1px solid rgba(124,58,237,.12);
+      border-radius: 16px;
+      padding: 14px 22px;
+      margin-bottom: 18px;
       display: flex; align-items: center; justify-content: space-between;
-      flex-wrap: wrap; gap: 10px;
+      flex-wrap: wrap; gap: 12px;
       position: relative; overflow: hidden;
     ">
-      <div style="position:absolute;right:-40px;top:-40px;width:180px;height:180px;border-radius:50%;
-        background:radial-gradient(circle,rgba(124,102,240,.07),transparent 70%);pointer-events:none"></div>
-      <div style="position:absolute;left:40%;bottom:-50px;width:140px;height:140px;border-radius:50%;
-        background:radial-gradient(circle,rgba(56,157,242,.05),transparent 70%);pointer-events:none"></div>
-
       <div style="position:relative">
-        <h1 style="font-size:17px;font-weight:800;color:var(--text-strong, #19213D);margin:0 0 2px;letter-spacing:-.2px;line-height:1.2">
+        <h1 style="font-size:18px;font-weight:800;color:var(--text-strong, #0F172A);margin:0 0 3px;letter-spacing:-.3px;line-height:1.2">
           ${greeting}, ${_esc(userName)} 👋
         </h1>
-        <p style="font-size:11.5px;color:var(--text-muted, #5E6D82);margin:0;font-weight:500;display:flex;align-items:center;gap:6px">
-          <i class="fas fa-calendar-days" style="color:var(--accent-lavender, #7C66F0);font-size:10px"></i>
-          ${dateLabel}
-          <span style="font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:10px;background:var(--accent-lavender-subtle, #F1EFFE);color:var(--accent-lavender-hover, #6850E2);margin-left:4px;text-transform:uppercase">
+        <p style="font-size:12px;color:var(--text-muted, #64748B);margin:0;font-weight:500;display:flex;align-items:center;gap:8px">
+          <span><i class="fas fa-calendar-days" style="color:var(--brand-primary, #7C3AED);font-size:11px;margin-right:4px"></i>${dateLabel}</span>
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;background:var(--brand-primary-light, #EDE9FE);color:var(--brand-primary-hover, #6D28D9);text-transform:uppercase;letter-spacing:0.3px">
             Perfil: ${_esc(userRole)}
           </span>
         </p>
       </div>
 
-      <!-- Barra de herramientas limpia: Biblioteca y Estado del Sistema -->
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <!-- Barra de herramientas: Biblioteca de Indicadores y Estado del Sistema -->
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button id="btn-open-widget-catalog" style="
-          display:flex;align-items:center;gap:6px;padding:7px 14px;
-          background:var(--accent-lavender, #7C66F0);color:#fff;border-radius:10px;
-          font-size:11.5px;font-weight:700;box-shadow:0 3px 10px rgba(124,102,240,.22);border:none;cursor:pointer;
+          display:flex;align-items:center;gap:7px;padding:8px 16px;
+          background:linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);color:#fff;border-radius:10px;
+          font-size:12px;font-weight:700;box-shadow:0 3px 12px rgba(124,58,237,.25);border:none;cursor:pointer;
           transition:all .18s;font-family:inherit
-        " onmouseover="this.style.background='var(--accent-lavender-hover, #6850E2)';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='var(--accent-lavender, #7C66F0)';this.style.transform='none'">
+        " onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 5px 16px rgba(124,58,237,.35)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 3px 12px rgba(124,58,237,.25)'">
           <i class="fas fa-shapes" style="font-size:11px"></i>
           <span>Biblioteca de Indicadores</span>
         </button>
 
         <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;
-          background:rgba(16,185,129,.09);border:1px solid rgba(16,185,129,.2);border-radius:16px">
-          <span class="dash-live-dot" style="background:#10B981;--ring-color:rgba(16,185,129,.5);width:7px;height:7px"></span>
-          <span style="font-size:10.5px;font-weight:700;color:#059669">Sistema activo</span>
+          background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.2);border-radius:12px">
+          <span class="dash-live-dot" style="background:#0D9488;--ring-color:rgba(13,148,136,.4);width:7px;height:7px"></span>
+          <span style="font-size:11px;font-weight:700;color:#0F766E">Sistema activo</span>
         </div>
       </div>
     </div>
@@ -358,7 +381,7 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
 
     // ── RENDERIZAR CADA WIDGET DINÁMICO
     const helpers: WidgetHelpers = {
-      fmt: (window as any).fmt || ((n: number) => `$ ${Math.round(n).toLocaleString('es-CO')}`),
+      fmt: formatCOP,
       fmtCount,
       animateCounter,
       sparklineSVG,

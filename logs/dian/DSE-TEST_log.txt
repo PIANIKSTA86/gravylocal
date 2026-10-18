@@ -1,0 +1,14 @@
+
+==================================================
+TIMESTAMP: 2026-10-13T01:30:33.770Z
+ACTION: FACTURATECH UPLOAD-AND-SEND (SIMULATED)
+==================================================
+provider: Facturatech
+documentType: SupportDocument
+isPOS: undefined
+simulated: true
+transaccionID: FTECH_MOCK_TX_1791855033769
+status: enviada
+message: Documento subido con éxito (Modo Simulado Activo)
+xmlContent: <test/>
+

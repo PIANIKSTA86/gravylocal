@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRAVY — Login Opción 1 (Variación): Liquid Glass & Editorial Invertido</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Triada Oficial GRAVY */
+      --brand-violet: #7C3AED;
+      --brand-violet-hover: #6D28D9;
+      --brand-violet-light: #F5F3FF;
+      --brand-blue: #1D4ED8;
+      --brand-blue-hover: #1E40AF;
+      --brand-blue-light: #EFF6FF;
+      --brand-teal: #00BFA5;
+      --brand-green: #059669;
+      --brand-green-light: #ECFDF5;
+
+      /* Gradientes Armónicos */
+      --gradient-triad: linear-gradient(135deg, #1D4ED8 0%, #7C3AED 50%, #00BFA5 100%);
+      --gradient-btn: linear-gradient(135deg, #7C3AED 0%, #4F46E5 60%, #00BFA5 100%);
+      --gradient-btn-hover: linear-gradient(135deg, #6D28D9 0%, #4338CA 60%, #059669 100%);
+
+      --bg: #F8FAFC;
+      --surface-glass: rgba(255, 255, 255, 0.88);
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --text-subtle: #94A3B8;
+      --border: #E2E8F0;
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 26px;
+      --radius-pill: 9999px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow-x: hidden;
+      padding: 24px;
+    }
+
+    /* ─── FONDO ORGÁNICO LÍQUIDO CON MORPHING ─── */
+    .liquid-ambient-bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .liquid-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.5;
+      animation: floatMorph 18s ease-in-out infinite alternate;
+    }
+
+    /* Blob Azul (Izquierda Superior) */
+    .blob-blue-left {
+      width: 520px;
+      height: 520px;
+      background: radial-gradient(circle, #60A5FA 0%, #1D4ED8 70%);
+      top: -100px;
+      left: 8%;
+      border-radius: 54% 46% 38% 62% / 49% 70% 30% 51%;
+    }
+
+    /* Blob Violeta (Centro Flotante) */
+    .blob-violet-center {
+      width: 480px;
+      height: 480px;
+      background: radial-gradient(circle, #C084FC 0%, #7C3AED 70%);
+      bottom: -80px;
+      left: 26%;
+      border-radius: 68% 32% 43% 57% / 44% 53% 47% 56%;
+      animation-duration: 22s;
+    }
+
+    /* Blob Verde Esmeralda (Derecha Inferior) */
+    .blob-green-right {
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, #34D399 0%, #00BFA5 70%);
+      top: 25%;
+      right: 5%;
+      border-radius: 41% 59% 61% 39% / 68% 38% 62% 32%;
+      animation-duration: 15s;
+    }
+
+    /* Formas Geométricas Complementarias Esculpidas */
+    .shape-ring-violet {
+      position: absolute;
+      top: 80px;
+      left: 18%;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 16px solid rgba(139, 92, 246, 0.35);
+      z-index: 1;
+    }
+
+    .shape-pill-teal {
+      position: absolute;
+      bottom: 110px;
+      left: 14%;
+      width: 140px;
+      height: 56px;
+      border-radius: 28px;
+      background: linear-gradient(135deg, #00BFA5, #059669);
+      opacity: 0.85;
+      transform: rotate(-18deg);
+      box-shadow: 0 10px 25px rgba(0, 191, 165, 0.3);
+      z-index: 1;
+    }
+
+    .dots-canvas-left {
+      position: absolute;
+      top: 220px;
+      left: 6%;
+      width: 120px;
+      height: 120px;
+      background-image: radial-gradient(#94A3B8 1.5px, transparent 1.5px);
+      background-size: 16px 16px;
+      opacity: 0.55;
+      z-index: 1;
+    }
+
+    @keyframes floatMorph {
+      0% { transform: translateY(0) scale(1) rotate(0deg); }
+      50% { transform: translateY(-28px) scale(1.06) rotate(6deg); }
+      100% { transform: translateY(16px) scale(0.96) rotate(-4deg); }
+    }
+
+    /* ─── CONTENEDOR SPLIT INVERTIDO (HERO IZQUIERDA, FORMULARIO DERECHA) ─── */
+    .split-inverted-container {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 1200px;
+      min-height: 700px;
+      display: grid;
+      grid-template-columns: 1fr 490px;
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 35px 70px -15px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(226, 232, 240, 0.6);
+      overflow: hidden;
+    }
+
+    /* ─── COLUMNA IZQUIERDA: HERO VISUAL & PROPUESTA DE VALOR ─── */
+    .hero-canvas-left {
+      padding: 56px 52px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      z-index: 2;
+      border-right: 1px solid rgba(226, 232, 240, 0.6);
+      background: linear-gradient(160deg, rgba(255, 255, 255, 0.6) 0%, rgba(248, 250, 252, 0.3) 100%);
+    }
+
+    .hero-top-brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo-frame {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      background: #FFFFFF;
+      border: 1px solid rgba(226, 232, 240, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px;
+      box-shadow: 0 8px 20px -4px rgba(124, 58, 237, 0.18);
+    }
+
+    .brand-logo-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .brand-heading {
+      font-family: 'Outfit', sans-serif;
+      font-size: 26px;
+      font-weight: 800;
+      color: #0F172A;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-subheading {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--brand-violet);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .hero-badge-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #ECFDF5;
+      border: 1px solid #A7F3D0;
+      color: #065F46;
+      padding: 5px 12px;
+      border-radius: var(--radius-pill);
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+
+    .dot-pulse-teal {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--brand-teal);
+      box-shadow: 0 0 8px var(--brand-teal);
+    }
+
+    .hero-main-content {
+      max-width: 540px;
+      margin: auto 0;
+    }
+
+    .hero-display-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 44px;
+      font-weight: 800;
+      line-height: 1.12;
+      color: #0F172A;
+      letter-spacing: -1.4px;
+      margin-bottom: 18px;
+    }
+
+    .text-gradient-triad {
+      background: var(--gradient-triad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-paragraph {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+    }
+
+    /* Píldoras Flotantes de Estado Contable (Azul, Violeta, Verde) */
+    .triad-pills-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .pill-feature {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      border-radius: var(--radius-md);
+      padding: 12px 18px;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+      transition: all 0.2s;
+    }
+
+    .pill-feature:hover {
+      transform: translateX(4px);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+    }
+
+    .pill-icon-box {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .icon-blue { background: var(--brand-blue-light); color: var(--brand-blue); }
+    .icon-violet { background: var(--brand-violet-light); color: var(--brand-violet); }
+    .icon-green { background: var(--brand-green-light); color: var(--brand-green); }
+
+    .pill-texts {
+      flex: 1;
+    }
+
+    .pill-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+
+    .pill-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .hero-canvas-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-subtle);
+      padding-top: 20px;
+    }
+
+    /* ─── COLUMNA DERECHA: FORMULARIO FLOTANTE CON ACCESO RÁPIDO ─── */
+    .form-pane-right {
+      background: rgba(255, 255, 255, 0.96);
+      padding: 52px 46px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      z-index: 2;
+    }
+
+    .form-header-area {
+      margin-bottom: 24px;
+    }
+
+    .form-greeting {
+      font-family: 'Outfit', sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      color: #0F172A;
+      letter-spacing: -0.6px;
+    }
+
+    .form-subgreeting {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      margin-top: 5px;
+    }
+
+    /* Tarjeta de Sesión Recordada Rápida */
+    .saved-user-banner {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .saved-user-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .saved-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #1D4ED8, #7C3AED);
+      color: #FFFFFF;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+    }
+
+    .saved-name {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #0F172A;
+      line-height: 1.2;
+    }
+
+    .saved-role {
+      font-size: 10.5px;
+      color: var(--brand-violet);
+      font-weight: 600;
+    }
+
+    .btn-switch-account {
+      background: none;
+      border: none;
+      color: var(--brand-blue);
+      font-size: 11.5px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-switch-account:hover {
+      text-decoration: underline;
+    }
+
+    /* Botón Google SSO */
+    .btn-google-action {
+      width: 100%;
+      height: 48px;
+      border-radius: var(--radius-md);
+      background: #FFFFFF;
+      border: 1.5px solid var(--border);
+      color: #1E293B;
+      font-size: 13.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    }
+
+    .btn-google-action:hover {
+      background: #F8FAFC;
+      border-color: #CBD5E1;
+    }
+
+    .divider-or {
+      display: flex;
+      align-items: center;
+      margin: 20px 0;
+      color: var(--text-subtle);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .divider-or::before,
+    .divider-or::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #E2E8F0;
+    }
+
+    .divider-or span {
+      padding: 0 14px;
+    }
+
+    /* Campos de Entrada */
+    .input-group {
+      margin-bottom: 18px;
+    }
+
+    .input-label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #1E293B;
+      margin-bottom: 6px;
+    }
+
+    .input-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .clean-input {
+      width: 100%;
+      height: 50px;
+      background: #F8FAFC;
+      border: 1.5px solid #CBD5E1;
+      border-radius: var(--radius-md);
+      padding: 0 16px;
+      font-family: inherit;
+      font-size: 14.5px;
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .clean-input:focus {
+      background: #FFFFFF;
+      border-color: var(--brand-violet);
+      box-shadow: 0 0 0 3.5px rgba(124, 58, 237, 0.14);
+    }
+
+    .clean-input::placeholder {
+      color: var(--text-subtle);
+      font-size: 13.5px;
+    }
+
+    .clean-input.has-toggle {
+      padding-right: 46px;
+    }
+
+    .toggle-pass-btn {
+      position: absolute;
+      right: 14px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-subtle);
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .toggle-pass-btn:hover {
+      color: var(--brand-violet);
+    }
+
+    .caps-indicator {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #B45309;
+      background: #FEF3C7;
+      padding: 5px 10px;
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+
+    .caps-indicator.active {
+      display: flex;
+    }
+
+    .row-options {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 22px;
+      font-size: 13px;
+    }
+
+    .remember-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .remember-control input {
+      accent-color: var(--brand-violet);
+      cursor: pointer;
+    }
+
+    .link-recover {
+      color: var(--brand-blue);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .link-recover:hover {
+      color: var(--brand-violet);
+      text-decoration: underline;
+    }
+
+    /* Botón Submit */
+    .btn-submit-action {
+      width: 100%;
+      height: 52px;
+      background: var(--gradient-btn);
+      color: #FFFFFF;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      box-shadow: 0 10px 24px -6px rgba(124, 58, 237, 0.45);
+      transition: all 0.25s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn-submit-action:hover {
+      background: var(--gradient-btn-hover);
+      transform: translateY(-1.5px);
+      box-shadow: 0 14px 28px -6px rgba(37, 99, 235, 0.5);
+    }
+
+    .form-foot-help {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .form-foot-help a {
+      color: var(--brand-violet);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .status-bar-bottom {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #F1F5F9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+
+    .status-badge-green {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+    }
+
+    .dot-green-live {
+      width: 8px;
+      height: 8px;
+      background: var(--brand-teal);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--brand-teal);
+    }
+
+    .host-pill {
+      background: #F1F5F9;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    @media (max-width: 980px) {
+      .split-inverted-container {
+        grid-template-columns: 1fr;
+        max-width: 480px;
+      }
+      .hero-canvas-left {
+        display: none;
+      }
+      .form-pane-right {
+        padding: 40px 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fondo Ambiental Líquido con la Triada -->
+  <div class="liquid-ambient-bg">
+    <div class="liquid-blob blob-blue-left"></div>
+    <div class="liquid-blob blob-violet-center"></div>
+    <div class="liquid-blob blob-green-right"></div>
+
+    <div class="shape-ring-violet"></div>
+    <div class="shape-pill-teal"></div>
+    <div class="dots-canvas-left"></div>
+  </div>
+
+  <div class="split-inverted-container">
+    <!-- Columna Izquierda: Hero Editorial Invertido con Formas Orgánicas -->
+    <div class="hero-canvas-left">
+      <div class="hero-top-brand">
+        <div class="brand-group">
+          <div class="brand-logo-frame">
+            <img src="../Logotipo transparente.png" alt="GRAVY" onerror="this.src='../Logotipo circular abstracto multicolor.png'">
+          </div>
+          <div>
+            <div class="brand-heading">GRAVY</div>
+            <div class="brand-subheading">Ecosistema Contable</div>
+          </div>
+        </div>
+
+        <div class="hero-badge-live">
+          <span class="dot-pulse-teal"></span>
+          <span>Red Local 0 ms</span>
+        </div>
+      </div>
+
+      <div class="hero-main-content">
+        <h2 class="hero-display-title">
+          El futuro de la contabilidad, <br>
+          <span class="text-gradient-triad">diseñado con precisión humana.</span>
+        </h2>
+        <p class="hero-paragraph">
+          Experimenta una plataforma contable que combina la belleza del diseño contemporáneo con la solidez técnica que exige la normativa tributaria colombiana.
+        </p>
+
+        <!-- Tres Pilares Alineados con la Triada -->
+        <div class="triad-pills-stack">
+          <div class="pill-feature">
+            <div class="pill-icon-box icon-blue">🛡️</div>
+            <div class="pill-texts">
+              <div class="pill-title">Motor Local Resiliente (PocketBase)</div>
+              <div class="pill-desc">Sin bloqueos de red: factura y contabiliza a velocidad LAN nativa</div>
+            </div>
+          </div>
+
+          <div class="pill-feature">
+            <div class="pill-icon-box icon-violet">⚡</div>
+            <div class="pill-texts">
+              <div class="pill-title">Automatización de Causaciones & Cierres</div>
+              <div class="pill-desc">Partida doble automática, conciliación bancaria y balance cuadrado</div>
+            </div>
+          </div>
+
+          <div class="pill-feature">
+            <div class="pill-icon-box icon-green">📑</div>
+            <div class="pill-texts">
+              <div class="pill-title">Ecosistema DIAN 2026 (Resolución 000165)</div>
+              <div class="pill-desc">Firma digital XAdES, CUFE en línea, nómina y documento soporte</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-canvas-footer">
+        <span>© 2026 GRAVY Softworks S.A.S.</span>
+        <span>Normativa NIIF Pymes & Ley 1581</span>
+      </div>
+    </div>
+
+    <!-- Columna Derecha: Formulario Limpio & Acceso Rápido -->
+    <div class="form-pane-right">
+      <div>
+        <div class="form-header-area">
+          <h1 class="form-greeting">¡Hola de nuevo! 👋</h1>
+          <p class="form-subgreeting">Ingresa tu contraseña para acceder a tus módulos</p>
+        </div>
+
+        <!-- Banner de Sesión Recordada -->
+        <div class="saved-user-banner">
+          <div class="saved-user-left">
+            <div class="saved-avatar">M</div>
+            <div>
+              <div class="saved-name">María E. Restrepo</div>
+              <div class="saved-role">Contadora Certificada</div>
+            </div>
+          </div>
+          <button type="button" class="btn-switch-account" onclick="switchAccount()">Cambiar</button>
+        </div>
+
+        <!-- Botón SSO Google -->
+        <button class="btn-google-action" type="button" onclick="alert('Autenticación mediante Google Workspace iniciada.');">
+          <svg width="18" height="18" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          Continuar con Google Workspace
+        </button>
+
+        <div class="divider-or">
+          <span>O con tu contraseña corporativa</span>
+        </div>
+
+        <form id="var1-form" onsubmit="handleVarLogin(event)">
+          <div class="input-group" id="group-email" style="display:none">
+            <label class="input-label" for="inp-email">Correo Electrónico</label>
+            <div class="input-box">
+              <input class="clean-input" type="email" id="inp-email" placeholder="contador@empresa.com" autocomplete="username">
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="inp-pass">Contraseña de Acceso</label>
+            <div class="input-box">
+              <input class="clean-input has-toggle" type="password" id="inp-pass" placeholder="••••••••••••" required autocomplete="current-password">
+              <button type="button" class="toggle-pass-btn" id="btn-eye-toggle" aria-label="Mostrar contraseña">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+            <div class="caps-indicator" id="caps-pill">
+              <span>⇪ Bloq Mayús activado</span>
+            </div>
+          </div>
+
+          <div class="row-options">
+            <label class="remember-control">
+              <input type="checkbox" checked>
+              <span>Mantener sesión iniciada</span>
+            </label>
+            <a href="#" class="link-recover" onclick="alert('Se enviará un enlace de recuperación a tu correo corporativo.'); return false;">¿Olvidaste tu clave?</a>
+          </div>
+
+          <button type="submit" class="btn-submit-action" id="btn-submit-var">
+            <span>Ingresar al Sistema</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+
+          <div class="form-foot-help">
+            ¿Requieres un usuario nuevo? <a href="#" onclick="alert('Solicita autorización a tu Administrador.'); return false;">Solicitar acceso</a>
+          </div>
+        </form>
+      </div>
+
+      <!-- Telemetría de Red -->
+      <div class="status-bar-bottom">
+        <div class="status-badge-green">
+          <span class="dot-green-live"></span>
+          <span>Red Local LAN (0.1 ms)</span>
+        </div>
+        <span class="host-pill">127.0.0.1:8090</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const passInput = document.getElementById('inp-pass');
+    const eyeBtn = document.getElementById('btn-eye-toggle');
+    eyeBtn.addEventListener('click', () => {
+      const isPass = passInput.type === 'password';
+      passInput.type = isPass ? 'text' : 'password';
+      eyeBtn.style.color = isPass ? 'var(--brand-violet)' : 'var(--text-subtle)';
+    });
+
+    const capsPill = document.getElementById('caps-pill');
+    passInput.addEventListener('keyup', (e) => {
+      if (e.getModifierState && e.getModifierState('CapsLock')) {
+        capsPill.classList.add('active');
+      } else {
+        capsPill.classList.remove('active');
+      }
+    });
+
+    function switchAccount() {
+      const emailGroup = document.getElementById('group-email');
+      emailGroup.style.display = emailGroup.style.display === 'none' ? 'block' : 'none';
+      const emailInput = document.getElementById('inp-email');
+      if (emailGroup.style.display === 'block') {
+        emailInput.focus();
+      }
+    }
+
+    function handleVarLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-submit-var');
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<span>Verificando credenciales...</span>';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = '<span>¡Acceso Concedido! ✓</span>';
+        btn.style.background = 'linear-gradient(135deg, #059669, #00BFA5)';
+        setTimeout(() => {
+          btn.innerHTML = orig;
+          btn.style.background = 'var(--gradient-btn)';
+          btn.disabled = false;
+        }, 1800);
+      }, 900);
+    }
+  </script>
+</body>
+</html>

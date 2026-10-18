@@ -137,7 +137,27 @@ export async function renderDocSoporte(container: HTMLElement) {
   const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
   container = getContainer(container, 'doc-soporte');
   if (!container) return;
-  container.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Documentos Soporte Electrónicos...</div>`;
+  container.innerHTML = `
+    <div class="animate-pulse space-y-4 p-4">
+      <div class="flex justify-between items-center mb-6">
+        <div class="h-8 w-64 bg-slate-200 rounded-lg"></div>
+        <div class="h-9 w-40 bg-slate-200 rounded-lg"></div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        <div class="h-20 bg-slate-100 rounded-2xl border border-slate-200"></div>
+        <div class="h-20 bg-slate-100 rounded-2xl border border-slate-200"></div>
+        <div class="h-20 bg-slate-100 rounded-2xl border border-slate-200"></div>
+        <div class="h-20 bg-slate-100 rounded-2xl border border-slate-200"></div>
+        <div class="h-20 bg-slate-100 rounded-2xl border border-slate-200"></div>
+      </div>
+      <div class="h-14 bg-slate-100 rounded-2xl border border-slate-200 mb-4"></div>
+      <div class="h-80 bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+        <div class="h-8 bg-slate-100 rounded w-full"></div>
+        <div class="h-8 bg-slate-50 rounded w-full"></div>
+        <div class="h-8 bg-slate-100 rounded w-full"></div>
+      </div>
+    </div>
+  `;
   try {
     await loadDocSoportePage(container);
   } catch (err: any) {
@@ -146,18 +166,40 @@ export async function renderDocSoporte(container: HTMLElement) {
 }
 
 async function loadDocSoportePage(c: HTMLElement) {
-  const [dsResolutions, docs, txs, purInvoices, thirds] = await Promise.all([
-    pb.listAll('dian_resolutions', { filter: 'active=true && (document_type="DS" || document_type="NDS")' }).catch(() => []),
-    pb.listAll('einvoice_docs', { sort: '-id' }).catch(() => []),
-    pb.listAll('transactions', { sort: '-date,-id', expand: 'tx_type_id,third_party_id' }).catch(() => []),
-    pb.listAll('purchase_invoices', { sort: '-date,-id', expand: 'supplier_id,tx_type_id' }).catch(() => []),
-    pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }).catch(() => [])
+  const dsResolutions = await pb.listAll('dian_resolutions', { 
+    filter: 'active=true && (document_type="DS" || document_type="NDS")' 
+  }).catch(() => []);
+  const dsPrefixes = new Set(dsResolutions.map((r: any) => String(r.prefix || '').toUpperCase()).filter(Boolean));
+
+  let purFilter = 'number ~ "DS" || number ~ "NDS" || tx_type_id.code="DS" || tx_type_id.code="NDS"';
+  dsPrefixes.forEach(prefix => {
+    if (prefix) purFilter += ` || number ~ "${prefix}" || tx_type_id.prefix="${prefix}"`;
+  });
+
+  let txFilter = 'tx_type_id.code="DS" || tx_type_id.code="NDS"';
+  dsPrefixes.forEach(prefix => {
+    if (prefix) txFilter += ` || tx_type_id.prefix="${prefix}"`;
+  });
+
+  const [docs, txs, purInvoices] = await Promise.all([
+    pb.listAll('einvoice_docs', { 
+      fields: 'id,tx_id,status,cufe,hash,dian_response', 
+      sort: '-id' 
+    }).catch(() => []),
+    pb.listAll('transactions', { 
+      filter: txFilter, 
+      sort: '-date,-id', 
+      expand: 'tx_type_id,third_party_id' 
+    }).catch(() => []),
+    pb.listAll('purchase_invoices', { 
+      filter: purFilter, 
+      sort: '-date,-id', 
+      expand: 'supplier_id,tx_type_id' 
+    }).catch(() => [])
   ]);
 
   const docMap = new Map<string, any>();
   docs.forEach((d: any) => { if (d.tx_id) docMap.set(d.tx_id, d); });
-
-  const dsPrefixes = new Set(dsResolutions.map((r: any) => String(r.prefix || '').toUpperCase()));
 
   const dsList: DocSoporteItem[] = [];
 

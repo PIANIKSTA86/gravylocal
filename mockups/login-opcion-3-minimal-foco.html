@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRAVY — Login Opción 3: Minimalista Centrado & Triada de Marca</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand-violet: #7C3AED;
+      --brand-blue: #1D4ED8;
+      --brand-teal: #00BFA5;
+      --brand-green: #059669;
+
+      --btn-gradient: linear-gradient(135deg, #1D4ED8 0%, #7C3AED 50%, #00BFA5 100%);
+      --btn-gradient-hover: linear-gradient(135deg, #1E40AF 0%, #6D28D9 50%, #059669 100%);
+
+      --bg: #FFFFFF;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --text-subtle: #94A3B8;
+      --border: #CBD5E1;
+      --radius-md: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow-x: hidden;
+      padding: 32px 24px;
+    }
+
+    /* Arte Vectorial en los Bordes usando la Triada */
+    /* Izquierda: Verde Esmeralda / Turquesa (Crecimiento & DIAN) */
+    .bg-art-left {
+      position: fixed;
+      left: -120px;
+      top: 18%;
+      width: 400px;
+      height: 400px;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.85;
+      animation: rotateArt 60s linear infinite;
+    }
+
+    /* Derecha: Azul Cobalto y Violeta (Confianza e Innovación) */
+    .bg-art-right {
+      position: fixed;
+      right: -100px;
+      top: 25%;
+      width: 380px;
+      height: 380px;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.8;
+      animation: pulseArt 14s ease-in-out infinite alternate;
+    }
+
+    @keyframes rotateArt {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulseArt {
+      0% { transform: scale(1) translate(0, 0); }
+      100% { transform: scale(1.08) translate(-15px, 15px); }
+    }
+
+    .login-center-box {
+      width: 100%;
+      max-width: 440px;
+      margin: auto;
+      text-align: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Nuevo Logotipo Centrado */
+    .brand-logo-center {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #FFFFFF;
+      border-radius: 24px;
+      padding: 8px;
+      box-shadow: 0 16px 36px -8px rgba(124, 58, 237, 0.22), 0 0 0 1px rgba(226, 232, 240, 0.8);
+    }
+
+    .brand-logo-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .login-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      color: #0F172A;
+      margin-bottom: 6px;
+    }
+
+    .login-subtitle {
+      font-size: 14.5px;
+      color: var(--text-muted);
+      margin-bottom: 30px;
+    }
+
+    .login-form {
+      text-align: left;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .input-clean {
+      width: 100%;
+      height: 52px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0 18px;
+      font-size: 14.5px;
+      font-family: inherit;
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.2s ease;
+      background: #FFFFFF;
+    }
+
+    .input-clean:focus {
+      border-color: var(--brand-violet);
+      box-shadow: 0 0 0 3.5px rgba(124, 58, 237, 0.15);
+    }
+
+    .pass-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .pass-toggle-btn {
+      position: absolute;
+      right: 14px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-subtle);
+      padding: 4px;
+    }
+
+    .pass-toggle-btn:hover {
+      color: var(--brand-violet);
+    }
+
+    .btn-continue {
+      width: 100%;
+      height: 50px;
+      background: var(--btn-gradient);
+      color: #FFFFFF;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 6px;
+      box-shadow: 0 6px 18px rgba(124, 58, 237, 0.35);
+    }
+
+    .btn-continue:hover {
+      background: var(--btn-gradient-hover);
+      transform: translateY(-1px);
+    }
+
+    .divider-row {
+      display: flex;
+      align-items: center;
+      margin: 22px 0;
+      color: var(--text-subtle);
+      font-size: 12.5px;
+    }
+
+    .divider-row::before,
+    .divider-row::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #E2E8F0;
+    }
+
+    .divider-row span {
+      padding: 0 16px;
+    }
+
+    .social-btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-provider {
+      width: 100%;
+      height: 48px;
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #1E293B;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-provider:hover {
+      background: #F8FAFC;
+      border-color: #94A3B8;
+    }
+
+    .env-selector {
+      margin-top: 22px;
+      padding: 8px 12px;
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    .env-label {
+      font-weight: 600;
+      color: #475569;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .env-badge {
+      font-weight: 700;
+      color: var(--brand-green);
+      background: #ECFDF5;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .help-links {
+      margin-top: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .help-links a {
+      color: var(--brand-blue);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .help-links a:hover {
+      color: var(--brand-violet);
+      text-decoration: underline;
+    }
+
+    .page-footer {
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-subtle);
+      border-top: 1px solid #F1F5F9;
+      padding-top: 16px;
+      position: relative;
+      z-index: 10;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    .footer-links a:hover {
+      color: var(--brand-violet);
+    }
+
+    @media (max-width: 768px) {
+      .bg-art-left, .bg-art-right { opacity: 0.25; }
+      .page-footer { flex-direction: column; gap: 12px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Arte Vectorial Izquierdo: Verde Turquesa / Esmeralda -->
+  <svg class="bg-art-left" viewBox="0 0 200 200" fill="none">
+    <path d="M100 0 C108 45 155 92 200 100 C155 108 108 155 100 200 C92 155 45 108 0 100 C45 92 92 45 100 0 Z" fill="#00BFA5" fill-opacity="0.8"/>
+    <circle cx="100" cy="100" r="28" fill="#059669"/>
+  </svg>
+
+  <!-- Arte Vectorial Derecho: Azul Cobalto & Violeta -->
+  <svg class="bg-art-right" viewBox="0 0 200 200" fill="none">
+    <path d="M100,20 C140,10 180,40 185,80 C190,120 160,165 120,175 C80,185 30,160 20,120 C10,80 50,30 100,20 Z" fill="#3B82F6" fill-opacity="0.6"/>
+    <circle cx="130" cy="90" r="45" fill="#8B5CF6" fill-opacity="0.5"/>
+  </svg>
+
+  <main class="login-center-box">
+    <!-- Logotipo Nuevo Oficial Triada -->
+    <div class="brand-logo-center">
+      <img src="../Logotipo transparente.png" alt="GRAVY" class="brand-logo-img" onerror="this.src='../Logotipo circular abstracto multicolor.png'">
+    </div>
+
+    <h1 class="login-title">Iniciar Sesión</h1>
+    <p class="login-subtitle">para continuar a tu panel contable de GRAVY</p>
+
+    <form class="login-form" onsubmit="event.preventDefault(); simulateAccess();">
+      <div class="form-group">
+        <input type="text" class="input-clean" id="login-identity" placeholder="Correo electrónico o Usuario" required autocomplete="username">
+      </div>
+
+      <div class="form-group">
+        <div class="pass-container">
+          <input type="password" class="input-clean" id="login-pass" placeholder="Contraseña de acceso" required autocomplete="current-password">
+          <button type="button" class="pass-toggle-btn" id="pass-toggle-btn" aria-label="Mostrar contraseña">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-continue" id="btn-continue">Continuar</button>
+
+      <div class="divider-row">
+        <span>o</span>
+      </div>
+
+      <div class="social-btn-group">
+        <button type="button" class="btn-provider" onclick="alert('Autenticación mediante Google Workspace iniciada.');">
+          <svg width="18" height="18" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          Continuar con Google
+        </button>
+
+        <button type="button" class="btn-provider" onclick="alert('Cambiando a modo Red Local LAN 127.0.0.1...');">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+          Servidor Red Local LAN (0 ms)
+        </button>
+      </div>
+
+      <div class="env-selector">
+        <span class="env-label">
+          <span style="width:7px;height:7px;background:#00BFA5;border-radius:50%;display:inline-block"></span>
+          Ambiente Activo:
+        </span>
+        <span class="env-badge">DIAN Producción 2026</span>
+      </div>
+
+      <div class="help-links">
+        <div>¿No tienes una cuenta? <a href="#" onclick="alert('Contacta al Administrador.'); return false;">Registrarte</a></div>
+        <div>¿No puedes acceder? <a href="#" onclick="alert('Mesa de soporte contable.'); return false;">Haz clic aquí</a></div>
+      </div>
+    </form>
+  </main>
+
+  <footer class="page-footer">
+    <div>© 2026 GRAVY Softworks S.A.S. Todos los derechos reservados.</div>
+    <div class="footer-links">
+      <a href="#">Seguridad</a>
+      <a href="#">Términos y Normativa DIAN</a>
+      <a href="#">Tratamiento de Datos (Ley 1581)</a>
+    </div>
+  </footer>
+
+  <script>
+    const passInput = document.getElementById('login-pass');
+    const toggleBtn = document.getElementById('pass-toggle-btn');
+    toggleBtn.addEventListener('click', () => {
+      const isPass = passInput.type === 'password';
+      passInput.type = isPass ? 'text' : 'password';
+    });
+
+    function simulateAccess() {
+      const btn = document.getElementById('btn-continue');
+      const originalText = btn.textContent;
+      btn.textContent = 'Verificando...';
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.textContent = 'Acceso Autorizado ✓';
+        btn.style.background = 'linear-gradient(135deg, #059669, #00BFA5)';
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.background = 'var(--btn-gradient)';
+          btn.disabled = false;
+        }, 1800);
+      }, 800);
+    }
+  </script>
+</body>
+</html>

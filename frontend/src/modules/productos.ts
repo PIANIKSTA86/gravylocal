@@ -59,6 +59,20 @@ function getUnitName(code: string): string {
   return PRODUCT_UNITS.find(u => u.code === code)?.name || code || '—';
 }
 
+/** Devuelve la abreviatura comercial en español para visualización en tabla */
+function getUnitAbbr(code: string): string {
+  if (!code) return 'Und';
+  if (code === '94') return 'Und';
+  if (code === 'MTK') return 'm²';
+  if (code === 'MTQ') return 'm³';
+  if (code === 'MTR') return 'm';
+  if (code === 'KGM') return 'kg';
+  if (code === 'GRM') return 'g';
+  if (code === 'LTR') return 'L';
+  const u = PRODUCT_UNITS.find(x => x.code === code);
+  return u ? u.name : code;
+}
+
 const IVA_RATES = [
   { value: 0,  label: '0% — Excluido / Exento' },
   { value: 5,  label: '5% — Tarifa diferencial' },
@@ -575,73 +589,14 @@ async function renderProductos(c) {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
   c = getContainer(c);
   if (!c) return;
-  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando catálogo de productos y stock en tránsito...</div>`;
+  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando catálogo maestro de productos y servicios...</div>`;
 
   try {
-    const [products, accounts, catalog, stockRows, importLines, reservationLines] = await Promise.all([
+    const [products, accounts, catalog] = await Promise.all([
       API.getProducts({ activeOnly: false }),
       API.getAccounts(false),
       loadProductCatalog(),
-      API.getInventoryStock().catch(() => []),
-      pb.listAll('import_lines', {
-        filter: 'import_id.status="transito" || import_id.status="nacionalizacion"',
-        expand: 'import_id',
-      }).catch(() => []),
-      pb.listAll('sales_reservation_lines', {
-        filter: 'import_line_id!="" && (status="active" || status="partial") && (reservation_id.status="active" || reservation_id.status="partial")',
-      }).catch(() => []),
     ]);
-
-    // Mapeo de stock físico por producto
-    const stockMap: Record<string, number> = {};
-    (stockRows || []).forEach((s: any) => {
-      stockMap[s.product_id] = (stockMap[s.product_id] || 0) + Number(s.qty_on_hand || 0);
-    });
-
-    // Mapeo de reservas comprometidas por línea de importación
-    const committedByLine: Record<string, number> = {};
-    for (const r of (reservationLines || [])) {
-      const il = String(r.import_line_id || '').trim();
-      if (!il) continue;
-      const committed = Math.max(0, Number(r.qty_reserved || 0) - Number(r.qty_dispatched || 0) - Number(r.qty_released || 0));
-      committedByLine[il] = (committedByLine[il] || 0) + committed;
-    }
-
-    // Mapeo estructurado de unidades en tránsito y lotes por producto
-    const incomingMap: Record<string, { totalQty: number; totalAvailable: number; lots: any[] }> = {};
-    (importLines || []).forEach((line: any) => {
-      const pid = line.product_id;
-      if (!pid) return;
-      const qty = Number(line.qty || 0);
-      const committed = Number(committedByLine[line.id] || 0);
-      const available = Math.max(0, qty - committed);
-      const eta = line.expand?.import_id?.estimated_arrival ? (window as any).fmtDate(line.expand.import_id.estimated_arrival) : 'Por definir';
-      const rawEta = line.expand?.import_id?.estimated_arrival || '9999-99-99';
-      const importNumber = line.expand?.import_id?.number || 'IMP';
-      const importStatus = line.expand?.import_id?.status === 'transito' ? 'En Tránsito Marítimo' : 'En Puerto / Nacionalización';
-
-      if (!incomingMap[pid]) {
-        incomingMap[pid] = { totalQty: 0, totalAvailable: 0, lots: [] };
-      }
-      incomingMap[pid].totalQty += qty;
-      incomingMap[pid].totalAvailable += available;
-      incomingMap[pid].lots.push({
-        id: line.id,
-        import_id: line.import_id,
-        importNumber,
-        importStatus,
-        rawEta,
-        eta,
-        qty,
-        committed,
-        available,
-      });
-    });
-
-    // Ordenar lotes de cada producto por ETA más próximo
-    Object.values(incomingMap).forEach((item) => {
-      item.lots.sort((a, b) => a.rawEta.localeCompare(b.rawEta));
-    });
 
     const activeCount    = products.filter(p => p.active).length;
     const bienesCount    = products.filter(p => p.type === 'BIEN').length;
@@ -651,48 +606,16 @@ async function renderProductos(c) {
     const categorias = [...new Set(products.map(p => p.categoria).filter(Boolean))].sort();
     const lineas     = [...new Set(products.map(p => p.linea).filter(Boolean))].sort();
 
-    const isMobile = window.innerWidth <= 768 || pb.currentUser?.role === 'vendedor';
-    const savedView = localStorage.getItem('products_view_mode') || (isMobile ? 'cards' : 'table');
-    const cartMode = (window as any).SalesCart?.activeMode || 'venta';
-
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
-          <h3 class="text-lg font-bold" style="color:#0D2137">Catálogo Comercial & Preventa</h3>
-          <p class="text-sm" style="color:#6B7280">Consulta de existencias en bodega y reservas de embarques en tránsito.</p>
+          <h3 class="text-lg font-bold" style="color:#0D2137">Catálogo Maestro de Productos y Servicios</h3>
+          <p class="text-sm" style="color:#6B7280">Gestión de portafolio, precios de venta, codificación y clasificación contable.</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <!-- Toggle Vista Cards ↔ Tabla -->
-          <div class="inline-flex rounded-xl p-1 bg-slate-100 border border-slate-200 text-xs font-bold">
-            <button id="btn-view-cards" class="px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${savedView === 'cards' ? 'bg-white shadow-xs text-teal-800' : 'text-slate-600 hover:text-slate-900'}">
-              <i class="fas fa-border-all"></i> Cards
-            </button>
-            <button id="btn-view-table" class="px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${savedView === 'table' ? 'bg-white shadow-xs text-teal-800' : 'text-slate-600 hover:text-slate-900'}">
-              <i class="fas fa-list"></i> Tabla
-            </button>
-          </div>
-
           ${can('canWrite') ? '<button class="btn btn-outline" id="btn-config-codificacion" onclick="window._openConfigCodificacionModal()"><i class="fas fa-gear"></i> Codificación</button>' : ''}
           ${can('canWrite') ? '<button class="btn btn-outline" id="btn-catalog-manager"><i class="fas fa-tags"></i> Categorías</button>' : ''}
           ${can('canWrite') ? '<button class="btn btn-primary" id="btn-new-product"><i class="fas fa-plus"></i> Nuevo Producto</button>' : ''}
-        </div>
-      </div>
-
-      <!-- Selector Estricto de Modo Comercial (No Mezcla de Naturaleza) -->
-      <div class="mb-4 bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div class="inline-flex rounded-xl p-1 bg-slate-100 border border-slate-200 text-xs font-bold w-full sm:w-auto">
-          <button id="btn-mode-venta" class="flex-1 sm:flex-none px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${cartMode === 'venta' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-emerald-700'}">
-            <i class="fas fa-boxes-stacked"></i> 🛍️ Venta Inmediata (Stock Físico)
-          </button>
-          <button id="btn-mode-reserva" class="flex-1 sm:flex-none px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${cartMode === 'reserva' ? 'bg-orange-600 text-white shadow-xs' : 'text-slate-600 hover:text-orange-700'}">
-            <i class="fas fa-ship"></i> 🚢 Preventa & Reservas (En Tránsito)
-          </button>
-        </div>
-
-        <div class="text-xs font-semibold px-2">
-          ${cartMode === 'reserva'
-            ? '<span class="text-teal-800 font-bold"><i class="fas fa-circle-info mr-1"></i>Modo Reserva Activo: Solo se aparta mercancía en camino con fecha ETA.</span>'
-            : '<span class="text-slate-600"><i class="fas fa-circle-check text-emerald-600 mr-1"></i>Modo Venta Inmediata: Stock físico en bodega para despacho ya.</span>'}
         </div>
       </div>
 
@@ -708,23 +631,23 @@ async function renderProductos(c) {
       <div class="bg-white rounded-2xl border p-4 mb-4 shadow-xs" style="border-color:#F0F0F0">
         <div class="flex flex-wrap gap-3">
           <input id="prod-q" class="form-input flex-1 min-w-48 text-xs py-2" placeholder="Buscar por código, referencia o nombre...">
-          <select id="prod-type" class="form-input text-xs" style="max-width:180px">
+          <select id="prod-type" class="form-input text-xs" style="max-width:160px">
             <option value="">Todos los tipos</option>
             ${PRODUCT_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
           </select>
-          <select id="prod-categoria" class="form-input text-xs" style="max-width:180px">
+          <select id="prod-categoria" class="form-input text-xs" style="max-width:170px">
             <option value="">Todas las categorías</option>
             ${categorias.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
           </select>
-          <select id="prod-linea" class="form-input text-xs" style="max-width:160px">
+          <select id="prod-linea" class="form-input text-xs" style="max-width:150px">
             <option value="">Todas las líneas</option>
             ${lineas.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('')}
           </select>
-          <select id="prod-iva" class="form-input text-xs" style="max-width:150px">
+          <select id="prod-iva" class="form-input text-xs" style="max-width:140px">
             <option value="">Tarifas IVA</option>
             ${IVA_RATES.map(r => `<option value="${r.value}">${r.value}%</option>`).join('')}
           </select>
-          <select id="prod-status" class="form-input text-xs" style="max-width:140px">
+          <select id="prod-status" class="form-input text-xs" style="max-width:130px">
             <option value="">Todos</option>
             <option value="true">Activos</option>
             <option value="false">Inactivos</option>
@@ -732,109 +655,32 @@ async function renderProductos(c) {
         </div>
       </div>
 
-      <!-- Vista 1: Grid de Tarjetas E-Commerce -->
-      <div id="prod-cards-view" style="${savedView === 'cards' ? '' : 'display:none'}" class="pb-36 sm:pb-44">
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4" id="prod-cards-grid">
-          ${products.length ? renderProductCards(products, stockMap, incomingMap) : '<div class="col-span-full p-8 text-center text-gray-400 bg-white rounded-2xl">No hay productos que coincidan con los filtros.</div>'}
-        </div>
-      </div>
-
-      <!-- Vista 2: Tabla Administrativa de Escritorio -->
-      <div id="prod-table-view" style="${savedView === 'table' ? '' : 'display:none'}" class="bg-white rounded-2xl border overflow-hidden pb-24" style="border-color:#F0F0F0">
+      <!-- Tabla Administrativa de Escritorio -->
+      <div id="prod-table-view" class="bg-white rounded-2xl border overflow-hidden pb-12" style="border-color:#F0F0F0">
         <div class="overflow-x-auto">
           <table class="data-table" id="prod-table">
             <thead>
               <tr>
                 <th>Código</th>
-                <th>Nombre</th>
+                <th>Nombre / Referencia</th>
                 <th>Tipo</th>
                 <th>Categoría</th>
-                <th>Stock Bodega</th>
-                <th>En Tránsito</th>
+                <th>Línea</th>
+                <th class="text-center">Unidad</th>
                 <th class="text-right">IVA %</th>
-                <th class="text-right">Precio base</th>
+                <th class="text-right">Costo Ref.</th>
+                <th class="text-right">Precio Base</th>
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody id="prod-tbody">
-              ${products.length ? renderProductRows(products, stockMap, incomingMap) : emptyRow(10)}
+              ${products.length ? renderProductRows(products) : emptyRow(11)}
             </tbody>
           </table>
         </div>
       </div>
-
-      <!-- Barra Flotante Global de Carrito (Sticky sobre el Bottom Nav) -->
-      <div id="ecom-floating-cart-bar" class="fixed bottom-[70px] sm:bottom-[74px] left-3 right-3 max-w-xl mx-auto bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3 shadow-2xl border border-slate-700/80 z-[880] flex items-center justify-between gap-3 transition-all" style="display:none">
-        <div class="flex items-center gap-2.5">
-          <div class="w-10 h-10 rounded-xl bg-[#006876] text-white flex items-center justify-center font-extrabold text-sm relative shadow-sm">
-            <i class="fas fa-cart-shopping"></i>
-            <span id="ecom-floating-badge" class="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-extrabold border-2 border-slate-900">0</span>
-          </div>
-          <div>
-            <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 block" id="ecom-floating-count-lbl">0 productos</span>
-            <span id="ecom-floating-total-lbl" class="text-sm sm:text-base font-extrabold text-emerald-400">$ 0</span>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-1.5">
-          <button id="ecom-btn-clear-cart" class="p-2 text-slate-400 hover:text-rose-400 text-xs rounded-xl" title="Vaciar Carrito">
-            <i class="fas fa-trash"></i>
-          </button>
-          <button id="ecom-btn-checkout" class="btn btn-primary px-4 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md">
-            <span>Finalizar Pedido</span>
-            <i class="fas fa-arrow-right"></i>
-          </button>
-        </div>
-      </div>
       `;
-
-    // ── Eventos de Cambio de Modo Comercial (Venta vs Reserva) ──
-    $('#btn-mode-venta')?.addEventListener('click', () => {
-      const ok = (window as any).SalesCart?.setCartMode('venta');
-      if (ok) renderProductos($('#page-content'));
-    });
-
-    $('#btn-mode-reserva')?.addEventListener('click', () => {
-      const ok = (window as any).SalesCart?.setCartMode('reserva');
-      if (ok) renderProductos($('#page-content'));
-    });
-
-    // ── Sincronización Reactiva de la Barra Flotante de Carrito ──
-    function syncFloatingCartUI() {
-      const bar = document.getElementById('ecom-floating-cart-bar');
-      const badge = document.getElementById('ecom-floating-badge');
-      const countLbl = document.getElementById('ecom-floating-count-lbl');
-      const totalLbl = document.getElementById('ecom-floating-total-lbl');
-      if (!bar) return;
-
-      const summary = (window as any).SalesCart?.getSummary();
-      if (!summary || summary.totalProducts === 0) {
-        bar.style.display = 'none';
-        return;
-      }
-
-      bar.style.display = 'flex';
-      const modeTxt = summary.activeMode === 'reserva' ? '📦 Reserva' : '🛍️ Venta';
-      if (badge) badge.textContent = String(summary.totalProducts);
-      if (countLbl) countLbl.textContent = `${modeTxt}: ${summary.totalProducts} prod (${fmtN(summary.totalUnits)} unid)`;
-      if (totalLbl) totalLbl.textContent = fmt(summary.total);
-    }
-
-    window.addEventListener('gravy-cart-updated', syncFloatingCartUI);
-    syncFloatingCartUI();
-
-    $('#ecom-btn-clear-cart')?.addEventListener('click', () => {
-      if (confirm('¿Deseas vaciar todos los productos del carrito de pedido?')) {
-        (window as any).SalesCart?.clear();
-        $$('.input-ecom-qty').forEach((inp: any) => { inp.value = '0'; });
-        $$('.ecom-equiv-box').forEach((box: any) => { box.innerHTML = ''; box.classList.add('hidden'); });
-      }
-    });
-
-    $('#ecom-btn-checkout')?.addEventListener('click', () => {
-      openCheckoutDrawer(() => renderProductos($('#page-content')));
-    });
 
     // ── Eventos Filtros ───────────────────────────────────────
     const applyFilter = () => filterProductCatalog();
@@ -854,9 +700,6 @@ async function renderProductos(c) {
 
     const tbl = $('#prod-table') as HTMLTableElement;
     if (tbl) (window as any).makeTableSortable(tbl);
-
-    // Conectar inputs de tarjetas
-    _bindProductCardCartEvents(products, incomingMap);
 
   } catch (err) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
@@ -1600,6 +1443,7 @@ async function openCheckoutDrawer(onDone: any = null) {
 
 // ── Helpers de renderizado ────────────────────────────────────────────────────
 function kpiCard(label, value, icon, color, bg) {
+  const displayVal = typeof value === 'number' ? Math.round(value).toLocaleString('es-CO') : value;
   return `
     <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
       <div class="flex items-center justify-between gap-2 mb-2">
@@ -1608,12 +1452,12 @@ function kpiCard(label, value, icon, color, bg) {
           <i class="${icon}"></i>
         </div>
       </div>
-      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${fmtN(value)}</p>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${displayVal}</p>
     </div>
   `;
 }
 
-function renderProductRows(products, stockMap = {}, incomingMap = {}) {
+function renderProductRows(products) {
   return products.map(p => {
     const typeBadge = p.type === 'BIEN'
       ? '<span class="badge badge-blue">Bien</span>'
@@ -1621,8 +1465,7 @@ function renderProductRows(products, stockMap = {}, incomingMap = {}) {
     const statusBadge = p.active
       ? '<span class="badge badge-green">Activo</span>'
       : '<span class="badge badge-gray">Inactivo</span>';
-    const onHand = Number(stockMap[p.id] || 0);
-    const incoming = incomingMap[p.id];
+    const isPriceWarning = p.type === 'BIEN' && Number(p.base_price || 0) <= 1;
 
     return `<tr data-type="${esc(p.type)}" data-iva="${p.iva_rate ?? ''}" data-active="${p.active}" data-categoria="${esc(p.categoria || '')}" data-linea="${esc(p.linea || '')}">
       <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${esc(p.code)}</span></td>
@@ -1631,13 +1474,19 @@ function renderProductRows(products, stockMap = {}, incomingMap = {}) {
         <div class="flex items-center gap-1 mt-0.5">
           ${p.track_lots ? '<span class="badge text-[9px] px-1.5 py-0.2" style="background:#F3E8FF;color:#7E22CE" title="Control por Lote y Vencimiento"><i class="fas fa-barcode mr-0.5"></i>LOTE</span>' : ''}
           ${p.track_pallets ? '<span class="badge text-[9px] px-1.5 py-0.2" style="background:#E0F2FE;color:#0369A1" title="Control de Embalaje y Estibas"><i class="fas fa-pallet mr-0.5"></i>ESTIBA</span>' : ''}
+          ${isPriceWarning ? '<span class="badge text-[9px] px-1.5 py-0.2" style="background:#FEF3C7;color:#B45309;border:1px solid #FCD34D" title="Precio base sin configurar o simbólico ($1)"><i class="fas fa-circle-exclamation mr-0.5"></i>PRECIO $1</span>' : ''}
         </div>
       </td>
       <td>${typeBadge}</td>
       <td class="text-sm">${esc(p.categoria || '—')}</td>
-      <td class="font-mono text-xs font-bold ${onHand > 0 ? 'text-emerald-700' : 'text-slate-400'}">${p.type === 'BIEN' ? `${fmtN(onHand)} ${esc(p.unit || '')}` : '—'}</td>
-      <td class="text-xs">${incoming ? `<span class="badge badge-blue font-mono text-[10px]">+${fmtN(incoming.qty)}</span> <span class="text-[10px] text-gray-500">${incoming.eta || ''}</span>` : '—'}</td>
+      <td class="text-sm text-slate-500">${esc(p.linea || '—')}</td>
+      <td class="text-center font-medium text-xs text-slate-700">
+        <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">${esc(getUnitAbbr(p.unit))}</span>
+      </td>
       <td class="text-right">${p.iva_rate ?? 0}%</td>
+      <td class="text-right font-mono text-xs text-slate-600">
+        ${p.cost_price ? fmt(p.cost_price) : '—'}
+      </td>
       <td class="text-right font-mono text-xs">
         <div class="font-semibold text-gray-900">${p.base_price ? fmt(p.base_price) : '—'}</div>
         ${p.auto_calc_price && p.margin_factor ? `<div class="text-[10px] text-blue-600 font-medium" title="Calculado desde costo con redondeo"><i class="fas fa-calculator mr-0.5"></i>${p.margin_factor}${p.margin_type === 'FACTOR' ? 'x' : '%'}</div>` : ''}
@@ -1662,7 +1511,7 @@ function emptyRow(cols) {
   </td></tr>`;
 }
 
-// ── Filtro cliente (Aplica tanto a Tabla como a Cards) ────────────────────────
+// ── Filtro cliente (Aplica a la Tabla Administrativa en tiempo real) ───────────
 function filterProductCatalog() {
   const q        = (getInputVal('prod-q') || '').toLowerCase();
   const type     = getSelectVal('prod-type');
@@ -1674,25 +1523,15 @@ function filterProductCatalog() {
   // Filtro en filas de tabla
   $$('#prod-table tbody tr[data-type]').forEach(tr => {
     const text    = tr.textContent.toLowerCase();
+
     const okQ     = !q        || text.includes(q);
     const okType  = !type     || tr.dataset.type      === type;
     const okCat   = !categoria || tr.dataset.categoria === categoria;
     const okLinea = !linea    || tr.dataset.linea     === linea;
     const okIva   = !iva      || tr.dataset.iva       === iva;
     const okStat  = !status   || tr.dataset.active    === status;
-    tr.style.display = okQ && okType && okCat && okLinea && okIva && okStat ? '' : 'none';
-  });
 
-  // Filtro en Cards E-Commerce
-  $$('.prod-ecom-card').forEach(card => {
-    const text    = card.textContent.toLowerCase();
-    const okQ     = !q        || text.includes(q);
-    const okType  = !type     || card.dataset.type      === type;
-    const okCat   = !categoria || card.dataset.categoria === categoria;
-    const okLinea = !linea    || card.dataset.linea     === linea;
-    const okIva   = !iva      || card.dataset.iva       === iva;
-    const okStat  = !status   || card.dataset.active    === status;
-    (card as HTMLElement).style.display = okQ && okType && okCat && okLinea && okIva && okStat ? 'flex' : 'none';
+    tr.style.display = okQ && okType && okCat && okLinea && okIva && okStat ? '' : 'none';
   });
 }
 

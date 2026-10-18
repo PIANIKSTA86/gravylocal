@@ -35,22 +35,19 @@ routerAdd('POST', '/api/dian/nomina/emit-batch-async', (e) => {
       });
     });
 
-    // 2. Disparar procesamiento asíncrono en background
+    // 2. Procesar comprobantes secuencialmente
     try {
       const recordIds = records.map((r) => r.getId());
-      
-      setTimeout(() => {
-        processNominaBatchInBackground(recordIds, ano, mes);
-      }, 50);
-
+      processNominaBatchInBackground(recordIds, ano, mes);
     } catch (bgErr) {
-      console.error("[GRAVY QUEUE WORKER] Error iniciando rutina de fondo:", bgErr);
+      console.error("[GRAVY QUEUE WORKER] Error procesando lote de nómina:", bgErr);
+      return e.json(500, { success: false, message: "Error procesando lote de nómina: " + bgErr.message });
     }
 
-    return e.json(202, {
+    return e.json(200, {
       success: true,
       queued: records.length,
-      message: `Transmisión masiva encolada exitosamente para ${records.length} volantes de nómina.`
+      message: `Transmisión masiva procesada para ${records.length} volantes de nómina.`
     });
 
   } catch (err) {
@@ -206,7 +203,13 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
             } catch (_) {}
 
             const transId = hubResData.transaccionID || "";
-            if (transId) rec.set("ftech_transaction_id", transId);
+            if (!hubResData.success || !transId) {
+              rec.set("estado_dian", "RECHAZADO");
+              rec.set("dian_response", hubResData.error || hubResData.message || "Error al transmitir a Facturatech");
+              $app.save(rec);
+              continue;
+            }
+            rec.set("ftech_transaction_id", transId);
 
             let finalStatus = "EN_PROCESO";
             let statusMessage = hubResData.message || "En proceso";

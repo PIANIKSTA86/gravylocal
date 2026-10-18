@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRAVY — Login Opción 5: Workspace Inteligente & Cockpit Multi-Empresa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Triada de Marca GRAVY */
+      --brand-violet: #7C3AED;
+      --brand-violet-hover: #6D28D9;
+      --brand-blue: #1D4ED8;
+      --brand-blue-hover: #1E40AF;
+      --brand-teal: #00BFA5;
+      --brand-green: #059669;
+
+      --bg: #F8FAFC;
+      --surface: #FFFFFF;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --border: #E2E8F0;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --radius-pill: 9999px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .cockpit-container {
+      width: 100%;
+      max-width: 1140px;
+      min-height: 680px;
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(226, 232, 240, 0.8);
+      display: grid;
+      grid-template-columns: 500px 1fr;
+      overflow: hidden;
+    }
+
+    /* ─── COLUMNA IZQUIERDA: FORMULARIO MULTI-TENANT ─── */
+    .auth-pane {
+      padding: 48px 44px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-right: 1px solid rgba(226, 232, 240, 0.8);
+    }
+
+    .brand-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .logo-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-frame {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.12);
+    }
+
+    .logo-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .brand-text {
+      font-family: 'Outfit', sans-serif;
+      font-size: 22px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+
+    .branch-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: var(--radius-pill);
+      background: #EFF6FF;
+      color: #1D4ED8;
+      border: 1px solid #BFDBFE;
+    }
+
+    .auth-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 26px;
+      font-weight: 800;
+      color: #0F172A;
+      margin-bottom: 4px;
+    }
+
+    .auth-desc {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+
+    /* Selector de Empresa / Workspace Activo (Característica Contable Clave) */
+    .company-selector-card {
+      background: #F8FAFC;
+      border: 1.5px solid #E2E8F0;
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .company-selector-card:hover {
+      border-color: var(--brand-violet);
+      background: #F5F3FF;
+    }
+
+    .comp-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .comp-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #1D4ED8, #7C3AED);
+      color: #FFFFFF;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .comp-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0F172A;
+      line-height: 1.2;
+    }
+
+    .comp-nit {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .comp-switch-btn {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--brand-violet);
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* Campos de Entrada */
+    .form-row {
+      margin-bottom: 16px;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #1E293B;
+      margin-bottom: 6px;
+    }
+
+    .input-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .form-input {
+      width: 100%;
+      height: 48px;
+      background: #FFFFFF;
+      border: 1.5px solid #CBD5E1;
+      border-radius: var(--radius-md);
+      padding: 0 16px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text-main);
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: var(--brand-violet);
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+    }
+
+    .form-input::placeholder {
+      color: #94A3B8;
+    }
+
+    .btn-eye {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #94A3B8;
+      padding: 6px;
+    }
+
+    .btn-eye:hover {
+      color: var(--brand-violet);
+    }
+
+    .meta-options {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12.5px;
+      margin-bottom: 20px;
+    }
+
+    .remember-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+
+    .remember-label input {
+      accent-color: var(--brand-violet);
+    }
+
+    .link-forgot {
+      color: var(--brand-blue);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .link-forgot:hover {
+      text-decoration: underline;
+    }
+
+    .btn-submit {
+      width: 100%;
+      height: 50px;
+      background: linear-gradient(135deg, #1D4ED8 0%, #7C3AED 50%, #00BFA5 100%);
+      color: #FFFFFF;
+      border: none;
+      border-radius: var(--radius-md);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 20px -4px rgba(124, 58, 237, 0.45);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-submit:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px -4px rgba(29, 78, 216, 0.5);
+    }
+
+    .auth-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      padding-top: 16px;
+      border-top: 1px solid #F1F5F9;
+    }
+
+    /* ─── COLUMNA DERECHA: COCKPIT CONTABLE INTERACTIVO ─── */
+    .cockpit-pane {
+      background: #F1F5F9;
+      padding: 44px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .cockpit-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .cockpit-title {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #1E293B;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .live-sync-chip {
+      background: #ECFDF5;
+      color: #059669;
+      border: 1px solid #A7F3D0;
+      padding: 3px 10px;
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .sync-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #059669;
+    }
+
+    /* Widgets del Cockpit */
+    .cockpit-widgets {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin: auto 0;
+    }
+
+    .widget-card {
+      background: #FFFFFF;
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+      box-shadow: 0 10px 25px -10px rgba(15, 23, 42, 0.08);
+      border: 1px solid #E2E8F0;
+    }
+
+    .widget-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .w-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+
+    .w-tag {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .tag-green { background: #ECFDF5; color: #059669; }
+    .tag-blue { background: #EFF6FF; color: #1D4ED8; }
+    .tag-violet { background: #F5F3FF; color: #7C3AED; }
+
+    /* Barra de Cuadre Contable */
+    .balance-meter {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar-wrap {
+      width: 100%;
+      height: 8px;
+      background: #F1F5F9;
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+    }
+
+    .prog-blue { width: 50%; background: #1D4ED8; }
+    .prog-violet { width: 50%; background: #7C3AED; }
+
+    /* Indicadores de Comprobantes DIAN */
+    .dian-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .dian-stat-box {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .stat-num {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0F172A;
+    }
+
+    .stat-label {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .cockpit-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 960px) {
+      .cockpit-container {
+        grid-template-columns: 1fr;
+        max-width: 480px;
+      }
+      .cockpit-pane {
+        display: none;
+      }
+      .auth-pane {
+        border-right: none;
+        padding: 36px 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="cockpit-container">
+    <!-- Columna Izquierda: Formulario con Multi-Tenant -->
+    <div class="auth-pane">
+      <div>
+        <div class="brand-top">
+          <div class="logo-meta">
+            <div class="logo-frame">
+              <img src="../Logotipo transparente.png" alt="GRAVY" onerror="this.src='../Logotipo circular abstracto multicolor.png'">
+            </div>
+            <span class="brand-text">GRAVY</span>
+          </div>
+          <span class="branch-badge">Sede Principal</span>
+        </div>
+
+        <h1 class="auth-title">Acceso al Workspace</h1>
+        <p class="auth-desc">Selecciona tu empresa e ingresa tus credenciales</p>
+
+        <!-- Selector de Empresa Activa (Multi-Tenant) -->
+        <div class="company-selector-card" onclick="switchCompany()">
+          <div class="comp-left">
+            <div class="comp-icon" id="comp-initial">D</div>
+            <div>
+              <div class="comp-name" id="comp-name">DISTRIBUIDORA DEL VALLE S.A.S.</div>
+              <div class="comp-nit" id="comp-nit">NIT: 901.384.920-4 • Régimen Común</div>
+            </div>
+          </div>
+          <button type="button" class="comp-switch-btn">Cambiar</button>
+        </div>
+
+        <form id="cockpit-form" onsubmit="event.preventDefault(); handleAccess();">
+          <div class="form-row">
+            <label class="field-label" for="inp-user">Usuario o Correo Electrónico</label>
+            <div class="input-box">
+              <input class="form-input" type="email" id="inp-user" placeholder="contador@distribuidora.com" required autocomplete="username">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="field-label" for="inp-pass">Contraseña</label>
+            <div class="input-box">
+              <input class="form-input" type="password" id="inp-pass" placeholder="••••••••••••" required autocomplete="current-password">
+              <button type="button" class="btn-eye" id="btn-toggle-eye" aria-label="Mostrar contraseña">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="meta-options">
+            <label class="remember-label">
+              <input type="checkbox" checked>
+              <span>Recordar empresa y usuario</span>
+            </label>
+            <a href="#" class="link-forgot" onclick="alert('Enlace de recuperación enviado.'); return false;">¿Olvidaste tu contraseña?</a>
+          </div>
+
+          <button type="submit" class="btn-submit" id="btn-submit">
+            <span>Iniciar Sesión en el Workspace</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </form>
+      </div>
+
+      <div class="auth-footer">
+        <span>Red Local LAN: 127.0.0.1:8090 (0 ms)</span>
+        <span>Resolución DIAN 000165</span>
+      </div>
+    </div>
+
+    <!-- Columna Derecha: Cockpit Operativo en Tiempo Real -->
+    <div class="cockpit-pane">
+      <div class="cockpit-header">
+        <div class="cockpit-title">
+          <span>📊</span>
+          Cockpit Operativo en Tiempo Real
+        </div>
+        <div class="live-sync-chip">
+          <span class="sync-dot"></span>
+          Servidor Conectado
+        </div>
+      </div>
+
+      <div class="cockpit-widgets">
+        <!-- Widget 1: Balance y Partida Doble -->
+        <div class="widget-card">
+          <div class="widget-head">
+            <span class="w-title">Partida Doble & Balance</span>
+            <span class="w-tag tag-green">Cuadrado $0.00</span>
+          </div>
+          <div class="balance-meter">
+            <span style="color:#1D4ED8">Débitos: $284.1M</span>
+            <span style="color:#7C3AED">Créditos: $284.1M</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="prog-blue"></div>
+            <div class="prog-violet"></div>
+          </div>
+        </div>
+
+        <!-- Widget 2: Emisión Electrónica DIAN -->
+        <div class="widget-card">
+          <div class="widget-head">
+            <span class="w-title">Documentos DIAN del Periodo</span>
+            <span class="w-tag tag-blue">Mes en Curso</span>
+          </div>
+          <div class="dian-stats-grid">
+            <div class="dian-stat-box">
+              <div class="stat-num" style="color:#1D4ED8">184</div>
+              <div class="stat-label">Facturas CUFE</div>
+            </div>
+            <div class="dian-stat-box">
+              <div class="stat-num" style="color:#7C3AED">42</div>
+              <div class="stat-label">Doc. Soporte</div>
+            </div>
+            <div class="dian-stat-box">
+              <div class="stat-num" style="color:#059669">28</div>
+              <div class="stat-label">Nómina Elect.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cockpit-footer">
+        <span>© 2026 GRAVY Softworks S.A.S.</span>
+        <span>Multi-Empresa & Multi-Sucursal</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const passInput = document.getElementById('inp-pass');
+    const eyeBtn = document.getElementById('btn-toggle-eye');
+    eyeBtn.addEventListener('click', () => {
+      const isPass = passInput.type === 'password';
+      passInput.type = isPass ? 'text' : 'password';
+    });
+
+    // Simulador de conmutación de empresas multi-tenant
+    const companies = [
+      { name: "DISTRIBUIDORA DEL VALLE S.A.S.", nit: "NIT: 901.384.920-4 • Régimen Común", initial: "D" },
+      { name: "INVERSIONES Y LOGÍSTICA MAKINA LTDA", nit: "NIT: 830.124.512-1 • Grandes Contribuyentes", initial: "I" },
+      { name: "AGROEXPORTADORA COLOMBIANA S.A.S.", nit: "NIT: 900.741.229-8 • Autorretenedor", initial: "A" }
+    ];
+    let compIdx = 0;
+
+    function switchCompany() {
+      compIdx = (compIdx + 1) % companies.length;
+      document.getElementById('comp-name').textContent = companies[compIdx].name;
+      document.getElementById('comp-nit').textContent = companies[compIdx].nit;
+      document.getElementById('comp-initial').textContent = companies[compIdx].initial;
+    }
+
+    function handleAccess() {
+      const btn = document.getElementById('btn-submit');
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<span>Verificando permisos de empresa...</span>';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = '<span>¡Conexión Autorizada! ✓</span>';
+        btn.style.background = '#059669';
+        setTimeout(() => {
+          btn.innerHTML = orig;
+          btn.style.background = 'linear-gradient(135deg, #1D4ED8 0%, #7C3AED 50%, #00BFA5 100%)';
+          btn.disabled = false;
+        }, 1800);
+      }, 800);
+    }
+  </script>
+</body>
+</html>

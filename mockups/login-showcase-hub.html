@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRAVY — Suite de 5 Propuestas de Login (Triada Oficial & FinTech)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand-violet: #7C3AED;
+      --brand-blue: #1D4ED8;
+      --brand-green: #00BFA5;
+      --bg: #070A13;
+      --bg-surface: #0F172A;
+      --text: #F8FAFC;
+      --text-muted: #94A3B8;
+      --border: #1E293B;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Cabecera del Showcase */
+    .showcase-header {
+      background: #0B0F19;
+      border-bottom: 1px solid #1E293B;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      flex-wrap: wrap;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo-frame {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: #FFFFFF;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+    }
+
+    .brand-logo-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .brand-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+    }
+
+    .brand-triad-tags {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 1px;
+    }
+
+    .tag-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .td-blue { background: #2563EB; }
+    .td-violet { background: #7C3AED; }
+    .td-green { background: #00BFA5; }
+
+    .tag-label {
+      font-size: 11px;
+      color: #94A3B8;
+      font-weight: 600;
+    }
+
+    /* Pestañas de Navegación (5 Opciones) */
+    .nav-tabs {
+      display: flex;
+      background: #111827;
+      padding: 4px;
+      border-radius: 12px;
+      gap: 3px;
+      border: 1px solid #1F2937;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: #9CA3AF;
+      padding: 7px 13px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: #FFFFFF;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, #1D4ED8 0%, #7C3AED 50%, #00BFA5 100%);
+      color: #FFFFFF;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+    }
+
+    .viewport-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .vp-btn {
+      background: #111827;
+      border: 1px solid #1F2937;
+      color: #9CA3AF;
+      padding: 6px 11px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s;
+    }
+
+    .vp-btn:hover, .vp-btn.active {
+      background: #1F2937;
+      color: #FFFFFF;
+      border-color: #374151;
+    }
+
+    .external-link-btn {
+      background: rgba(124, 58, 237, 0.15);
+      border: 1px solid rgba(124, 58, 237, 0.4);
+      color: #C4B5FD;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .external-link-btn:hover {
+      background: #7C3AED;
+      color: #FFFFFF;
+    }
+
+    /* Área Principal */
+    .preview-stage {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #050811;
+      position: relative;
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .iframe-container {
+      width: 100%;
+      height: calc(100vh - 155px);
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 14px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      background: #FFFFFF;
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    .showcase-footer {
+      background: #0B0F19;
+      border-top: 1px solid #1E293B;
+      padding: 8px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .info-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #E2E8F0;
+      font-weight: 600;
+    }
+
+    .palette-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #111827;
+      padding: 3px 9px;
+      border-radius: 9999px;
+      font-size: 11px;
+      color: #CBD5E1;
+      border: 1px solid #1F2937;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="showcase-header">
+    <div class="brand-group">
+      <div class="brand-logo-frame">
+        <img src="../Logotipo transparente.png" alt="GRAVY" onerror="this.src='../Logotipo circular abstracto multicolor.png'">
+      </div>
+      <div>
+        <div class="brand-title">GRAVY — Suite de Propuestas de Login</div>
+        <div class="brand-triad-tags">
+          <span class="tag-dot td-blue" title="Azul: Seguridad"></span>
+          <span class="tag-dot td-violet" title="Violeta: Innovación"></span>
+          <span class="tag-dot td-green" title="Verde: DIAN"></span>
+          <span class="tag-label">Paleta Triada Oficial Integrada</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pestañas de las opciones -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" onclick="loadMockup('login-opcion-1-organico-fluido.html', this, 'Opción 1: Orgánico & Editorial (Triada)', 'Inspirado en Referencia 1: Formas orgánicas pastel, gradientes fluidos, métricas en vivo y nuevo logo')">
+        <span>✨ 1. Orgánico</span>
+      </button>
+      <button class="tab-btn" onclick="loadMockup('login-opcion-1-variacion.html', this, 'Opción 1B: Variación Liquid Glass (Invertido)', 'Variación de la Opción 1: Layout invertido (Hero a la izquierda, formulario a la derecha), sesión recordada y morphing líquido de la triada')">
+        <span>💎 1B. Variación</span>
+      </button>
+      <button class="tab-btn" onclick="loadMockup('login-opcion-2-split-productividad.html', this, 'Opción 2: Split Productividad (Triada)', 'Inspirado en Referencia 2: Outlined floating labels, carrusel de pilares DIAN y checklist contable')">
+        <span>⚡ 2. Productividad</span>
+      </button>
+      <button class="tab-btn" onclick="loadMockup('login-opcion-3-minimal-foco.html', this, 'Opción 3: Minimalista Centrado (Triada)', 'Inspirado en Referencia 3: Alto foco centrado, arte abstracto lateral en Verde/Azul y pie legal DIAN')">
+        <span>🎯 3. Minimalista</span>
+      </button>
+      <button class="tab-btn" onclick="loadMockup('login-opcion-4-fintech-dark-mesh.html', this, 'Opción 4: FinTech Dark Mesh & Glassmorphism', 'Tendencia FinTech (Stripe/Linear): Fondo oscuro, mesh glow de la triada, soporte Passkey y consola contable')">
+        <span>🌌 4. Dark FinTech</span>
+      </button>
+      <button class="tab-btn" onclick="loadMockup('login-opcion-5-workspace-cockpit.html', this, 'Opción 5: Workspace Inteligente & Cockpit Multi-Empresa', 'Tendencia Enterprise (Ramp/Retool): Selector multi-tenant de empresas, balance cuadrado en vivo y sincronización DIAN')">
+        <span>🏢 5. Cockpit ERP</span>
+      </button>
+    </nav>
+
+    <div class="viewport-controls">
+      <button class="vp-btn active" onclick="setViewport('100%', 'calc(100vh - 155px)', this)">🖥️ Desktop</button>
+      <button class="vp-btn" onclick="setViewport('1024px', '768px', this)">💻 Laptop</button>
+      <button class="vp-btn" onclick="setViewport('768px', '800px', this)">📱 Tablet</button>
+      <button class="vp-btn" onclick="setViewport('414px', '750px', this)">📲 Móvil</button>
+      <a id="ext-link" href="login-opcion-1-organico-fluido.html" target="_blank" class="external-link-btn">
+        <span>Abrir en Pestaña</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+      </a>
+    </div>
+  </header>
+
+  <main class="preview-stage">
+    <div class="iframe-container" id="frame-wrap">
+      <iframe id="preview-iframe" src="login-opcion-1-organico-fluido.html"></iframe>
+    </div>
+  </main>
+
+  <footer class="showcase-footer">
+    <div>
+      <span class="info-tag" id="current-title">Opción 1: Orgánico & Editorial (Triada)</span>
+      <span style="margin: 0 6px; color:#4B5563">|</span>
+      <span id="current-desc">Inspirado en Referencia 1: Formas orgánicas pastel, gradientes fluidos, métricas en vivo y nuevo logo</span>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <div class="palette-pill">
+        <span style="width:7px;height:7px;background:#1D4ED8;border-radius:50%"></span>
+        <span>Azul: Confianza LAN</span>
+      </div>
+      <div class="palette-pill">
+        <span style="width:7px;height:7px;background:#7C3AED;border-radius:50%"></span>
+        <span>Violeta: Innovación ERP</span>
+      </div>
+      <div class="palette-pill">
+        <span style="width:7px;height:7px;background:#00BFA5;border-radius:50%"></span>
+        <span>Verde: Ecosistema DIAN</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const iframe = document.getElementById('preview-iframe');
+    const extLink = document.getElementById('ext-link');
+    const titleEl = document.getElementById('current-title');
+    const descEl = document.getElementById('current-desc');
+    const wrap = document.getElementById('frame-wrap');
+
+    function loadMockup(file, btn, title, desc) {
+      iframe.src = file;
+      extLink.href = file;
+      titleEl.textContent = title;
+      descEl.textContent = desc;
+
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function setViewport(w, h, btn) {
+      wrap.style.width = w;
+      wrap.style.height = h;
+      document.querySelectorAll('.vp-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  </script>
+</body>
+</html>

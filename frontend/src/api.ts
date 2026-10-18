@@ -3442,36 +3442,93 @@ const API = {
       } catch (_) { }
       const cfgRetRules = Array.isArray(salesCfg?.accounting?.withholding_rules) ? salesCfg.accounting.withholding_rules : [];
 
-      const aggSub = rDec(inv.subtotal || 0);
-      const aggIva = rDec(inv.iva_total || 0);
-      const aggTotal = rDec(aggSub + aggIva);
+      // Fallback de reglas si es Nota Crédito y no vinieron en la cabecera
+      if (isCreditNote && !inv.ret_rule_renta_id && !inv.ret_rule_ica_id && !inv.ret_rule_iva_id && inv.cross_doc_ref) {
+        try {
+          const safeRef = pb.escapeFilterValue(String(inv.cross_doc_ref).trim());
+          const origInvs = await pb.list('invoices', { filter: `number="${safeRef}"`, perPage: 1 });
+          if (origInvs.items.length) {
+            const orig = origInvs.items[0];
+            inv.ret_rule_renta_id = orig.ret_rule_renta_id;
+            inv.ret_rule_ica_id = orig.ret_rule_ica_id;
+            inv.ret_rule_iva_id = orig.ret_rule_iva_id;
+            inv.ret_mode = orig.ret_mode || inv.ret_mode;
+          }
+        } catch (_) {}
+      }
 
-      const hdrRules = [
-        { id: String(inv.ret_rule_renta_id || '').trim(), kind: 'renta' },
-        { id: String(inv.ret_rule_ica_id || '').trim(), kind: 'ica' },
-        { id: String(inv.ret_rule_iva_id || '').trim(), kind: 'iva' },
-      ];
+      const isLineMode = inv.ret_mode === 'line';
+      if (isLineMode) {
+        const retByAccount: { [code: string]: { concept: string, amount: number } } = {};
+        for (const line of lines) {
+          if (line.ret_rule_id) {
+            const rule = cfgRetRules.find((r: any) => String(r.id || '') === String(line.ret_rule_id || ''));
+            if (rule) {
+              const minBase = Number(rule.min_base || 0) || 0;
+              const lineSub = rDec(line.subtotal || 0);
+              // En Nota Crédito NO se exige base mínima (Art. 1.2.4.16 DUT 1625/2016)
+              if (lineSub > 0 && (isCreditNote || lineSub >= minBase)) {
+                const amt = rDec(lineSub * Number(rule.rate || 0) / 100);
+                if (amt > 0) {
+                  const acct = mapToSalesRetAccount(rule.account_code);
+                  if (!retByAccount[acct]) retByAccount[acct] = { concept: rule.concept || 'Retención', amount: 0 };
+                  retByAccount[acct].amount = rDec(retByAccount[acct].amount + amt);
+                }
+              }
+            }
+          }
+        }
+        for (const acct of Object.keys(retByAccount)) {
+          const item = retByAccount[acct];
+          if (item.amount > 0) {
+            const acc = await findAccByCode(acct);
+            txLines.push(await buildTxLine({
+              accountId: acc.id,
+              thirdPartyId: inv.customer_id,
+              debit: item.amount,
+              credit: 0,
+              description: isCreditNote
+                ? `Reversión retención ${item.concept} por devolución venta ${inv.number}${inv.cross_doc_ref ? ' (Ref: ' + inv.cross_doc_ref + ')' : ''}`
+                : `Retención ${item.concept} a favor`,
+              crossDocRef: inv.number,
+            }));
+          }
+        }
+      } else {
+        const aggSub = rDec(inv.subtotal || 0);
+        const aggIva = rDec(inv.iva_total || 0);
+        const aggTotal = rDec(aggSub + aggIva);
 
-      for (const { id, kind } of hdrRules) {
-        if (!id) continue;
-        const rule = cfgRetRules.find(r => String(r.id || '') === id);
-        if (!rule) continue;
-        const minBase = Number(rule.min_base || 0) || 0;
-        let base = kind === 'iva' ? aggIva : (String(rule.base_type).toUpperCase() === 'TOTAL' ? aggTotal : aggSub);
-        if (base <= 0 || base < minBase) continue;
-        const amt = rDec(base * Number(rule.rate || 0) / 100);
-        if (amt <= 0) continue;
+        const hdrRules = [
+          { id: String(inv.ret_rule_renta_id || '').trim(), kind: 'renta' },
+          { id: String(inv.ret_rule_ica_id || '').trim(), kind: 'ica' },
+          { id: String(inv.ret_rule_iva_id || '').trim(), kind: 'iva' },
+        ];
 
-        const assetCode = mapToSalesRetAccount(rule.account_code || '236540');
-        const acc = await findAccByCode(assetCode);
-        txLines.push(await buildTxLine({
-          accountId: acc.id,
-          thirdPartyId: inv.customer_id,
-          debit: amt,
-          credit: 0,
-          description: `Retención ${rule.concept} a favor`,
-          crossDocRef: inv.number,
-        }));
+        for (const { id, kind } of hdrRules) {
+          if (!id) continue;
+          const rule = cfgRetRules.find(r => String(r.id || '') === id);
+          if (!rule) continue;
+          const minBase = Number(rule.min_base || 0) || 0;
+          let base = kind === 'iva' ? aggIva : (String(rule.base_type).toUpperCase() === 'TOTAL' ? aggTotal : aggSub);
+          // En Nota Crédito NO se evalúa base < minBase porque los valores ya fueron retenidos
+          if (base <= 0 || (!isCreditNote && base < minBase)) continue;
+          const amt = rDec(base * Number(rule.rate || 0) / 100);
+          if (amt <= 0) continue;
+
+          const assetCode = mapToSalesRetAccount(rule.account_code || '236540');
+          const acc = await findAccByCode(assetCode);
+          txLines.push(await buildTxLine({
+            accountId: acc.id,
+            thirdPartyId: inv.customer_id,
+            debit: amt,
+            credit: 0,
+            description: isCreditNote
+              ? `Reversión retención ${rule.concept} a favor por devolución venta ${inv.number}${inv.cross_doc_ref ? ' (Ref: ' + inv.cross_doc_ref + ')' : ''}`
+              : `Retención ${rule.concept} a favor`,
+            crossDocRef: inv.number,
+          }));
+        }
       }
     }
 
@@ -4173,7 +4230,7 @@ const API = {
     return pb.listAll('ph_billing_concepts', {
       filter,
       sort: 'code',
-      expand: 'account_id',
+      expand: 'account_id,cxc_account_id',
     });
   },
 
@@ -7482,11 +7539,18 @@ const API = {
       const lines = await pb.listAll('tx_lines', {
         filter: filterStr,
         expand: 'tx_id,account_id,third_party_id,cost_center_id',
-        sort: 'created'
+        sort: 'line_order,id',
+        ignoreBranch: true,
+        ignoreCostCenter: true
       });
 
-      // Retornar líneas con concepto de importación asociado
-      return lines.filter((l: any) => l.import_concept && String(l.import_concept).trim() !== '');
+      // Retornar líneas con concepto de importación asociado, excluyendo transacciones anuladas/canceladas
+      return lines.filter((l: any) => {
+        if (!l.import_concept || String(l.import_concept).trim() === '') return false;
+        const txStatus = l.expand?.tx_id?.status;
+        if (txStatus === 'voided' || txStatus === 'cancelled') return false;
+        return true;
+      });
     } catch (err) {
       console.warn('[getImportTxLines] Error al listar líneas:', err);
       return [];
@@ -7532,80 +7596,150 @@ const API = {
     });
   },
 
-  /** Obtiene todos los pagos / egresos vinculados a una importación */
+  /** Obtiene todos los pagos / egresos vinculados a una importación y a todos sus terceros */
   async getImportPayments(importId: string) {
     if (!importId) return [];
     try {
       const safeId = pb.escapeFilterValue(importId);
       
-      // 1. Buscar transacciones con import_id explícito
+      // Obtener datos de la importación para match de número consecutivo
+      let impData: any = null;
+      try {
+        impData = await pb.get('imports', importId);
+      } catch (_) {}
+      const impNum = impData?.number || '';
+      const cleanNum = impNum.replace(/\D/g, '');
+
+      // 1. Buscar transacciones con import_id explícito (ignorando sucursal para visibilidad total de tesorería)
       const txs = await pb.listAll('transactions', {
-        filter: `import_id = "${safeId}" && status != "cancelled"`,
+        filter: `import_id = "${safeId}" && status != "cancelled" && status != "voided"`,
         expand: 'tx_type_id,third_party_id',
-        sort: '-date'
+        sort: '-date',
+        ignoreBranch: true
       });
 
-      // 2. Buscar líneas explícitas de pago vinculadas a la importación
-      const paymentLines = await pb.listAll('tx_lines', {
-        filter: `import_id = "${safeId}" && import_concept = "payment"`,
-        expand: 'account_id,third_party_id'
-      });
-
-      const costConcepts = new Set(['fob', 'freight', 'insurance', 'customs', 'local_carrier', 'local_other', 'bank_fees']);
       const txMap = new Map<string, any>();
       txs.forEach((t: any) => txMap.set(t.id, t));
 
-      // Agregar transacciones referenciadas por paymentLines
-      for (const pl of paymentLines) {
-        if (pl.tx_id && !txMap.has(pl.tx_id)) {
-          try {
-            const fetchedTx = await pb.get('transactions', pl.tx_id, { expand: 'tx_type_id,third_party_id' });
-            if (fetchedTx && fetchedTx.status !== 'cancelled') {
-              txMap.set(pl.tx_id, fetchedTx);
-            }
-          } catch (_) {}
-        }
+      // 2. Buscar comprobantes de egreso / giro / notas que mencionen el consecutivo
+      if (cleanNum) {
+        try {
+          const textFilter = `(description ~ "IMP ${cleanNum}" || description ~ "IMP-${cleanNum}" || description ~ "${impNum}") && status != "cancelled" && status != "voided"`;
+          const textTxs = await pb.listAll('transactions', {
+            filter: textFilter,
+            expand: 'tx_type_id,third_party_id',
+            sort: '-date',
+            ignoreBranch: true
+          });
+          textTxs.forEach((t: any) => {
+            if (!txMap.has(t.id)) txMap.set(t.id, t);
+          });
+        } catch (_) {}
       }
+
+      // 3. Buscar líneas explícitas de pago vinculadas a la importación
+      try {
+        const paymentLines = await pb.listAll('tx_lines', {
+          filter: `import_id = "${safeId}" && import_concept = "payment"`,
+          expand: 'account_id,third_party_id,tx_id',
+          ignoreBranch: true,
+          ignoreCostCenter: true
+        });
+
+        for (const pl of paymentLines) {
+          if (pl.tx_id && !txMap.has(pl.tx_id)) {
+            try {
+              const fetchedTx = await pb.get('transactions', pl.tx_id, { expand: 'tx_type_id,third_party_id' });
+              if (fetchedTx && fetchedTx.status !== 'cancelled' && fetchedTx.status !== 'voided') {
+                txMap.set(pl.tx_id, fetchedTx);
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
 
       const enriched: any[] = [];
       for (const [txId, t] of txMap.entries()) {
         try {
           const lines = await pb.listAll('tx_lines', {
             filter: `tx_id = "${txId}"`,
-            expand: 'account_id,third_party_id'
+            expand: 'account_id,third_party_id',
+            ignoreBranch: true,
+            ignoreCostCenter: true
           });
 
+          const txTypeCode = t.expand?.tx_type_id?.code || '';
+          const isCE = txTypeCode === 'CE' || txTypeCode === 'NA';
           const hasExplicitPaymentLine = lines.some((l: any) => l.import_concept === 'payment');
-          const hasCostConceptLine = lines.some((l: any) => costConcepts.has(l.import_concept));
+          const hasBankOutflow = lines.some((l: any) => Number(l.credit || 0) > 0 && l.expand?.account_id?.code?.startsWith('11'));
+          const hasPayableDebit = lines.some((l: any) => Number(l.debit || 0) > 0 && (l.expand?.account_id?.code?.startsWith('22') || l.expand?.account_id?.code?.startsWith('23') || l.expand?.account_id?.code?.startsWith('1330')));
 
-          // Si es puramente causación de costo de importación (FOB, aduana, flete, etc.), no es un pago
-          if (hasCostConceptLine && !hasExplicitPaymentLine) {
-            continue;
-          }
+          // Excluir causaciones puras de costo (compras / facturas sin salida de banco) y asientos de capitalización
+          const isCapitalization = lines.some((l: any) => l.import_concept === 'capitalization');
+          if (isCapitalization) continue;
+
+          const isPureCostCausation = !isCE && !hasBankOutflow && !hasExplicitPaymentLine;
+          if (isPureCostCausation) continue;
 
           let paidAmount = 0;
           if (hasExplicitPaymentLine) {
             paidAmount = lines.filter((l: any) => l.import_concept === 'payment')
               .reduce((s: number, l: any) => s + Math.max(Number(l.debit || 0), Number(l.credit || 0)), 0);
-          } else {
-            const bankCredit = lines.filter((l: any) => l.credit > 0 && l.expand?.account_id?.code?.startsWith('11'))
+          } else if (hasBankOutflow) {
+            paidAmount = lines.filter((l: any) => Number(l.credit || 0) > 0 && l.expand?.account_id?.code?.startsWith('11'))
               .reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
-            const provDebit = lines.filter((l: any) => l.debit > 0 && (l.expand?.account_id?.code?.startsWith('22') || l.expand?.account_id?.code?.startsWith('23')))
+          } else if (hasPayableDebit) {
+            paidAmount = lines.filter((l: any) => Number(l.debit || 0) > 0 && (l.expand?.account_id?.code?.startsWith('22') || l.expand?.account_id?.code?.startsWith('23') || l.expand?.account_id?.code?.startsWith('1330')))
               .reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
-            paidAmount = bankCredit || provDebit || (lines.length ? Math.max(
+          } else {
+            paidAmount = Math.max(
               lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0),
               lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0)
-            ) : 0);
+            );
           }
+
+          if (paidAmount <= 0) continue;
 
           const bankAccounts = lines.filter((l: any) => l.expand?.account_id?.code?.startsWith('11'))
             .map((l: any) => `${l.expand?.account_id?.code || ''} ${l.expand?.account_id?.name || ''}`.trim())
             .filter((v: any, i: any, a: any) => v && a.indexOf(v) === i);
 
+          // Determinar tercero beneficiario y su rol en la importación
+          const lineWithTp = lines.find((l: any) => l.expand?.third_party_id) || null;
+          const tp = t.expand?.third_party_id || lineWithTp?.expand?.third_party_id;
+          const tpName = (tp?.name || '').toUpperCase();
+
+          let role = 'Tercero / Proveedor';
+          let conceptKey = 'other';
+
+          if (tpName.includes('COBOCE') || (impData?.supplier_id && tp?.id === impData.supplier_id)) {
+            role = 'Proveedor Mercancía (Exterior)';
+            conceptKey = 'fob';
+          } else if (tpName.includes('ANDES') || tpName.includes('MEDITERRANEAN') || tpName.includes('MSC') || tpName.includes('NAV')) {
+            role = 'Naviera / Flete Internacional';
+            conceptKey = 'freight';
+          } else if (tpName.includes('DIAN') || tpName.includes('IMPUESTOS Y ADUANAS') || tpName.includes('AGENCIA DE ADUANA') || tpName.includes('GRUPO ES & R')) {
+            role = 'Aduana / DIAN / Aranceles';
+            conceptKey = 'customs';
+          } else if (tpName.includes('OCCIDENTAL') || tpName.includes('TRANSPORTE') || tpName.includes('LOGISTICA')) {
+            role = 'Transporte Terrestre Local';
+            conceptKey = 'local_carrier';
+          } else if (tpName.includes('PORTUARIA') || tpName.includes('PUERTO') || tpName.includes('SPRBUN')) {
+            role = 'Operador Portuario';
+            conceptKey = 'local_other';
+          } else if (tpName.includes('BANCO') || tpName.includes('BANCOLOMBIA')) {
+            role = 'Gastos Bancarios / SWIFT';
+            conceptKey = 'bank_fees';
+          }
+
           enriched.push({
             ...t,
             lines,
             paidAmount,
+            thirdParty: tp,
+            thirdPartyName: tp?.name || 'Tercero',
+            thirdPartyRole: role,
+            conceptKey,
             bankAccountsText: bankAccounts.join(', ') || 'Caja / Banco General'
           });
         } catch (_) {}

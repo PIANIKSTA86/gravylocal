@@ -686,6 +686,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   documentNumber,
   issueDate,
   dueDate,
+  creditDays,
   issueTime,
   dianEnvironment,
   emitterNit,
@@ -873,6 +874,17 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   const payDianCode = String(paymentDianCode || (payForm === "2" ? "30" : (paymentMethod === "TRANSFERENCIA" ? "47" : "10")));
   const dueDateVal = dueDate ? String(dueDate).slice(0, 10) : issueDate;
 
+  let calculatedCreditDays = Number(creditDays || 0);
+  if (calculatedCreditDays <= 0 && dueDateVal && issueDate && payForm === "2") {
+    try {
+      const dIssue = new Date(issueDate + "T12:00:00Z");
+      const dDue = new Date(dueDateVal + "T12:00:00Z");
+      const diffMs = dDue.getTime() - dIssue.getTime();
+      const diffDays = Math.round(diffMs / 86400000);
+      if (diffDays > 0) calculatedCreditDays = diffDays;
+    } catch (_) {}
+  }
+
   xml += `
   <cac:PaymentMeans>
     <cbc:ID>1</cbc:ID>
@@ -884,7 +896,8 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     <cbc:ID>1</cbc:ID>
     <cbc:PaymentMeansID>${payForm}</cbc:PaymentMeansID>
     ${payForm === '2' ? `<cbc:Amount currencyID="COP">${dec(total)}</cbc:Amount>
-    <cbc:PaymentDueDate>${dueDateVal}</cbc:PaymentDueDate>` : ''}
+    <cbc:PaymentDueDate>${dueDateVal}</cbc:PaymentDueDate>
+    ${calculatedCreditDays > 0 ? `<cbc:DurationMeasure unitCode="DAY">${calculatedCreditDays}</cbc:DurationMeasure>` : ''}` : ''}
   </cac:PaymentTerms>`;
 
   xml += `
@@ -1044,6 +1057,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     documentNumber,
     issueDate,
     dueDate,
+    creditDays,
     issueTime,
     ftechEnvironment,
     emitterNit,
@@ -1588,12 +1602,34 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   </NOT>`;
     }
 
-    // 10. MEP Block
+    // 10. MEP Block & CTS Block (Condiciones y Plazo Facturatech)
     const payForm = String(paymentForm || (paymentMethod === 'CREDITO' ? '2' : '1'));
     const payDianCode = String(paymentDianCode || (payForm === '2' ? '30' : (paymentMethod === 'TRANSFERENCIA' ? '47' : '10')));
     let mep1 = payDianCode;
     let mep2 = payForm;
     const dueDateVal = dueDate ? String(dueDate).slice(0, 10) : issueDate;
+
+    let calculatedCreditDays = Number(creditDays || 0);
+    if (calculatedCreditDays <= 0 && dueDateVal && issueDate && mep2 === '2') {
+      try {
+        const dIssue = new Date(issueDate + 'T12:00:00Z');
+        const dDue = new Date(dueDateVal + 'T12:00:00Z');
+        const diffMs = dDue.getTime() - dIssue.getTime();
+        const diffDays = Math.round(diffMs / 86400000);
+        if (diffDays > 0) {
+          calculatedCreditDays = diffDays;
+        }
+      } catch (_) {}
+    }
+    if (mep2 === '2' && calculatedCreditDays <= 0 && customer) {
+      try {
+        const custPayDays = customer.getInt('payment_days');
+        if (custPayDays > 0) calculatedCreditDays = custPayDays;
+      } catch (_) {}
+    }
+    if (mep2 === '2' && calculatedCreditDays <= 0) {
+      calculatedCreditDays = 1;
+    }
 
     if (isDS) {
       xml += `
@@ -1602,6 +1638,13 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     <MEP_2>${mep2}</MEP_2>
     <MEP_3>${mep2 === '2' ? dueDateVal : issueDate}</MEP_3>
   </MEP>`;
+      if (mep2 === '2') {
+        xml += `
+  <CTS>
+    <CTS_1>${calculatedCreditDays}</CTS_1>
+    <CTS_2>Crédito a ${calculatedCreditDays} días</CTS_2>
+  </CTS>`;
+      }
     } else if ((isNC || isND) && sinReferencia) {
       xml += `
   <MEP>
@@ -1616,7 +1659,11 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     <MEP_1>${mep1}</MEP_1>
     <MEP_2>2</MEP_2>
     <MEP_3>${dueDateVal}</MEP_3>
-  </MEP>`;
+  </MEP>
+  <CTS>
+    <CTS_1>${calculatedCreditDays}</CTS_1>
+    <CTS_2>Crédito a ${calculatedCreditDays} días</CTS_2>
+  </CTS>`;
       } else {
         xml += `
   <MEP>
@@ -1732,6 +1779,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     documentNumber,
     issueDate,
     dueDate,
+    creditDays,
     issueTime,
     ftechEnvironment,
     emitterNit,
@@ -2104,12 +2152,34 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     <DRF_6>${drf6}</DRF_6>
   </DRF>`;
 
-    // 10. MEP Block
+    // 10. MEP Block & CTS Block (POS Facturatech)
     const payForm = String(paymentForm || (paymentMethod === 'CREDITO' ? '2' : '1'));
     const payDianCode = String(paymentDianCode || (payForm === '2' ? '30' : (paymentMethod === 'TRANSFERENCIA' ? '47' : '10')));
     let mep1 = payDianCode;
     let mep2 = payForm;
     const dueDateVal = dueDate ? String(dueDate).slice(0, 10) : issueDate;
+
+    let calculatedCreditDays = Number(creditDays || 0);
+    if (calculatedCreditDays <= 0 && dueDateVal && issueDate && mep2 === '2') {
+      try {
+        const dIssue = new Date(issueDate + 'T12:00:00Z');
+        const dDue = new Date(dueDateVal + 'T12:00:00Z');
+        const diffMs = dDue.getTime() - dIssue.getTime();
+        const diffDays = Math.round(diffMs / 86400000);
+        if (diffDays > 0) {
+          calculatedCreditDays = diffDays;
+        }
+      } catch (_) {}
+    }
+    if (mep2 === '2' && calculatedCreditDays <= 0 && customer) {
+      try {
+        const custPayDays = customer.getInt('payment_days');
+        if (custPayDays > 0) calculatedCreditDays = custPayDays;
+      } catch (_) {}
+    }
+    if (mep2 === '2' && calculatedCreditDays <= 0) {
+      calculatedCreditDays = 1;
+    }
 
     if (mep2 === '2') {
       xml += `
@@ -2117,7 +2187,11 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     <MEP_1>${mep1}</MEP_1>
     <MEP_2>2</MEP_2>
     <MEP_3>${dueDateVal}</MEP_3>
-  </MEP>`;
+  </MEP>
+  <CTS>
+    <CTS_1>${calculatedCreditDays}</CTS_1>
+    <CTS_2>Crédito a ${calculatedCreditDays} días</CTS_2>
+  </CTS>`;
     } else {
       xml += `
   <MEP>
@@ -2393,6 +2467,13 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       if (invDueDate) {
         dueDate = invDueDate.slice(0, 10);
       }
+    } else if (tx) {
+      try {
+        const txDueDate = tx.getString("due_date");
+        if (txDueDate) {
+          dueDate = txDueDate.slice(0, 10);
+        }
+      } catch (_) {}
     }
     
     let mandanteInfo = null;
@@ -2666,10 +2747,38 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     let paymentForm = "1";
     let paymentDianCode = "10";
     let paymentMethod = "EFECTIVO";
+    let creditDays = 0;
     if (invoice) {
-      paymentForm = invoice.getString("payment_form") || (invoice.getString("payment_method") === "CREDITO" ? "2" : "1");
-      paymentDianCode = invoice.getString("payment_dian_code") || (paymentForm === "2" ? "30" : (invoice.getString("payment_method") === "TRANSFERENCIA" ? "47" : "10"));
-      paymentMethod = invoice.getString("payment_method") || (paymentForm === "2" ? "CREDITO" : "EFECTIVO");
+      const invDueDate = invoice.getString("due_date");
+      const invForm = invoice.getString("payment_form");
+      const invMethod = invoice.getString("payment_method");
+      
+      if (invDueDate && invDueDate.slice(0, 10) > issueDate) {
+        paymentForm = "2";
+      } else if (invForm === "2" || invMethod === "CREDITO") {
+        paymentForm = "2";
+      } else {
+        paymentForm = invForm || "1";
+      }
+      
+      paymentDianCode = invoice.getString("payment_dian_code") || (paymentForm === "2" ? "30" : (invMethod === "TRANSFERENCIA" ? "47" : "10"));
+      paymentMethod = invMethod || (paymentForm === "2" ? "CREDITO" : "EFECTIVO");
+    }
+
+    if (paymentForm === "2" && dueDate && issueDate) {
+      try {
+        const dIssue = new Date(issueDate + "T12:00:00Z");
+        const dDue = new Date(dueDate.slice(0, 10) + "T12:00:00Z");
+        const diffMs = dDue.getTime() - dIssue.getTime();
+        const diffDays = Math.round(diffMs / 86400000);
+        if (diffDays > 0) creditDays = diffDays;
+      } catch (_) {}
+    }
+    if (creditDays <= 0 && paymentForm === "2" && customer) {
+      try {
+        const cpDays = customer.getInt("payment_days");
+        if (cpDays > 0) creditDays = cpDays;
+      } catch (_) {}
     }
 
     let xml = "";
@@ -2680,6 +2789,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
           documentNumber: docNumber,
           issueDate,
           dueDate,
+          creditDays,
           issueTime,
           ftechEnvironment,
           emitterNit,
@@ -2715,6 +2825,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
           documentNumber: docNumber,
           issueDate,
           dueDate,
+          creditDays,
           issueTime,
           ftechEnvironment,
           emitterNit,
@@ -2803,6 +2914,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         documentNumber: docNumber,
         issueDate,
         dueDate,
+        creditDays,
         issueTime,
         dianEnvironment,
         emitterNit,
@@ -2969,6 +3081,87 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       return;
     }
 
+    // Helper autónomo para invocar MATIAS API inmune a aislamiento de scope en Goja
+    function getMatiasCaller() {
+      if (typeof globalThis.callMatiasApi === "function") {
+        return globalThis.callMatiasApi;
+      }
+      return function(endpoint, method, payload, overrideOptions) {
+        const opts = overrideOptions || {};
+        let env = opts.environment;
+        if (!env) {
+          try {
+            const rEnv = $app.findFirstRecordByFilter("settings", "key = 'matias_environment'");
+            env = (rEnv ? rEnv.get("value") : "") || "sandbox";
+          } catch (_) {
+            env = "sandbox";
+          }
+        }
+        const baseUrl = env === "production"
+          ? "https://api.matias-api.com/api/ubl2.1"
+          : "https://sandbox-api.matias-api.com/api/ubl2.1";
+
+        let token = opts.token;
+        if (!token) {
+          try {
+            const rTok = $app.findFirstRecordByFilter("settings", "key = 'matias_api_token'");
+            token = (rTok ? rTok.get("value") : "") || "";
+          } catch (_) {
+            token = "";
+          }
+        }
+
+        if (!token) {
+          throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+        }
+
+        let clientUuid = opts.client_uuid;
+        if (!clientUuid) {
+          try {
+            const rUuid = $app.findFirstRecordByFilter("settings", "key = 'matias_client_uuid'");
+            clientUuid = (rUuid ? rUuid.get("value") : "") || "";
+          } catch (_) {
+            clientUuid = "";
+          }
+        }
+
+        let fullUrl = baseUrl + endpoint;
+        if (clientUuid) {
+          fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+        }
+
+        const reqOptions = {
+          url: fullUrl,
+          method: method || "GET",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          timeout: 120
+        };
+
+        if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+          reqOptions.body = JSON.stringify(payload);
+        }
+
+        const res = $http.send(reqOptions);
+        let parsed = null;
+        try {
+          parsed = JSON.parse(res.raw);
+        } catch (_) {
+          parsed = { raw: res.raw };
+        }
+
+        return {
+          statusCode: res.statusCode,
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          data: parsed,
+          raw: res.raw
+        };
+      };
+    }
+
     if (einvoiceMethod === "matias") {
       console.log("[GRAVY HOOK] Emitiendo documento electrónico vía MATIAS API...");
 
@@ -3109,6 +3302,48 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         }];
       }
 
+      // Referencia a documento previo en Notas Crédito, Débito o Notas de Ajuste
+      if (isNC || isND || isNDS) {
+        let refNum = "";
+        let refUuid = "";
+        let refDate = issueDate;
+
+        const bodyData = e.requestInfo()?.body || {};
+        if (bodyData.billing_reference) {
+          refNum = bodyData.billing_reference.number || "";
+          refUuid = bodyData.billing_reference.uuid || bodyData.billing_reference.cufe || bodyData.billing_reference.cude || "";
+          refDate = bodyData.billing_reference.date || bodyData.billing_reference.issue_date || issueDate;
+        }
+
+        if (!refUuid && crossDocRef) {
+          refNum = crossDocRef;
+          try {
+            const parentDoc = $app.findFirstRecordByFilter("einvoice_docs", "doc_number = '" + crossDocRef.replace(/'/g, "''") + "' || prefix || '-' || folio = '" + crossDocRef.replace(/'/g, "''") + "' || folio = '" + crossDocRef.replace(/'/g, "''") + "'");
+            if (parentDoc) {
+              refUuid = parentDoc.getString("cufe") || parentDoc.getString("uuid") || "";
+              refDate = parentDoc.getString("issue_date") || refDate;
+              refNum = parentDoc.getString("doc_number") || refNum;
+            }
+          } catch (_) {}
+        }
+
+        matiasPayload.billing_reference = {
+          number: refNum || "REF-001",
+          date: refDate || issueDate,
+          uuid: refUuid || "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          scheme_name: isNDS ? "CUDS-SHA384" : "CUDE-SHA384"
+        };
+
+        const discrepancyCode = bodyData.discrepancy_code || (isNC ? "2" : (isND ? "1" : "11"));
+        const discrepancyDesc = bodyData.discrepancy_description || (isNC ? "Anulación de factura electrónica" : (isND ? "Ajuste de precio" : "Anulación de documento soporte"));
+
+        matiasPayload.discrepancy_response = {
+          reference_id: refNum || "REF-001",
+          response_id: String(discrepancyCode),
+          description: discrepancyDesc
+        };
+      }
+
       // Extraer datos de Operación DIAN Especial si están presentes en notas
       let specialOp = { type: 'standard' };
       const rawNotesForSpecial = (invoice ? invoice.getString("notes") : "") || (tx ? tx.getString("description") : "");
@@ -3190,10 +3425,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       matiasPayload.notes = matiasPayload.notes.replace(/\[DIAN_SPECIAL_OP:.*?\]\s*/g, '').trim() || "Generado por GRAVY ERP";
 
       // Enviar a MATIAS API
-      const matiasCaller = globalThis.callMatiasApi;
-      if (!matiasCaller) {
-        throw new Error("Módulo de integración MATIAS API no cargado. Verifique radian.pb.js");
-      }
+      const matiasCaller = getMatiasCaller();
 
       const matiasRes = matiasCaller(matiasEndpoint, "POST", matiasPayload);
       if (!matiasRes.ok) {
@@ -3939,6 +4171,17 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         });
         return;
       }
+    }
+
+    const einvoiceMethod = getSetting("einvoice_method", "dian");
+    if (einvoiceMethod === "matias") {
+      e.json(200, {
+        success: true,
+        status: docRecord.getString("status") || "pendiente",
+        cufe: docRecord.getString("cufe") || "",
+        dianResponse: docRecord.getString("dian_response") || "Procesado por MATIAS API"
+      });
+      return;
     }
     
     let transId = docRecord.getString("ftech_transaction_id");
@@ -4924,9 +5167,16 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
       } catch (_) {}
       
       const transId = hubResData.transaccionID || "";
-      if (transId) {
-        rec.set("ftech_transaction_id", transId);
+      if (!hubResData.success || !transId) {
+        const errMsg = hubResData.error || hubResData.message || "Error al subir a Facturatech (sin ID de transacción).";
+        rec.set("estado_dian", "RECHAZADO");
+        rec.set("dian_response", errMsg);
+        $app.save(rec);
+        e.json(400, { success: false, status: "RECHAZADO", message: errMsg, consecutivo, prefijo });
+        return;
       }
+
+      rec.set("ftech_transaction_id", transId);
 
       // Consultar status inmediato a través del Hub
       let finalStatus = "EN_PROCESO";
@@ -4952,7 +5202,7 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
 
         if (statusHubRes.statusCode === 200) {
           const sData = JSON.parse(statusHubRes.raw);
-          if (sData.status === "aceptada" || sData.status === "APROBADO") {
+          if (sData.status === "aceptada" || sData.status === "APROBADO" || (sData.message && /aprobado/i.test(sData.message) && (sData.cufe || rec.get("cufe")))) {
             finalStatus = "APROBADO";
             if (sData.xmlContent && sData.xmlContent.includes("<")) {
               rec.set("xml_generado", sData.xmlContent);
@@ -4993,10 +5243,7 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
     if (einvoiceMethod === "matias") {
       console.log("[GRAVY HOOK] Transmitiendo Nómina Electrónica vía MATIAS API...");
       
-      const matiasCaller = globalThis.callMatiasApi;
-      if (!matiasCaller) {
-        throw new Error("Módulo de integración MATIAS API no cargado. Verifique radian.pb.js");
-      }
+      const matiasCaller = getMatiasCaller();
 
       // Obtener resolución activa para Nómina Electrónica (NE)
       let neResolution = null;
@@ -5122,7 +5369,47 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
         total_voucher: String(totalNet)
       };
 
-      const matiasRes = matiasCaller("/ep/payroll", "POST", matiasNominaPayload);
+      let matiasNominaEndpoint = "/ep/payroll";
+      let sendPayload = matiasNominaPayload;
+
+      const nomAction = body.action || (rec.getString("tipo") === 'reemplazo' ? 'replace' : (rec.getString("tipo") === 'eliminacion' ? 'delete' : 'emit'));
+
+      if (nomAction === "replace" || nomAction === "reemplazo") {
+        matiasNominaEndpoint = "/ep/payroll/replace";
+        const predNum = String(body.predecessor_number || rec.getString("predecessor_number") || ("NOM" + (consecutivo > 1 ? consecutivo - 1 : 1)));
+        const predCune = String(body.predecessor_cune || rec.getString("predecessor_cune") || cufe || "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        const predDate = String(body.predecessor_date || rec.getString("predecessor_date") || nowStr);
+
+        matiasNominaPayload.replacing_predecessor = {
+          number: predNum,
+          cune: predCune,
+          generation_date: predDate
+        };
+        sendPayload = matiasNominaPayload;
+      } else if (nomAction === "delete" || nomAction === "eliminacion") {
+        matiasNominaEndpoint = "/ep/payroll/delete";
+        const predNum = String(body.predecessor_number || rec.getString("predecessor_number") || ("NOM" + consecutivo));
+        const predCune = String(body.predecessor_cune || rec.getString("predecessor_cune") || cufe || "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        const predDate = String(body.predecessor_date || rec.getString("predecessor_date") || nowStr);
+
+        sendPayload = {
+          resolution_number: String(resNum || "18760000001"),
+          document_number: String(consecutivo),
+          generation_city_id: "1006",
+          deleting_predecessor: {
+            number: predNum,
+            cune: predCune,
+            generation_date: predDate
+          },
+          general_information: {
+            generation_date: nowStr,
+            generation_time: nowTimeStr
+          },
+          notes: body.notes || "Documento de nómina eliminado por ajuste contable"
+        };
+      }
+
+      const matiasRes = matiasCaller(matiasNominaEndpoint, "POST", sendPayload);
       if (!matiasRes.ok) {
         const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en MATIAS API (${matiasRes.statusCode})`;
         rec.set("estado_dian", "RECHAZADO");
@@ -5226,6 +5513,19 @@ routerAdd('POST', '/api/dian/nomina/check-status', (e) => {
       return;
     }
 
+    const einvoiceMethod = getNominaSetting("einvoice_method", "simulation");
+    if (einvoiceMethod === "matias") {
+      e.json(200, {
+        success: true,
+        status: rec.getString("estado_dian") || "PENDIENTE",
+        cufe: rec.getString("cufe") || "",
+        dianResponse: rec.getString("dian_response") || "Procesado por MATIAS API",
+        consecutivo: rec.getInt("consecutivo"),
+        prefijo: rec.getString("prefijo")
+      });
+      return;
+    }
+
     const ftechUsername = getNominaSetting("ftech_username", "");
     const ftechPassword = getNominaSetting("ftech_password", "");
     const ftechEnvironment = getNominaSetting("ftech_environment", "demo");
@@ -5255,7 +5555,7 @@ routerAdd('POST', '/api/dian/nomina/check-status', (e) => {
         if (statusHubRes.statusCode === 200) {
           const sData = JSON.parse(statusHubRes.raw);
           let estadoFinal = "EN_PROCESO";
-          if (sData.status === "aceptada" || sData.status === "APROBADO") {
+          if (sData.status === "aceptada" || sData.status === "APROBADO" || (sData.message && /aprobado/i.test(sData.message) && (sData.cufe || rec.get("cufe")))) {
             estadoFinal = "APROBADO";
             if (sData.cufe) {
               rec.set("cufe", sData.cufe.trim());
@@ -5514,38 +5814,140 @@ routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
 // Sincronizar resoluciones y prefijos autorizados desde MATIAS API
 routerAdd("POST", "/api/dian/sync-matias-resolutions", (e) => {
   try {
-    const caller = globalThis.callMatiasApi;
-    if (!caller) {
-      return e.json(400, { success: false, message: "Módulo MATIAS API no disponible." });
-    }
+    const reqBody = e.requestInfo()?.body || {};
 
-    const res = caller("/resolutions", "GET");
+    // Helper autónomo de llamada MATIAS
+    const caller = (typeof getMatiasCaller === "function") ? getMatiasCaller() : (function() {
+      return function(endpoint, method, payload, overrideOptions) {
+        const opts = overrideOptions || {};
+        const env = opts.environment || (function() {
+          try {
+            const r = $app.findFirstRecordByFilter("settings", "key = 'matias_environment'");
+            return (r ? r.get("value") : "") || "sandbox";
+          } catch (_) { return "sandbox"; }
+        })();
+        const baseUrl = env === "production"
+          ? "https://api.matias-api.com/api/ubl2.1"
+          : "https://sandbox-api.matias-api.com/api/ubl2.1";
+        const token = opts.token || (function() {
+          try {
+            const r = $app.findFirstRecordByFilter("settings", "key = 'matias_api_token'");
+            return (r ? r.get("value") : "") || "";
+          } catch (_) { return ""; }
+        })();
+        if (!token) throw new Error("Token de MATIAS API no configurado.");
+        const clientUuid = opts.client_uuid || (function() {
+          try {
+            const r = $app.findFirstRecordByFilter("settings", "key = 'matias_client_uuid'");
+            return (r ? r.get("value") : "") || "";
+          } catch (_) { return ""; }
+        })();
+        let fullUrl = baseUrl + endpoint;
+        if (clientUuid) {
+          fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+        }
+        const res = $http.send({
+          url: fullUrl,
+          method: method || "GET",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          timeout: 60
+        });
+        let parsed = null;
+        try { parsed = JSON.parse(res.raw); } catch (_) { parsed = { raw: res.raw }; }
+        return { statusCode: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, data: parsed, raw: res.raw };
+      };
+    })();
+
+    const passedToken = (reqBody.token || "").trim();
+    const passedEnv = (reqBody.environment || "").trim();
+    const passedClientUuid = (reqBody.client_uuid || "").trim();
+
+    const res = caller("/resolutions?sync=1", "GET", null, {
+      token: passedToken,
+      environment: passedEnv,
+      client_uuid: passedClientUuid
+    });
+
     if (!res.ok) {
-      return e.json(res.statusCode || 500, { 
+      const errMsg = res.data?.message || res.data?.error || `Error HTTP ${res.statusCode} desde MATIAS API`;
+      return e.json(res.statusCode || 400, { 
         success: false, 
-        message: "No se pudieron obtener las resoluciones desde MATIAS API: " + (res.data?.message || res.raw) 
+        message: "No se pudieron obtener las resoluciones desde MATIAS API: " + errMsg,
+        details: res.data || res.raw
       });
     }
 
-    const records = res.data?.dataRecords?.data || [];
+    // Auto-persistir credenciales válidas en settings si fueron enviadas en caliente desde el formulario
+    try {
+      if (passedToken) {
+        let tRec = null;
+        try { tRec = $app.findFirstRecordByFilter("settings", "key = 'matias_api_token'"); } catch (_) {}
+        if (tRec) {
+          tRec.set("value", passedToken);
+          $app.save(tRec);
+        } else {
+          const sCol = $app.findCollectionByNameOrId("settings");
+          const nRec = new Record(sCol);
+          nRec.set("key", "matias_api_token");
+          nRec.set("value", passedToken);
+          $app.save(nRec);
+        }
+      }
+      if (passedEnv) {
+        let eRec = null;
+        try { eRec = $app.findFirstRecordByFilter("settings", "key = 'matias_environment'"); } catch (_) {}
+        if (eRec) {
+          eRec.set("value", passedEnv);
+          $app.save(eRec);
+        } else {
+          const sCol = $app.findCollectionByNameOrId("settings");
+          const nRec = new Record(sCol);
+          nRec.set("key", "matias_environment");
+          nRec.set("value", passedEnv);
+          $app.save(nRec);
+        }
+      }
+      if (passedClientUuid !== "") {
+        let uRec = null;
+        try { uRec = $app.findFirstRecordByFilter("settings", "key = 'matias_client_uuid'"); } catch (_) {}
+        if (uRec) {
+          uRec.set("value", passedClientUuid);
+          $app.save(uRec);
+        } else {
+          const sCol = $app.findCollectionByNameOrId("settings");
+          const nRec = new Record(sCol);
+          nRec.set("key", "matias_client_uuid");
+          nRec.set("value", passedClientUuid);
+          $app.save(nRec);
+        }
+      }
+    } catch (setErr) {
+      console.warn("[GRAVY HOOK] Advertencia auto-guardando configuración de MATIAS:", setErr);
+    }
+
+    // Extraer registros tolerando diferentes formatos de respuesta
+    const rawData = res.data;
+    const records = rawData?.dataRecords?.data || rawData?.data || rawData?.records || rawData?.resolutions || (Array.isArray(rawData) ? rawData : []);
     const synced = [];
 
+    // Mapeo normativo DIAN estricto
+    // 7: Factura Electrónica (FV), 20: POS Electrónico (POS), 11: Documento Soporte (DS), 13: Nómina Electrónica (NE)
     const typeMapping = {
       7: 'FV',
-      5: 'NC',
-      4: 'ND',
-      11: 'DS',
-      15: 'NDS',
       20: 'POS',
-      13: 'NE',
-      14: 'NAE'
+      11: 'DS',
+      13: 'NE'
     };
 
     const typeCol = $app.findCollectionByNameOrId("dian_resolutions");
 
     for (let i = 0; i < records.length; i++) {
       const r = records[i];
-      const docType = typeMapping[r.type_document_id];
+      const docType = typeMapping[r.type_document_id] || (r.type_document_id === 1 ? 'FV' : null);
       if (!docType) continue;
 
       let existing = null;
@@ -5560,24 +5962,25 @@ routerAdd("POST", "/api/dian/sync-matias-resolutions", (e) => {
       const rec = existing || new Record(typeCol);
       rec.set("document_type", docType);
       rec.set("prefix", r.prefix || "");
-      rec.set("resolution_number", String(r.resolution_number || ""));
-      rec.set("number_from", r.range_from || 1);
-      rec.set("number_to", r.range_up || 10000);
+      rec.set("resolution_number", String(r.resolution_number || r.number || ""));
+      rec.set("number_from", parseInt(r.range_from || r.from || 1, 10));
+      rec.set("number_to", parseInt(r.range_up || r.to || 10000, 10));
       if (!existing) {
-        rec.set("current_number", r.range_from || 1);
+        rec.set("current_number", parseInt(r.range_from || r.from || 1, 10));
       }
-      rec.set("active", r.active == 1 || r.state == 1);
-      if (r.date_from) rec.set("resolution_date", r.date_from);
-      if (r.date_up) rec.set("expiration_date", r.date_up);
+      rec.set("active", r.active == 1 || r.state == 1 || r.status === "active" || r.status === true);
+      if (r.date_from || r.start_date) rec.set("resolution_date", r.date_from || r.start_date);
+      if (r.date_up || r.end_date) rec.set("expiration_date", r.date_up || r.end_date);
       if (r.technical_key) rec.set("technical_key", r.technical_key);
 
       $app.save(rec);
       synced.push({
         type: docType,
-        prefix: r.prefix,
-        resolution: r.resolution_number,
-        from: r.range_from,
-        to: r.range_up
+        prefix: r.prefix || "Sin prefijo",
+        resolution: r.resolution_number || r.number || "N/A",
+        from: r.range_from || r.from || 1,
+        to: r.range_up || r.to || 10000,
+        expiration: r.date_up || r.end_date || "Vigente"
       });
     }
 
@@ -5585,7 +5988,9 @@ routerAdd("POST", "/api/dian/sync-matias-resolutions", (e) => {
       success: true,
       count: synced.length,
       synced: synced,
-      message: `Se sincronizaron exitosamente ${synced.length} resoluciones desde MATIAS API.`
+      message: synced.length > 0
+        ? `Se sincronizaron exitosamente ${synced.length} resoluciones desde MATIAS API.`
+        : "MATIAS API respondió correctamente pero no se encontraron resoluciones activas asociadas a este ambiente/token."
     });
   } catch (err) {
     console.error("[GRAVY HOOK] Error en /api/dian/sync-matias-resolutions:", err);

@@ -2819,7 +2819,7 @@ async function renderPhConfig(c) {
               <thead>
                 <tr>
                   <th>Código</th><th>Nombre</th><th>Valor</th>
-                  <th>Aplica Coef.</th><th>Cuenta ingreso</th><th>Estado</th><th>Acciones</th>
+                  <th>Aplica Coef.</th><th>Cuenta Cartera (CxC 13)</th><th>Cuenta Ingreso (4)</th><th>Estado</th><th>Acciones</th>
                 </tr>
               </thead>
               <tbody id="ph-concepts-tbody">
@@ -3161,17 +3161,23 @@ function upsertIndividualConceptAccInNotes(notes, accountCode) {
 
 function renderPhConceptRows(concepts, accounts) {
   if (!concepts.length) {
-    return `<tr><td colspan="7" class="text-center py-8" style="color:#9CA3AF">No hay conceptos de facturación. Crea el primero.</td></tr>`;
+    return `<tr><td colspan="8" class="text-center py-8" style="color:#9CA3AF">No hay conceptos de facturación. Crea el primero.</td></tr>`;
   }
   return concepts.map(con => {
-    const acc    = con.expand?.account_id;
-    const active = con.active !== false;
+    const incomeAcc = con.expand?.account_id;
+    const cxcAcc    = con.expand?.cxc_account_id;
+    const active    = con.active !== false;
     return `<tr>
       <td class="font-mono text-xs font-bold">${esc(con.code)}</td>
       <td class="font-semibold" style="color:#0D2137">${esc(con.name)}</td>
       <td class="text-right font-semibold">${fmt(con.amount || 0)}</td>
       <td class="text-center">${con.applies_coef ? '<i class="fas fa-check text-green-500"></i>' : '<i class="fas fa-minus text-gray-300"></i>'}</td>
-      <td class="font-mono text-xs">${acc ? esc(acc.code + ' — ' + acc.name) : '—'}</td>
+      <td class="font-mono text-xs">
+        ${cxcAcc ? `<div class="flex items-center gap-1.5"><span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">${esc(cxcAcc.code)}</span><span class="text-gray-600 truncate max-w-[140px]" title="${esc(cxcAcc.name)}">${esc(cxcAcc.name)}</span></div>` : '<span class="text-gray-400 italic font-sans text-xs">Global (130505)</span>'}
+      </td>
+      <td class="font-mono text-xs">
+        ${incomeAcc ? `<div class="flex items-center gap-1.5"><span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">${esc(incomeAcc.code)}</span><span class="text-gray-600 truncate max-w-[140px]" title="${esc(incomeAcc.name)}">${esc(incomeAcc.name)}</span></div>` : '<span class="text-gray-400 italic font-sans text-xs">Por defecto</span>'}
+      </td>
       <td><span class="badge ${active ? 'badge-green' : 'badge-gray'}">${active ? 'Activo' : 'Inactivo'}</span></td>
       <td>
         <div class="flex gap-1">
@@ -3262,23 +3268,25 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
   let concept  = null;
   let accounts = accountsPreloaded || [];
   try {
-    if (conceptId) concept = await pb.get('ph_billing_concepts', conceptId, { expand: 'account_id' });
+    if (conceptId) concept = await pb.get('ph_billing_concepts', conceptId, { expand: 'account_id,cxc_account_id' });
     if (!accounts.length) accounts = await API.getAccounts(true);
   } catch (err) { showToast('Error al cargar datos.', 'error'); return; }
 
-  // Filtrar solo cuentas de ingresos (clase 4) para el selector
-  const incomeAccounts = accounts.filter(a => String(a.code || '').startsWith('4') || String(a.code || '').startsWith('41'));
+  // Filtrar cuentas auxiliares
+  const leafAccounts = accounts.filter(a => a.active !== false && Number(a.level || 0) >= 3);
+  const incomeAccounts = (leafAccounts.length ? leafAccounts : accounts).filter(a => String(a.code || '').startsWith('4'));
+  const cxcAccounts = (leafAccounts.length ? leafAccounts : accounts).filter(a => String(a.code || '').startsWith('1'));
 
   openModal(
     concept ? 'Editar Concepto' : 'Nuevo Concepto de Facturación',
     `<div class="grid grid-cols-2 gap-4">
       <div class="form-group">
         <label class="form-label">Código <span class="text-red-500">*</span></label>
-        <input id="pc-code" class="form-input" value="${esc(concept?.code || '')}" placeholder="Ej: ADM, FIM">
+        <input id="pc-code" class="form-input font-mono font-bold" value="${esc(concept?.code || '')}" placeholder="Ej: ADM, FIM, MORA, EXTRA">
       </div>
       <div class="form-group">
         <label class="form-label">Nombre <span class="text-red-500">*</span></label>
-        <input id="pc-name" class="form-input" value="${esc(concept?.name || '')}" placeholder="Ej: Cuota de administración">
+        <input id="pc-name" class="form-input" value="${esc(concept?.name || '')}" placeholder="Ej: Cuota de administración ordinaria">
       </div>
       <div class="form-group">
         <label class="form-label">Valor Base <span class="text-xs text-gray-400 font-normal">(0 si es variable o mora)</span></label>
@@ -3292,24 +3300,46 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
           <option value="true"  ${concept?.applies_coef   ? 'selected' : ''}>Sí — Proporcional al coeficiente</option>
         </select>
       </div>
-      <div class="form-group col-span-2">
-        <label class="form-label">Cuenta de Ingreso (opcional)</label>
-        <select id="pc-account" class="form-input">
-          <option value="">— Usar cuenta por defecto —</option>
-          ${accounts.filter(a => String(a.code||'').startsWith('4')).map(a =>
+
+      <div class="form-group col-span-2 p-3 bg-blue-50/50 rounded-xl border border-blue-200">
+        <label class="form-label font-bold text-xs text-blue-900 mb-1">
+          <i class="fas fa-file-invoice text-blue-600 mr-1.5"></i>Cuenta Contable de Cartera / CxC (Clase 13 — Opcional)
+        </label>
+        <select id="pc-cxc-account" class="form-input font-mono text-xs">
+          <option value="">— Usar cuenta de cartera global configurada en la copropiedad —</option>
+          ${cxcAccounts.map(a =>
+            `<option value="${esc(a.id)}" ${concept?.cxc_account_id === a.id ? 'selected' : ''}>
+              ${esc(a.code)} — ${esc(a.name)}
+            </option>`).join('')}
+        </select>
+        <p class="text-[11px] mt-1 text-blue-800/80">
+          Permite segregar la cartera de este concepto (ej. 13050501 Ordinaria, 13050502 Extraordinaria, 13050503 Intereses de Mora) para emitir balances de comprobación y reportes financieros discriminados.
+        </p>
+      </div>
+
+      <div class="form-group col-span-2 p-3 bg-emerald-50/40 rounded-xl border border-emerald-200">
+        <label class="form-label font-bold text-xs text-emerald-900 mb-1">
+          <i class="fas fa-hand-holding-usd text-emerald-600 mr-1.5"></i>Cuenta Contable de Ingreso (Clase 4 — Opcional)
+        </label>
+        <select id="pc-account" class="form-input font-mono text-xs">
+          <option value="">— Usar cuenta de ingreso por defecto —</option>
+          ${incomeAccounts.map(a =>
             `<option value="${esc(a.id)}" ${concept?.account_id === a.id ? 'selected' : ''}>
               ${esc(a.code)} — ${esc(a.name)}
             </option>`).join('')}
         </select>
-        <p class="text-xs mt-1" style="color:#6B7280">Solo cuentas de ingresos (clase 4). Si no seleccionas, se usa la cuenta por defecto.</p>
+        <p class="text-[11px] mt-1 text-emerald-800/80">
+          Cuenta donde se causará el crédito de ingresos de este concepto (ej. 413505 Cuotas ordinarias, 413510 Cuotas extraordinarias, 421005 Intereses de mora).
+        </p>
       </div>
+
       <div class="form-group col-span-2">
         <label class="form-label">Descripción</label>
-        <input id="pc-desc" class="form-input" value="${esc(concept?.description || '')}" placeholder="Descripción del concepto">
+        <input id="pc-desc" class="form-input" value="${esc(concept?.description || '')}" placeholder="Descripción explicativa del concepto">
       </div>
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-primary" id="pc-save-btn"><i class="fas fa-save mr-1"></i>Guardar</button>`
+     <button class="btn btn-primary" id="pc-save-btn"><i class="fas fa-save mr-1"></i>Guardar Concepto</button>`
   );
 
   setTimeout(() => {
@@ -3324,18 +3354,16 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
       if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
       try {
         const accountVal = (document.getElementById('pc-account')?.value || '').trim();
+        const cxcAccountVal = (document.getElementById('pc-cxc-account')?.value || '').trim();
         const data: any = {
           code, name, amount,
           applies_coef: document.getElementById('pc-coef')?.value === 'true',
           is_variable:  amount === 0 || code === 'MORA',
           description:  (document.getElementById('pc-desc')?.value || '').trim(),
+          account_id:   accountVal || '',
+          cxc_account_id: cxcAccountVal || '',
           active:       true,
         };
-        if (accountVal) {
-          data.account_id = accountVal;
-        } else {
-          data.account_id = '';
-        }
         if (concept) {
           await pb.update('ph_billing_concepts', concept.id, data);
           showToast('Concepto actualizado.', 'success');
@@ -3347,7 +3375,7 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
         renderPhConfig(container);
       } catch (err: any) {
         showToast(err.message || 'Error.', 'error');
-        if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Guardar Concepto'; }
       }
     }, { once: true });
   }, 50);

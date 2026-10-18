@@ -66,6 +66,7 @@ const NOVELTY_TYPES = {
     { key: 'OTRO_INGRESO', label: 'Otro Ingreso' },
   ],
   OTROS: [
+    { key: 'RETIRO', label: 'Retiro / Terminación de Contrato' },
     { key: 'VACACIONES', label: 'Vacaciones' },
     { key: 'SUSPENSION', label: 'Suspensión' },
   ]
@@ -2255,6 +2256,8 @@ async function liquidarPeriodoMasivo(periodId) {
       let otrosIngresos = 0;
       let ajusteSalarial = 0;
       let isVacacionesRetiro = false;
+      let isRetiroNov = false;
+      let retiroDate = '';
       let prestamos = 0;
       let anticipos = 0;
       let multas = 0;
@@ -2277,9 +2280,12 @@ async function liquidarPeriodoMasivo(periodId) {
         const type = n.type || '';
         const qty = Number(n.qty || 0);
         const amount = Number(n.amount || 0);
-        const note = String(n.note || n.motivo || '').toLowerCase();
+        const note = String(n.note || n.motivo || n.description || '').toLowerCase();
 
-        if (type.startsWith('INCAPACIDAD')) {
+        if (type === 'RETIRO') {
+          isRetiroNov = true;
+          retiroDate = n.date_from || '';
+        } else if (type.startsWith('INCAPACIDAD')) {
           diasIncapacidad += qty;
           diasAusentismo += qty;
         } else if (
@@ -2353,8 +2359,12 @@ async function liquidarPeriodoMasivo(periodId) {
       });
 
       // Días efectivamente laborados y remunerados salarialmente:
-      // Dias base segun periodo y contrato (proporcional si ingreso a mitad de periodo)
-      const baseDaysForEmployee = contractInfo.effectiveBaseDays;
+      // Si el empleado tiene novedad de retiro en el período, se liquida proporcionalmente hasta la fecha de retiro
+      let baseDaysForEmployee = contractInfo.effectiveBaseDays;
+      if (isRetiroNov && retiroDate && period.date_from) {
+        const daysUpToRetiro = _toDays30(period.date_from, retiroDate);
+        baseDaysForEmployee = Math.min(baseDaysForEmployee, Math.max(1, daysUpToRetiro));
+      }
       const daysWorked = Math.max(0, baseDaysForEmployee - diasAusentismo);
       const salary = empRule.basic_salary || 0;
       const salaryProportional = round2((salary / 30) * daysWorked);
@@ -2447,9 +2457,10 @@ async function liquidarPeriodoMasivo(periodId) {
       const employerHealth = (isAprendiz || isArt114Exempt) ? 0 : round2(ibcSS * 0.085);
       // Aporte pensión empleador: 12% sobre ibcSS (cubre la SLN para no recortar semanas cotizadas)
       const employerPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibcSS * 0.12);
-      // Seguridad Social (ARL, Salud y Pensión): Se calculan sobre la base completa del período (ibcSS)
+      // Seguridad Social (ARL): Para retiro, el riesgo laboral cesa en la fecha de retiro (Art. 4 Decreto 1295/1994, Ley 1562/2012)
       const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
-      const employerArl = isAprendiz ? round2(salaryProportional * ARL_RISK_RATES[1]) : round2(ibcSS * arlRate);
+      const baseArl = isRetiroNov ? round2(salaryProportional + otAmount) : ibcSS;
+      const employerArl = isAprendiz ? round2(salaryProportional * ARL_RISK_RATES[1]) : round2(baseArl * arlRate);
 
       // Aportes Parafiscales (Caja de Compensación Familiar, SENA e ICBF):
       // Se unifican sobre la base completa del período (ibcSS) más vacaciones de retiro si aplica.
@@ -2461,9 +2472,12 @@ async function liquidarPeriodoMasivo(periodId) {
       const cajaComp = isAprendiz ? 0 : round2(baseParafiscales * 0.04);
 
       // ─── Base para Prestaciones Sociales del Período (Cesantías, Intereses, Prima de Servicios y Vacaciones) ───
-      // En contrato vigente, la empresa provisiona sobre el tiempo completo del período liquidado (diasPeriodoBase).
-      const salaryPrestPeriodo = round2((salary / 30) * diasPeriodoBase);
-      const transportPrestPeriodo = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? round2((AUX_TRANSPORTE_VIGENTE / 30) * diasPeriodoBase) : 0;
+      // En contrato vigente continuo, la empresa provisiona sobre el tiempo completo del período liquidado (diasPeriodoBase).
+      // Si el empleado se retira en el período, las provisiones periódicas se causan solo sobre los días laborados hasta el retiro,
+      // para evitar sobreprovisiones y permitir el cruce exacto en la Liquidación Definitiva (Finiquito).
+      const diasPrestPeriodo = isRetiroNov ? daysWorked : diasPeriodoBase;
+      const salaryPrestPeriodo = round2((salary / 30) * diasPrestPeriodo);
+      const transportPrestPeriodo = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? round2((AUX_TRANSPORTE_VIGENTE / 30) * diasPrestPeriodo) : 0;
       
       // 1. Prima de servicios y Cesantías (con auxilio de transporte según Art. 7 Ley 1 de 1963)
       const basePrestacionesPeriodo = (isIntegralSalary || isAprendiz)
@@ -2532,7 +2546,9 @@ async function liquidarPeriodoMasivo(periodId) {
           },
           transport_days: transportDays,
           transport_monthly: AUX_TRANSPORTE_VIGENTE,
-          concept_amounts: conceptAmounts
+          concept_amounts: conceptAmounts,
+          is_retiro: isRetiroNov,
+          retiro_date: retiroDate
         }
       };
 
@@ -3580,11 +3596,16 @@ async function renderNominaNovedades(c, periods, employees) {
         const empName = n.expand?.employee_id?.name || 'Empleado no encontrado';
         const periodName = n.expand?.period_id?.name || 'Sin periodo';
         const isDraft = (n.expand?.period_id?.status || 'draft') === 'draft';
+        const isRetiro = n.type === 'RETIRO';
         return `
           <tr>
             <td class="font-semibold">${esc(empName)}</td>
             <td>${esc(periodName)}</td>
-            <td>${esc(labelForType(n.type))}</td>
+            <td>
+              ${isRetiro 
+                ? `<span class="badge" style="background:#FEE2E2;color:#991B1B;font-weight:600"><i class="fas fa-user-minus mr-1"></i>${esc(labelForType(n.type))}</span>`
+                : esc(labelForType(n.type))}
+            </td>
             <td>${esc(n.date_from)}</td>
             <td>${esc(n.date_to || '—')}</td>
             <td class="text-center">${n.qty || '—'}</td>
@@ -3593,16 +3614,33 @@ async function renderNominaNovedades(c, periods, employees) {
               ${isDraft ? '<span class="badge" style="background:#FFF3CD;color:#856404">Pendiente</span>' : '<span class="badge badge-green">Procesado</span>'}
             </td>
             <td class="text-right">
-              <div class="flex gap-1 justify-end">
+              <div class="flex gap-1 justify-end items-center">
+                ${isRetiro ? `
+                  <button class="btn btn-outline btn-sm text-purple-700 border-purple-300 hover:bg-purple-50 btn-finiquito-direct" data-emp-id="${esc(n.employee_id)}" title="Proceder a Liquidación Definitiva (Finiquito)"><i class="fas fa-file-invoice-dollar mr-1"></i>Finiquito</button>
+                ` : ''}
                 ${isDraft && can('canWrite') ? `
                   <button class="btn btn-outline btn-sm btn-edit-novelty" data-id="${esc(n.id)}"><i class="fas fa-pen"></i></button>
                   <button class="btn btn-outline btn-sm btn-del-novelty" data-id="${esc(n.id)}"><i class="fas fa-trash"></i></button>
-                ` : '—'}
+                ` : (!isRetiro ? '—' : '')}
               </div>
             </td>
           </tr>
         `;
       }).join('') : `<tr><td colspan="9" class="text-center py-6 text-gray-400">No se encontraron novedades registradas.</td></tr>`;
+
+      body.querySelectorAll('.btn-finiquito-direct').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const empId = btn.getAttribute('data-emp-id');
+          if (empId) {
+            (window as any)._pendingSettlementEmployeeId = empId;
+            if (typeof (window as any).reloadTab === 'function') {
+              (window as any).reloadTab('nomina-liquidacion-definitiva');
+            } else {
+              navigate('nomina-liquidacion-definitiva');
+            }
+          }
+        });
+      });
 
       body.querySelectorAll('.btn-edit-novelty').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -3663,12 +3701,15 @@ function openNoveltyForm(periods, employees, novelty = null) {
       <div class="form-group"><label class="form-label">Periodo de Nómina *</label><select id="nov-form-period" class="form-input">${periodOpts}</select></div>
       <div class="form-group"><label class="form-label">Empleado *</label><select id="nov-form-employee" class="form-input">${employeeOpts}</select></div>
       <div class="form-group md:col-span-2"><label class="form-label">Tipo de Novedad *</label><select id="nov-form-type" class="form-input">${typeOpts}</select></div>
-      <div class="form-group"><label class="form-label">Fecha Inicio *</label><input type="date" id="nov-form-date-from" class="form-input" value="${todayStr()}"></div>
-      <div class="form-group"><label class="form-label">Fecha Fin (opcional)</label><input type="date" id="nov-form-date-to" class="form-input"></div>
+      <div id="nov-retiro-info" class="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 md:col-span-2" style="display:none">
+        <i class="fas fa-info-circle mr-1 text-purple-600"></i><strong>Novedad de Retiro / Terminación:</strong> Ajusta los días laborados y aportes ARL en la nómina del período hasta la fecha de retiro y te permitirá generar posteriormente la Liquidación Definitiva (Finiquito) sin duplicidad de salarios.
+      </div>
+      <div class="form-group"><label class="form-label" id="lbl-nov-date-from">Fecha Inicio *</label><input type="date" id="nov-form-date-from" class="form-input" value="${todayStr()}"></div>
+      <div class="form-group" id="container-nov-date-to"><label class="form-label">Fecha Fin (opcional)</label><input type="date" id="nov-form-date-to" class="form-input"></div>
       <div class="form-group" id="container-nov-qty"><label class="form-label" id="lbl-nov-qty">Cantidad (Días / Horas)</label><input type="number" id="nov-form-qty" class="form-input" min="0" step="0.1" value="0"></div>
       <div class="form-group" id="container-nov-amount" style="display:none"><label class="form-label">Valor total (COP)</label><input type="number" id="nov-form-amount" class="form-input" min="0" step="1" value="0"></div>
-      <div class="form-group"><label class="form-label">Número de soporte (EPS/Radicado)</label><input type="text" id="nov-form-support" class="form-input" placeholder="Ej: INC-94827"></div>
-      <div class="form-group md:col-span-2"><label class="form-label">Observaciones</label><textarea id="nov-form-desc" class="form-input" rows="2" placeholder="Detalles de la novedad..."></textarea></div>
+      <div class="form-group"><label class="form-label">Número de soporte (EPS/Radicado/Acta)</label><input type="text" id="nov-form-support" class="form-input" placeholder="Ej: INC-94827 o ACT-01"></div>
+      <div class="form-group md:col-span-2"><label class="form-label" id="lbl-nov-desc">Observaciones</label><textarea id="nov-form-desc" class="form-input" rows="2" placeholder="Detalles de la novedad..."></textarea></div>
     </div>
   `;
 
@@ -3679,6 +3720,7 @@ function openNoveltyForm(periods, employees, novelty = null) {
   );
 
   const getFieldType = (tipo) => {
+    if (tipo === 'RETIRO') return 'retiro';
     if (['HORA_EXTRA_DIURNA', 'HORA_EXTRA_NOCTURNA', 'HORA_EXTRA_DOMINICAL', 'HORA_EXTRA_DOMINICAL_NOCTURNA', 'RECARGO_NOCTURNO', 'RECARGO_DOMINICAL'].includes(tipo)) return 'horas';
     if (['RETENCION_PORCENTAJE'].includes(tipo)) return 'porcentaje';
     if (['PRESTAMO', 'ANTICIPO', 'MULTA', 'EMBARGO', 'OTRA_DEDUCCION', 'BONIFICACION', 'COMISION', 'AJUSTE_SALARIAL', 'PRIMA_SERVICIOS', 'INTERESES_CESANTIAS', 'CESANTIAS', 'DOTACION', 'PRIMA_EXTRALGAL', 'OTRO_INGRESO', 'GASTOS_REPRESENTACION', 'AUX_NO_SALARIALES', 'AUXILIO_RODAMIENTO', 'COMPENSATORIOS', 'AUXILIO_ALIMENTACION', 'LIBRANZA'].includes(tipo)) return 'valor';
@@ -3690,23 +3732,47 @@ function openNoveltyForm(periods, employees, novelty = null) {
     const fType = getFieldType(tipo);
     const qtyContainer = $('#container-nov-qty');
     const amountContainer = $('#container-nov-amount');
+    const dateToContainer = $('#container-nov-date-to');
+    const retiroInfo = $('#nov-retiro-info');
     const lblQty = $('#lbl-nov-qty');
+    const lblDateFrom = $('#lbl-nov-date-from');
+    const lblDesc = $('#lbl-nov-desc');
 
-    if (fType === 'horas') {
+    if (retiroInfo) retiroInfo.style.display = fType === 'retiro' ? '' : 'none';
+
+    if (fType === 'retiro') {
+      if (qtyContainer) qtyContainer.style.display = 'none';
+      if (amountContainer) amountContainer.style.display = 'none';
+      if (dateToContainer) dateToContainer.style.display = 'none';
+      if (lblDateFrom) lblDateFrom.innerHTML = 'Fecha de Retiro / Último día laborado *';
+      if (lblDesc) lblDesc.innerHTML = 'Motivo del Retiro (Renuncia voluntaria, Despido, Vencimiento contrato, etc.)';
+    } else if (fType === 'horas') {
       if (qtyContainer) qtyContainer.style.display = '';
       if (amountContainer) amountContainer.style.display = 'none';
+      if (dateToContainer) dateToContainer.style.display = '';
       if (lblQty) lblQty.innerHTML = 'Cantidad de Horas *';
+      if (lblDateFrom) lblDateFrom.innerHTML = 'Fecha Inicio *';
+      if (lblDesc) lblDesc.innerHTML = 'Observaciones';
     } else if (fType === 'porcentaje') {
       if (qtyContainer) qtyContainer.style.display = '';
       if (amountContainer) amountContainer.style.display = 'none';
+      if (dateToContainer) dateToContainer.style.display = '';
       if (lblQty) lblQty.innerHTML = 'Porcentaje de Retención (%) *  — Ej: 5 para 5%';
+      if (lblDateFrom) lblDateFrom.innerHTML = 'Fecha Inicio *';
+      if (lblDesc) lblDesc.innerHTML = 'Observaciones';
     } else if (fType === 'valor') {
       if (qtyContainer) qtyContainer.style.display = 'none';
       if (amountContainer) amountContainer.style.display = '';
+      if (dateToContainer) dateToContainer.style.display = '';
+      if (lblDateFrom) lblDateFrom.innerHTML = 'Fecha Inicio *';
+      if (lblDesc) lblDesc.innerHTML = 'Observaciones';
     } else {
       if (qtyContainer) qtyContainer.style.display = '';
       if (amountContainer) amountContainer.style.display = 'none';
+      if (dateToContainer) dateToContainer.style.display = '';
       if (lblQty) lblQty.innerHTML = 'Cantidad de Días *';
+      if (lblDateFrom) lblDateFrom.innerHTML = 'Fecha Inicio *';
+      if (lblDesc) lblDesc.innerHTML = 'Observaciones';
     }
   };
 
@@ -3778,6 +3844,32 @@ function openNoveltyForm(periods, employees, novelty = null) {
         showToast('Novedad registrada', 'success');
       }
       closeModal();
+
+      if (payload.type === 'RETIRO' && !novelty) {
+        confirmDialog(
+          'Novedad de Retiro Registrada',
+          '¿Deseas abrir ahora el módulo de Liquidación Definitiva para realizar el finiquito de prestaciones de este empleado?',
+          () => {
+            (window as any)._pendingSettlementEmployeeId = payload.employee_id;
+            if (typeof (window as any).reloadTab === 'function') {
+              (window as any).reloadTab('nomina-liquidacion-definitiva');
+            } else {
+              navigate('nomina-liquidacion-definitiva');
+            }
+          },
+          () => {
+            if (typeof (window as any).reloadTab === 'function') {
+              (window as any).reloadTab((window as any).currentPage || 'nomina-novedades');
+            } else {
+              navigate((window as any).currentPage || 'nomina-novedades', true);
+            }
+          },
+          'Ir a Liquidación Definitiva',
+          'Permanecer en Novedades'
+        );
+        return;
+      }
+
       if (typeof (window as any).reloadTab === 'function') {
         (window as any).reloadTab((window as any).currentPage || 'nomina-novedades');
       } else {
@@ -5817,23 +5909,28 @@ function buildSingleWorkerUblXml(
     otNodesXml = `  <HEDs><HED Cantidad="1" Porcentaje="25.00" Pago="${round2(emp.horasExtrasMonto).toFixed(2)}" /></HEDs>\n`;
   }
 
-  let devengadosAdicionalesXml = '';
+  // Construcción de Devengados siguiendo estrictamente la secuencia jerárquica XSD de la DIAN
+  let devengadosXml = `  <Basico DiasTrabajados="${emp.diasLaborados || 30}" SueldoTrabajado="${sueldoBasico}" />\n`;
   if ((emp.auxilioTransporte || 0) > 0) {
-    devengadosAdicionalesXml += `  <Transporte AuxilioTransporte="${round2(emp.auxilioTransporte).toFixed(2)}" ViaticoManuAlojS="0.00" ViaticoManuAlojNS="0.00" />\n`;
+    devengadosXml += `  <Transporte AuxilioTransporte="${round2(emp.auxilioTransporte).toFixed(2)}" ViaticoManuAlojS="0.00" ViaticoManuAlojNS="0.00" />\n`;
+  }
+  // Horas Extras y Recargos: DEBEN ir inmediatamente después de Transporte y antes de Vacaciones según XSD DIAN
+  if (otNodesXml) {
+    devengadosXml += otNodesXml;
   }
   if ((emp.vacacionesMonto || 0) > 0) {
-    devengadosAdicionalesXml += `  <Vacaciones><VacacionesComunes Cantidad="${emp.vacacionesDias || 1}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" /></Vacaciones>\n`;
+    devengadosXml += `  <Vacaciones><VacacionesComunes Cantidad="${emp.vacacionesDias || 1}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" /></Vacaciones>\n`;
   }
   if ((emp.primaMonto || 0) > 0) {
-    devengadosAdicionalesXml += `  <Primas Cantidad="${emp.primaDias || 180}" Pago="${round2(emp.primaMonto).toFixed(2)}" />\n`;
+    devengadosXml += `  <Primas Cantidad="${emp.primaDias || 180}" Pago="${round2(emp.primaMonto).toFixed(2)}" />\n`;
   }
   if ((emp.cesantiasMonto || 0) > 0) {
     const intCes = round2(emp.interesesCesantiasMonto || 0);
     const pctInt = emp.cesantiasMonto > 0 ? round2((intCes / emp.cesantiasMonto) * 100).toFixed(2) : "12.00";
-    devengadosAdicionalesXml += `  <Cesantias Pago="${round2(emp.cesantiasMonto).toFixed(2)}" Porcentaje="${pctInt}" PagoIntereses="${intCes.toFixed(2)}" />\n`;
+    devengadosXml += `  <Cesantias Pago="${round2(emp.cesantiasMonto).toFixed(2)}" Porcentaje="${pctInt}" PagoIntereses="${intCes.toFixed(2)}" />\n`;
   }
   if ((emp.incapacidadesMonto || 0) > 0) {
-    devengadosAdicionalesXml += `  <Incapacidades><Incapacidad Tipo="1" Cantidad="${emp.incapacidadesDias || 1}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
+    devengadosXml += `  <Incapacidades><Incapacidad Tipo="1" Cantidad="${emp.incapacidadesDias || 1}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
   }
   if ((emp.licenciasMonto || 0) > 0 || (emp.licenciasNRDias || 0) > 0) {
     let licContent = '';
@@ -5845,21 +5942,20 @@ function buildSingleWorkerUblXml(
       const fFin = emp.licenciasNRFin || fIni;
       licContent += `<LicenciaNR Cantidad="${emp.licenciasNRDias}" FechaInicio="${fIni}" FechaFin="${fFin}" />`;
     }
-    devengadosAdicionalesXml += `  <Licencias>${licContent}</Licencias>\n`;
+    devengadosXml += `  <Licencias>${licContent}</Licencias>\n`;
   }
   if ((emp.bonificacionesMonto || 0) > 0) {
-    devengadosAdicionalesXml += `  <Bonificaciones><Bonificacion BonificacionS="${round2(emp.bonificacionesMonto).toFixed(2)}" BonificacionNS="0.00" /></Bonificaciones>\n`;
-  }
-  if ((emp.comisionesMonto || 0) > 0) {
-    devengadosAdicionalesXml += `  <Comisiones><Comision>${round2(emp.comisionesMonto).toFixed(2)}</Comision></Comisiones>\n`;
-  }
-  if ((emp.dotacionMonto || 0) > 0) {
-    devengadosAdicionalesXml += `  <Dotacion>${round2(emp.dotacionMonto).toFixed(2)}</Dotacion>\n`;
+    devengadosXml += `  <Bonificaciones><Bonificacion BonificacionS="${round2(emp.bonificacionesMonto).toFixed(2)}" BonificacionNS="0.00" /></Bonificaciones>\n`;
   }
   if ((emp.otrosIngresosMonto || 0) > 0) {
-    devengadosAdicionalesXml += `  <OtrosConceptos><OtroConcepto ConceptoS="${round2(emp.otrosIngresosMonto).toFixed(2)}" ConceptoNS="0.00" /></OtrosConceptos>\n`;
+    devengadosXml += `  <OtrosConceptos><OtroConcepto ConceptoS="${round2(emp.otrosIngresosMonto).toFixed(2)}" ConceptoNS="0.00" /></OtrosConceptos>\n`;
   }
-
+  if ((emp.comisionesMonto || 0) > 0) {
+    devengadosXml += `  <Comisiones><Comision>${round2(emp.comisionesMonto).toFixed(2)}</Comision></Comisiones>\n`;
+  }
+  if ((emp.dotacionMonto || 0) > 0) {
+    devengadosXml += `  <Dotacion>${round2(emp.dotacionMonto).toFixed(2)}</Dotacion>\n`;
+  }
   let deduccionesAdicionalesXml = '';
   deduccionesAdicionalesXml += `  <Salud Porcentaje="4.00" Deduccion="${round2(emp.saludDeduccion || 0).toFixed(2)}" />\n`;
   deduccionesAdicionalesXml += `  <FondoPension Porcentaje="4.00" Deduccion="${round2(emp.pensionDeduccion || 0).toFixed(2)}" />\n`;
@@ -5932,8 +6028,7 @@ ${pagoXml}
 <FechaPago>${fechaLiqFin}</FechaPago>
 </FechasPagos>
 <Devengados>
-  <Basico DiasTrabajados="${emp.diasLaborados || 30}" SueldoTrabajado="${sueldoBasico}" />
-${devengadosAdicionalesXml}${otNodesXml}</Devengados>
+${devengadosXml}</Devengados>
 <Deducciones>
 ${deduccionesAdicionalesXml}</Deducciones>
 <DevengadosTotal>${devengos}</DevengadosTotal>
@@ -6686,7 +6781,7 @@ function openNominaBatchProgressModal(year: number, month: number) {
       body: JSON.stringify({ id })
     });
     if (res && res.success) {
-      showToast(`Estado actualizado: ${res.status}. ${res.message || ''}`, 'success');
+      const isAprob = res.status === 'APROBADO' || res.status === 'aceptada'; const isRech = res.status === 'RECHAZADO' || res.status === 'rechazada'; showToast(`Estado DIAN: ${res.status}. ${res.message || ''}`, isAprob ? 'success' : (isRech ? 'error' : 'info'));
       renderNominaElectronicaPage($('#page-content'));
     } else {
       showToast(res.message || 'Error al consultar estado', 'error');
@@ -8993,7 +9088,17 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       }
 
       // Calcular días de salario y transporte
-      const salaryDays = Math.max(0, diasPeriodoBase - diasAusentismo);
+      let baseDaysEmp = diasPeriodoBase;
+      const retiroNov = novelties.find(n => n.type === 'RETIRO');
+      if (retiroNov && retiroNov.date_from) {
+        const periodRec = periods.find((p: any) => p.id === periodId);
+        if (periodRec?.date_from) {
+          const daysRet = _toDays30(periodRec.date_from, retiroNov.date_from);
+          baseDaysEmp = Math.min(diasPeriodoBase, Math.max(1, daysRet));
+          showToast(`Novedad de retiro detectada (${retiroNov.date_from}). Días del período ajustados a ${baseDaysEmp}.`, 'info');
+        }
+      }
+      const salaryDays = Math.max(0, baseDaysEmp - diasAusentismo);
       const transportDays = Math.max(0, salaryDays);
 
       setInputVal('pl-days-salary', String(salaryDays));
@@ -10434,16 +10539,18 @@ async function getAccumulatedProvisions(employeeId: string, fiscalYear: string):
       filter: `employee_id="${pb.escapeFilterValue(employeeId)}"`,
       expand: 'period_id',
     });
-    // Filtrar solo líneas del año fiscal indicado
+    // Cesantías, Intereses y Prima corresponden al año fiscal corriente (o semestre)
     const yearLines = lines.filter((l: any) => {
       const pFrom = l.expand?.period_id?.date_from || '';
       return pFrom >= yearFilter && pFrom < `${Number(fiscalYear) + 1}-01-01`;
     });
+    // Vacaciones: se acumulan durante toda la vigencia del contrato de trabajo
+    const allLines = lines;
     return {
       cesantias: round2(yearLines.reduce((s: number, l: any) => s + (Number(l.cesantias) || 0), 0)),
       intereses_ces: round2(yearLines.reduce((s: number, l: any) => s + (Number(l.intereses_ces) || 0), 0)),
       prima: round2(yearLines.reduce((s: number, l: any) => s + (Number(l.prima) || 0), 0)),
-      vacaciones: round2(yearLines.reduce((s: number, l: any) => s + (Number(l.vacaciones) || 0), 0)),
+      vacaciones: round2(allLines.reduce((s: number, l: any) => s + (Number(l.vacaciones) || 0), 0)),
     };
   } catch (_) {
     return { cesantias: 0, intereses_ces: 0, prima: 0, vacaciones: 0 };
@@ -10563,6 +10670,14 @@ function buildSettlementAccountingLines(
   if ((calc.otherDeductions || 0) > 0) {
     const acctOther = resolveAccount('deduction_other', 'credit') || resolveAccount('cxc', 'credit');
     addLine(acctOther, 0, calc.otherDeductions, label('Otras Deducciones / Descuentos'), empId, 'deduction_other (Pasivo/CxC)');
+  }
+
+  // ─── Aporte Caja de Compensación Familiar (4%) sobre Vacaciones Compensadas en Retiro (Art. 17 Ley 21/1982) ───
+  if ((calc.cajaComp || 0) > 0) {
+    const acctCajaGasto = resolveAccount('caja_comp', 'debit') || resolveAccount('salary_base', 'debit');
+    const acctCajaPasivo = resolveAccount('caja_comp', 'credit') || resolveAccount('deduction_other', 'credit');
+    addLine(acctCajaGasto, calc.cajaComp, 0, label('Gasto Caja Compensación Vacaciones Retiro (4%)'), empId, 'caja_comp (Gasto)');
+    addLine(acctCajaPasivo, 0, calc.cajaComp, label('Caja Compensación por Pagar (4%)'), empId, 'caja_comp (Pasivo)');
   }
 
   // ─── Neto a pagar (Prestaciones por Pagar / Salarios por Pagar) ─────────
@@ -10817,7 +10932,9 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
             <div>
               <label class="block text-xs font-semibold text-gray-600 mb-1">Días de salario pendientes del mes</label>
               <input type="number" id="sld-pending-days" class="w-full form-input text-sm" value="0" min="0" max="30" />
-              <span class="text-xs text-gray-400">Días laborados del mes en curso no liquidados previamente</span>
+              <div id="sld-pending-days-hint">
+                <span class="text-xs text-gray-400">Días laborados del mes en curso no liquidados previamente</span>
+              </div>
             </div>
 
             <!-- Bloque interactivo de Vacaciones (Art. 186 CST) -->
@@ -10951,6 +11068,71 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
       if (emp?.hire_date) hireDateInput.value = emp.hire_date;
       const rule = getEmployeePayrollRule(config, empId);
       if (rule.contract_type) reasonSelect.value = rule.contract_type === 'TERMINADO_FIJO' ? 'VENCIMIENTO_CONTRATO' : 'RENUNCIA_VOLUNTARIA';
+
+      // Revisar si existe novedad de RETIRO registrada para este empleado
+      const pendingDaysInput = document.getElementById('sld-pending-days') as HTMLInputElement;
+      const pendingDaysHint = document.getElementById('sld-pending-days-hint');
+      const settlementDateInput = document.getElementById('sld-settlement-date') as HTMLInputElement;
+
+      try {
+        const retNovs = await pb.listAll('payroll_novelties', {
+          filter: `employee_id="${pb.escapeFilterValue(empId)}" && type="RETIRO"`,
+          sort: '-date_from',
+          limit: 1,
+        });
+
+        if (retNovs.length > 0) {
+          const retNov = retNovs[0];
+          if (retNov.date_from && settlementDateInput) {
+            settlementDateInput.value = retNov.date_from;
+          }
+          if (retNov.description) {
+            const desc = retNov.description.toLowerCase();
+            if (desc.includes('sin justa causa') || desc.includes('injust')) {
+              reasonSelect.value = 'DESPIDO_SIN_JUSTA_CAUSA';
+              indemnityCheck.checked = true;
+            } else if (desc.includes('justa causa')) {
+              reasonSelect.value = 'TERMINACION_JUSTA_CAUSA';
+              indemnityCheck.checked = false;
+            } else if (desc.includes('venc') || desc.includes('obra')) {
+              reasonSelect.value = 'VENCIMIENTO_CONTRATO';
+              indemnityCheck.checked = false;
+            } else if (desc.includes('mutuo') || desc.includes('acuerdo')) {
+              reasonSelect.value = 'MUTUO_ACUERDO';
+              indemnityCheck.checked = false;
+            } else if (desc.includes('pension') || desc.includes('jubila')) {
+              reasonSelect.value = 'JUBILACION';
+              indemnityCheck.checked = false;
+            }
+          }
+
+          // Verificar si el período que cubre la fecha de retiro ya fue liquidado en payroll_lines
+          const allLines = await pb.listAll('payroll_lines', {
+            filter: `employee_id="${pb.escapeFilterValue(empId)}"`,
+            expand: 'period_id',
+          });
+
+          const paidLine = allLines.find((l: any) => {
+            const pFrom = l.expand?.period_id?.date_from;
+            const pTo = l.expand?.period_id?.date_to;
+            return pFrom && pTo && retNov.date_from >= pFrom && retNov.date_from <= pTo;
+          });
+
+          if (paidLine) {
+            if (pendingDaysInput) pendingDaysInput.value = '0';
+            if (pendingDaysHint) {
+              pendingDaysHint.innerHTML = `<div class="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg mt-1 border border-amber-200"><i class="fas fa-check-circle mr-1 text-emerald-600"></i><strong>Novedad de Retiro detectada (${retNov.date_from}):</strong> El salario y auxilio hasta la fecha de retiro ya fueron liquidados en la nómina periódica ordinaria (<strong>${paidLine.expand?.period_id?.name || 'período'}</strong>). Días de salario pendientes ajustados a <strong>0</strong> para no duplicar el pago.</div>`;
+            }
+          } else {
+            if (pendingDaysHint) {
+              pendingDaysHint.innerHTML = `<div class="text-xs text-indigo-800 bg-indigo-50 p-2.5 rounded-lg mt-1 border border-indigo-200"><i class="fas fa-info-circle mr-1 text-indigo-600"></i><strong>Novedad de Retiro (${retNov.date_from}):</strong> No se detectó liquidación ordinaria previa para este período. Ingresa los días de salario pendientes correspondientes a la fracción del mes.</div>`;
+            }
+          }
+        } else if (pendingDaysHint) {
+          pendingDaysHint.innerHTML = '<span class="text-xs text-gray-400">Días laborados del mes en curso no liquidados previamente</span>';
+        }
+      } catch (_) {}
+
       await updateVacationCalculations(true);
     };
 

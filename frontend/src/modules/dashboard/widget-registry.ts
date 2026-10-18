@@ -12,7 +12,7 @@ import { Chart } from 'chart.js';
 export interface WidgetHelpers {
   fmt: (n: number) => string;
   fmtCount: (n: number) => string;
-  animateCounter: (el: HTMLElement, target: number, duration?: number) => void;
+  animateCounter: (el: HTMLElement, target: number, duration?: number, isCurrency?: boolean) => void;
   sparklineSVG: (data: number[], color: string, w?: number, h?: number) => string;
   esc: (s: string) => string;
   can: (p: string) => boolean;
@@ -75,30 +75,30 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
       c.innerHTML = `
         <div class="dash-kpi-card anim-slide-up" style="display:flex;flex-direction:column;justify-content:space-between">
           <div>
-            <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#10B981,#059669)"></div>
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
-              <div style="width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#10B981,#059669);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(16,185,129,.25)">
+            <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#0D9488,#10B981)"></div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+              <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#0D9488,#14B8A6);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(13,148,136,.25)">
                 <i class="fas fa-hand-holding-dollar" style="font-size:16px;color:#fff"></i>
               </div>
               ${trendHTML}
             </div>
-            <div id="val-${c.id}" style="font-size:24px;font-weight:900;color:#064E3B;letter-spacing:-0.8px;line-height:1.1;margin-bottom:4px">
+            <div id="val-${c.id}" style="font-size:26px;font-weight:900;color:#0F766E;letter-spacing:-1px;line-height:1;margin-bottom:6px">
               ${h.fmt(cur)}
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-              <p style="font-size:12px;font-weight:700;color:#047857;margin:0">Ventas del Mes</p>
+              <p style="font-size:12px;font-weight:700;color:#0D9488;margin:0">Ventas del Mes</p>
               ${prev > 0 ? `<span style="font-size:10px;color:#94A3B8;white-space:nowrap">Ant: ${h.fmt(prev)}</span>` : ''}
             </div>
           </div>
 
           ${sellers.length > 0 ? `
-            <div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(16,185,129,.25);display:flex;align-items:center;gap:6px">
-              <i class="fas fa-user-tie" style="font-size:11px;color:#10B981;flex-shrink:0" title="Filtrar por asesor comercial"></i>
+            <div style="margin-top:8px;display:flex;align-items:center;gap:6px">
+              <i class="fas fa-user-tie" style="font-size:11px;color:#0D9488;flex-shrink:0" title="Filtrar por asesor comercial"></i>
               <select class="dash-kpi-seller-select" title="Seleccionar asesor comercial" style="
                 width:100%;font-size:11px;font-weight:600;color:#334155;background:#F8FAFC;
-                border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;cursor:pointer;outline:none;
+                border:1px solid #CBD5E1;border-radius:8px;padding:3px 8px;cursor:pointer;outline:none;
                 font-family:inherit;transition:all .15s;text-overflow:ellipsis
-              " onfocus="this.style.borderColor='#10B981'" onblur="this.style.borderColor='#CBD5E1'">
+              " onfocus="this.style.borderColor='#0D9488'" onblur="this.style.borderColor='#CBD5E1'">
                 <option value="">Todos los Asesores</option>
                 ${sellers.map((s: any) => `
                   <option value="${h.esc(s.id)}" ${s.id === currentAdvisorId ? 'selected' : ''}>
@@ -108,9 +108,16 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
               </select>
             </div>
           ` : `
-            <p style="font-size:11px;color:#94A3B8;margin:6px 0 0">${prev > 0 ? '' : 'Mes en curso'}</p>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+              <span style="font-size:11px;color:#94A3B8">${prev > 0 ? '' : 'Mes en curso'}</span>
+              <button onclick="navigate('reportes')" style="font-size:11px;font-weight:700;color:#0D9488;background:none;border:none;cursor:pointer;padding:0">
+                Ver Detalle →
+              </button>
+            </div>
           `}
         </div>`;
+      const el = document.getElementById(`val-${c.id}`);
+      if (el) h.animateCounter(el, cur);
     }
   },
 
@@ -127,20 +134,29 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
       const kpis = data.kpis || {};
       const liq = kpis.totalLiquidez || 0;
       c.innerHTML = `
-        <div class="dash-kpi-card anim-slide-up">
-          <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#38BDF8,#0284C7)"></div>
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#38BDF8,#0284C7);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(56,189,248,.3)">
-              <i class="fas fa-wallet" style="font-size:16px;color:#fff"></i>
+        <div class="dash-kpi-card anim-slide-up" style="display:flex;flex-direction:column;justify-content:space-between">
+          <div>
+            <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#2563EB,#1D4ED8)"></div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+              <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#3B82F6,#1D4ED8);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(37,99,235,.25)">
+                <i class="fas fa-wallet" style="font-size:16px;color:#fff"></i>
+              </div>
+              <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(37,99,235,.1);color:#1D4ED8">DISPONIBLE</span>
             </div>
-            <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(56,189,248,.1);color:#0284C7">DISPONIBLE</span>
+            <div id="val-${c.id}" style="font-size:26px;font-weight:900;color:#1E3A8A;letter-spacing:-1px;line-height:1;margin-bottom:6px">
+              ${h.fmt(liq)}
+            </div>
+            <p style="font-size:12px;font-weight:700;color:#1D4ED8;margin:0 0 2px">Bancos y Caja General</p>
           </div>
-          <div id="val-${c.id}" style="font-size:26px;font-weight:900;color:#0C4A6E;letter-spacing:-1px;line-height:1;margin-bottom:6px">
-            ${h.fmt(liq)}
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:11px;color:#94A3B8">Cuentas 11 (Efectivo)</span>
+            <button onclick="navigate('reportes')" style="font-size:11px;font-weight:700;color:#1D4ED8;background:none;border:none;cursor:pointer;padding:0">
+              Ver Cuentas →
+            </button>
           </div>
-          <p style="font-size:12px;font-weight:700;color:#0284C7;margin:0 0 2px">Bancos y Caja General</p>
-          <p style="font-size:11px;color:#94A3B8;margin:0">Cuentas 11 (Efectivo y equivalentes)</p>
         </div>`;
+      const el = document.getElementById(`val-${c.id}`);
+      if (el) h.animateCounter(el, liq);
     }
   },
 
@@ -159,21 +175,23 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
       const venc = Math.min(tot, Math.max(0, kpis.carteraVencida || 0));
       const pctVenc = tot > 0 ? Math.min(100, Math.round((venc / tot) * 100)) : 0;
       c.innerHTML = `
-        <div class="dash-kpi-card anim-slide-up">
-          <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#F59E0B,#D97706)"></div>
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F59E0B,#D97706);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(245,158,11,.3)">
-              <i class="fas fa-file-invoice-dollar" style="font-size:16px;color:#fff"></i>
+        <div class="dash-kpi-card anim-slide-up" style="display:flex;flex-direction:column;justify-content:space-between">
+          <div>
+            <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#F59E0B,#D97706)"></div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+              <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#F59E0B,#D97706);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(245,158,11,.3)">
+                <i class="fas fa-file-invoice-dollar" style="font-size:16px;color:#fff"></i>
+              </div>
+              <div style="padding:3px 8px;border-radius:20px;background:rgba(239,68,68,.1);color:#DC2626;font-size:10px;font-weight:700">
+                ${pctVenc}% vencida
+              </div>
             </div>
-            <div style="padding:3px 8px;border-radius:20px;background:rgba(239,68,68,.1);color:#DC2626;font-size:10px;font-weight:700">
-              ${pctVenc}% vencida
+            <div id="val-${c.id}" style="font-size:26px;font-weight:900;color:#78350F;letter-spacing:-1px;line-height:1;margin-bottom:6px">
+              ${h.fmt(tot)}
             </div>
+            <p style="font-size:12px;font-weight:700;color:#B45309;margin:0 0 2px">Cartera por Cobrar</p>
           </div>
-          <div id="val-${c.id}" style="font-size:26px;font-weight:900;color:#78350F;letter-spacing:-1px;line-height:1;margin-bottom:6px">
-            ${h.fmt(tot)}
-          </div>
-          <p style="font-size:12px;font-weight:700;color:#B45309;margin:0 0 2px">Cartera por Cobrar</p>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
             <span style="font-size:11px;color:#94A3B8">Mora: <b>${h.fmt(venc)}</b></span>
             <button onclick="navigate('reportes')" style="font-size:11px;font-weight:700;color:#D97706;background:none;border:none;cursor:pointer;padding:0">
               Ver Saldos →
@@ -199,20 +217,22 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
       const cxpWeek = kpis.cxpWeek || 0;
       const cxpTot = kpis.cxpTotal || 0;
       c.innerHTML = `
-        <div class="dash-kpi-card anim-slide-up">
-          <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#EF4444,#DC2626)"></div>
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#EF4444,#DC2626);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(239,68,68,.3)">
-              <i class="fas fa-receipt" style="font-size:16px;color:#fff"></i>
+        <div class="dash-kpi-card anim-slide-up" style="display:flex;flex-direction:column;justify-content:space-between">
+          <div>
+            <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#EF4444,#DC2626)"></div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+              <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#EF4444,#DC2626);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(239,68,68,.3)">
+                <i class="fas fa-receipt" style="font-size:16px;color:#fff"></i>
+              </div>
+              <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(239,68,68,.1);color:#DC2626">URGENTE</span>
             </div>
-            <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:rgba(239,68,68,.1);color:#DC2626">URGENTE</span>
+            <div id="val-${c.id}" style="font-size:26px;font-weight:900;color:#7F1D1D;letter-spacing:-1px;line-height:1;margin-bottom:6px">
+              ${h.fmt(cxpWeek)}
+            </div>
+            <p style="font-size:12px;font-weight:700;color:#B91C1C;margin:0 0 2px">CxP Próximos 7 Días</p>
           </div>
-          <div id="val-${c.id}" style="font-size:26px;font-weight:900;color:#7F1D1D;letter-spacing:-1px;line-height:1;margin-bottom:6px">
-            ${h.fmt(cxpWeek)}
-          </div>
-          <p style="font-size:12px;font-weight:700;color:#B91C1C;margin:0 0 2px">CxP Próximos 7 Días</p>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
-            <span style="font-size:11px;color:#94A3B8">Total proveedores: <b>${h.fmt(cxpTot)}</b></span>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:11px;color:#94A3B8">Total: <b>${h.fmt(cxpTot)}</b></span>
             <button onclick="navigate('reportes')" style="font-size:11px;font-weight:700;color:#DC2626;background:none;border:none;cursor:pointer;padding:0">
               Ver Saldos →
             </button>

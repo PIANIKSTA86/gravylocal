@@ -418,15 +418,22 @@ routerAdd("POST", "/api/hub/sync-tenant-user", (e) => {
     let access = null;
     try {
       access = $app.findFirstRecordByFilter("user_company_access", "hub_user_id = '" + hubUser.id + "' && company_id = '" + company.id + "'");
+    } catch (_) {
+      access = null;
+    }
+
+    if (access) {
       access.set("role", role);
       access.set("company_email", email);
       access.set("active", active);
       if (password) {
         access.set("company_pass", password);
+      } else if (!access.getString("company_pass")) {
+        access.set("company_pass", "Admin1234!");
       }
       $app.save(access);
       console.log("[GRAVY HUB] Actualizado acceso UCA para: " + email);
-    } catch (_) {
+    } else {
       access = new Record(ucaCol);
       access.set("hub_user_id", hubUser.id);
       access.set("company_id", company.id);

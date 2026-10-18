@@ -137,25 +137,44 @@ function parseFormattedNumber(val: any): number {
 (window as any)._handleAbonoInput = (input: HTMLInputElement) => {
   formatInputWithSeparators(input);
   let val = parseFormattedNumber(input.value || '0');
-  let max = Number(input.dataset.max) || 0;
+  let max = Math.abs(Number(input.dataset.max) || 0);
   const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
   if (max > 0 && val > max) {
     val = max;
     input.value = val.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces });
   }
   
-  let total = 0;
+  let totalDebito = 0;
+  let totalCredito = 0;
   document.querySelectorAll('.teso-abono-input').forEach(el => {
-    total += parseFormattedNumber((el as HTMLInputElement).value || '0');
+    const inp = el as HTMLInputElement;
+    const v = parseFormattedNumber(inp.value || '0');
+    if (v > 0) {
+      if (inp.dataset.nature === 'CREDITO') {
+        totalCredito += v;
+      } else {
+        totalDebito += v;
+      }
+    }
   });
+
+  const neto = Math.max(0, totalDebito - totalCredito);
   const totEl = document.getElementById('teso-modal-total-abonos');
-  if (totEl) totEl.textContent = _fmt(total);
+  if (totEl) {
+    if (totalCredito > 0) {
+      totEl.innerHTML = `<span title="Facturas: ${_fmt(totalDebito)} - NC/Crédito: ${_fmt(totalCredito)}">${_fmt(neto)}</span> <span class="text-[10px] text-amber-600 font-bold">(-${_fmt(totalCredito)} NC)</span>`;
+    } else {
+      totEl.textContent = _fmt(neto);
+    }
+  }
 
   const montoInput = document.getElementById('teso-modal-monto') as HTMLInputElement | null;
   const isManual = (document.getElementById('teso-modal-modo') as HTMLSelectElement | null)?.value === 'manual';
 
   if (isManual && montoInput) {
-    montoInput.value = total > 0 ? total.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+    montoInput.value = (neto > 0 || (totalDebito > 0 && totalDebito === totalCredito))
+      ? neto.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces })
+      : '';
   }
 
   _updateMontoIndicator();
@@ -164,6 +183,24 @@ function parseFormattedNumber(val: any): number {
   } else {
     _recalculateTesoNeto();
   }
+};
+
+(window as any)._saldarFilaTeso = (key: string, valorMax: number) => {
+  const modoSelect = document.getElementById('teso-modal-modo') as HTMLSelectElement | null;
+  if (modoSelect && modoSelect.value !== 'manual') {
+    modoSelect.value = 'manual';
+    if ((window as any)._toggleModalManualMode) {
+      (window as any)._toggleModalManualMode();
+    }
+  }
+  
+  const input = document.querySelector(`.teso-abono-input[data-key="${key}"]`) as HTMLInputElement | null;
+  if (!input) return;
+  input.disabled = false;
+  const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
+  const v = Math.abs(valorMax || 0);
+  input.value = v.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces });
+  (window as any)._handleAbonoInput(input);
 };
 
 let _tesoAllTerceros: ThirdParty[] = [];
@@ -1263,11 +1300,15 @@ function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
   const isRecaudoCtx = isRecaudo;
 
   if (_tesoCurrentOpenItems.length === 0 && totalAnticipo <= 0.01) {
+    c.className = 'rounded-xl border border-gray-200 min-h-[120px] flex flex-col items-center justify-center text-gray-400 transition-all w-full';
     c.innerHTML = `<div class="p-5 text-center text-gray-500 bg-gray-50 rounded-xl border border-gray-200 w-full">
       <i class="fas fa-check-circle text-emerald-500 text-lg mr-2"></i>El tercero o inmueble no presenta cartera pendiente ni saldos a favor.
     </div>`;
     return;
   }
+
+  // Despejar clases residuales del placeholder inicial
+  c.className = 'w-full flex flex-col transition-all';
 
   // 1. CARDS DE RESUMEN FINANCIERO SUPERIOR (KPIs)
   const kpiCardsHtml = `
@@ -1379,13 +1420,26 @@ function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
       </tr>
     ` : '';
 
-    const invoicesRowsHtml = _tesoCurrentOpenItems.map(i => `
+    const invoicesRowsHtml = _tesoCurrentOpenItems.map(i => {
+      const isCredit = i.saldo < 0;
+      const absSaldo = Math.abs(i.saldo);
+      const isNC = (i.ref || '').toUpperCase().startsWith('NC') || isCredit;
+      const nature = isCredit ? 'CREDITO' : 'DEBITO';
+      const badgeIcon = isNC ? 'fa-file-invoice-dollar text-amber-600' : 'fa-file-invoice text-blue-600';
+      const badgeBg = isNC ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-blue-50 text-blue-900 border-blue-200';
+      const saldoColor = isCredit ? '#D97706' : (isRecaudoCtx ? '#DC2626' : '#2563EB');
+      const btnTitle = isCredit ? 'Cruzar totalidad de esta Nota Crédito' : 'Saldar 100% de esta Factura';
+      const btnLabel = isCredit ? 'Cruzar' : 'Todo';
+      const btnIcon = isCredit ? 'fa-rotate text-amber-600' : 'fa-bolt text-amber-500';
+
+      return `
       <tr style="border-bottom:1px solid #F1F5F9;" onmouseover="this.style.background='#F0F9FF'" onmouseout="this.style.background=''">
         <td style="padding:6px 10px;vertical-align:middle;">
           <div style="display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;">
             <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-              <i class="fas fa-file-invoice text-blue-600" style="font-size:13px;"></i>
-              <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;font-weight:900;background:#EFF6FF;color:#1E3A8A;padding:2px 8px;border-radius:5px;border:1.5px solid #93C5FD;letter-spacing:-0.02em;">${_esc(i.ref)}</span>
+              <i class="fas ${badgeIcon}" style="font-size:13px;"></i>
+              <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12.5px;font-weight:900;padding:2px 8px;border-radius:5px;border:1.5px solid;letter-spacing:-0.02em;" class="${badgeBg}">${_esc(i.ref)}</span>
+              ${isCredit ? `<span class="text-[9.5px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">Nota Crédito</span>` : ''}
             </div>
             <span style="font-size:11px;font-weight:600;color:#64748B;flex-shrink:0;display:inline-flex;align-items:center;gap:3px;">
               <i class="far fa-calendar-alt text-gray-400" style="font-size:10px;"></i>${_esc(i.firstDate.slice(0,10))}
@@ -1399,26 +1453,39 @@ function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
             <span style="color:#1E293B;font-weight:600;overflow:hidden;text-overflow:ellipsis;">${_esc(i.accountName)}</span>
           </div>
         </td>
-        <td style="padding:6px 10px;text-align:right;vertical-align:middle;white-space:nowrap;">
-          <span style="font-size:13px;font-weight:900;color:${i.saldo < 0 ? '#D97706' : (isRecaudoCtx ? '#DC2626' : '#2563EB')};">${_fmt(i.saldo)}</span>
+        <td style="padding:6px 10px;text-align:right;vertical-align:middle;white-space:nowrap;cursor:pointer;" title="Doble clic para ${isCredit ? 'cruzar' : 'saldar'} este valor" ondblclick="window._saldarFilaTeso('${_esc(i.key)}', ${absSaldo})">
+          <span style="font-size:13px;font-weight:900;color:${saldoColor};">${isCredit ? '-' : ''}${_fmt(absSaldo)}</span>
         </td>
         <td style="padding:4px 8px;text-align:right;vertical-align:middle;">
-          <input type="text" class="teso-abono-input"
-            style="width:100%;text-align:right;font-size:12px;font-weight:800;border:1.5px solid #CBD5E1;border-radius:5px;padding:3px 6px;background:#FFFFFF;color:#0F172A;box-shadow:0 1px 2px rgba(0,0,0,0.03);"
-            data-key="${i.key}" data-ref="${i.ref}" data-account="${i.accountId}" data-description="Abono a ${i.ref}" data-max="${i.saldo}"
-            placeholder="0" disabled oninput="window._handleAbonoInput(this)">
+          <div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;">
+            <button type="button" class="btn-saldar-fila px-2 py-1 text-[10.5px] font-bold rounded bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-800 border border-slate-300 transition-all shadow-2xs inline-flex items-center gap-1 cursor-pointer"
+              onclick="window._saldarFilaTeso('${_esc(i.key)}', ${absSaldo})"
+              title="${btnTitle}">
+              <i class="fas ${btnIcon}"></i>${btnLabel}
+            </button>
+            <input type="text" class="teso-abono-input"
+              style="width:115px;text-align:right;font-size:12px;font-weight:800;border:1.5px solid #CBD5E1;border-radius:5px;padding:3px 6px;background:#FFFFFF;color:#0F172A;box-shadow:0 1px 2px rgba(0,0,0,0.03);"
+              data-key="${i.key}" 
+              data-ref="${i.ref}" 
+              data-account="${i.accountId}" 
+              data-description="${isCredit ? 'Cruce de ' + i.ref : 'Abono a ' + i.ref}" 
+              data-nature="${nature}"
+              data-max="${absSaldo}"
+              placeholder="0" disabled oninput="window._handleAbonoInput(this)">
+          </div>
         </td>
       </tr>
-    `).join('');
+      `;
+    }).join('');
 
     tableContentHtml = `
-      <div class="rounded-xl border border-gray-200 overflow-hidden shadow-xs w-full" style="max-height:380px;display:flex;flex-direction:column;background:#fff;">
+      <div class="rounded-xl border border-gray-200 overflow-hidden shadow-xs w-full" style="display:flex;flex-direction:column;background:#fff;">
         <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
           <colgroup>
-            <col style="width:38%">
-            <col style="width:26%">
+            <col style="width:36%">
+            <col style="width:24%">
             <col style="width:18%">
-            <col style="width:18%">
+            <col style="width:22%">
           </colgroup>
           <thead style="position:sticky;top:0;z-index:2;background:#F8FAFC;">
             <tr style="border-bottom:2px solid #E2E8F0;">
@@ -1429,13 +1496,13 @@ function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
             </tr>
           </thead>
         </table>
-        <div style="overflow-y:auto;flex:1;">
+        <div style="overflow-y:auto;min-height:160px;max-height:360px;flex:1;">
           <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
             <colgroup>
-              <col style="width:38%">
-              <col style="width:26%">
+              <col style="width:36%">
+              <col style="width:24%">
               <col style="width:18%">
-              <col style="width:18%">
+              <col style="width:22%">
             </colgroup>
             <tbody>
               ${anticipoRowHtml}
@@ -1483,14 +1550,21 @@ function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
               <span style="font-size:11px;color:#475569;">· ${_esc(r.description)}</span>
             </div>
           </td>
-          <td style="padding:5px 10px;vertical-align:middle;text-align:right;">
+          <td style="padding:5px 10px;vertical-align:middle;text-align:right;cursor:pointer;" title="Doble clic para saldar esta cuota" ondblclick="window._saldarFilaTeso('${_esc(r.key)}', ${r.saldo})">
             <span style="font-size:12px;font-weight:800;color:#334155;">${_fmt(r.saldo)}</span>
           </td>
           <td style="padding:4px 8px;text-align:right;vertical-align:middle;">
-            <input type="text" class="teso-abono-input"
-              style="width:100%;text-align:right;font-size:12px;font-weight:800;border:1.5px solid #CBD5E1;border-radius:5px;padding:3px 6px;background:#FFFFFF;color:#0F172A;box-shadow:0 1px 2px rgba(0,0,0,0.03);"
-              data-key="${r.key}" data-ref="${r.invoiceNumber}" data-account="${r.accountId}" data-description="Abono a ${r.invoiceNumber} (${r.conceptName})" data-max="${r.saldo}"
-              placeholder="0" disabled oninput="window._handleAbonoInput(this)">
+            <div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;">
+              <button type="button" class="btn-saldar-fila px-2 py-1 text-[10.5px] font-bold rounded bg-slate-100 hover:bg-blue-100 text-slate-700 hover:text-blue-800 border border-slate-300 transition-all shadow-2xs inline-flex items-center gap-1 cursor-pointer"
+                onclick="window._saldarFilaTeso('${_esc(r.key)}', ${r.saldo})"
+                title="Saldar cuota completa">
+                <i class="fas fa-bolt text-amber-500"></i>Todo
+              </button>
+              <input type="text" class="teso-abono-input"
+                style="width:115px;text-align:right;font-size:12px;font-weight:800;border:1.5px solid #CBD5E1;border-radius:5px;padding:3px 6px;background:#FFFFFF;color:#0F172A;box-shadow:0 1px 2px rgba(0,0,0,0.03);"
+                data-key="${r.key}" data-ref="${r.invoiceNumber}" data-account="${r.accountId}" data-description="Abono a ${r.invoiceNumber} (${r.conceptName})" data-nature="DEBITO" data-max="${r.saldo}"
+                placeholder="0" disabled oninput="window._handleAbonoInput(this)">
+            </div>
           </td>
         </tr>
       `).join('');
@@ -1520,7 +1594,7 @@ function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
     }).join('');
 
     tableContentHtml = `
-      <div class="rounded-xl border border-gray-200 overflow-hidden shadow-xs w-full" style="max-height:380px;display:flex;flex-direction:column;background:#fff;">
+      <div class="rounded-xl border border-gray-200 overflow-hidden shadow-xs w-full" style="display:flex;flex-direction:column;background:#fff;">
         <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
           <colgroup>
             <col style="width:58%">
@@ -1535,7 +1609,7 @@ function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
             </tr>
           </thead>
         </table>
-        <div style="overflow-y:auto;flex:1;">
+        <div style="overflow-y:auto;min-height:160px;max-height:360px;flex:1;">
           <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
             <colgroup>
               <col style="width:58%">
@@ -1649,18 +1723,36 @@ function _toggleModalManualMode() {
     if (!isManual) inp.value = '';
   });
 
-  let total = 0;
+  let totalDebito = 0;
+  let totalCredito = 0;
   if (isManual) {
     document.querySelectorAll('.teso-abono-input').forEach(el => {
-      total += parseFormattedNumber((el as HTMLInputElement).value || '0');
+      const inp = el as HTMLInputElement;
+      const v = parseFormattedNumber(inp.value || '0');
+      if (v > 0) {
+        if (inp.dataset.nature === 'CREDITO') {
+          totalCredito += v;
+        } else {
+          totalDebito += v;
+        }
+      }
     });
   }
 
+  const neto = Math.max(0, totalDebito - totalCredito);
   const totEl = document.getElementById('teso-modal-total-abonos');
-  if (totEl) totEl.textContent = _fmt(total);
+  if (totEl) {
+    if (totalCredito > 0) {
+      totEl.innerHTML = `<span>${_fmt(neto)}</span> <span class="text-[10px] text-amber-600 font-bold">(-${_fmt(totalCredito)} NC)</span>`;
+    } else {
+      totEl.textContent = _fmt(neto);
+    }
+  }
 
   if (isManual && montoInput) {
-    montoInput.value = total > 0 ? total.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+    montoInput.value = (neto > 0 || (totalDebito > 0 && totalDebito === totalCredito))
+      ? neto.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces })
+      : '';
   }
 
   _updateMontoIndicator();
@@ -1708,11 +1800,16 @@ function _updateMontoIndicator() {
   let activeDocsCount = 0;
 
   if (isManual) {
+    let deb = 0;
+    let cred = 0;
     const activeInputs = Array.from(document.querySelectorAll('.teso-abono-input')).filter(el => parseFormattedNumber((el as HTMLInputElement).value || '0') > 0) as HTMLInputElement[];
     activeDocsCount = activeInputs.length;
-    if (activeInputs.length > 0) {
-      targetCartera = activeInputs.reduce((sum, inp) => sum + parseFormattedNumber(inp.value || '0'), 0);
-    }
+    activeInputs.forEach(inp => {
+      const v = parseFormattedNumber(inp.value || '0');
+      if (inp.dataset.nature === 'CREDITO') cred += v;
+      else deb += v;
+    });
+    targetCartera = Math.max(0, deb - cred);
   }
 
   const diff = valorCarteraCubierta - targetCartera;
@@ -1737,6 +1834,7 @@ function _updateMontoIndicator() {
       <span class="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
         <i class="fas fa-exclamation-triangle"></i> ${isRecaudo ? 'Pago parcial &mdash; queda' : 'Abono parcial &mdash; queda'} ${_fmt(absDiff)} pendiente ${cruzarAnticipos && totalAnticipo > 0 ? `(Saldo neto exigible: ${_fmt(saldoNeto)})` : ''}
       </span>`;
+  } else {
     indicatorEl.innerHTML = `
       <span class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
         <i class="fas fa-plus-circle"></i> Excedente de ${_fmt(absDiff)} registrado como nuevo anticipo a favor
@@ -1793,26 +1891,38 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
   if (!_tesoCurrentThirdParty) {
     _showToast('Debes seleccionar un tercero o unidad', 'warning'); return;
   }
-  if (!_tesoIsPagoMixto && (!cuentaId || !bankAccountId)) {
-    _showToast('Debes seleccionar un método de pago válido', 'warning'); return;
-  }
-  if (!selectedTxTypeId) {
-    _showToast('Debes seleccionar un tipo de comprobante', 'warning'); return;
-  }
-
   let distribucion: any[] = [];
+  let totalDebitoManual = 0;
+  let totalCreditoManual = 0;
   if (modo === 'manual') {
-    let sum = 0;
     document.querySelectorAll('.teso-abono-input').forEach(el => {
       const inp = el as HTMLInputElement;
       const v = parseFormattedNumber(inp.value || '0');
-      if (v > 0) {
-        distribucion.push({ key: inp.dataset.key, cross_doc_ref: inp.dataset.ref, account_id: inp.dataset.account, monto: v });
-        sum += v;
+      if (v > 0.001) {
+        const isCredit = inp.dataset.nature === 'CREDITO';
+        if (isCredit) {
+          totalCreditoManual += v;
+        } else {
+          totalDebitoManual += v;
+        }
+        distribucion.push({ 
+          key: inp.dataset.key, 
+          cross_doc_ref: inp.dataset.ref, 
+          account_id: inp.dataset.account, 
+          monto: v,
+          nature: inp.dataset.nature || 'DEBITO',
+          is_credit: isCredit
+        });
       }
     });
-    if (sum <= 0) {
+    if (distribucion.length === 0) {
       _showToast('Debes indicar al menos un abono manual mayor a 0', 'warning'); return;
+    }
+    if (totalDebitoManual <= 0 && totalCreditoManual > 0) {
+      _showToast('Debes seleccionar al menos una factura viva para cruzar con la Nota Crédito', 'warning'); return;
+    }
+    if (totalCreditoManual > totalDebitoManual) {
+      _showToast(`El valor de notas crédito (${_fmt(totalCreditoManual)}) no puede superar las facturas a cancelar (${_fmt(totalDebitoManual)})`, 'warning'); return;
     }
   } else {
     if (monto <= 0) {
@@ -1825,6 +1935,11 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       const ok = window.confirm(`Este tercero no tiene cartera abierta.\nSe registrará un anticipo de ${_fmt(monto)} a su favor.\n\n¿Continuar?`);
       if (!ok) return;
     }
+  }
+
+  const netTransToPay = modo === 'manual' ? Math.max(0, totalDebitoManual - totalCreditoManual) : monto;
+  if (!_tesoIsPagoMixto && (!cuentaId || !bankAccountId) && netTransToPay > 0.01) {
+    _showToast('Debes seleccionar un método de pago válido', 'warning'); return;
   }
 
   const btn = document.getElementById('btn-save-teso-tx') as HTMLButtonElement;
@@ -1919,11 +2034,21 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       }
     }
 
-    const totalAbono = modo === 'manual' ? distribucion.reduce((a, b) => a + b.monto, 0) : monto;
-    if (totalAbono <= 0) {
-      _showToast('El valor total de la transacción debe ser mayor a $0', 'warning');
-      if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
-      return;
+    const totalAbono = modo === 'manual' 
+      ? Math.max(0, totalDebitoManual - totalCreditoManual) 
+      : monto;
+    if (modo === 'manual') {
+      if (distribucion.length === 0) {
+        _showToast('Debes indicar al menos una partida a cruzar', 'warning');
+        if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
+        return;
+      }
+    } else {
+      if (totalAbono <= 0) {
+        _showToast('El valor total de la transacción debe ser mayor a $0', 'warning');
+        if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
+        return;
+      }
     }
 
     // El neto transado en bancos/caja es estrictamente el importe físico o bancario real
@@ -1947,7 +2072,9 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       third_party_id: _tesoCurrentThirdParty.id,
       amount: netoTransado,
       monto_bruto: totalAbono,
-      contrapartida_account_id: cuentaId,
+      total_debito_manual: totalDebitoManual,
+      total_credito_manual: totalCreditoManual,
+      contrapartida_account_id: cuentaId || null,
       cost_center_id: costCenterId || null,
       cruzar_anticipos: cruzarAnticipos,
       ret_fuente_amount: retFuenteAmt,
@@ -2614,7 +2741,10 @@ function _applyDefaultRetenciones() {
   if (lblRfRate) lblRfRate.textContent = rfRate > 0 ? `(${rfRate}%)` : '';
   if (lblIcaRate) lblIcaRate.textContent = icaRate > 0 ? `(${icaRate}%)` : '';
 
-  if (!chk.checked) return; // Labels shown but values only calculated when enabled
+  if (!chk.checked) {
+    _recalculateTesoNeto();
+    return;
+  }
 
   const montoInput = document.getElementById('teso-modal-monto') as HTMLInputElement;
   const monto = parseFormattedNumber(montoInput?.value || '0');
@@ -3131,7 +3261,7 @@ async function openRecaudoModal() {
         </div>
 
         <!-- CONTENEDOR DE CARTERA (GRILLA DE FACTURAS Y CONCEPTOS) -->
-        <div id="teso-modal-items-container" class="rounded-xl border border-gray-200 overflow-hidden min-h-[140px] flex flex-col items-center justify-center text-gray-400 transition-all">
+        <div id="teso-modal-items-container" class="rounded-xl border border-gray-200 min-h-[140px] flex flex-col items-center justify-center text-gray-400 transition-all w-full">
           <div class="text-center p-6">
             <div class="bg-gray-100 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-2">
               <i class="fas fa-search-dollar text-xl text-gray-400"></i>
@@ -3470,7 +3600,7 @@ async function openPagoModal() {
         </div>
 
         <!-- CONTENEDOR DE CARTERA (GRILLA DE OBLIGACIONES) -->
-        <div id="teso-modal-items-container" class="rounded-xl border border-gray-200 overflow-hidden min-h-[80px] max-h-[230px] flex flex-col items-center justify-center text-gray-400">
+        <div id="teso-modal-items-container" class="rounded-xl border border-gray-200 min-h-[140px] flex flex-col items-center justify-center text-gray-400 transition-all w-full">
           <div class="text-center p-6">
             <div class="bg-gray-100 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-2">
               <i class="fas fa-file-invoice-dollar text-xl text-gray-400"></i>
@@ -3499,17 +3629,23 @@ async function openPagoModal() {
         _tesoCurrentThirdParty = t;
         _updateThirdPartyDetailsShow(t);
         _loadOpenItemsForModal(t.id, false).then(() => {
-          const total = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+          const totalAnticipo = _tesoCurrentTotalAnticipo;
+          const saldoNeto = _tesoCurrentSaldoNeto;
+          const totalCartera = _tesoCurrentTotalCartera || _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+          const cruzarAnticipos = (document.getElementById('teso-modal-cruzar-anticipos') as HTMLInputElement)?.checked ?? false;
+          const defaultMonto = (cruzarAnticipos && totalAnticipo > 0.01 && saldoNeto > 0.01) ? saldoNeto : totalCartera;
+
           const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement;
           if (montoEl) {
             const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
-            montoEl.value = total > 0 ? total.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+            montoEl.value = defaultMonto > 0 ? defaultMonto.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
           }
           if ((window as any)._applyDefaultRetenciones) {
             (window as any)._applyDefaultRetenciones();
           } else {
             _recalculateTesoNeto();
           }
+          _updateMontoIndicator();
         });
       }
     );

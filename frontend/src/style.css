@@ -18,7 +18,23 @@
     --border-soft: #E2E8F0;
     --border-strong: #CBD5E1;
 
-    /* Identidad Contable Enterprise — Violeta */
+    /* Identidad Contable Enterprise — Violeta Maestro (Brand Core) */
+    --brand-primary: #7C3AED;
+    --brand-primary-hover: #6D28D9;
+    --brand-primary-light: #EDE9FE;
+    --brand-primary-soft: #F5F3FF;
+    --brand-primary-glow: rgba(124, 58, 237, 0.22);
+
+    /* Azul Cobalto (Confianza y Auditoría — Segmento Superior Logo) */
+    --brand-blue: #2563EB;
+    --brand-blue-hover: #1D4ED8;
+    --brand-blue-soft: #EFF6FF;
+
+    /* Verde Cerceta / Esmeralda Digital (Métricas Positivas — Segmento Inferior Logo) */
+    --brand-teal: #0D9488;
+    --brand-teal-hover: #0F766E;
+    --brand-teal-soft: #F0FDFA;
+
     --color-purple-700: #6D28D9;
     --color-purple-600: #7C3AED;
     --color-purple-500: #8B5CF6;
@@ -89,7 +105,7 @@
   .nav-item.active i { color: var(--accent-lavender, #7C3AED); }
   .nav-item .nav-label { overflow: hidden; max-width: 200px; transition: max-width .25s .05s cubic-bezier(.4,0,.2,1), opacity .2s .05s; }
   
-  .nav-section { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin: 6px 6px 2px; font-size: 11px; font-weight: 700; color: #64748B; letter-spacing: 0.5px; text-transform: uppercase; border-radius: 8px; cursor: pointer; user-select: none; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+  .nav-section { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin: 6px 6px 2px; font-size: 11.5px; font-weight: 700; color: #475569; letter-spacing: 0.2px; text-transform: none; border-radius: 8px; cursor: pointer; user-select: none; transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
   .nav-section:hover { background: var(--bg-soft, #F5F3FF); color: var(--color-purple-700, #6D28D9); }
   .nav-section.active-section { color: var(--color-purple-700, #6D28D9); background: rgba(124, 58, 237, 0.07); }
   .nav-section-title { display: flex; align-items: center; gap: 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -294,150 +310,253 @@
   .toast-warning { background: #D97706; }
   .toast-info    { background: var(--accent-lavender, #7C3AED); }
 
-  /* ─── Login & Auth Experience — Estilo Aleluya Vivo (Aqua + Púrpura) ─── */
+  /* ─── Login & Auth Experience — Opción 1 Orgánico & Fluido (Triada Oficial) ─── */
+  :root {
+    --brand-violet: #7C3AED;
+    --brand-violet-hover: #6D28D9;
+    --brand-violet-light: #F5F3FF;
+    --brand-blue: #1D4ED8;
+    --brand-blue-hover: #1E40AF;
+    --brand-blue-light: #EFF6FF;
+    --brand-teal: #00BFA5;
+    --brand-green: #059669;
+    --brand-green-light: #ECFDF5;
+    --gradient-triad: linear-gradient(135deg, #1D4ED8 0%, #7C3AED 50%, #00BFA5 100%);
+    --gradient-btn: linear-gradient(135deg, #1D4ED8 0%, #7C3AED 50%, #00BFA5 100%);
+    --gradient-btn-hover: linear-gradient(135deg, #1E40AF 0%, #6D28D9 50%, #059669 100%);
+  }
+
   .login-screen-wrap {
-    display: flex;
-    width: 100vw;
-    height: 100vh;
-    background-color: #FFFFFF;
-    overflow: hidden;
-  }
-
-  .login-hero-container {
-    width: 48%;
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    justify-content: stretch;
-    height: 100%;
-  }
-
-  .login-aqua-card {
-    background-color: #2EE6B9;
-    border-radius: 36px;
-    height: 100%;
-    padding: 48px 40px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    text-align: center;
-    position: relative;
-    overflow: hidden;
-    box-shadow: 0 12px 32px -4px rgba(46, 230, 185, 0.35);
-  }
-
-  .login-aqua-title {
-    font-size: clamp(28px, 3.2vw, 42px);
-    font-weight: 900;
-    color: #111827;
-    line-height: 1.15;
-    letter-spacing: -0.8px;
-    max-width: 500px;
-    margin: auto 0;
-  }
-
-  .login-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    width: 100%;
-    max-width: 500px;
-    margin-top: auto;
-  }
-
-  .login-stat-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  .login-stat-icon {
-    font-size: 40px;
-    line-height: 1;
-    margin-bottom: 8px;
-    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.08));
-    transition: transform 0.2s ease;
-  }
-  .login-stat-item:hover .login-stat-icon {
-    transform: scale(1.1);
-  }
-
-  .login-stat-title {
-    font-size: 15px;
-    font-weight: 800;
-    color: #111827;
-    line-height: 1.2;
-    margin-bottom: 3px;
-  }
-
-  .login-stat-desc {
-    font-size: 11.5px;
-    font-weight: 600;
-    color: #1F2937;
-    line-height: 1.3;
-  }
-
-  /* Formulario derecho */
-  .login-form-container {
-    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 32px 48px;
-    background-color: #FFFFFF;
-    overflow-y: auto;
+    width: 100vw;
+    height: 100vh;
+    background-color: #F8FAFC;
+    position: relative;
+    overflow: hidden;
+    padding: 24px;
   }
 
-  .login-form-box {
+  /* Fondo Ambiental Triada (Violeta, Azul, Verde) */
+  .triad-ambient-bg {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  .ambient-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(65px);
+    opacity: 0.45;
+    animation: floatAmbient 16s ease-in-out infinite alternate;
+  }
+
+  .blob-blue {
+    width: 480px;
+    height: 480px;
+    background: radial-gradient(circle, #3B82F6 0%, #1D4ED8 70%);
+    top: -120px;
+    right: 18%;
+    border-radius: 45% 55% 65% 35% / 40% 60% 40% 60%;
+  }
+
+  .blob-violet {
+    width: 440px;
+    height: 440px;
+    background: radial-gradient(circle, #A855F7 0%, #7C3AED 70%);
+    bottom: -60px;
+    right: 32%;
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    animation-duration: 20s;
+  }
+
+  .blob-green {
+    width: 420px;
+    height: 420px;
+    background: radial-gradient(circle, #2DD4BF 0%, #059669 70%);
+    bottom: -80px;
+    right: 5%;
+    border-radius: 35% 65% 60% 40% / 45% 45% 55% 55%;
+    animation-duration: 14s;
+  }
+
+  .blob-left-soft {
+    width: 320px;
+    height: 320px;
+    background: radial-gradient(circle, #EDE9FE 0%, #DBEAFE 100%);
+    top: 10%;
+    left: -60px;
+    opacity: 0.6;
+  }
+
+  @keyframes floatAmbient {
+    0% { transform: translateY(0) rotate(0deg) scale(1); }
+    50% { transform: translateY(-24px) rotate(6deg) scale(1.05); }
+    100% { transform: translateY(18px) rotate(-4deg) scale(0.96); }
+  }
+
+  .shape-accent-pill-blue {
+    position: absolute;
+    top: 90px;
+    right: 36%;
+    width: 110px;
+    height: 48px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #60A5FA, #2563EB);
+    opacity: 0.85;
+    transform: rotate(-25deg);
+    z-index: 1;
+  }
+
+  .shape-accent-arc-violet {
+    position: absolute;
+    bottom: 120px;
+    right: 34%;
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    border: 14px solid #8B5CF6;
+    border-bottom-color: transparent;
+    opacity: 0.75;
+    transform: rotate(45deg);
+    z-index: 1;
+  }
+
+  .shape-accent-pill-green {
+    position: absolute;
+    bottom: 70px;
+    right: 22%;
+    width: 130px;
+    height: 52px;
+    border-radius: 26px;
+    background: linear-gradient(135deg, #34D399, #059669);
+    opacity: 0.9;
+    transform: rotate(15deg);
+    z-index: 1;
+  }
+
+  .dots-grid-triad {
+    position: absolute;
+    top: 140px;
+    right: 14%;
+    width: 110px;
+    height: 110px;
+    background-image: radial-gradient(#94A3B8 1.5px, transparent 1.5px);
+    background-size: 14px 14px;
+    opacity: 0.55;
+    z-index: 1;
+  }
+
+  /* Tarjeta Maestra Contenedora */
+  .login-master-container {
+    position: relative;
+    z-index: 10;
     width: 100%;
-    max-width: 390px;
+    max-width: 1180px;
+    min-height: 690px;
+    display: grid;
+    grid-template-columns: 480px 1fr;
+    background: rgba(255, 255, 255, 0.84);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    border-radius: 26px;
+    box-shadow: 0 30px 65px -15px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(226, 232, 240, 0.6);
+    overflow: hidden;
+  }
+
+  /* Formulario Izquierdo */
+  .login-form-side {
+    background: rgba(255, 255, 255, 0.95);
+    padding: 50px 46px;
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
+    border-right: 1px solid rgba(226, 232, 240, 0.7);
+    z-index: 2;
   }
+
+  .brand-logo-wrap {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    background: #FFFFFF;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px;
+    box-shadow: 0 8px 18px -4px rgba(124, 58, 237, 0.15), 0 0 0 1px rgba(124, 58, 237, 0.08);
+  }
+
+  .brand-triad-pills {
+    display: flex;
+    gap: 5px;
+    margin-top: 5px;
+    align-items: center;
+  }
+
+  .triad-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
+  .badge-blue { background: var(--brand-blue-light); color: var(--brand-blue); }
+  .badge-violet { background: var(--brand-violet-light); color: var(--brand-violet); }
+  .badge-green { background: var(--brand-green-light); color: var(--brand-green); }
 
   .login-modern-input {
     width: 100%;
-    height: 48px;
+    height: 50px;
     padding: 0 16px;
-    border: 1.5px solid #E5E7EB;
-    border-radius: 10px;
-    background: #FFFFFF;
-    color: #111827;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 14px;
+    background: #F8FAFC;
+    color: #0F172A;
     font-size: 14px;
-    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    font-weight: 500;
+    outline: none;
+    transition: all 0.2s ease;
   }
   .login-modern-input:focus {
-    border-color: #9333EA !important;
+    background: #FFFFFF !important;
+    border-color: var(--brand-violet) !important;
     outline: none;
-    box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.14) !important;
+    box-shadow: 0 0 0 3.5px rgba(124, 58, 237, 0.14) !important;
   }
 
-  /* Botón Píldora Púrpura Vivo Aleluya */
+  /* Botón Principal con Gradiente de la Triada */
   .login-pill-btn {
-    background-color: #9333EA !important;
+    background: var(--gradient-btn) !important;
     color: #FFFFFF !important;
-    border-radius: 9999px !important;
-    height: 48px !important;
-    font-size: 15px !important;
+    border-radius: 14px !important;
+    height: 50px !important;
+    font-size: 14.5px !important;
     font-weight: 700 !important;
+    letter-spacing: 0.2px !important;
     border: none !important;
-    box-shadow: 0 4px 14px rgba(147, 51, 234, 0.28) !important;
-    transition: background-color 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease !important;
+    box-shadow: 0 10px 24px -6px rgba(124, 58, 237, 0.45) !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
     cursor: pointer !important;
   }
   .login-pill-btn:hover {
-    background-color: #7E22CE !important;
-    box-shadow: 0 6px 18px rgba(147, 51, 234, 0.38) !important;
-    transform: translateY(-1px) !important;
+    background: var(--gradient-btn-hover) !important;
+    box-shadow: 0 14px 28px -6px rgba(37, 99, 235, 0.5) !important;
+    transform: translateY(-1.5px) !important;
   }
   .login-pill-btn:active {
-    transform: translateY(1px) scale(0.99) !important;
-    background-color: #6B21A8 !important;
+    transform: translateY(0.5px) scale(0.99) !important;
   }
   .login-pill-btn:disabled {
-    opacity: 0.65 !important;
+    opacity: 0.75 !important;
     cursor: wait !important;
     transform: none !important;
   }
@@ -446,26 +565,114 @@
     display: none;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 600;
-    color: #EC8314;
-    background: #FEF9EC;
-    border: 1px solid #FCECC9;
-    padding: 4px 10px;
+    color: #B45309;
+    background: #FEF3C7;
+    border: 1px solid #FDE68A;
+    padding: 5px 10px;
     border-radius: 6px;
     margin-top: 6px;
-    animation: fadeIn 0.2s ease;
   }
   .caps-lock-pill.active {
     display: inline-flex;
   }
 
   .status-pulse-dot {
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background-color: #0C9D61;
+    background-color: var(--brand-teal);
+    box-shadow: 0 0 8px var(--brand-teal);
     display: inline-block;
+  }
+
+  /* Hero Derecho */
+  .hero-side-triad {
+    position: relative;
+    padding: 52px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+    z-index: 2;
+  }
+
+  .text-gradient-triad {
+    background: var(--gradient-triad);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .triad-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    position: relative;
+    z-index: 5;
+  }
+
+  .triad-card {
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    padding: 16px 14px;
+    border-radius: 14px;
+    box-shadow: 0 10px 24px -10px rgba(15, 23, 42, 0.08);
+    transition: all 0.25s ease;
+    display: flex;
+    flex-direction: column;
+  }
+  .triad-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 28px -10px rgba(15, 23, 42, 0.14);
+  }
+
+  .triad-card.card-blue { border-top: 3.5px solid var(--brand-blue); }
+  .card-blue .card-icon { background: var(--brand-blue-light); color: var(--brand-blue); }
+
+  .triad-card.card-violet { border-top: 3.5px solid var(--brand-violet); }
+  .card-violet .card-icon { background: var(--brand-violet-light); color: var(--brand-violet); }
+
+  .triad-card.card-green { border-top: 3.5px solid var(--brand-teal); }
+  .card-green .card-icon { background: var(--brand-green-light); color: var(--brand-green); }
+
+  .card-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    margin-bottom: 10px;
+  }
+
+  .card-title {
+    font-size: 12.5px;
+    font-weight: 800;
+    color: #0F172A;
+    margin-bottom: 4px;
+  }
+
+  .card-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  @media (max-width: 980px) {
+    .login-master-container {
+      grid-template-columns: 1fr;
+      max-width: 480px;
+    }
+    .hero-side-triad {
+      display: none;
+    }
+    .login-form-side {
+      border-right: none;
+      padding: 40px 28px;
+    }
   }
 
   /* Selector de empresas (HUB) */
@@ -622,7 +829,7 @@
     background: transparent;
     box-shadow: none;
   }
-  .brand-shell.sm { width: 42px; height: 42px; border-radius: 14px; padding: 5px; }
+  .brand-shell.sm { width: 36px; height: 36px; border-radius: 10px; padding: 2px; }
   .brand-shell img { width: 100%; height: 100%; object-fit: contain; display: block; filter: none; }
 
   /* Responsive & Mobile Mode */

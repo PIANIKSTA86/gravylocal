@@ -519,3 +519,35 @@ routerAdd('GET', '/api/radian/documents', (c) => {
     return c.json(500, { success: false, error: err.message });
   }
 });
+
+// --- 7. CONSULTAR ESTADO DE EVENTO EN MATIAS API ---
+routerAdd('POST', '/api/radian/check-event-status', (c) => {
+  try {
+    const rawBody = c.requestInfo()?.body || {};
+    const trackId = rawBody.trackId || rawBody.cufe || "";
+    if (!trackId) {
+      return c.json(400, { success: false, error: "TrackId / CUFE requerido." });
+    }
+    const res = callMatiasApi(`/events/status/${encodeURIComponent(trackId)}`, "GET");
+    return c.json(res.statusCode, { success: res.ok, data: res.data });
+  } catch (err) {
+    return c.json(500, { success: false, error: err.message });
+  }
+});
+
+
+// --- 8. REENVIAR CORREO DE EVENTO RADIAN ---
+routerAdd('POST', '/api/radian/resend-email', (c) => {
+  try {
+    const rawBody = c.requestInfo()?.body || {};
+    const trackId = rawBody.trackId || rawBody.cufe || "";
+    if (!trackId) {
+      return c.json(400, { success: false, error: "TrackId / CUFE requerido." });
+    }
+    const res = callMatiasApi(`/send/mail/${encodeURIComponent(trackId)}`, "POST", rawBody);
+    return c.json(res.statusCode, { success: res.ok, data: res.data });
+  } catch (err) {
+    return c.json(500, { success: false, error: err.message });
+  }
+});
+

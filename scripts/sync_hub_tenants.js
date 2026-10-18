@@ -155,11 +155,17 @@ for (const t of detectedTenants) {
     if (!acc) {
       const accId = generatePbId();
       hubDb.prepare(`
-        INSERT INTO user_company_access (id, hub_user_id, company_id, role, company_email, active)
-        VALUES (?, ?, ?, 'superadmin', ?, 1)
+        INSERT INTO user_company_access (id, hub_user_id, company_id, role, company_email, company_pass, active)
+        VALUES (?, ?, ?, 'admin', ?, 'Admin1234!', 1)
       `).run(accId, sa.id, companyId, sa.email);
     } else {
-      hubDb.prepare("UPDATE user_company_access SET active = 1 WHERE id = ?").run(acc.id);
+      hubDb.prepare(`
+        UPDATE user_company_access 
+        SET active = 1,
+            role = CASE WHEN role = 'superadmin' THEN 'admin' ELSE role END,
+            company_pass = CASE WHEN company_pass IS NULL OR company_pass = '' THEN 'Admin1234!' ELSE company_pass END
+        WHERE id = ?
+      `).run(acc.id);
     }
   }
 }

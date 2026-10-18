@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRAVY — Login Triada de Marca (Violeta, Azul & Verde Esmeralda)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* ─── TRIADA OFICIAL DE NUEVO LOGO GRAVY ─── */
+      /* 1. Violeta Eléctrico (Identidad & Innovación) */
+      --brand-violet: #7C3AED;
+      --brand-violet-hover: #6D28D9;
+      --brand-violet-light: #F5F3FF;
+      --brand-violet-glow: rgba(124, 58, 237, 0.35);
+
+      /* 2. Azul Cobalto / Royal (Confianza, Seguridad & Base de Datos) */
+      --brand-blue: #1D4ED8;
+      --brand-blue-hover: #1E40AF;
+      --brand-blue-light: #EFF6FF;
+      --brand-blue-glow: rgba(29, 78, 216, 0.3);
+
+      /* 3. Verde Esmeralda / Turquesa (Crecimiento, Balance Cuadrado & DIAN) */
+      --brand-teal: #00BFA5;
+      --brand-green: #059669;
+      --brand-green-light: #ECFDF5;
+      --brand-green-glow: rgba(5, 150, 105, 0.3);
+
+      /* Gradientes Armónicos de la Triada */
+      --gradient-triad: linear-gradient(135deg, #1D4ED8 0%, #7C3AED 50%, #00BFA5 100%);
+      --gradient-hero: linear-gradient(145deg, #1E1B4B 0%, #172554 45%, #064E3B 100%);
+      --gradient-btn: linear-gradient(135deg, #7C3AED 0%, #6366F1 60%, #00BFA5 100%);
+      --gradient-btn-hover: linear-gradient(135deg, #6D28D9 0%, #4F46E5 60%, #059669 100%);
+
+      --bg: #F8FAFC;
+      --card-bg: rgba(255, 255, 255, 0.94);
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --text-subtle: #94A3B8;
+      --border: #E2E8F0;
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 24px;
+      --radius-pill: 9999px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow-x: hidden;
+      padding: 24px;
+    }
+
+    /* ─── FONDO AMBIENTAL CON LA TRIADA (AZUL, VIOLETA, VERDE) ─── */
+    .triad-ambient-bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .ambient-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(65px);
+      opacity: 0.45;
+      animation: floatAmbient 16s ease-in-out infinite alternate;
+    }
+
+    /* Blob Azul (Superior Derecho) */
+    .blob-blue {
+      width: 480px;
+      height: 480px;
+      background: radial-gradient(circle, #3B82F6 0%, #1D4ED8 70%);
+      top: -120px;
+      right: 18%;
+      border-radius: 45% 55% 65% 35% / 40% 60% 40% 60%;
+    }
+
+    /* Blob Violeta (Centro & Flotante) */
+    .blob-violet {
+      width: 440px;
+      height: 440px;
+      background: radial-gradient(circle, #A855F7 0%, #7C3AED 70%);
+      bottom: -60px;
+      right: 32%;
+      border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+      animation-duration: 20s;
+    }
+
+    /* Blob Verde Esmeralda / Turquesa (Inferior Derecho) */
+    .blob-green {
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, #2DD4BF 0%, #059669 70%);
+      bottom: -80px;
+      right: 5%;
+      border-radius: 35% 65% 60% 40% / 45% 45% 55% 55%;
+      animation-duration: 14s;
+    }
+
+    /* Blob Suave Izquierdo para equilibrio visual */
+    .blob-left-soft {
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, #EDE9FE 0%, #DBEAFE 100%);
+      top: 10%;
+      left: -60px;
+      opacity: 0.6;
+    }
+
+    @keyframes floatAmbient {
+      0% { transform: translateY(0) rotate(0deg) scale(1); }
+      50% { transform: translateY(-24px) rotate(6deg) scale(1.05); }
+      100% { transform: translateY(18px) rotate(-4deg) scale(0.96); }
+    }
+
+    /* Formas Geométricas Inspiradas en el Logo */
+    .shape-accent-pill-blue {
+      position: absolute;
+      top: 90px;
+      right: 36%;
+      width: 110px;
+      height: 48px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #60A5FA, #2563EB);
+      opacity: 0.85;
+      transform: rotate(-25deg);
+      z-index: 1;
+    }
+
+    .shape-accent-arc-violet {
+      position: absolute;
+      bottom: 120px;
+      right: 34%;
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      border: 14px solid #8B5CF6;
+      border-bottom-color: transparent;
+      opacity: 0.75;
+      transform: rotate(45deg);
+      z-index: 1;
+    }
+
+    .shape-accent-pill-green {
+      position: absolute;
+      bottom: 70px;
+      right: 22%;
+      width: 130px;
+      height: 52px;
+      border-radius: 26px;
+      background: linear-gradient(135deg, #34D399, #059669);
+      opacity: 0.9;
+      transform: rotate(15deg);
+      z-index: 1;
+    }
+
+    .dots-grid-triad {
+      position: absolute;
+      top: 140px;
+      right: 14%;
+      width: 110px;
+      height: 110px;
+      background-image: radial-gradient(#94A3B8 1.5px, transparent 1.5px);
+      background-size: 14px 14px;
+      opacity: 0.55;
+      z-index: 1;
+    }
+
+    /* ─── CONTENEDOR PRINCIPAL ─── */
+    .login-container {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 1180px;
+      min-height: 690px;
+      display: grid;
+      grid-template-columns: 480px 1fr;
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 30px 65px -15px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(226, 232, 240, 0.6);
+      overflow: hidden;
+    }
+
+    /* ─── COLUMNA IZQUIERDA: FORMULARIO ─── */
+    .login-form-side {
+      background: rgba(255, 255, 255, 0.95);
+      padding: 52px 48px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-right: 1px solid rgba(226, 232, 240, 0.7);
+      z-index: 2;
+    }
+
+    .brand-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    /* Contenedor del Logo Nuevo */
+    .brand-logo-wrap {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      background: #FFFFFF;
+      border: 1px solid rgba(226, 232, 240, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px;
+      box-shadow: 0 8px 18px -4px rgba(124, 58, 237, 0.15), 0 0 0 1px rgba(124, 58, 237, 0.08);
+      position: relative;
+    }
+
+    .brand-logo-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .brand-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #0F172A;
+      line-height: 1;
+    }
+
+    .brand-triad-pills {
+      display: flex;
+      gap: 5px;
+      margin-top: 5px;
+      align-items: center;
+    }
+
+    .triad-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: var(--radius-pill);
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+
+    .badge-blue { background: var(--brand-blue-light); color: var(--brand-blue); }
+    .badge-violet { background: var(--brand-violet-light); color: var(--brand-violet); }
+    .badge-green { background: var(--brand-green-light); color: var(--brand-green); }
+
+    .form-heading {
+      margin-bottom: 24px;
+    }
+
+    .form-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.6px;
+      color: #0F172A;
+      line-height: 1.2;
+    }
+
+    .form-subtitle {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    /* Botón Google SSO Corporativo */
+    .btn-sso {
+      width: 100%;
+      height: 48px;
+      border-radius: var(--radius-md);
+      background: #FFFFFF;
+      border: 1.5px solid var(--border);
+      color: #1E293B;
+      font-size: 13.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    }
+
+    .btn-sso:hover {
+      background: #F8FAFC;
+      border-color: #CBD5E1;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Divisor Armónico */
+    .triad-divider {
+      display: flex;
+      align-items: center;
+      margin: 22px 0;
+      color: var(--text-subtle);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .triad-divider::before,
+    .triad-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #E2E8F0;
+    }
+
+    .triad-divider span {
+      padding: 0 14px;
+    }
+
+    /* ─── CAMPOS DE ENTRADA CON ENFOQUE MULTICOLOR ─── */
+    .field-group {
+      margin-bottom: 18px;
+      position: relative;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #1E293B;
+      margin-bottom: 6px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-field {
+      width: 100%;
+      height: 50px;
+      background: #F8FAFC;
+      border: 1.5px solid #CBD5E1;
+      border-radius: var(--radius-md);
+      padding: 0 16px;
+      font-family: inherit;
+      font-size: 14.5px;
+      color: var(--text-main);
+      transition: all 0.2s ease;
+      outline: none;
+    }
+
+    /* Enfoque: Borde con Violeta y Sombra con Azul */
+    .input-field:focus {
+      background: #FFFFFF;
+      border-color: var(--brand-violet);
+      box-shadow: 0 0 0 3.5px rgba(124, 58, 237, 0.14);
+    }
+
+    .input-field::placeholder {
+      color: var(--text-subtle);
+      font-size: 13.5px;
+    }
+
+    .input-field.has-toggle {
+      padding-right: 46px;
+    }
+
+    .btn-toggle-eye {
+      position: absolute;
+      right: 14px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-subtle);
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s;
+    }
+
+    .btn-toggle-eye:hover {
+      color: var(--brand-violet);
+    }
+
+    .caps-alert {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #B45309;
+      background: #FEF3C7;
+      padding: 5px 10px;
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+
+    .caps-alert.active {
+      display: flex;
+    }
+
+    .form-options {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 22px;
+      font-size: 13px;
+    }
+
+    .remember-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-weight: 500;
+      user-select: none;
+    }
+
+    .custom-checkbox {
+      width: 17px;
+      height: 17px;
+      accent-color: var(--brand-violet);
+      cursor: pointer;
+    }
+
+    .link-forgot {
+      color: var(--brand-blue);
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.15s;
+    }
+
+    .link-forgot:hover {
+      color: var(--brand-violet);
+      text-decoration: underline;
+    }
+
+    /* ─── BOTÓN PRINCIPAL CON EL GRADIENTE DE LA TRIADA ─── */
+    .btn-submit {
+      width: 100%;
+      height: 52px;
+      background: var(--gradient-btn);
+      color: #FFFFFF;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      box-shadow: 0 10px 24px -6px rgba(124, 58, 237, 0.45);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-submit:hover {
+      background: var(--gradient-btn-hover);
+      transform: translateY(-1.5px);
+      box-shadow: 0 14px 28px -6px rgba(37, 99, 235, 0.5);
+    }
+
+    .btn-submit:active {
+      transform: translateY(0);
+    }
+
+    .form-footer {
+      margin-top: 22px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .form-footer a {
+      color: var(--brand-violet);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .form-footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* Diagnóstico de Conexión LAN vs Cloud */
+    .network-pill {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid #F1F5F9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+
+    .network-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+    }
+
+    .status-dot-green {
+      width: 8px;
+      height: 8px;
+      background: var(--brand-teal);
+      border-radius: 50%;
+      box-shadow: 0 0 10px rgba(0, 191, 165, 0.8);
+      animation: pulseGreen 2s infinite;
+    }
+
+    @keyframes pulseGreen {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.2); }
+    }
+
+    .network-badge {
+      background: #F1F5F9;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-weight: 600;
+      color: #334155;
+    }
+
+    /* ─── COLUMNA DERECHA: HERO EDITORIAL CON LA TRIADA ─── */
+    .hero-side {
+      position: relative;
+      padding: 52px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      z-index: 2;
+    }
+
+    .hero-top-nav {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .hero-chip {
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      padding: 6px 14px;
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      font-weight: 600;
+      color: #1E293B;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+
+    .hero-chip-green {
+      background: #ECFDF5;
+      border-color: #A7F3D0;
+      color: #065F46;
+    }
+
+    .hero-chip-blue {
+      background: #EFF6FF;
+      border-color: #BFDBFE;
+      color: #1E40AF;
+    }
+
+    .hero-content {
+      max-width: 480px;
+      margin: auto 0;
+      position: relative;
+      z-index: 5;
+    }
+
+    .hero-headline {
+      font-family: 'Outfit', sans-serif;
+      font-size: 40px;
+      font-weight: 800;
+      line-height: 1.15;
+      color: #0F172A;
+      letter-spacing: -1.2px;
+      margin-bottom: 16px;
+    }
+
+    /* Texto con Gradiente de la Triada */
+    .text-gradient-triad {
+      background: linear-gradient(135deg, #1D4ED8 0%, #7C3AED 50%, #00BFA5 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      font-size: 14.5px;
+      line-height: 1.65;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+    }
+
+    /* ─── 3 TARJETAS DE PILAR BASADAS EN LA TRIADA (AZUL, VIOLETA, VERDE) ─── */
+    .triad-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      position: relative;
+      z-index: 5;
+    }
+
+    .triad-card {
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.95);
+      padding: 16px 14px;
+      border-radius: var(--radius-md);
+      box-shadow: 0 10px 24px -10px rgba(15, 23, 42, 0.08);
+      transition: all 0.25s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .triad-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 14px 28px -10px rgba(15, 23, 42, 0.14);
+    }
+
+    /* Tarjeta 1: Azul (Seguridad & LAN) */
+    .triad-card.card-blue {
+      border-top: 3.5px solid var(--brand-blue);
+    }
+    .card-blue .card-icon {
+      background: var(--brand-blue-light);
+      color: var(--brand-blue);
+    }
+
+    /* Tarjeta 2: Violeta (Contabilidad & Automatización) */
+    .triad-card.card-violet {
+      border-top: 3.5px solid var(--brand-violet);
+    }
+    .card-violet .card-icon {
+      background: var(--brand-violet-light);
+      color: var(--brand-violet);
+    }
+
+    /* Tarjeta 3: Verde (DIAN 2026 & Balance) */
+    .triad-card.card-green {
+      border-top: 3.5px solid var(--brand-teal);
+    }
+    .card-green .card-icon {
+      background: var(--brand-green-light);
+      color: var(--brand-green);
+    }
+
+    .card-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      margin-bottom: 10px;
+    }
+
+    .card-title {
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #0F172A;
+      margin-bottom: 4px;
+    }
+
+    .card-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .hero-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-subtle);
+      position: relative;
+      z-index: 5;
+      padding-top: 20px;
+    }
+
+    @media (max-width: 980px) {
+      .login-container {
+        grid-template-columns: 1fr;
+        max-width: 480px;
+      }
+      .hero-side {
+        display: none;
+      }
+      .login-form-side {
+        border-right: none;
+        padding: 40px 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fondo Ambiental Triada (Violeta, Azul, Verde) -->
+  <div class="triad-ambient-bg">
+    <div class="ambient-blob blob-blue"></div>
+    <div class="ambient-blob blob-violet"></div>
+    <div class="ambient-blob blob-green"></div>
+    <div class="ambient-blob blob-left-soft"></div>
+
+    <!-- Formas Geométricas Complementarias inspiradas en el Logo -->
+    <div class="shape-accent-pill-blue"></div>
+    <div class="shape-accent-arc-violet"></div>
+    <div class="shape-accent-pill-green"></div>
+    <div class="dots-grid-triad"></div>
+  </div>
+
+  <div class="login-container">
+    <!-- Columna Izquierda: Formulario -->
+    <div class="login-form-side">
+      <div>
+        <!-- Cabecera con Nuevo Logotipo Oficial Triada -->
+        <div class="brand-header">
+          <div class="brand-logo-wrap">
+            <img src="../Logotipo transparente.png" alt="GRAVY Logo" class="brand-logo-img" onerror="this.src='../Logotipo circular abstracto multicolor.png'">
+          </div>
+          <div class="brand-info">
+            <div class="brand-title">GRAVY</div>
+            <div class="brand-triad-pills">
+              <span class="triad-badge badge-blue">Confianza</span>
+              <span class="triad-badge badge-violet">Innovación</span>
+              <span class="triad-badge badge-green">DIAN 2026</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Títulos -->
+        <div class="form-heading">
+          <h1 class="form-title">Iniciar Sesión</h1>
+          <p class="form-subtitle">Ingresa a tu ecosistema contable, tributario y financiero</p>
+        </div>
+
+        <!-- Botón SSO / Google -->
+        <button class="btn-sso" type="button" onclick="alert('Autenticación mediante Google Workspace iniciada.')">
+          <svg width="18" height="18" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          Ingresar con Google Workspace
+        </button>
+
+        <div class="triad-divider">
+          <span>O con tu cuenta corporativa</span>
+        </div>
+
+        <!-- Formulario -->
+        <form id="form-login" onsubmit="handleLogin(event)">
+          <div class="field-group">
+            <label class="field-label" for="input-email">Correo Electrónico o Usuario</label>
+            <div class="input-wrapper">
+              <input class="input-field" type="email" id="input-email" placeholder="contador@empresa.com" required autocomplete="username">
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="input-password">Contraseña</label>
+            <div class="input-wrapper">
+              <input class="input-field has-toggle" type="password" id="input-password" placeholder="••••••••••••" required autocomplete="current-password">
+              <button type="button" class="btn-toggle-eye" id="toggle-eye" aria-label="Ver u ocultar contraseña">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
+            </div>
+            <div class="caps-alert" id="caps-alert">
+              <span>⇪ Bloq Mayús está activo</span>
+            </div>
+          </div>
+
+          <div class="form-options">
+            <label class="remember-label">
+              <input type="checkbox" class="custom-checkbox" id="check-remember" checked>
+              Recordar credencial
+            </label>
+            <a href="#" class="link-forgot" onclick="alert('Se enviará una confirmación a tu correo corporativo.'); return false;">¿Olvidaste tu contraseña?</a>
+          </div>
+
+          <!-- Botón con Gradiente Triada -->
+          <button type="submit" class="btn-submit" id="btn-submit">
+            <span>Ingresar a GRAVY</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </button>
+
+          <div class="form-footer">
+            ¿Requieres un usuario nuevo? <a href="#" onclick="alert('Solicítalo al Administrador de tu empresa.'); return false;">Contactar Administrador</a>
+          </div>
+        </form>
+      </div>
+
+      <!-- Conectividad y Telemetría -->
+      <div class="network-pill">
+        <div class="network-status">
+          <span class="status-dot-green"></span>
+          <span>Red Local LAN (0 ms Latencia)</span>
+        </div>
+        <span class="network-badge">127.0.0.1:8090</span>
+      </div>
+    </div>
+
+    <!-- Columna Derecha: Hero Editorial con los 3 Colores del Logo -->
+    <div class="hero-side">
+      <div class="hero-top-nav">
+        <div class="hero-chip hero-chip-blue">
+          <span>🔒 Cifrado Bancario AES-256</span>
+        </div>
+        <div class="hero-chip hero-chip-green">
+          <span>🇨🇴 DIAN Resolución 000165</span>
+        </div>
+      </div>
+
+      <div class="hero-content">
+        <h2 class="hero-headline">
+          La velocidad de tus ideas, <br>
+          <span class="text-gradient-triad">con el rigor contable que necesitas.</span>
+        </h2>
+        <p class="hero-desc">
+          Unifica contabilidad automatizada, facturación electrónica DIAN, conciliación bancaria y control multi-empresa con la arquitectura híbrida más rápida de Colombia.
+        </p>
+
+        <!-- Tres Pilares Alineados con Azul, Violeta y Verde -->
+        <div class="triad-cards-grid">
+          <div class="triad-card card-blue">
+            <div class="card-icon">⚡</div>
+            <div class="card-title">Motor Local</div>
+            <div class="card-desc">Opera a ultra-baja latencia sin cortes de internet</div>
+          </div>
+
+          <div class="triad-card card-violet">
+            <div class="card-icon">🧠</div>
+            <div class="card-title">Automatización</div>
+            <div class="card-desc">Cierres y causaciones contables en un clic</div>
+          </div>
+
+          <div class="triad-card card-green">
+            <div class="card-icon">📑</div>
+            <div class="card-title">Ecosistema DIAN</div>
+            <div class="card-desc">Facturación, nómina, doc. soporte y exógena</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-footer">
+        <span>© 2026 GRAVY Softworks S.A.S.</span>
+        <span>Normativa NIIF Pymes & Habeas Data Ley 1581</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Toggle Password Visibility
+    const toggleEye = document.getElementById('toggle-eye');
+    const inputPass = document.getElementById('input-password');
+    toggleEye.addEventListener('click', () => {
+      const isPass = inputPass.type === 'password';
+      inputPass.type = isPass ? 'text' : 'password';
+      toggleEye.style.color = isPass ? 'var(--brand-violet)' : 'var(--text-subtle)';
+    });
+
+    // Caps Lock Detector
+    const capsAlert = document.getElementById('caps-alert');
+    inputPass.addEventListener('keyup', (e) => {
+      if (e.getModifierState && e.getModifierState('CapsLock')) {
+        capsAlert.classList.add('active');
+      } else {
+        capsAlert.classList.remove('active');
+      }
+    });
+
+    // Login Handler Simulation
+    function handleLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-submit');
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<span>Verificando credenciales...</span>';
+      btn.style.opacity = '0.85';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = '<span>¡Acceso Concedido! ✓</span>';
+        btn.style.background = 'linear-gradient(135deg, #059669 0%, #00BFA5 100%)';
+        setTimeout(() => {
+          btn.innerHTML = originalHTML;
+          btn.style.background = 'var(--gradient-btn)';
+          btn.style.opacity = '1';
+          btn.disabled = false;
+        }, 2000);
+      }, 1000);
+    }
+  </script>
+</body>
+</html>

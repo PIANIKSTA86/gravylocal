@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GRAVY — Login Opción 4: FinTech Dark Mesh & Glassmorphism</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Triada de Marca GRAVY en modo Dark FinTech */
+      --brand-violet: #8B5CF6;
+      --brand-violet-glow: rgba(139, 92, 246, 0.45);
+      --brand-blue: #3B82F6;
+      --brand-blue-glow: rgba(59, 130, 246, 0.45);
+      --brand-teal: #10B981;
+      --brand-teal-glow: rgba(16, 185, 129, 0.45);
+
+      --bg-dark: #070A13;
+      --card-bg: rgba(15, 23, 42, 0.72);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --text-bright: #F8FAFC;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+      --radius-sm: 10px;
+      --radius-md: 16px;
+      --radius-lg: 24px;
+      --radius-pill: 9999px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-bright);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow-x: hidden;
+      padding: 24px;
+    }
+
+    /* ─── FONDO MESH GRADIENT TRIADA OSCURO (Stripe / Linear Style) ─── */
+    .mesh-background {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .mesh-glow {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0.38;
+      animation: pulseGlow 18s ease-in-out infinite alternate;
+    }
+
+    .glow-blue {
+      width: 550px;
+      height: 550px;
+      background: #1D4ED8;
+      top: -150px;
+      left: 10%;
+    }
+
+    .glow-violet {
+      width: 600px;
+      height: 600px;
+      background: #7C3AED;
+      bottom: -150px;
+      right: 15%;
+      animation-duration: 22s;
+    }
+
+    .glow-green {
+      width: 450px;
+      height: 450px;
+      background: #059669;
+      top: 35%;
+      right: -80px;
+      animation-duration: 16s;
+    }
+
+    /* Cuadrícula técnica sutil */
+    .cyber-grid {
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.8;
+      mask-image: radial-gradient(circle at center, black 40%, transparent 85%);
+      -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 85%);
+    }
+
+    @keyframes pulseGlow {
+      0% { transform: scale(1) translate(0, 0); }
+      50% { transform: scale(1.12) translate(20px, -20px); }
+      100% { transform: scale(0.95) translate(-15px, 15px); }
+    }
+
+    /* ─── TARJETA CONTENEDORA GLASSMORPHISM ─── */
+    .dark-login-card {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 1140px;
+      min-height: 680px;
+      display: grid;
+      grid-template-columns: 480px 1fr;
+      background: var(--card-bg);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      overflow: hidden;
+    }
+
+    /* Borde superior sutil con el gradiente de la triada */
+    .dark-login-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--brand-blue) 0%, var(--brand-violet) 50%, var(--brand-teal) 100%);
+      z-index: 20;
+    }
+
+    /* ─── COLUMNA IZQUIERDA: FORMULARIO ─── */
+    .form-section {
+      padding: 52px 46px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-right: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(11, 17, 32, 0.65);
+    }
+
+    .brand-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+
+    .brand-logo-frame {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-glow-box {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.25);
+    }
+
+    .logo-glow-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .brand-text {
+      font-family: 'Outfit', sans-serif;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #FFFFFF;
+    }
+
+    .badge-enterprise {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34D399;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #34D399;
+      box-shadow: 0 0 8px #34D399;
+    }
+
+    .headline-area {
+      margin-bottom: 24px;
+    }
+
+    .headline-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.6px;
+      color: #FFFFFF;
+      margin-bottom: 6px;
+    }
+
+    .headline-subtitle {
+      font-size: 13.5px;
+      color: var(--text-muted);
+    }
+
+    /* Selector de Método de Autenticación (Pestañas FinTech) */
+    .auth-mode-selector {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 4px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .auth-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .auth-tab-btn.active {
+      background: rgba(255, 255, 255, 0.1);
+      color: #FFFFFF;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Campos de Entrada Estilo Dark High-Tech */
+    .dark-field {
+      margin-bottom: 18px;
+      position: relative;
+    }
+
+    .dark-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #CBD5E1;
+      margin-bottom: 6px;
+    }
+
+    .input-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .dark-input {
+      width: 100%;
+      height: 50px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: var(--radius-sm);
+      padding: 0 16px;
+      font-family: inherit;
+      font-size: 14.5px;
+      color: #FFFFFF;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .dark-input:focus {
+      border-color: var(--brand-violet);
+      background: rgba(15, 23, 42, 0.95);
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+    }
+
+    .dark-input::placeholder {
+      color: var(--text-dim);
+    }
+
+    .toggle-pass {
+      position: absolute;
+      right: 14px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-dim);
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .toggle-pass:hover {
+      color: #FFFFFF;
+    }
+
+    .row-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 22px;
+      font-size: 13px;
+    }
+
+    .remember-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+
+    .remember-check input {
+      accent-color: var(--brand-violet);
+      cursor: pointer;
+    }
+
+    .forgot-link {
+      color: var(--brand-blue);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .forgot-link:hover {
+      color: var(--brand-violet);
+      text-decoration: underline;
+    }
+
+    /* Botón Submit FinTech con Gradiente de la Triada */
+    .btn-submit-triad {
+      width: 100%;
+      height: 52px;
+      background: linear-gradient(135deg, #2563EB 0%, #7C3AED 50%, #059669 100%);
+      color: #FFFFFF;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 24px -4px rgba(124, 58, 237, 0.5);
+      transition: all 0.25s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn-submit-triad:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1.5px);
+      box-shadow: 0 12px 28px -4px rgba(37, 99, 235, 0.6);
+    }
+
+    .footer-support {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .footer-support a {
+      color: var(--brand-violet);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .footer-support a:hover {
+      text-decoration: underline;
+    }
+
+    /* Telemetría y Diagnóstico en Tiempo Real */
+    .telemetry-bar {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--text-dim);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .telemetry-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-ok { color: #34D399; }
+
+    /* ─── COLUMNA DERECHA: DASHBOARD PREVIEW FINTECH ─── */
+    .visual-section {
+      padding: 52px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(circle at top right, rgba(30, 41, 59, 0.6), transparent 70%);
+    }
+
+    .hero-badges-group {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .pill-badge-dark {
+      padding: 6px 14px;
+      border-radius: var(--radius-pill);
+      font-size: 11.5px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #E2E8F0;
+      backdrop-filter: blur(8px);
+    }
+
+    /* Consola Contable Flotante FinTech */
+    .cockpit-card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
+      position: relative;
+      margin: auto 0;
+      z-index: 5;
+    }
+
+    .cockpit-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .cockpit-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .metric-box {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 14px 12px;
+      border-radius: 10px;
+    }
+
+    .metric-label {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 16px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .val-blue { color: #60A5FA; }
+    .val-violet { color: #C084FC; }
+    .val-green { color: #34D399; }
+
+    /* Línea de Registro de Eventos */
+    .ledger-stream {
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      color: #94A3B8;
+    }
+
+    .log-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .hero-editorial-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    @media (max-width: 960px) {
+      .dark-login-card {
+        grid-template-columns: 1fr;
+        max-width: 480px;
+      }
+      .visual-section {
+        display: none;
+      }
+      .form-section {
+        border-right: none;
+        padding: 40px 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fondo Mesh Animado -->
+  <div class="mesh-background">
+    <div class="cyber-grid"></div>
+    <div class="mesh-glow glow-blue"></div>
+    <div class="mesh-glow glow-violet"></div>
+    <div class="mesh-glow glow-green"></div>
+  </div>
+
+  <div class="dark-login-card">
+    <!-- Columna Izquierda: Formulario -->
+    <div class="form-section">
+      <div>
+        <div class="brand-bar">
+          <div class="brand-logo-frame">
+            <div class="logo-glow-box">
+              <img src="../Logotipo transparente.png" alt="GRAVY" onerror="this.src='../Logotipo circular abstracto multicolor.png'">
+            </div>
+            <span class="brand-text">GRAVY</span>
+          </div>
+          <span class="badge-enterprise">
+            <span class="live-dot"></span>
+            DIAN 2026 Ready
+          </span>
+        </div>
+
+        <div class="headline-area">
+          <h1 class="headline-title">Consola Contable</h1>
+          <p class="headline-subtitle">Ingresa para administrar libros, facturación y tesorería</p>
+        </div>
+
+        <!-- Selector de Modo de Acceso -->
+        <div class="auth-mode-selector">
+          <button type="button" class="auth-tab-btn active" id="tab-pass" onclick="setAuthMode('pass')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            Contraseña
+          </button>
+          <button type="button" class="auth-tab-btn" id="tab-passkey" onclick="setAuthMode('passkey')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 0 0-10 10c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"></path></svg>
+            Passkey / Huella
+          </button>
+        </div>
+
+        <form id="dark-form" onsubmit="event.preventDefault(); handleDarkSubmit();">
+          <div class="dark-field">
+            <label class="dark-label" for="inp-dark-user">Correo Corporativo o Usuario</label>
+            <div class="input-box">
+              <input class="dark-input" type="text" id="inp-dark-user" placeholder="contador@empresa.com" required autocomplete="username">
+            </div>
+          </div>
+
+          <div class="dark-field" id="field-pass-wrap">
+            <label class="dark-label" for="inp-dark-pass">Contraseña de Acceso</label>
+            <div class="input-box">
+              <input class="dark-input" type="password" id="inp-dark-pass" placeholder="••••••••••••" required autocomplete="current-password">
+              <button type="button" class="toggle-pass" id="toggle-pass-btn" aria-label="Ver u ocultar contraseña">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="row-meta">
+            <label class="remember-check">
+              <input type="checkbox" checked>
+              <span>Recordar en este puesto</span>
+            </label>
+            <a href="#" class="forgot-link" onclick="alert('Se enviará un enlace temporal a tu correo corporativo.'); return false;">Recuperar</a>
+          </div>
+
+          <button type="submit" class="btn-submit-triad" id="btn-dark-login">
+            <span id="btn-label-text">Acceder al Sistema</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </form>
+
+        <div class="footer-support">
+          ¿Problemas de ingreso? <a href="#" onclick="alert('Contacta al Administrador Principal de tu tenant.'); return false;">Contactar Administrador</a>
+        </div>
+      </div>
+
+      <!-- Barra de Telemetría FinTech -->
+      <div class="telemetry-bar">
+        <div class="telemetry-item">
+          <span class="status-ok">●</span>
+          <span>LAN: 127.0.0.1:8090</span>
+        </div>
+        <div class="telemetry-item">
+          <span>LAT: 0.2ms</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="status-ok">TLS 1.3 AES</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna Derecha: Cockpit en Vivo -->
+    <div class="visual-section">
+      <div class="hero-badges-group">
+        <div class="pill-badge-dark">Cifrado de Grado Financiero</div>
+        <div class="pill-badge-dark">Resolución 000165</div>
+      </div>
+
+      <div class="cockpit-card">
+        <div class="cockpit-header">
+          <div class="cockpit-title">
+            <span style="color:#60A5FA">◆</span>
+            Monitor Operativo de Empresa
+          </div>
+          <span style="font-size:11px;color:#34D399;font-weight:700">EN LÍNEA</span>
+        </div>
+
+        <div class="metrics-row">
+          <div class="metric-box">
+            <div class="metric-label">Débitos / Créditos</div>
+            <div class="metric-value val-blue">$482.4M</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Documentos DIAN</div>
+            <div class="metric-value val-violet">1,420</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Descuadre</div>
+            <div class="metric-value val-green">$0.00</div>
+          </div>
+        </div>
+
+        <div class="ledger-stream">
+          <div class="log-line">
+            <span>[DIAN-SYNC] Factura FE-9402 validada con CUFE</span>
+            <span style="color:#34D399">OK</span>
+          </div>
+          <div class="log-line">
+            <span>[LOCAL-DB] Motor PocketBase sin latencia externa</span>
+            <span style="color:#60A5FA">0 ms</span>
+          </div>
+          <div class="log-line">
+            <span>[AUDIT-LOG] Usuario activo con sesión protegida</span>
+            <span style="color:#C084FC">AES-256</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-editorial-footer">
+        <span>GRAVY Softworks Core v2.0 Enterprise</span>
+        <span>Normativa NIIF & Ley 1581</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const passInput = document.getElementById('inp-dark-pass');
+    const toggleBtn = document.getElementById('toggle-pass-btn');
+    toggleBtn.addEventListener('click', () => {
+      const isPass = passInput.type === 'password';
+      passInput.type = isPass ? 'text' : 'password';
+    });
+
+    function setAuthMode(mode) {
+      document.getElementById('tab-pass').classList.toggle('active', mode === 'pass');
+      document.getElementById('tab-passkey').classList.toggle('active', mode === 'passkey');
+      const passWrap = document.getElementById('field-pass-wrap');
+      const btnText = document.getElementById('btn-label-text');
+
+      if (mode === 'passkey') {
+        passWrap.style.display = 'none';
+        btnText.textContent = 'Autenticar con Biometría / Windows Hello';
+      } else {
+        passWrap.style.display = 'block';
+        btnText.textContent = 'Acceder al Sistema';
+      }
+    }
+
+    function handleDarkSubmit() {
+      const btn = document.getElementById('btn-dark-login');
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<span>Verificando en red local...</span>';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = '<span>¡Sesión Iniciada con Éxito! ✓</span>';
+        btn.style.background = 'linear-gradient(135deg, #059669, #10B981)';
+        setTimeout(() => {
+          btn.innerHTML = originalHTML;
+          btn.style.background = 'linear-gradient(135deg, #2563EB 0%, #7C3AED 50%, #059669 100%)';
+          btn.disabled = false;
+        }, 1800);
+      }, 900);
+    }
+  </script>
+</body>
+</html>

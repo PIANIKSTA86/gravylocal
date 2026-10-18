@@ -174,6 +174,8 @@ onBootstrap((e) => {
         { name: 'applies_coef',    type: 'bool',     required: false },
         { name: 'account_id',      type: 'relation', required: false,
           collectionId: accountsId, cascadeDelete: false },
+        { name: 'cxc_account_id',  type: 'relation', required: false,
+          collectionId: accountsId, cascadeDelete: false },
         { name: 'active',          type: 'bool',     required: false },
       ],
       indexes: ['CREATE UNIQUE INDEX idx_ph_concept_code ON ph_billing_concepts (code)'],
@@ -183,17 +185,30 @@ onBootstrap((e) => {
     console.log('[GRAVY-PH] Colección ph_billing_concepts creada.');
   }
 
-  // Asegurar que ph_billing_concepts.amount NO sea required (permite valor 0 para conceptos variables como MORA)
+  // Asegurar que ph_billing_concepts tenga cxc_account_id y amount NO sea required
   try {
     const pbcCol = $app.findCollectionByNameOrId('ph_billing_concepts');
+    let pbcChanged = false;
     const amtF = pbcCol.fields.getByName('amount');
     if (amtF && amtF.required) {
       amtF.required = false;
+      pbcChanged = true;
+    }
+    if (!pbcCol.fields.getByName('cxc_account_id')) {
+      pbcCol.fields.add(new RelationField({
+        name: 'cxc_account_id',
+        collectionId: accountsId,
+        cascadeDelete: false,
+        required: false,
+      }));
+      pbcChanged = true;
+    }
+    if (pbcChanged) {
       $app.save(pbcCol);
-      console.log('[GRAVY-PH] ph_billing_concepts.amount actualizado a required: false');
+      console.log('[GRAVY-PH] ph_billing_concepts actualizado (cxc_account_id / amount).');
     }
   } catch (errCol) {
-    console.log('[GRAVY-PH] Aviso al normalizar ph_billing_concepts.amount: ' + errCol);
+    console.log('[GRAVY-PH] Aviso al normalizar ph_billing_concepts: ' + errCol);
   }
 
   // Sembrar concepto de cobro MORA si no existe y vincular líneas huérfanas

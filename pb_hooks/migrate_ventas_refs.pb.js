@@ -51,6 +51,8 @@ onBootstrap((e) => {
     if (addFieldIfMissing(invCol, "ret_mode", "text")) needsSaveInv = true;
     if (addFieldIfMissing(invCol, "cross_doc_ref", "text")) needsSaveInv = true;
     if (addFieldIfMissing(invCol, "is_electronic", "bool")) needsSaveInv = true;
+    if (addFieldIfMissing(invCol, "dian_concept", "text")) needsSaveInv = true;
+    if (addFieldIfMissing(invCol, "parent_invoice_id", "text")) needsSaveInv = true;
 
     if (addFieldIfMissing(lineCol, "ret_rule_id", "text")) needsSaveLine = true;
 

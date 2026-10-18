@@ -960,7 +960,12 @@ async function openDocHomologationModal(id: string) {
     let thirdParty = await findThirdPartyByNit(d.supplier_nit);
 
     const rules = await (window as any).pb.listAll('homologation_rules');
-    const supplierRule = rules.find((r: any) => r.rule_type === 'supplier' && r.key_value === d.supplier_nit);
+    const supplierRule = rules.find((r: any) => r.rule_type === 'supplier' && (r.key_value === d.supplier_nit || r.key_value === NitLimpio));
+
+    // Preferencia de auto-homologación para este proveedor (recuerda si el usuario la desactivó)
+    const prefKey = `OPT_AUTORULES_${NitLimpio}`;
+    const prefRule = rules.find((r: any) => r.rule_type === 'keyword' && r.key_value === prefKey);
+    const isRememberEnabledForSupplier = prefRule ? prefRule.account_code !== 'disabled' : true;
 
     const [allAccounts, txTypes, productsList, treasuryAccounts] = await Promise.all([
       (window as any).API.getAccounts(true),
@@ -1018,25 +1023,46 @@ async function openDocHomologationModal(id: string) {
         const rUnspsc = rules.find((r: any) => r.rule_type === 'unspsc' && r.key_value === it.unspsc_code);
         if (rUnspsc) return rUnspsc.account_code;
       }
-      const rKeyword = rules.find((r: any) => r.rule_type === 'keyword' && it.description?.toLowerCase().includes(r.key_value.toLowerCase()));
+      if (it.code) {
+        const cleanCode = String(it.code).trim();
+        const rExpItem = rules.find((r: any) => r.rule_type === 'keyword' && (r.key_value === `EXP_${NitLimpio}_${cleanCode}` || r.key_value === `EXP_${d.supplier_nit}_${cleanCode}`));
+        if (rExpItem) return rExpItem.account_code;
+      }
+      const rKeyword = rules.find((r: any) => r.rule_type === 'keyword' && !r.key_value.startsWith('OPT_') && !r.key_value.startsWith('SKU_') && !r.key_value.startsWith('INVACC_') && !r.key_value.startsWith('EXP_') && it.description?.toLowerCase().includes(r.key_value.toLowerCase()));
       if (rKeyword) return rKeyword.account_code;
       return defaultExpenseCode;
     };
 
     const resolveInitialProductMatch = (it: any) => {
-      const ruleKey = `${d.supplier_nit}_${it.code}`;
-      const ruleMatch = rules.find((r: any) => r.rule_type === 'keyword' && r.key_value === ruleKey);
-      if (ruleMatch) {
-        const foundByRule = productsList.find((p: any) => p.code.toLowerCase() === ruleMatch.account_code.toLowerCase());
-        if (foundByRule) return foundByRule;
-      }
+      const cleanCode = it.code ? String(it.code).trim() : '';
+      if (cleanCode) {
+        const skuKey = `SKU_${NitLimpio}_${cleanCode}`;
+        const oldRuleKey = `${d.supplier_nit}_${cleanCode}`;
+        const ruleMatch = rules.find((r: any) => r.rule_type === 'keyword' && (r.key_value === skuKey || r.key_value === ruleKey || r.key_value === oldRuleKey));
+        if (ruleMatch && ruleMatch.account_code) {
+          const foundByRule = productsList.find((p: any) => p.code.toLowerCase() === ruleMatch.account_code.toLowerCase());
+          if (foundByRule) return foundByRule;
+        }
 
-      if (it.code) {
-        const exactCode = productsList.find((p: any) => p.code.toLowerCase() === it.code.toLowerCase());
+        const exactCode = productsList.find((p: any) => p.code.toLowerCase() === cleanCode.toLowerCase());
         if (exactCode) return exactCode;
       }
 
       return null;
+    };
+
+    const resolveInitialInventoryAccount = (it: any, matchedProd: any) => {
+      if (matchedProd && matchedProd.inventory_account_id) {
+        const accFromProd = allAccounts.find((a: any) => a.id === matchedProd.inventory_account_id);
+        if (accFromProd) return accFromProd.code;
+      }
+      const cleanCode = it.code ? String(it.code).trim() : '';
+      if (cleanCode) {
+        const invAccRuleKey = `INVACC_${NitLimpio}_${cleanCode}`;
+        const ruleMatch = rules.find((r: any) => r.rule_type === 'keyword' && (r.key_value === invAccRuleKey || r.key_value === `INVACC_${d.supplier_nit}_${cleanCode}`));
+        if (ruleMatch && ruleMatch.account_code) return ruleMatch.account_code;
+      }
+      return defInvAccount;
     };
 
     const htmlBody = `
@@ -1321,21 +1347,35 @@ async function openDocHomologationModal(id: string) {
             </div>
           </div>
 
-          <div class="space-y-3 max-h-80 overflow-y-auto pr-1">
+          <!-- Anotación General al inicio de la toma de productos -->
+          <div class="px-3 py-2 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200/80 rounded-xl flex items-center justify-between text-xs text-indigo-900 shadow-sm">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-info-circle text-indigo-600 text-sm"></i>
+              <span>
+                <strong>Catálogo & Kardex:</strong> Si el producto no existe en el catálogo ERP, se creará automáticamente con el SKU especificado, su costo unitario y la cuenta PUC seleccionada.
+              </span>
+            </div>
+            <span class="text-[10px] font-semibold text-indigo-700 bg-white/90 px-2 py-0.5 rounded-full border border-indigo-200 shadow-xs">
+              <i class="fas fa-magic mr-1 text-indigo-500"></i>Auto-alta activa
+            </span>
+          </div>
+
+          <div class="space-y-2 max-h-96 overflow-y-auto pr-1">
             ${items.map((it: any, index: number) => {
               const matchedProd = resolveInitialProductMatch(it);
               const initialMode = isPurchaseDoc ? 'inventory' : 'expense';
               const suggestedAcc = resolveInitialAccount(it);
+              const suggestedInvAcc = resolveInitialInventoryAccount(it, matchedProd);
 
               const initialSku = matchedProd ? matchedProd.code : (it.code || '');
               const initialProdText = matchedProd ? `${matchedProd.code} — ${matchedProd.name}` : '';
               const initialProdId = matchedProd ? matchedProd.id : '';
 
               return `
-                <div class="border rounded-xl p-3 bg-white space-y-3 shadow-sm border-slate-200" id="cde-item-card-${index}">
+                <div class="border rounded-xl p-2.5 bg-white space-y-2 shadow-sm border-slate-200 hover:border-indigo-200 transition-colors" id="cde-item-card-${index}">
                   <!-- Encabezado del Ítem XML -->
-                  <div class="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-                    <div class="flex-1">
+                  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-1.5">
+                    <div class="flex-1 min-w-[240px]">
                       <span class="font-bold text-slate-800 text-xs">${index + 1}. ${(window as any).esc(it.description)}</span>
                       <div class="text-[10px] text-slate-500 font-mono mt-0.5">
                         Cód. Proveedor XML: <strong class="text-slate-700">${(window as any).esc(it.code || 'S/N')}</strong> 
@@ -1347,69 +1387,71 @@ async function openDocHomologationModal(id: string) {
                     <!-- Dropdown de Tipo de Imputación -->
                     <div class="flex items-center gap-1">
                       <label class="text-[10px] font-bold text-slate-500">Destino:</label>
-                      <select class="form-input text-xs py-1 px-2.5 font-bold cde-line-type-select ${initialMode === 'inventory' ? 'bg-indigo-50 text-indigo-700 border-indigo-300' : 'bg-amber-50 text-amber-700 border-amber-300'}" 
+                      <select class="form-input text-xs py-1 px-2 font-bold cde-line-type-select ${initialMode === 'inventory' ? 'bg-indigo-50 text-indigo-700 border-indigo-300' : 'bg-amber-50 text-amber-700 border-amber-300'}" 
                               id="cde-line-type-${index}" data-index="${index}">
-                        <option value="inventory" ${initialMode === 'inventory' ? 'selected' : ''}>📦 Producto / Inventario (Kardex)</option>
+                        <option value="inventory" ${initialMode === 'inventory' ? 'selected' : ''}>📦 Inventario (Kardex)</option>
                         <option value="expense" ${initialMode === 'expense' ? 'selected' : ''}>📋 Servicio / Gasto (PUC)</option>
                       </select>
                     </div>
                   </div>
 
-                  <!-- Panel MODO 1: Producto Inventario (Buscador Dinámico & SKU ERP) -->
-                  <div id="cde-panel-inventory-${index}" class="${initialMode === 'inventory' ? '' : 'hidden'} space-y-2 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <!-- Panel MODO 1: Producto Inventario (1 Sola Fila Compacta: PUC | SKU | Buscador Dinámico) -->
+                  <div id="cde-panel-inventory-${index}" class="${initialMode === 'inventory' ? '' : 'hidden'} bg-indigo-50/40 p-2 rounded-xl border border-indigo-100">
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
                       
-                      <!-- Campo A: Código / Referencia Interna ERP -->
-                      <div>
-                        <label class="block text-[10px] uppercase font-bold text-indigo-900 mb-1">
-                          <i class="fas fa-barcode mr-1 text-indigo-600"></i> Código / SKU Interno ERP
+                      <!-- Campo A: Cuenta PUC Inventario (3 de 12) -->
+                      <div class="md:col-span-3 relative">
+                        <label class="block text-[9px] uppercase font-bold text-slate-600 mb-0.5">
+                          <i class="fas fa-book-bookmark mr-1 text-indigo-500"></i> Cuenta PUC Inventario
                         </label>
                         <input type="text" 
-                               class="form-input w-full font-mono font-bold text-xs border-indigo-300 focus:border-indigo-600 bg-white" 
+                               class="form-input cde-account-search w-full text-xs font-mono bg-white" 
+                               id="cde-inv-acc-input-${index}" 
+                               data-index="${index}" 
+                               placeholder="Ej. 143501" 
+                               value="${suggestedInvAcc}">
+                        <input type="hidden" id="cde-inv-acc-code-${index}" value="${suggestedInvAcc}">
+                        <div class="absolute bg-white border rounded-lg shadow-xl w-full hidden z-50 max-h-40 overflow-y-auto left-0 right-0 top-full mt-1" id="cde-inv-acc-results-${index}"></div>
+                      </div>
+
+                      <!-- Campo B: Código / SKU Interno ERP (3 de 12) -->
+                      <div class="md:col-span-3">
+                        <label class="block text-[9px] uppercase font-bold text-slate-600 mb-0.5">
+                          <i class="fas fa-barcode mr-1 text-indigo-500"></i> Cód. / SKU Interno ERP
+                        </label>
+                        <input type="text" 
+                               class="form-input w-full font-mono font-bold text-xs border-indigo-200 focus:border-indigo-600 bg-white" 
                                id="cde-prod-sku-${index}" 
                                placeholder="Ej. REF-1002" 
                                value="${(window as any).esc(initialSku)}">
                       </div>
 
-                      <!-- Campo B: BUSCADOR DINÁMICO de Productos ERP en Vivo (Mouse & Teclado) -->
-                      <div class="relative md:col-span-2">
-                        <label class="block text-[10px] uppercase font-bold text-indigo-900 mb-1">
-                          <i class="fas fa-magnifying-glass mr-1 text-indigo-600"></i> Buscador Dinámico de Producto ERP
-                        </label>
+                      <!-- Campo C: BUSCADOR DINÁMICO de Productos ERP en Vivo (6 de 12) -->
+                      <div class="md:col-span-6 relative">
+                        <div class="flex justify-between items-center mb-0.5">
+                          <label class="block text-[9px] uppercase font-bold text-slate-600">
+                            <i class="fas fa-magnifying-glass mr-1 text-indigo-500"></i> Buscador Dinámico de Producto ERP
+                          </label>
+                          <span id="cde-prod-status-badge-${index}" class="text-[9px] px-1.5 py-0.2 rounded font-semibold ${matchedProd ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}">
+                            ${matchedProd ? '✓ En Catálogo ERP' : '★ Nuevo Producto'}
+                          </span>
+                        </div>
                         <input type="text" 
                                class="form-input cde-product-search w-full text-xs bg-white font-medium" 
                                id="cde-prod-input-${index}" 
                                data-index="${index}" 
-                               placeholder="Escribe código o nombre para buscar en catálogo ERP en vivo (usar flechas y Enter)..." 
+                               placeholder="Buscar por código o nombre en catálogo ERP..." 
                                value="${(window as any).esc(initialProdText)}">
                         <input type="hidden" id="cde-prod-id-${index}" value="${initialProdId}">
                         <div class="absolute bg-white border rounded-lg shadow-xl w-full hidden z-50 max-h-48 overflow-y-auto left-0 right-0 top-full mt-1" id="cde-prod-results-${index}"></div>
                       </div>
-                    </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 border-t border-indigo-100">
-                      <div class="relative">
-                        <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Cuenta PUC Inventario</label>
-                        <input type="text" 
-                               class="form-input cde-account-search w-full text-xs font-mono bg-white" 
-                               id="cde-inv-acc-input-${index}" 
-                               data-index="${index}" 
-                               placeholder="Cuenta de inventario (ej. 143501)" 
-                               value="${defInvAccount}">
-                        <input type="hidden" id="cde-inv-acc-code-${index}" value="${defInvAccount}">
-                        <div class="absolute bg-white border rounded-lg shadow-xl w-full hidden z-50 max-h-40 overflow-y-auto left-0 right-0 top-full mt-1" id="cde-inv-acc-results-${index}"></div>
-                      </div>
-
-                      <div class="flex items-center text-[11px] text-indigo-800 bg-white p-2 rounded-lg border border-indigo-200">
-                        <i class="fas fa-info-circle text-indigo-500 mr-2 text-sm"></i>
-                        <span>Si el producto no existe en el catálogo ERP, se creará automáticamente con el SKU especificado y su costo ${(window as any).fmt(it.price)}.</span>
-                      </div>
                     </div>
                   </div>
 
                   <!-- Panel MODO 2: Cuenta PUC Servicio / Gasto -->
-                  <div id="cde-panel-expense-${index}" class="${initialMode === 'expense' ? '' : 'hidden'} space-y-2 bg-amber-50/50 p-3 rounded-xl border border-amber-100 relative">
-                    <label class="block text-[10px] uppercase font-bold text-amber-900 mb-1">
+                  <div id="cde-panel-expense-${index}" class="${initialMode === 'expense' ? '' : 'hidden'} space-y-1 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100 relative">
+                    <label class="block text-[9px] uppercase font-bold text-amber-900 mb-0.5">
                       <i class="fas fa-book-bookmark mr-1 text-amber-600"></i> Cuenta Contable PUC (Gasto / Servicio)
                     </label>
                     <input type="text" 
@@ -1429,8 +1471,11 @@ async function openDocHomologationModal(id: string) {
         </div>
 
         <div class="flex items-center gap-2 pt-2 border-t">
-          <input type="checkbox" id="cde-save-rules" checked class="w-4 h-4 accent-indigo-600">
-          <label for="cde-save-rules" class="cursor-pointer font-medium select-none text-slate-700">Recordar estos códigos SKU y cuentas PUC como reglas de homologación automáticas para este proveedor</label>
+          <input type="checkbox" id="cde-save-rules" ${isRememberEnabledForSupplier ? 'checked' : ''} class="w-4 h-4 accent-indigo-600 cursor-pointer">
+          <label for="cde-save-rules" class="cursor-pointer font-medium select-none text-slate-700">
+            Recordar estos códigos SKU y cuentas PUC como reglas de homologación automáticas para este proveedor
+            ${!isRememberEnabledForSupplier ? '<span class="ml-2 text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200"><i class="fas fa-ban mr-1"></i>Preferencia guardada: Desactivado para este NIT</span>' : ''}
+          </label>
         </div>
       </div>
     `;
@@ -1712,7 +1757,11 @@ async function openDocHomologationModal(id: string) {
         document.getElementById(`cde-prod-id-${index}`) as HTMLInputElement,
         document.getElementById(`cde-prod-sku-${index}`) as HTMLInputElement,
         document.getElementById(`cde-prod-results-${index}`) as HTMLElement,
-        productsList
+        productsList,
+        document.getElementById(`cde-prod-status-badge-${index}`) as HTMLElement,
+        document.getElementById(`cde-inv-acc-input-${index}`) as HTMLInputElement,
+        document.getElementById(`cde-inv-acc-code-${index}`) as HTMLInputElement,
+        allAccounts
       );
     });
 
@@ -1721,6 +1770,10 @@ async function openDocHomologationModal(id: string) {
       const chosenDocType = (document.getElementById('cde-doc-type-select') as HTMLSelectElement).value;
       const txTypeId = (document.getElementById('cde-tx-type-id') as HTMLSelectElement).value;
       const saveRules = (document.getElementById('cde-save-rules') as HTMLInputElement).checked;
+
+      // Persistir preferencia de auto-homologación para este proveedor (recuerda si el usuario la desactivó)
+      const prefKey = `OPT_AUTORULES_${NitLimpio}`;
+      await saveOrUpdateRule('keyword', prefKey, saveRules ? 'enabled' : 'disabled', `Preferencia auto-homologación proveedor NIT ${NitLimpio}: ${saveRules ? 'Activa' : 'Desactivada'}`);
 
       if (!thirdParty || !thirdParty.id) {
         thirdParty = await findThirdPartyByNit(d.supplier_nit);
@@ -1753,7 +1806,10 @@ async function openDocHomologationModal(id: string) {
         }
 
         if (saveRules) {
-          saveOrUpdateRule('supplier', d.supplier_nit, code, `Regla consolidada de ${d.supplier_name}`);
+          saveOrUpdateRule('supplier', NitLimpio, code, `Regla consolidada de ${d.supplier_name}`);
+          if (d.supplier_nit !== NitLimpio) {
+            saveOrUpdateRule('supplier', d.supplier_nit, code, `Regla consolidada de ${d.supplier_name}`);
+          }
         }
       } else {
         const isGlobalCalcPrice = (document.getElementById('cde-auto-calc-price-global') as HTMLInputElement)?.checked || false;
@@ -1862,8 +1918,16 @@ async function openDocHomologationModal(id: string) {
             });
 
             if (saveRules && it.code) {
-              const ruleKey = `${d.supplier_nit}_${it.code}`;
-              saveOrUpdateRule('keyword', ruleKey, prodSkuVal, `Homologación ítem XML ${it.code} -> SKU ERP ${prodSkuVal}`);
+              const cleanCode = String(it.code).trim();
+              const ruleKey = `${d.supplier_nit}_${cleanCode}`;
+              const skuRuleKey = `SKU_${NitLimpio}_${cleanCode}`;
+              const invAccRuleKey = `INVACC_${NitLimpio}_${cleanCode}`;
+
+              saveOrUpdateRule('keyword', ruleKey, prodSkuVal, `Homologación ítem XML ${cleanCode} -> SKU ERP ${prodSkuVal}`);
+              saveOrUpdateRule('keyword', skuRuleKey, prodSkuVal, `SKU ítem XML ${cleanCode} -> ${prodSkuVal}`);
+              if (invAccCodeVal) {
+                saveOrUpdateRule('keyword', invAccRuleKey, invAccCodeVal, `Cuenta PUC Inventario ítem ${cleanCode} (NIT ${NitLimpio})`);
+              }
             }
 
           } else {
@@ -1877,8 +1941,11 @@ async function openDocHomologationModal(id: string) {
             if (saveRules) {
               if (it.unspsc_code) {
                 saveOrUpdateRule('unspsc', it.unspsc_code, code, `Regla UNSPSC ${it.unspsc_code}`);
+              } else if (it.code) {
+                const expRuleKey = `EXP_${NitLimpio}_${String(it.code).trim()}`;
+                saveOrUpdateRule('keyword', expRuleKey, code, `Gasto ítem ${it.code} (${d.supplier_name})`);
               } else {
-                saveOrUpdateRule('supplier', d.supplier_nit, code, `Regla de ${d.supplier_name}`);
+                saveOrUpdateRule('supplier', NitLimpio, code, `Regla de ${d.supplier_name}`);
               }
             }
           }
@@ -2368,7 +2435,11 @@ function setupDynamicProductAutocomplete(
   hiddenEl: HTMLInputElement,
   skuEl: HTMLInputElement,
   resultsEl: HTMLElement,
-  productsList: any[]
+  productsList: any[],
+  badgeEl?: HTMLElement | null,
+  invAccInputEl?: HTMLInputElement | null,
+  invAccCodeEl?: HTMLInputElement | null,
+  allAccounts?: any[]
 ) {
   if (!inputEl || !resultsEl) return;
 
@@ -2380,6 +2451,10 @@ function setupDynamicProductAutocomplete(
       resultsEl.innerHTML = '';
       resultsEl.classList.add('hidden');
       activeIndex = -1;
+      if (badgeEl) {
+        badgeEl.className = 'text-[9px] px-1.5 py-0.2 rounded font-semibold bg-amber-50 text-amber-700 border border-amber-200';
+        badgeEl.textContent = '★ Nuevo Producto';
+      }
       return;
     }
 
@@ -2388,7 +2463,7 @@ function setupDynamicProductAutocomplete(
     ).slice(0, 15);
 
     if (!filtered.length) {
-      resultsEl.innerHTML = `<div class="p-2.5 text-slate-500 text-center text-xs">Sin coincidencias exactas (se registrará con SKU asignado)</div>`;
+      resultsEl.innerHTML = `<div class="p-2.5 text-slate-500 text-center text-xs">Sin coincidencias exactas (se creará con SKU asignado)</div>`;
       resultsEl.classList.remove('hidden');
       activeIndex = -1;
       return;
@@ -2430,6 +2505,25 @@ function setupDynamicProductAutocomplete(
     inputEl.value = `${code} — ${name}`;
     if (hiddenEl) hiddenEl.value = id;
     if (skuEl) skuEl.value = code;
+
+    // Actualizar badge visual a producto vinculado
+    if (badgeEl) {
+      badgeEl.className = 'text-[9px] px-1.5 py-0.2 rounded font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200';
+      badgeEl.textContent = '✓ En Catálogo ERP';
+    }
+
+    // Si el producto seleccionado tiene cuenta de inventario en el catálogo, autocompletar la cuenta
+    if (id && productsList.length && invAccInputEl && invAccCodeEl && allAccounts) {
+      const prod = productsList.find((p: any) => p.id === id);
+      if (prod && prod.inventory_account_id) {
+        const acc = allAccounts.find((a: any) => a.id === prod.inventory_account_id);
+        if (acc) {
+          invAccInputEl.value = `${acc.code} — ${acc.name}`;
+          invAccCodeEl.value = acc.code;
+        }
+      }
+    }
+
     resultsEl.classList.add('hidden');
     activeIndex = -1;
   };
@@ -2437,6 +2531,11 @@ function setupDynamicProductAutocomplete(
   inputEl.addEventListener('focus', renderResults);
   inputEl.addEventListener('input', () => {
     activeIndex = -1;
+    if (hiddenEl) hiddenEl.value = '';
+    if (badgeEl) {
+      badgeEl.className = 'text-[9px] px-1.5 py-0.2 rounded font-semibold bg-amber-50 text-amber-700 border border-amber-200';
+      badgeEl.textContent = '★ Nuevo Producto';
+    }
     renderResults();
   });
 

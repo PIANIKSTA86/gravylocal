@@ -1329,10 +1329,10 @@
     }
 
     .brand-shell.sm {
-      width: 42px;
-      height: 42px;
-      border-radius: 14px;
-      padding: 5px;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      padding: 2px;
     }
 
     .brand-shell img {
@@ -1767,9 +1767,9 @@
       flex-shrink: 0;
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-BxnzFviu.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/style-KRGlCZfZ.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-DUqRb1aD.css">
+  <script type="module" crossorigin src="/assets/main-BEvO-lrQ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/style-czJUe2Ch.js">
+  <link rel="stylesheet" crossorigin href="/assets/style-DeJfUJ_K.css">
   <link rel="stylesheet" crossorigin href="/assets/main-Dgihpmma.css">
 </head>
 
@@ -1786,174 +1786,186 @@
       servidor...</p>
   </div>
 
-  <!-- ─── Login Vivo Estilo Aleluya (Aqua + Púrpura) ────────────────── -->
-  <div id="screen-login" class="screen" style="height:100vh;background-color:#FFFFFF">
+  <!-- ─── Login Oficial Opción 1: Orgánico & Fluido con Triada (Azul, Violeta, Verde) ────────────────── -->
+  <div id="screen-login" class="screen" style="height:100vh;background-color:#F8FAFC">
+    <!-- Fondo Ambiental Triada -->
+    <div class="triad-ambient-bg">
+      <div class="ambient-blob blob-blue"></div>
+      <div class="ambient-blob blob-violet"></div>
+      <div class="ambient-blob blob-green"></div>
+      <div class="ambient-blob blob-left-soft"></div>
+
+      <div class="shape-accent-pill-blue"></div>
+      <div class="shape-accent-arc-violet"></div>
+      <div class="shape-accent-pill-green"></div>
+      <div class="dots-grid-triad"></div>
+    </div>
+
     <div class="login-screen-wrap">
-      <!-- Columna Izquierda: Tarjeta Flotante Aqua Vibrante (#2EE6B9) con textos originales -->
-      <div class="login-hero-container hidden md:flex">
-        <div class="login-aqua-card">
-          <!-- Cabecera de Marca Original -->
-          <div class="w-full flex items-center justify-between">
-            <div class="flex items-center gap-2.5">
-              <div class="w-9 h-9 rounded-xl bg-white/90 p-1.5 flex items-center justify-center shadow-sm">
-                <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-6 h-6 object-contain"
+      <div class="login-master-container">
+        <!-- Columna Izquierda: Formulario -->
+        <div class="login-form-side">
+          <div>
+            <!-- Cabecera de Marca Oficial con Nuevo Logo -->
+            <div class="flex items-center gap-3.5 mb-6">
+              <div class="brand-logo-wrap">
+                <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-full h-full object-contain"
                   onerror="this.src='/gravy-Icono.ico'">
               </div>
-              <span class="text-xl font-black tracking-tight text-gray-950">GRAVY</span>
+              <div class="flex flex-col">
+                <span class="text-2xl font-black tracking-tight text-slate-900" style="letter-spacing:-0.5px">GRAVY</span>
+                <div class="brand-triad-pills">
+                  <span class="triad-badge badge-blue">Confianza</span>
+                  <span class="triad-badge badge-violet">Innovación</span>
+                  <span class="triad-badge badge-green">DIAN 2026</span>
+                </div>
+              </div>
             </div>
-            <span
-              class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-gray-900 text-xs font-bold tracking-wide"
-              style="background:rgba(0,0,0,0.08)">
-              <span class="w-2 h-2 rounded-full bg-emerald-800"></span>
-              Core v2.0 Enterprise
+
+            <!-- Títulos y Saludo Dinámico -->
+            <div class="mb-5">
+              <h2 id="login-greeting-title" class="text-2xl font-extrabold text-slate-900 tracking-tight">Acceso al Sistema</h2>
+              <p id="login-greeting-subtitle" class="text-xs text-slate-500 mt-1">Ingresa a tu ecosistema contable, tributario y financiero</p>
+            </div>
+
+            <!-- Botón Google SSO Institucional -->
+            <button type="button" class="w-full h-11 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold flex items-center justify-center gap-2.5 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer mb-4"
+              onclick="if(typeof showToast === 'function') showToast('Autenticación federada mediante Google Workspace activa.', 'info');">
+              <svg width="17" height="17" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Ingresar con Google Workspace</span>
+            </button>
+
+            <!-- Separador sutil -->
+            <div class="flex items-center gap-3 my-4">
+              <div class="flex-1 h-px bg-slate-200"></div>
+              <span class="text-[11px] font-medium text-slate-400">O con tu cuenta corporativa</span>
+              <div class="flex-1 h-px bg-slate-200"></div>
+            </div>
+
+            <!-- Alerta de Error -->
+            <div id="login-error" role="alert" aria-live="assertive"
+              class="hidden mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2.5"
+              style="background:#FDEAEA;color:#EC2D30;border:1px solid #F6BECB">
+              <i class="fas fa-circle-exclamation text-sm flex-shrink-0"></i>
+              <span id="login-error-text"></span>
+            </div>
+
+            <!-- Formulario Principal -->
+            <form id="form-login" onsubmit="event.preventDefault();" novalidate>
+              <div class="form-group mb-3.5">
+                <label class="block text-xs font-bold text-slate-800 mb-1" for="login-email">
+                  Correo Electrónico o Usuario <span class="text-red-500">*</span>
+                </label>
+                <input id="login-email" type="email" class="login-modern-input" placeholder="contador@empresa.com"
+                  autocomplete="username" spellcheck="false" required>
+              </div>
+
+              <div class="form-group mb-3">
+                <label class="block text-xs font-bold text-slate-800 mb-1" for="login-pass">
+                  Contraseña <span class="text-red-500">*</span>
+                </label>
+                <div class="relative">
+                  <input id="login-pass" type="password" class="login-modern-input" style="padding-right:44px"
+                    placeholder="••••••••••••" autocomplete="current-password" required>
+                  <button type="button" id="btn-toggle-pass" aria-label="Mostrar u ocultar contraseña"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-violet-600 transition-colors"
+                    style="background:none;border:none;cursor:pointer">
+                    <i class="fas fa-eye text-sm" aria-hidden="true"></i>
+                  </button>
+                </div>
+                <!-- Indicador dinámico de Bloq Mayús -->
+                <div id="caps-lock-warning" class="caps-lock-pill" role="status">
+                  <i class="fas fa-arrow-up-long"></i> Bloq Mayús activado
+                </div>
+              </div>
+
+              <!-- Recordar usuario y Olvidé contraseña -->
+              <div class="flex items-center justify-between my-3.5 text-xs">
+                <label class="flex items-center gap-2 cursor-pointer select-none font-medium text-slate-600"
+                  for="login-remember">
+                  <input type="checkbox" id="login-remember" class="w-4 h-4 rounded border-slate-300"
+                    style="accent-color:#7C3AED">
+                  <span>Recordar credencial</span>
+                </label>
+                <button type="button" id="btn-login-help"
+                  class="font-semibold hover:underline bg-transparent border-0 cursor-pointer p-0"
+                  style="color:#1D4ED8">
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </div>
+
+              <!-- Botón Principal con Gradiente de la Triada -->
+              <button id="btn-login" type="submit" class="login-pill-btn w-full flex items-center justify-center gap-2">
+                <i class="fas fa-arrow-right-to-bracket text-xs"></i>
+                <span id="btn-login-label">Iniciar Sesión</span>
+              </button>
+            </form>
+          </div>
+
+          <!-- Estado de Conexión del Servidor Enriquecido -->
+          <div class="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <div class="flex items-center gap-2">
+              <span class="status-pulse-dot" aria-hidden="true"></span>
+              <span class="text-[11px] font-semibold text-slate-600" id="login-conn-indicator">Detectando conexión...</span>
+            </div>
+            <span class="text-[11px] font-mono font-medium px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-slate-600"
+              id="login-server-url">127.0.0.1:8090</span>
+          </div>
+        </div>
+
+        <!-- Columna Derecha: Hero Editorial con Triada de Marca -->
+        <div class="hero-side-triad hidden md:flex">
+          <div class="flex items-center justify-end gap-2.5">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100 shadow-sm">
+              <i class="fas fa-shield-halved text-[11px] text-blue-600"></i> Cifrado Bancario AES-256
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-sm">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> DIAN Resolución 000165
             </span>
           </div>
 
-          <!-- Titular Original y Descripción Central -->
-          <div class="my-auto py-4">
-            <h2 class="login-aqua-title mb-4">
-              Gestión contable inteligente a la velocidad de tu negocio
+          <!-- Titular y Descripción Central -->
+          <div class="my-auto py-6 max-w-lg">
+            <h2 class="text-3xl lg:text-4xl font-extrabold text-slate-900 leading-tight tracking-tight mb-3.5">
+              La velocidad de tus ideas, <br>
+              <span class="text-gradient-triad">con el rigor contable que necesitas.</span>
             </h2>
-            <p class="text-sm font-medium leading-relaxed text-gray-800 max-w-lg mx-auto" style="line-height:1.65">
+            <p class="text-sm font-normal leading-relaxed text-slate-500">
               Unifica contabilidad automatizada, facturación electrónica DIAN, conciliación bancaria y control
-              multi-empresa en una plataforma de alto rendimiento, diseñada para operar tanto en red local como en la
-              nube.
+              multi-empresa con la arquitectura híbrida más rápida y segura de Colombia.
             </p>
           </div>
 
-          <!-- Tres Características Originales con Iconos Vivos -->
-          <div class="login-stats-grid">
-            <div class="login-stat-item">
-              <div class="login-stat-icon">🛡️</div>
-              <h4 class="login-stat-title">Privacidad Local</h4>
-              <p class="login-stat-desc">Control total de tu base sin depender de internet</p>
+          <!-- Tres Pilares Alineados con Azul, Violeta y Verde -->
+          <div class="triad-cards-grid">
+            <div class="triad-card card-blue">
+              <div class="card-icon">⚡</div>
+              <h4 class="card-title">Motor Local</h4>
+              <p class="card-desc">Opera a ultra-baja latencia sin cortes de internet</p>
             </div>
 
-            <div class="login-stat-item">
-              <div class="login-stat-icon">⚡</div>
-              <h4 class="login-stat-title">Ultra-baja Latencia</h4>
-              <p class="login-stat-desc">Contadores y auxiliares en simultáneo sin bloqueos</p>
+            <div class="triad-card card-violet">
+              <div class="card-icon">🧠</div>
+              <h4 class="card-title">Automatización</h4>
+              <p class="card-desc">Cierres y causaciones contables en un clic</p>
             </div>
 
-            <div class="login-stat-item">
-              <div class="login-stat-icon">📑</div>
-              <h4 class="login-stat-title">Ecosistema DIAN</h4>
-              <p class="login-stat-desc">Facturación, nómina, doc. soporte y exógena</p>
+            <div class="triad-card card-green">
+              <div class="card-icon">📑</div>
+              <h4 class="card-title">Ecosistema DIAN</h4>
+              <p class="card-desc">Facturación, nómina, doc. soporte y exógena</p>
             </div>
           </div>
 
-          <!-- Pie de Seguridad Izquierdo Original -->
-          <div class="w-full pt-4 mt-4 border-t flex items-center justify-between text-xs font-semibold text-gray-800"
-            style="border-color:rgba(0,0,0,0.08)">
-            <span class="inline-flex items-center gap-1.5">
-              <i class="fas fa-lock text-[11px]"></i> Cifrado de grado financiero
-            </span>
-            <span>© GRAVY Core</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Columna Derecha: Formulario Limpio Centrado con Textos Originales -->
-      <div class="login-form-container">
-        <div class="login-form-box">
-          <!-- Logo de GRAVY centrado -->
-          <div class="flex flex-col items-center mb-3">
-            <div
-              class="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 p-2 flex items-center justify-center mb-1 shadow-sm">
-              <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-10 h-10 object-contain"
-                onerror="this.src='/gravy-Icono.ico'">
-            </div>
-            <h1 class="text-3xl font-black tracking-tight text-gray-900 lowercase" style="letter-spacing:-1px">gravy
-            </h1>
-            <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">Plataforma de Servicios
-              Contables</p>
-          </div>
-
-          <!-- Mensaje de bienvenida original -->
-          <div class="text-center mb-5">
-            <h3 id="login-greeting-title" class="text-lg font-extrabold text-gray-900">Acceso al Sistema</h3>
-            <p id="login-greeting-subtitle" class="text-xs text-gray-500 mt-1">Ingresa tus credenciales de usuario para
-              continuar</p>
-          </div>
-
-          <!-- Separador fino con circulito central (como en la imagen de Aleluya) -->
-          <div class="flex items-center gap-3 mb-6">
-            <div class="flex-1 h-px bg-gray-200"></div>
-            <span class="w-2.5 h-2.5 rounded-full border-2 border-gray-300"></span>
-            <div class="flex-1 h-px bg-gray-200"></div>
-          </div>
-
-          <!-- Alerta de Error -->
-          <div id="login-error" role="alert" aria-live="assertive"
-            class="hidden mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2.5"
-            style="background:#FDEAEA;color:#EC2D30;border:1px solid #F6BECB">
-            <i class="fas fa-circle-exclamation text-sm flex-shrink-0"></i>
-            <span id="login-error-text"></span>
-          </div>
-
-          <!-- Formulario con Textos Originales -->
-          <form id="form-login" onsubmit="event.preventDefault();" novalidate>
-            <div class="form-group mb-4">
-              <label class="block text-xs font-bold text-gray-800 mb-1.5" for="login-email">
-                Correo Electrónico o Usuario <span class="text-red-500">*</span>
-              </label>
-              <input id="login-email" type="email" class="login-modern-input" placeholder="nombre@empresa.com"
-                autocomplete="username" spellcheck="false" required>
-            </div>
-
-            <div class="form-group mb-3">
-              <label class="block text-xs font-bold text-gray-800 mb-1.5" for="login-pass">
-                Contraseña <span class="text-red-500">*</span>
-              </label>
-              <div class="relative">
-                <input id="login-pass" type="password" class="login-modern-input" style="padding-right:42px"
-                  placeholder="Tu contraseña de acceso" autocomplete="current-password" required>
-                <button type="button" id="btn-toggle-pass" aria-label="Mostrar u ocultar contraseña"
-                  class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 transition-colors"
-                  style="background:none;border:none;cursor:pointer">
-                  <i class="fas fa-eye text-sm" aria-hidden="true"></i>
-                </button>
-              </div>
-              <!-- Indicador dinámico de Bloq Mayús -->
-              <div id="caps-lock-warning" class="caps-lock-pill" role="status">
-                <i class="fas fa-arrow-up-long"></i> Bloq Mayús (Mayúsculas) activado
-              </div>
-            </div>
-
-            <!-- Recordar usuario original -->
-            <div class="flex items-center justify-between my-4 text-xs">
-              <label class="flex items-center gap-2 cursor-pointer select-none font-medium text-gray-600"
-                for="login-remember">
-                <input type="checkbox" id="login-remember" class="w-4 h-4 rounded border-gray-300"
-                  style="accent-color:#9333EA">
-                <span>Recordar correo en este equipo</span>
-              </label>
-            </div>
-
-            <!-- Botón Píldora Púrpura Vivo Aleluya con Texto Original -->
-            <button id="btn-login" type="submit" class="login-pill-btn w-full flex items-center justify-center gap-2">
-              <i class="fas fa-arrow-right-to-bracket text-xs"></i>
-              <span id="btn-login-label">Iniciar Sesión</span>
-            </button>
-
-            <!-- Enlace de asistencia o soporte original -->
-            <div class="text-center mt-4">
-              <button type="button" id="btn-login-help"
-                class="text-xs font-semibold hover:underline bg-transparent border-0 cursor-pointer p-0"
-                style="color:#9333EA">
-                <i class="fas fa-circle-question mr-1"></i> ¿Problemas para acceder? Mesa de ayuda
-              </button>
-            </div>
-          </form>
-
-          <!-- Estado de Conexión del Servidor Enriquecido -->
-          <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-            <div class="flex items-center gap-2">
-              <span class="status-pulse-dot" aria-hidden="true"></span>
-              <span class="text-[11px] font-medium" id="login-conn-indicator">Detectando conexión...</span>
-            </div>
-            <span class="text-[11px] font-mono px-2 py-0.5 rounded border border-gray-200 bg-gray-50"
-              id="login-server-url"></span>
+          <!-- Pie Institucional -->
+          <div class="w-full pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+            <span>© 2026 GRAVY Softworks S.A.S.</span>
+            <span>Normativa NIIF Pymes & Habeas Data Ley 1581</span>
           </div>
         </div>
       </div>
@@ -1968,8 +1980,8 @@
         <div id="sidebar-brand">
           <div class="brand-shell sm flex-shrink-0"><img src="/assets/gravy-logo.png" alt="GRAVY"></div>
           <div>
-            <h1 class="text-lg font-extrabold tracking-tight" style="color:var(--text-strong)">GRAVY</h1>
-            <p class="text-xs" style="color:var(--text-muted)">v2.0 — Core financiero</p>
+            <h1 class="text-base font-extrabold tracking-tight" style="color:var(--text-strong)">GRAVY</h1>
+            <p class="text-[11px] font-medium tracking-wide" style="color:var(--text-muted)">v2.0 — Core Financiero</p>
           </div>
         </div>
         <button id="sidebar-hamburger" aria-label="Expandir menú">
@@ -2354,22 +2366,22 @@
         </div>
         <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
           <select id="global-branch-selector"
-            class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 focus:outline-none cursor-pointer shadow-sm hover:bg-gray-50 transition-all max-w-[125px] sm:max-w-[145px] truncate"
+            class="text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 hover:bg-white text-slate-700 px-2.5 py-1 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 cursor-pointer shadow-xs transition-all max-w-[130px] sm:max-w-[150px] truncate"
             style="display: none; height:32px">
             <option value="TODAS">TODAS LAS SUCURSALES</option>
           </select>
           <select id="global-cost-center-selector"
-            class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 focus:outline-none cursor-pointer shadow-sm hover:bg-gray-50 transition-all max-w-[130px] sm:max-w-[155px] truncate"
+            class="text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 hover:bg-white text-slate-700 px-2.5 py-1 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 cursor-pointer shadow-xs transition-all max-w-[130px] sm:max-w-[155px] truncate"
             style="display: none; height:32px">
             <option value="TODOS">TODOS LOS CENTROS DE COSTO</option>
           </select>
-          <!-- Indicador de Empresa Activa (Estilo Elegante) -->
+          <!-- Indicador de Empresa Activa (Estilo Profesional Neutral) -->
           <div
-            class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold max-w-[140px] sm:max-w-[160px] flex-shrink-0"
-            style="background:var(--accent-lavender-subtle, #EDE9FE); border:1px solid #DDD6FE; color:var(--accent-lavender, #7C3AED); height:30px"
+            class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold max-w-[150px] sm:max-w-[170px] flex-shrink-0 bg-slate-100 border border-slate-200 text-slate-700 shadow-xs"
+            style="height:32px"
             title="Empresa Activa">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
-            <span id="topbar-company" class="truncate"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"></span>
+            <span id="topbar-company" class="truncate font-semibold"></span>
           </div>
 
           <span class="text-xs hidden 2xl:block truncate max-w-[150px]" style="color:#9CA3AF" id="topbar-date"></span>

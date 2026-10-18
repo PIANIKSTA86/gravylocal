@@ -6,7 +6,7 @@ echo.
 echo  Deteniendo servicios de GRAVY (PocketBase + Orquestador + Cloudflare Tunnel)...
 
 PowerShell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ports = 8088,8089,8090,8091,8085,19000,19001,19002;" ^
+  "$ports = 8080..8150;" ^
   "$stopped = @();" ^
   "foreach ($p in $ports) {" ^
   "  $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique;" ^

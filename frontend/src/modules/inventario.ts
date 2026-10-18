@@ -85,50 +85,114 @@ async function renderStockTab(c, ctx = {}) {
     const todayDate = todayStr();
     const asOfDateVal = (ctx as any).asOfDate || todayDate;
 
-    let stock = [];
+    let stockRes: any[] = [];
     if (asOfDateVal === todayDate) {
-      stock = await API.getInventoryStock();
+      stockRes = await API.getInventoryStock();
     } else {
-      stock = await API.getInventoryStockAsOf({ asOfDate: asOfDateVal });
+      stockRes = await API.getInventoryStockAsOf({ asOfDate: asOfDateVal });
     }
+
+    // Consultar importaciones activas en paralelo para calcular mercancía en tránsito
+    const importLines = await _pb().listAll('import_lines', {
+      filter: 'import_id.status="transito" || import_id.status="nacionalizacion"',
+      expand: 'import_id,product_id'
+    }).catch(() => []);
+
+    const stock = stockRes || [];
     ctx.stock = stock;
 
+    // Procesar inventario en tránsito consolidado por producto
+    const transitByProduct: Record<string, {
+      totalQty: number;
+      shipments: Array<{ number: string; qty: number; eta: string; status: string }>;
+      product?: any;
+    }> = {};
+    let totalTransitUnits = 0;
+
+    for (const il of (importLines || [])) {
+      const pid = il.product_id;
+      if (!pid) continue;
+      const qty = Number(il.qty || 0);
+      if (qty <= 0) continue;
+
+      const imp = il.expand?.import_id;
+      const eta = imp?.estimated_arrival ? String(imp.estimated_arrival).substring(0, 10) : '';
+      const impNum = imp?.number || 'IMP';
+      const impStatus = imp?.status === 'nacionalizacion' ? 'Nacionalización' : 'En tránsito';
+
+      if (!transitByProduct[pid]) {
+        transitByProduct[pid] = { totalQty: 0, shipments: [], product: il.expand?.product_id };
+      }
+      transitByProduct[pid].totalQty += qty;
+      transitByProduct[pid].shipments.push({
+        number: impNum,
+        qty,
+        eta,
+        status: impStatus
+      });
+      totalTransitUnits += qty;
+    }
+
+    // Agregar virtualmente productos que están en tránsito pero aún no tienen registros en bodega física
+    const existingProductIds = new Set(stock.map((s: any) => s.product_id));
+    for (const [pid, tData] of Object.entries(transitByProduct)) {
+      if (!existingProductIds.has(pid)) {
+        stock.push({
+          id: `transit_${pid}`,
+          product_id: pid,
+          warehouse_id: '',
+          qty_on_hand: 0,
+          avg_cost: Number(tData.product?.cost_price || 0),
+          last_mov_date: 'En tránsito',
+          expand: {
+            product_id: tData.product || { name: 'Producto en Tránsito', code: 'S/C' },
+            warehouse_id: { name: 'En Tránsito (Importación)' }
+          }
+        });
+      }
+    }
+
     const totalSkus    = new Set(stock.map(s => s.product_id)).size;
-    const totalUnits   = stock.reduce((a, s) => a + (s.qty_on_hand || 0), 0);
-    const lowStock     = stock.filter(s => (s.qty_on_hand || 0) <= 0).length;
-    const totalValue   = stock.reduce((a, s) => a + (s.qty_on_hand || 0) * (s.avg_cost || 0), 0);
+    let totalUnits   = stock.reduce((a, s) => a + (Number(s.qty_on_hand) || 0), 0);
+    if (Math.abs(totalUnits) < 0.0001) totalUnits = 0;
+    const lowStock     = stock.filter(s => (Number(s.qty_on_hand) || 0) <= 0).length;
+    let totalValue   = stock.reduce((a, s) => a + ((Number(s.qty_on_hand) || 0) * (Number(s.avg_cost) || 0)), 0);
+    if (Math.abs(totalValue) < 0.01) totalValue = 0;
 
     c.innerHTML = `
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        ${invKpi('SKUs en inventario', totalSkus,          'fas fa-box',          '#7C3AED','#EDE9FE')}
-        ${invKpi('Unidades totales',   fmtN(totalUnits),   'fas fa-cubes',        '#059669','#DCFCE7')}
-        ${invKpi('Sin stock',          lowStock,           'fas fa-triangle-exclamation','#D97706','#FEF3C7')}
-        ${invKpi('Valor estimado',     fmt(totalValue),    'fas fa-coins',        '#7C3AED','#EDE9FE')}
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        ${invKpi('SKUs en inventario', totalSkus,               'fas fa-box',                  '#7C3AED','#EDE9FE')}
+        ${invKpi('Físico en Bodegas',   fmtN(totalUnits),        'fas fa-cubes',                '#059669','#DCFCE7')}
+        ${invKpi('En Tránsito (ETA)',   fmtN(totalTransitUnits), 'fas fa-ship',                 '#0284C7','#E0F2FE')}
+        ${invKpi('Sin stock físico',    lowStock,                'fas fa-triangle-exclamation', '#D97706','#FEF3C7')}
+        ${invKpi('Valor estimado',      fmt(totalValue),         'fas fa-coins',                '#7C3AED','#EDE9FE')}
       </div>
 
-      <!-- Filtros -->
-      <div class="bg-white rounded-2xl border p-3 mb-4 flex flex-wrap gap-3 items-center justify-between" style="border-color:#F0F0F0">
-        <div class="flex flex-wrap gap-3 flex-1 items-center">
-          <input id="st-q" class="form-input min-w-48" placeholder="Buscar producto...">
-          <select id="st-wh" class="form-input" style="max-width:200px">
-            <option value="">Todas las bodegas</option>
-            ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
-          </select>
-          <select id="st-status" class="form-input" style="max-width:160px">
-            <option value="">Todo el stock</option>
-            <option value="ok">Con stock</option>
-            <option value="zero">Sin stock / Agotado</option>
-          </select>
-          <div class="flex items-center gap-1.5 bg-blue-50/70 p-1.5 rounded-xl border border-blue-200">
-            <span class="text-xs font-bold text-blue-900 ml-1"><i class="fas fa-calendar-day mr-1"></i>Corte:</span>
-            <input type="date" id="st-as-of-date" class="form-input text-xs py-1 px-2 border-blue-300" value="${asOfDateVal}">
-            <button id="btn-apply-as-of" class="btn btn-primary py-1 px-2.5 text-xs" title="Consultar stock a la fecha de corte">
-              <i class="fas fa-filter mr-1"></i>Filtrar
-            </button>
-          </div>
+      <!-- Filtros en una sola fila -->
+      <div class="bg-white rounded-2xl border p-3 mb-4 flex items-center gap-2.5 flex-nowrap overflow-x-auto shadow-xs" style="border-color:#F0F0F0">
+        <div class="relative flex-1 min-w-[180px] max-w-xs">
+          <input id="st-q" class="form-input w-full text-xs py-2 pl-8" placeholder="Buscar producto...">
+          <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+        </div>
+        <select id="st-wh" class="form-input text-xs py-2 w-auto shrink-0" style="min-width:160px; max-width:210px">
+          <option value="">Todas las bodegas</option>
+          ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+        </select>
+        <select id="st-status" class="form-input text-xs py-2 w-auto shrink-0" style="min-width:170px; max-width:210px">
+          <option value="">Todo el stock</option>
+          <option value="ok">Con stock físico</option>
+          <option value="transit">🚢 En tránsito (importación)</option>
+          <option value="zero">Sin stock físico / Agotado</option>
+        </select>
+        <div class="flex items-center gap-1.5 bg-blue-50/70 p-1 rounded-xl border border-blue-200 shrink-0">
+          <span class="text-xs font-bold text-blue-900 ml-1"><i class="fas fa-calendar-day mr-1"></i>Corte:</span>
+          <input type="date" id="st-as-of-date" class="form-input text-xs py-1 px-2 border-blue-300 w-auto" value="${asOfDateVal}">
+          <button id="btn-apply-as-of" class="btn btn-primary py-1 px-2.5 text-xs whitespace-nowrap" title="Consultar stock a la fecha de corte">
+            <i class="fas fa-filter mr-1"></i>Filtrar
+          </button>
         </div>
         ${['superadmin', 'admin'].includes(_pb().currentUser?.role) ? `
-          <button id="btn-recalc-stock" class="btn btn-orange-subtle flex items-center gap-1.5 font-bold" style="border-radius:12px; font-size:13px; padding:6px 12px">
+          <button id="btn-recalc-stock" class="btn btn-orange-subtle flex items-center gap-1.5 font-bold shrink-0 ml-auto whitespace-nowrap" style="border-radius:12px; font-size:12px; padding:6px 12px">
             <i class="fas fa-arrows-rotate text-orange-600"></i> Recalcular Existencias
           </button>
         ` : ''}
@@ -144,7 +208,8 @@ async function renderStockTab(c, ctx = {}) {
                 <th>Bodega</th>
                 <th class="text-right">Mínimo</th>
                 <th class="text-right">Máximo</th>
-                <th class="text-right">Stock (${asOfDateVal === todayDate ? 'Actual' : 'al ' + asOfDateVal})</th>
+                <th class="text-right">Stock Físico (${asOfDateVal === todayDate ? 'Actual' : 'al ' + asOfDateVal})</th>
+                <th class="text-right">En Tránsito</th>
                 <th class="text-right">Costo prom.</th>
                 <th class="text-right">Valor total</th>
                 <th>Estado Alerta</th>
@@ -152,7 +217,7 @@ async function renderStockTab(c, ctx = {}) {
               </tr>
             </thead>
             <tbody id="stock-tbody">
-              ${stock.length ? renderStockRows(stock) : `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-boxes-stacked mr-2"></i>No hay stock registrado a la fecha seleccionada.</td></tr>`}
+              ${stock.length ? renderStockRows(stock, transitByProduct) : `<tr><td colspan="11" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-boxes-stacked mr-2"></i>No hay stock registrado a la fecha seleccionada.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -214,19 +279,25 @@ async function renderStockTab(c, ctx = {}) {
   }
 }
 
-function renderStockRows(stock) {
+function renderStockRows(stock, transitByProduct: Record<string, any> = {}) {
   return stock.map(s => {
     const prod = s.expand?.product_id;
     const wh   = s.expand?.warehouse_id;
-    const qty  = s.qty_on_hand ?? 0;
-    const cost = s.avg_cost ?? 0;
-    const val  = qty * cost;
+    let qty  = Number(s.qty_on_hand ?? 0);
+    let cost = Number(s.avg_cost ?? 0);
+    if (Math.abs(qty) < 0.0001) qty = 0;
+    if (Math.abs(cost) < 0.0001) cost = 0;
+    let val  = qty * cost;
+    if (Math.abs(val) < 0.01) val = 0;
+
+    const tInfo = s.product_id ? transitByProduct[s.product_id] : null;
+    const transitQty = tInfo?.totalQty || 0;
 
     const stockMin = prod?.stock_min !== null && prod?.stock_min !== undefined ? Number(prod.stock_min) : null;
     const stockMax = prod?.stock_max !== null && prod?.stock_max !== undefined ? Number(prod.stock_max) : null;
 
-    const minVal = stockMin !== null ? fmtN(stockMin) : '—';
-    const maxVal = stockMax !== null ? fmtN(stockMax) : '—';
+    const minVal = stockMin !== null && stockMin > 0 ? fmtN(stockMin) : '—';
+    const maxVal = stockMax !== null && stockMax > 0 ? fmtN(stockMax) : '—';
 
     let alertState = '<span class="badge badge-green">OK</span>';
     let qtyClass = 'font-semibold text-green-700';
@@ -234,21 +305,36 @@ function renderStockRows(stock) {
     if (qty <= 0) {
       alertState = '<span class="badge badge-red">Agotado</span>';
       qtyClass = 'font-semibold text-red-500';
-    } else if (stockMin !== null && qty < stockMin) {
+    } else if (stockMin !== null && stockMin > 0 && qty < stockMin) {
       alertState = '<span class="badge badge-orange">Bajo Mínimo</span>';
       qtyClass = 'font-semibold text-orange-600';
-    } else if (stockMax !== null && qty > stockMax) {
+    } else if (stockMax !== null && stockMax > 0 && qty > stockMax) {
       alertState = '<span class="badge badge-blue" style="background:#EFF6FF; color:#1E40AF; border-color:#DBEAFE">Sobre Máximo</span>';
       qtyClass = 'font-semibold text-blue-600';
     }
 
-    return `<tr data-whid="${esc(s.warehouse_id)}" data-qty="${qty}">
+    let transitCell = '<span style="color:#9CA3AF">—</span>';
+    if (transitQty > 0) {
+      const tooltipLines = (tInfo?.shipments || []).map((sh: any) =>
+        `• ${sh.number}: ${fmtN(sh.qty)} unds ${sh.eta ? `(ETA: ${sh.eta})` : ''} [${sh.status}]`
+      ).join('\n');
+      const earliestEta = (tInfo?.shipments || []).find((sh: any) => sh.eta)?.eta || '';
+      transitCell = `
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-800 border border-sky-200 cursor-help" title="${esc(tooltipLines)}">
+          <i class="fas fa-ship text-sky-600 text-[11px]"></i>
+          <span>${fmtN(transitQty)}</span>
+          ${earliestEta ? `<span class="text-[10px] text-sky-600 font-normal">(${earliestEta})</span>` : ''}
+        </span>`;
+    }
+
+    return `<tr data-whid="${esc(s.warehouse_id)}" data-qty="${qty}" data-transit="${transitQty}">
       <td class="font-medium">${prod ? esc(prod.name) : '<span style="color:#9CA3AF">—</span>'}</td>
       <td><span class="font-mono text-xs" style="color:#7C3AED">${prod ? esc(prod.code) : '—'}</span></td>
       <td>${wh ? esc(wh.name) : '—'}</td>
       <td class="text-right">${minVal}</td>
       <td class="text-right">${maxVal}</td>
       <td class="text-right ${qtyClass}">${fmtN(qty)}</td>
+      <td class="text-right">${transitCell}</td>
       <td class="text-right">${cost ? fmt(cost) : '—'}</td>
       <td class="text-right">${val ? fmt(val) : '—'}</td>
       <td>${alertState}</td>
@@ -262,11 +348,15 @@ function filterStockTable() {
   const whId   = getSelectVal('st-wh');
   const status = getSelectVal('st-status');
   $$('#stock-table tbody tr[data-qty]').forEach(tr => {
-    const text  = tr.textContent.toLowerCase();
-    const qty   = parseFloat(tr.dataset.qty ?? '0');
-    const okQ   = !q      || text.includes(q);
-    const okWh  = !whId   || tr.dataset.whid === whId;
-    const okSt  = !status || (status === 'ok' ? qty > 0 : qty <= 0);
+    const text    = tr.textContent.toLowerCase();
+    const qty     = parseFloat(tr.dataset.qty ?? '0');
+    const transit = parseFloat(tr.dataset.transit ?? '0');
+    const okQ     = !q      || text.includes(q);
+    const okWh    = !whId   || tr.dataset.whid === whId;
+    let okSt = true;
+    if (status === 'ok') okSt = qty > 0;
+    else if (status === 'transit') okSt = transit > 0;
+    else if (status === 'zero') okSt = qty <= 0;
     tr.style.display = okQ && okWh && okSt ? '' : 'none';
   });
 }

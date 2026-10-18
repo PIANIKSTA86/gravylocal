@@ -843,16 +843,61 @@ async function renderConfiguracion(c) {
 
     $('#btn-sync-resolutions-matias')?.addEventListener('click', async () => {
       const btn = $('#btn-sync-resolutions-matias') as HTMLButtonElement | null;
+      const token = (getInputVal('matias-api-token') || '').trim();
+      const env = (getInputVal('matias-environment') || 'sandbox').trim();
+      const clientUuid = (getInputVal('matias-client-uuid') || '').trim();
+
+      if (!token) {
+        showToast('Debes ingresar el token de MATIAS API antes de sincronizar', 'warning');
+        return;
+      }
+
       if (btn) btn.disabled = true;
       showToast('Sincronizando resoluciones DIAN desde MATIAS API...', 'info');
       try {
-        const res = await pb.send('/api/dian/sync-matias-resolutions', { method: 'POST' });
+        const res = await pb.send('/api/dian/sync-matias-resolutions', {
+          method: 'POST',
+          body: {
+            token: token,
+            environment: env,
+            client_uuid: clientUuid
+          }
+        });
         if (res && res.success) {
           showToast(res.message || `¡Sincronizadas ${res.count} resoluciones correctamente!`, 'success');
           const resDiv = $('#matias-test-result');
           if (resDiv) {
             resDiv.classList.remove('hidden');
-            resDiv.innerHTML = `<span class="text-green-600 font-semibold"><i class="fas fa-check-double mr-1"></i>Resoluciones sincronizadas con éxito (${res.count} autorizadas). Prefijos actualizados en GRAVY.</span>`;
+
+            let breakdownHtml = '';
+            if (res.synced && Array.isArray(res.synced) && res.synced.length > 0) {
+              breakdownHtml = `
+                <div class="mt-2.5 p-2 bg-white rounded-lg border border-emerald-200 shadow-2xs">
+                  <div class="text-3xs font-extrabold uppercase text-emerald-800 mb-1.5 flex items-center gap-1.5">
+                    <i class="fas fa-file-signature text-emerald-600"></i>
+                    Resoluciones Habilitadas en DIAN:
+                  </div>
+                  <div class="space-y-1">
+                    ${res.synced.map((s: any) => `
+                      <div class="flex items-center justify-between text-2xs py-0.5 border-b border-slate-100 last:border-b-0">
+                        <span class="font-bold text-slate-800">${esc(s.type)} <span class="font-mono text-blue-600 font-bold">(${esc(s.prefix)})</span></span>
+                        <span class="font-mono text-slate-600">Res. ${esc(s.resolution)}</span>
+                        <span class="px-1.5 py-0.2 bg-emerald-50 text-emerald-700 font-semibold rounded">${s.from} - ${s.to}</span>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }
+
+            resDiv.innerHTML = `
+              <div class="space-y-1.5">
+                <span class="text-green-600 font-semibold block">
+                  <i class="fas fa-check-double mr-1"></i>Sincronización completada (${res.count} resoluciones cargadas a GRAVY).
+                </span>
+                ${breakdownHtml}
+              </div>
+            `;
           }
         } else {
           showToast(res.message || 'No se pudieron sincronizar las resoluciones', 'error');

@@ -423,7 +423,7 @@ window.checkFtechStatus = async function(id: string, txId: string) {
     return;
   }
   try {
-    showToast('Consultando estado en Facturatech...', 'info');
+    showToast('Consultando estado en la DIAN...', 'info');
     const res = await pb.send('/api/dian/check-status', {
       method: 'POST',
       body: JSON.stringify({ txId: txId }),
@@ -436,7 +436,7 @@ window.checkFtechStatus = async function(id: string, txId: string) {
       } else if (res.status === 'rechazada') {
         showToast(`Documento rechazado por DIAN: ${res.dianResponse || 'Rechazado'}`, 'error', 9000);
       } else {
-        showToast(`Estado en Facturatech: ${res.status.toUpperCase()} (${res.dianResponse || 'En proceso de firma'}).`, 'info', 6000);
+        showToast(`Estado DIAN: ${res.status.toUpperCase()} (${res.dianResponse || 'En proceso de firma'}).`, 'info', 6000);
       }
       const container = $('#page-content');
       if (container) {
@@ -448,7 +448,7 @@ window.checkFtechStatus = async function(id: string, txId: string) {
       }
     } else {
       const errMsg = res?.dianResponse || res?.message || 'Respuesta desconocida';
-      showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9000);
+      showToast(`DIAN: ${errMsg}`, 'error', 9000);
       const container = $('#page-content');
       if (container) {
         if ((window as any).currentPage === 'doc-soporte' && typeof (window as any).renderDocSoporte === 'function') {
@@ -459,8 +459,8 @@ window.checkFtechStatus = async function(id: string, txId: string) {
       }
     }
   } catch (err: any) {
-    const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error en comunicación con Facturatech');
-    showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9500);
+    const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error en comunicación con la DIAN');
+    showToast(`DIAN: ${errMsg}`, 'error', 9500);
     const container = $('#page-content');
     if (container) {
       if ((window as any).currentPage === 'doc-soporte' && typeof (window as any).renderDocSoporte === 'function') {
@@ -477,9 +477,9 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
     showToast('No hay una transacción vinculada a este documento.', 'warning');
     return;
   }
-  confirmDialog('Emitir Documento a DIAN', `¿Confirmas el firmado digital y envío del documento <strong>${esc(docNumber)}</strong> ante la DIAN / Facturatech?`, async () => {
+  confirmDialog('Emitir Documento a DIAN', `¿Confirmas el firmado digital y envío del documento <strong>${esc(docNumber)}</strong> ante la DIAN?`, async () => {
     try {
-      showToast('Transmitiendo a la DIAN / Facturatech...', 'info');
+      showToast('Transmitiendo a la DIAN...', 'info');
       const res = await pb.send('/api/dian/emit', {
         method: 'POST',
         body: JSON.stringify({ txId: txId }),
@@ -492,13 +492,13 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
         if (container) renderFacturacionDIAN(container);
       } else {
         const errorMsg = res?.dianResponse || res?.message || 'Respuesta de DIAN rechazada';
-        showToast(`Facturatech / DIAN: ${errorMsg}`, 'error', 9000);
+        showToast(`DIAN: ${errorMsg}`, 'error', 9000);
         const container = $('#page-content');
         if (container) renderFacturacionDIAN(container);
       }
     } catch (err: any) {
       const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error en comunicación con la DIAN');
-      showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9500);
+      showToast(`DIAN: ${errMsg}`, 'error', 9500);
       const container = $('#page-content');
       if (container) renderFacturacionDIAN(container);
     }
@@ -515,7 +515,7 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
   const doc = docs[0];
   const xmlContent = doc.xml_content;
 
-  const tx = await pb.get('transactions', txId, { expand: 'third_party_id' });
+  const tx = await pb.get('transactions', txId, { expand: 'third_party_id,tx_type_id' });
   const customer = tx.expand?.third_party_id;
 
   let invoices = await pb.listAll('invoices', { filter: `tx_id = "${pb.escapeFilterValue(txId)}"` });
@@ -527,9 +527,18 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
     isPurchase = true;
   }
 
-  const isDS = (doc && (doc.doc_type === 'DS' || doc.doc_type === 'NDS')) || 
-               (tx.number && (tx.number.toUpperCase().includes('DS') || tx.number.toUpperCase().includes('DSE'))) || 
-               isPurchase;
+  const txTypeCode = String(tx.expand?.tx_type_id?.code || '').toUpperCase();
+  const txTypePrefix = String(tx.expand?.tx_type_id?.prefix || '').toUpperCase();
+  const txNumUpper = String(tx.number || number || '').toUpperCase();
+
+  const isNDS = txTypeCode === 'NDS' || txTypePrefix.includes('NDS') || txNumUpper.includes('NDS') || txNumUpper.includes('NDSE');
+  const isDS = !isNDS && (
+    txTypeCode === 'DS' || 
+    txTypePrefix.includes('DS') || 
+    txNumUpper.includes('DS') || 
+    txNumUpper.includes('DSE') || 
+    isPurchase
+  );
 
   let linesList = [];
   let isPOSFallback = false;
@@ -579,7 +588,8 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
           qty: line.qty || 1,
           unitPrice: line.unit_price || 0,
           lineTotal: line.total || (line.subtotal || 0),
-          ivaRate: line.iva_rate || 0
+          ivaRate: line.iva_rate || 0,
+          um: line.expand?.product_id?.unit || '94'
         };
       });
 
@@ -602,20 +612,26 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
   }
 
   // Resolve resolution info
-  let resName = isDS ? "Documento Soporte Electrónico" : "Factura de Venta POS";
+  let resName = isNDS 
+    ? "Nota de Ajuste al Documento Soporte Electrónico" 
+    : isDS 
+    ? "Documento electrónico de soporte para no obligados a facturar" 
+    : "Factura de Venta POS";
   let resDesc = "";
   let resNum = "";
   let resDate = "";
   let resExpiry = "";
   let resFrom = "";
   let resTo = "";
-  let resPrefix = "";
+  let resPrefix = isNDS ? "NDS" : isDS ? "DS" : "";
 
   let prefix = "";
   if (tx.number && tx.number.includes('-')) {
     prefix = tx.number.split('-')[0].trim().toUpperCase();
   }
-  let docType = (invoice?.pos_shift_id || tx.pos_shift_id) ? "POS" : (isDS ? "DS" : "FV");
+  let docType = (invoice?.pos_shift_id || tx.pos_shift_id) 
+    ? "POS" 
+    : (isNDS ? "NDS" : isDS ? "DS" : "FV");
 
   try {
     const registerId = (invoice?.pos_shift_id || tx.pos_shift_id) 
@@ -633,18 +649,24 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
       if (!resolution) {
         resolution = resRecords.find((r: any) => r.document_type === docType);
       }
-      if (!resolution) {
+      if (!resolution && !isDS && !isNDS) {
         resolution = resRecords[0];
       }
       if (resolution) {
-        resName = resolution.name || (isDS ? "Documento Soporte Electrónico" : "Factura Electrónica de Venta");
+        resName = isNDS
+          ? "Nota de Ajuste al Documento Soporte Electrónico"
+          : isDS
+          ? "Documento electrónico de soporte para no obligados a facturar"
+          : (resolution.name || "Factura Electrónica de Venta");
         resDesc = resolution.description || "";
         resNum = resolution.resolution_number || "";
         resDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : "";
         resExpiry = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : "";
         resFrom = resolution.number_from || "";
         resTo = resolution.number_to || "";
-        resPrefix = resolution.prefix || (isDS ? "DS" : "");
+        resPrefix = resolution.prefix || prefix || (isNDS ? "NDS" : isDS ? "DS" : "");
+      } else if (prefix) {
+        resPrefix = prefix;
       }
     }
   } catch (_) {}
@@ -661,6 +683,11 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
   const vendorPhone = customer?.phone || '';
   const vendorEmail = customer?.email || '';
 
+  const companyCity = settingsMap.get('company_city') || 'Cali';
+  const companyDept = settingsMap.get('company_department') || 'Valle del Cauca';
+  const custCity = customer?.city || 'Cali';
+  const custDept = customer?.department || 'Valle del Cauca';
+
   const docNotes = (invoice?.notes || tx.description || '').trim();
 
   const invoiceData = {
@@ -669,16 +696,23 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
     issueTime: doc.sent_at ? doc.sent_at.split(' ')[1] || '12:00:00' : '12:00:00',
     cufe: doc.cufe || 'N/A',
     payableAmount: payableAmount,
+    subtotal: invoice?.subtotal || totalFromLines || payableAmount,
     isDS: isDS,
+    isNDS: isNDS,
+    docType: isNDS ? 'NDS' : isDS ? 'DS' : docType,
     supplierName: isDS ? vendorName : companyName,
     supplierNit: isDS ? vendorNit : companyNit,
     supplierAddress: isDS ? vendorAddr : companyAddr,
+    supplierCity: isDS ? custCity : companyCity,
+    supplierDepartment: isDS ? custDept : companyDept,
     supplierPhone: isDS ? vendorPhone : companyPhone,
     supplierEmail: isDS ? vendorEmail : companyEmail,
 
     customerName: isDS ? companyName : vendorName,
     customerNit: isDS ? companyNit : vendorNit,
     customerAddress: isDS ? companyAddr : vendorAddr,
+    customerCity: isDS ? companyCity : custCity,
+    customerDepartment: isDS ? companyDept : custDept,
     customerPhone: isDS ? companyPhone : vendorPhone,
     customerEmail: isDS ? companyEmail : vendorEmail,
 

@@ -6519,7 +6519,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
 
 async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
   try {
-    showToast('Transmitiendo comprobante de nómina a la DIAN / Facturatech...', 'info');
+    showToast('Transmitiendo comprobante de nómina a la DIAN...', 'info');
     const res = await pb.send('/api/dian/nomina/emit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -6531,7 +6531,7 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
       } else if (res.status === 'APROBADO') {
         showToast(`Nómina Electrónica APROBADA y validada por la DIAN.`, 'success');
       } else if (res.status === 'EN_PROCESO') {
-        showToast(`Nómina recibida por Facturatech. En proceso de validación DIAN. (ID: ${res.transactionID || 'OK'})`, 'info');
+        showToast(`Nómina en proceso de validación DIAN. (ID: ${res.transactionID || 'OK'})`, 'info');
       } else if (res.status === 'RECHAZADO') {
         showToast(`Nómina rechazada por DIAN: ${res.message || 'Verifique detalles'}`, 'error');
       } else {
@@ -6572,7 +6572,7 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
             <i class="fas fa-exclamation-triangle text-red-500 mt-0.5 text-base"></i>
             <div>
               <strong class="font-bold">Comprobante Previamente Rechazado (${esc(currNum)})</strong>
-              <p class="text-3xs mt-1 text-red-700">Facturatech/DIAN rechazó este comprobante en un intento anterior. Si el folio ya fue invalidado en Facturatech, puede requerirse reemitir con un consecutivo nuevo.</p>
+              <p class="text-3xs mt-1 text-red-700">La DIAN rechazó este comprobante en un intento anterior. Si el folio ya fue invalidado, puede requerirse reemitir con un consecutivo nuevo.</p>
               ${rec.dian_response ? `<div class="mt-2 p-1.5 bg-white border border-red-200 rounded font-mono text-3xs text-red-900">${esc(rec.dian_response)}</div>` : ''}
             </div>
           </div>
@@ -6586,7 +6586,7 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
               <strong class="font-mono text-emerald-700 font-bold">${esc(nextConsecutiveStr)}</strong>
             </div>
           </div>
-          <p class="text-gray-600 text-3xs italic">Selecciona cómo deseas proceder con la transmisión ante Facturatech:</p>
+          <p class="text-gray-600 text-3xs italic">Selecciona cómo deseas proceder con la transmisión ante la DIAN:</p>
         </div>
       `;
 
@@ -6614,8 +6614,8 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
     }
 
     // Si el comprobante está PENDIENTE o nuevo, confirmación estándar
-    confirmDialog('Transmitir Volante Individual a DIAN / Facturatech', 
-      `¿Confirmas el firmado digital y emisión del volante <strong>${esc(currNum)}</strong> ante la DIAN / Facturatech?`, 
+    confirmDialog('Transmitir Volante Individual a la DIAN', 
+      `¿Confirmas el firmado digital y emisión del volante <strong>${esc(currNum)}</strong> ante la DIAN?`, 
       async () => {
         await doEmitNomina(id, false);
       }
@@ -6627,7 +6627,7 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
 
 (window as any).checkNominaFtechStatus = async function(id: string) {
   try {
-    showToast('Consultando estado en DIAN / Facturatech...', 'info');
+    showToast('Consultando estado en la DIAN...', 'info');
     const res = await pb.send('/api/dian/nomina/check-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -6646,7 +6646,7 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
 
 (window as any).emitAllNominaElectronicaDian = async function(year: number, month: number) {
   confirmDialog('Transmitir Nómina Electrónica en Lote (Segundo Plano)', 
-    `¿Confirmas iniciar el proceso de firmado digital y transmisión de los volantes de nómina del período ${month}/${year} ante la DIAN / Facturatech? El proceso se ejecutará en segundo plano en el servidor sin bloquear el sistema.`, 
+    `¿Confirmas iniciar el proceso de firmado digital y transmisión de los volantes de nómina del período ${month}/${year} ante la DIAN? El proceso se ejecutará en segundo plano en el servidor sin bloquear el sistema.`, 
     async () => {
       try {
         showToast('Encolando transmisión masiva...', 'info');

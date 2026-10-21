@@ -24,6 +24,7 @@ async function testImapConnection({ host, port, user, pass, tls = true }) {
     },
     logger: false
   });
+  client.on('error', (err) => console.warn('[IMAP] Advertencia conexión test:', err.message));
 
   try {
     await client.connect();
@@ -43,10 +44,10 @@ async function testImapConnection({ host, port, user, pass, tls = true }) {
 }
 
 /**
- * Extrae texto o etiqueta de un XML.
+ * Extrae texto o etiqueta de un XML con límites de palabra exactos.
  */
 function extractXmlTag(xml, tag) {
-  const reg = new RegExp(`<(?:[a-zA-Z0-9_]+:)?${tag}[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_]+:)?${tag}>`, 'i');
+  const reg = new RegExp(`<(?:[a-zA-Z0-9_]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_]+:)?${tag}>`, 'i');
   const m = xml.match(reg);
   return m ? m[1].trim() : '';
 }
@@ -57,36 +58,42 @@ function extractXmlTag(xml, tag) {
 function parseInvoiceXml(xmlContent) {
   if (!xmlContent || typeof xmlContent !== 'string') return null;
 
+  // 1. Si es un AttachedDocument contenedor, extraer el XML de la factura dentro de CDATA o Attachment
+  let mainXml = xmlContent;
+  const cdataMatch = xmlContent.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+  if (cdataMatch && (cdataMatch[1].includes('<Invoice') || cdataMatch[1].includes('<CreditNote') || cdataMatch[1].includes('<DebitNote'))) {
+    mainXml = cdataMatch[1];
+  }
+
   // Buscar CUFE / CUDE
   let cufe = '';
-  const uuidMatch = xmlContent.match(/<(?:[a-zA-Z0-9_]+:)?UUID[^>]*>([a-fA-F0-9]{64,96})<\//i);
+  const uuidMatch = mainXml.match(/<(?:[a-zA-Z0-9_]+:)?UUID\b[^>]*>([a-fA-F0-9]{64,96})<\//i);
   if (uuidMatch) {
     cufe = uuidMatch[1].trim();
   }
 
   if (!cufe) {
-    // Si es AttachedDocument, buscar dentro del cdata o nodo anidado
-    const cdataMatch = xmlContent.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-    if (cdataMatch) {
-      const nestedUuid = cdataMatch[1].match(/<(?:[a-zA-Z0-9_]+:)?UUID[^>]*>([a-fA-F0-9]{64,96})<\//i);
-      if (nestedUuid) cufe = nestedUuid[1].trim();
-    }
+    const rawUuid = xmlContent.match(/<(?:[a-zA-Z0-9_]+:)?UUID\b[^>]*>([a-fA-F0-9]{64,96})<\//i);
+    if (rawUuid) cufe = rawUuid[1].trim();
   }
 
   // Si no se encontró ningún CUFE válido de 64 o 96 caracteres hex, no es un documento fiscal DIAN válido
   if (!cufe) return null;
 
-  // Determinar número del documento
-  let number = extractXmlTag(xmlContent, 'ID');
-  if (!number && xmlContent.includes('cbc:ID')) {
-    const idMatch = xmlContent.match(/<cbc:ID[^>]*>([A-Za-z0-9\-]+)<\/cbc:ID>/i);
-    if (idMatch) number = idMatch[1].trim();
+  // Determinar número del documento (cbc:ID limpio)
+  let number = '';
+  const idMatch = mainXml.match(/<cbc:ID\b[^>]*>([^<]+)<\/cbc:ID>/i);
+  if (idMatch) {
+    number = idMatch[1].trim();
+  }
+  if (!number) {
+    number = extractXmlTag(mainXml, 'ID');
   }
 
   // Datos del Emisor (Proveedor)
   let supplierNit = '';
   let supplierName = '';
-  const supplierMatch = xmlContent.match(/<cac:AccountingSupplierParty>([\s\S]*?)<\/cac:AccountingSupplierParty>/i);
+  const supplierMatch = mainXml.match(/<cac:AccountingSupplierParty\b[^>]*>([\s\S]*?)<\/cac:AccountingSupplierParty>/i);
   if (supplierMatch) {
     const sBlock = supplierMatch[1];
     supplierNit = extractXmlTag(sBlock, 'CompanyID');
@@ -96,7 +103,7 @@ function parseInvoiceXml(xmlContent) {
   // Datos del Receptor (Cliente / Nuestra Empresa)
   let customerNit = '';
   let customerName = '';
-  const customerMatch = xmlContent.match(/<cac:AccountingCustomerParty>([\s\S]*?)<\/cac:AccountingCustomerParty>/i);
+  const customerMatch = mainXml.match(/<cac:AccountingCustomerParty\b[^>]*>([\s\S]*?)<\/cac:AccountingCustomerParty>/i);
   if (customerMatch) {
     const cBlock = customerMatch[1];
     customerNit = extractXmlTag(cBlock, 'CompanyID');
@@ -104,18 +111,72 @@ function parseInvoiceXml(xmlContent) {
   }
 
   // Fecha y total
-  const issueDate = extractXmlTag(xmlContent, 'IssueDate') || new Date().toISOString().slice(0, 10);
-  const totalPayable = parseFloat(extractXmlTag(xmlContent, 'PayableAmount') || '0') || 0;
-  const lineExtension = parseFloat(extractXmlTag(xmlContent, 'LineExtensionAmount') || '0') || totalPayable;
-  const taxAmount = parseFloat(extractXmlTag(xmlContent, 'TaxAmount') || '0') || 0;
+  const issueDate = extractXmlTag(mainXml, 'IssueDate') || new Date().toISOString().slice(0, 10);
+  const totalPayable = parseFloat(extractXmlTag(mainXml, 'PayableAmount') || '0') || 0;
+  const lineExtension = parseFloat(extractXmlTag(mainXml, 'LineExtensionAmount') || '0') || totalPayable;
+  const taxAmount = parseFloat(extractXmlTag(mainXml, 'TaxAmount') || '0') || 0;
+
+  // Extraer líneas (InvoiceLine, CreditNoteLine, DebitNoteLine)
+  const lines = [];
+  const lineRegex = /<(?:[a-zA-Z0-9_]+:)?(?:InvoiceLine|CreditNoteLine|DebitNoteLine)\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?(?:InvoiceLine|CreditNoteLine|DebitNoteLine)>/gi;
+  let lineMatch;
+  while ((lineMatch = lineRegex.exec(mainXml)) !== null) {
+    const lXml = lineMatch[1];
+    const lineId = extractXmlTag(lXml, 'ID');
+    const description = extractXmlTag(lXml, 'Description') || 'Producto / Servicio';
+    
+    let code = '';
+    const sellersMatch = lXml.match(/<cac:SellersItemIdentification\b[^>]*>([\s\S]*?)<\/cac:SellersItemIdentification>/i);
+    if (sellersMatch) code = extractXmlTag(sellersMatch[1], 'ID');
+    if (!code) {
+      const stdMatch = lXml.match(/<cac:StandardItemIdentification\b[^>]*>([\s\S]*?)<\/cac:StandardItemIdentification>/i);
+      if (stdMatch) code = extractXmlTag(stdMatch[1], 'ID');
+    }
+    if (!code) code = lineId;
+
+    const qtyMatch = lXml.match(/<(?:[a-zA-Z0-9_]+:)?(?:InvoicedQuantity|CreditedQuantity|DebitedQuantity|Quantity)\b[^>]*>([^<]+)<\//i);
+    const qty = parseFloat(qtyMatch ? qtyMatch[1] : '1') || 1;
+    const subtotal = parseFloat(extractXmlTag(lXml, 'LineExtensionAmount') || '0') || 0;
+
+    let price = 0;
+    const priceMatch = lXml.match(/<cac:Price\b[^>]*>([\s\S]*?)<\/cac:Price>/i);
+    if (priceMatch) {
+      price = parseFloat(extractXmlTag(priceMatch[1], 'PriceAmount') || '0') || 0;
+    }
+    if (!price && qty > 0) price = subtotal / qty;
+
+    lines.push({ code, description, qty, price, subtotal });
+  }
+
+  // Extraer impuestos (TaxSubtotal)
+  const taxes = [];
+  const taxSubRegex = /<cac:TaxSubtotal\b[^>]*>([\s\S]*?)<\/cac:TaxSubtotal>/gi;
+  let taxMatch;
+  while ((taxMatch = taxSubRegex.exec(mainXml)) !== null) {
+    const tXml = taxMatch[1];
+    const amount = parseFloat(extractXmlTag(tXml, 'TaxAmount') || '0') || 0;
+    const base = parseFloat(extractXmlTag(tXml, 'TaxableAmount') || '0') || 0;
+    const percent = parseFloat(extractXmlTag(tXml, 'Percent') || '0') || 0;
+    
+    let taxType = 'iva';
+    const schemeMatch = tXml.match(/<cac:TaxScheme\b[^>]*>([\s\S]*?)<\/cac:TaxScheme>/i);
+    if (schemeMatch) {
+      const schemeId = extractXmlTag(schemeMatch[1], 'ID');
+      if (schemeId === '02') taxType = 'ica';
+      else if (schemeId === '03' || schemeId === '04') taxType = 'inc';
+      else if (schemeId === '01') taxType = 'iva';
+    }
+
+    taxes.push({ taxType, rate: percent, base, amount });
+  }
 
   // Determinar tipo de documento
   let docType = 'invoice_purchase';
-  if (xmlContent.includes('<CreditNote') || xmlContent.includes('InvoiceTypeCode>91')) {
+  if (mainXml.includes('<CreditNote') || mainXml.includes('InvoiceTypeCode>91')) {
     docType = 'credit_note';
-  } else if (xmlContent.includes('<DebitNote') || xmlContent.includes('InvoiceTypeCode>92')) {
+  } else if (mainXml.includes('<DebitNote') || mainXml.includes('InvoiceTypeCode>92')) {
     docType = 'debit_note';
-  } else if (xmlContent.includes('InvoiceTypeCode>05') || xmlContent.includes('documento soporte')) {
+  } else if (mainXml.includes('InvoiceTypeCode>05') || mainXml.includes('documento soporte')) {
     docType = 'support_document';
   }
 
@@ -131,12 +192,15 @@ function parseInvoiceXml(xmlContent) {
     taxAmount,
     total: totalPayable || (lineExtension + taxAmount),
     documentType: docType,
+    lines,
+    taxes,
     xmlContent
   };
 }
 
 /**
- * Escanea la bandeja de entrada buscando correos con facturas electrónicas y extrayendo sus XMLs.
+ * Escanea la bandeja de entrada (y carpetas de Spam/Junk en caso de correos reenviados o filtrados)
+ * buscando correos con facturas electrónicas y extrayendo sus XMLs.
  */
 async function syncImapInvoices({ host, port, user, pass, tls = true, maxEmails = 50 }) {
   const client = new ImapFlow({
@@ -149,80 +213,120 @@ async function syncImapInvoices({ host, port, user, pass, tls = true, maxEmails 
     },
     logger: false
   });
+  client.on('error', (err) => console.warn('[IMAP] Advertencia conexión sync:', err.message));
 
+  const rawMessages = [];
   const parsedInvoices = [];
 
   try {
     await client.connect();
-    const lock = await client.getMailboxLock('INBOX');
 
-    try {
-      // Buscar correos no leídos o los últimos N correos
-      const messages = client.fetch({ seen: false }, { source: true, uid: true });
-      let count = 0;
+    // Descubrir carpetas para escanear (INBOX + Spam/Junk para no perder facturas reenviadas o clasificadas como spam)
+    const mailboxList = await client.list();
+    const foldersToScan = ['INBOX'];
+    for (const item of mailboxList) {
+      if (item.flags && (item.flags.has('\\Junk') || item.path.toLowerCase().includes('spam'))) {
+        foldersToScan.push(item.path);
+      }
+    }
 
-      for await (const message of messages) {
-        if (count >= maxEmails) break;
-        count++;
-
+    for (const folder of foldersToScan) {
+      try {
+        const lock = await client.getMailboxLock(folder);
         try {
-          const parsed = await simpleParser(message.source);
+          const total = client.mailbox.exists || 0;
+          if (total > 0) {
+            let targetSeq = await client.search({ seen: false });
+            if (!Array.isArray(targetSeq) || targetSeq.length === 0) {
+              const from = Math.max(1, total - maxEmails + 1);
+              targetSeq = `${from}:${total}`;
+            } else if (targetSeq.length > maxEmails) {
+              targetSeq = targetSeq.slice(-maxEmails);
+            }
 
-          // Revisar adjuntos
-          if (parsed.attachments && parsed.attachments.length > 0) {
-            for (const att of parsed.attachments) {
-              const filename = (att.filename || '').toLowerCase();
-
-              // Caso 1: Archivo XML directo
-              if (filename.endsWith('.xml') || att.contentType === 'text/xml' || att.contentType === 'application/xml') {
-                const xmlStr = att.content.toString('utf-8');
-                const invData = parseInvoiceXml(xmlStr);
-                if (invData && !parsedInvoices.some(i => i.cufe === invData.cufe)) {
-                  parsedInvoices.push(invData);
+            if (targetSeq && (Array.isArray(targetSeq) ? targetSeq.length > 0 : true)) {
+              for await (const message of client.fetch(targetSeq, { source: true, uid: true })) {
+                if (message.source) {
+                  rawMessages.push({
+                    folder,
+                    seq: message.seq,
+                    uid: message.uid,
+                    source: message.source
+                  });
                 }
               }
 
-              // Caso 2: Archivo ZIP contenedor (estándar AttachedDocument DIAN)
-              else if (filename.endsWith('.zip') || att.contentType.includes('zip')) {
+              // Marcar mensajes leídos
+              const seqs = (await client.search({ seen: false })) || [];
+              if (Array.isArray(seqs) && seqs.length > 0) {
                 try {
-                  const zip = new AdmZip(att.content);
-                  const zipEntries = zip.getEntries();
-                  for (const entry of zipEntries) {
-                    if (entry.entryName.toLowerCase().endsWith('.xml')) {
-                      const xmlStr = entry.getData().toString('utf-8');
-                      const invData = parseInvoiceXml(xmlStr);
-                      if (invData && !parsedInvoices.some(i => i.cufe === invData.cufe)) {
-                        parsedInvoices.push(invData);
-                      }
-                    }
-                  }
-                } catch (zipErr) {
-                  console.warn(`[IMAP] No se pudo descomprimir adjunto ${filename}:`, zipErr.message);
-                }
+                  await client.messageFlagsAdd(seqs, ['\\Seen']);
+                } catch (_) {}
               }
             }
           }
-
-          // Marcar como leído
-          await client.messageFlagsAdd({ uid: message.uid }, ['\\Seen']);
-        } catch (msgErr) {
-          console.warn('[IMAP] Error procesando correo UID ' + message.uid + ':', msgErr.message);
+        } finally {
+          lock.release();
         }
+      } catch (fErr) {
+        console.warn(`[IMAP] No se pudo escanear carpeta ${folder}:`, fErr.message);
       }
-    } finally {
-      lock.release();
     }
 
     await client.logout();
-    return {
-      success: true,
-      foundCount: parsedInvoices.length,
-      invoices: parsedInvoices
-    };
   } catch (err) {
     try { await client.logout(); } catch (_) {}
-    throw new Error(err.message || 'Error durante la sincronización IMAP');
+    throw new Error(err.message || 'Error durante la conexión IMAP');
   }
+
+  // Analizar los adjuntos (.xml / .zip) en memoria
+  for (const raw of rawMessages) {
+    try {
+      const parsed = await simpleParser(raw.source);
+
+      if (parsed.attachments && parsed.attachments.length > 0) {
+        for (const att of parsed.attachments) {
+          const filename = (att.filename || '').toLowerCase();
+
+          // Caso 1: Archivo XML directo
+          if (filename.endsWith('.xml') || att.contentType === 'text/xml' || att.contentType === 'application/xml') {
+            const xmlStr = att.content.toString('utf-8');
+            const invData = parseInvoiceXml(xmlStr);
+            if (invData && !parsedInvoices.some(i => i.cufe === invData.cufe)) {
+              parsedInvoices.push(invData);
+            }
+          }
+
+          // Caso 2: Archivo ZIP contenedor (estándar AttachedDocument DIAN)
+          else if (filename.endsWith('.zip') || att.contentType.includes('zip')) {
+            try {
+              const zip = new AdmZip(att.content);
+              const zipEntries = zip.getEntries();
+              for (const entry of zipEntries) {
+                if (entry.entryName.toLowerCase().endsWith('.xml')) {
+                  const xmlStr = entry.getData().toString('utf-8');
+                  const invData = parseInvoiceXml(xmlStr);
+                  if (invData && !parsedInvoices.some(i => i.cufe === invData.cufe)) {
+                    parsedInvoices.push(invData);
+                  }
+                }
+              }
+            } catch (zipErr) {
+              console.warn(`[IMAP] No se pudo descomprimir adjunto ${filename}:`, zipErr.message);
+            }
+          }
+        }
+      }
+    } catch (msgErr) {
+      console.warn('[IMAP] Error parseando correo UID ' + raw.uid + ':', msgErr.message);
+    }
+  }
+
+  return {
+    success: true,
+    foundCount: parsedInvoices.length,
+    invoices: parsedInvoices
+  };
 }
 
 /**

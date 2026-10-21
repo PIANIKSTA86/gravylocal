@@ -8,6 +8,7 @@ const https = require('https');
 const http = require('http');
 const PDFDocument = require('pdfkit');
 const backupService = require('./backup-service');
+const imapService = require('./imap-service');
 const crypto = require('crypto');
 
 /**
@@ -90,9 +91,16 @@ process.on('unhandledRejection', (reason) => {
 
 process.on('uncaughtException', (err) => {
   writeCrashLog('UNCAUGHT_EXCEPTION', err);
-  // Do not exit: keep the HTTP server alive so other tenants/requests are
-  // unaffected. If the error left internal state corrupted, prefer a
-  // supervised restart (PM2/NSSM) over an abrupt process.exit() here.
+});
+
+process.on('exit', (code) => {
+  writeCrashLog('PROCESS_EXIT', new Error(`Process exited with code ${code}`));
+});
+process.on('SIGTERM', () => {
+  writeCrashLog('SIGNAL_SIGTERM', new Error('Received SIGTERM'));
+});
+process.on('SIGINT', () => {
+  writeCrashLog('SIGNAL_SIGINT', new Error('Received SIGINT'));
 });
 
 const app = express();
@@ -1706,8 +1714,16 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         return String(str || '').replace(/<[^>]*>/g, '').trim();
       };
 
+      // Decode if base64
+      let rawXml = String(xmlContent || '');
+      if (rawXml.startsWith('PD94bWwg') || (!rawXml.includes('<') && rawXml.length > 50)) {
+        try {
+          rawXml = Buffer.from(rawXml, 'base64').toString('utf8');
+        } catch (_) {}
+      }
+
       // Clean XML of extensions and signatures to avoid false matches on metadata tags
-      const cleanXml = String(xmlContent || '')
+      const cleanXml = rawXml
         .replace(/<(?:[a-zA-Z0-9_-]+:)?UBLExtensions>[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?UBLExtensions>/gi, '')
         .replace(/<(?:[a-zA-Z0-9_-]+:)?Signature>[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?Signature>/gi, '');
 
@@ -1794,9 +1810,21 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
           };
         });
         
-        const isNC = filename.toUpperCase().includes('NC');
-        const isND = filename.toUpperCase().includes('ND');
-        docTypeLabel = isNC ? 'Nota Crédito' : isND ? 'Nota Débito' : 'Factura Electrónica de Venta';
+        const rawUpperName = String(filename || '').toUpperCase();
+        const rawUpperDocId = String((invoiceData && invoiceData.docId) || '').toUpperCase();
+        const isPosDS = !!((invoiceData && (invoiceData.isDS || invoiceData.docType === 'DS')) || rawUpperName.includes('DS') || rawUpperDocId.includes('DS'));
+        const isPosNDS = !isPosDS && !!((invoiceData && (invoiceData.isNDS || invoiceData.docType === 'NDS')) || rawUpperName.includes('NDS') || rawUpperDocId.includes('NDS'));
+        const isNC = !isPosNDS && rawUpperName.includes('NC');
+        const isND = !isPosNDS && rawUpperName.includes('ND');
+        docTypeLabel = isPosNDS 
+          ? 'Nota de Ajuste al Documento Soporte Electrónico' 
+          : isPosDS 
+          ? 'Documento electrónico de soporte para no obligados a facturar' 
+          : isNC 
+          ? 'Nota Crédito' 
+          : isND 
+          ? 'Nota Débito' 
+          : 'Factura Electrónica de Venta';
       } else {
         docId       = getTag('ID') || filename;
         if (docId.includes('://') || docId.length > 50) {
@@ -1808,7 +1836,20 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         
         const docTypeRaw  = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?InvoiceTypeCode(?:\s[^>]*)?>(.*?)<\/(?:[a-zA-Z0-9_-]+:)?InvoiceTypeCode>/i);
         const docTypeCode = docTypeRaw ? stripTags(docTypeRaw[1].trim()) : '';
-        docTypeLabel = docTypeCode === '01' ? 'Factura Electrónica de Venta' : docTypeCode === '91' ? 'Nota Crédito' : docTypeCode === '92' ? 'Nota Débito' : 'Documento Electrónico';
+        const rawUpperName2 = String(filename || '').toUpperCase();
+        const isXmlDS = docTypeCode === '05' || rawUpperName2.includes('DS');
+        const isXmlNDS = docTypeCode === '95' || rawUpperName2.includes('NDS');
+        docTypeLabel = isXmlNDS
+          ? 'Nota de Ajuste al Documento Soporte Electrónico'
+          : isXmlDS
+          ? 'Documento electrónico de soporte para no obligados a facturar'
+          : docTypeCode === '01' 
+          ? 'Factura Electrónica de Venta' 
+          : docTypeCode === '91' 
+          ? 'Nota Crédito' 
+          : docTypeCode === '92' 
+          ? 'Nota Débito' 
+          : 'Documento Electrónico';
 
         supplierName = extractField('AccountingSupplierParty', 'RegistrationName') || extractField('AccountingSupplierParty', 'Name');
         supplierNit = extractField('AccountingSupplierParty', 'CompanyID');
@@ -2139,6 +2180,8 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
             const city = parts[parts.length - 2].trim();
             const dept = parts[parts.length - 1].trim();
             return { mainAddr, cityDept: `${city}, ${dept}` };
+          } else if (parts.length === 2) {
+            return { mainAddr: parts[0].trim(), cityDept: parts[1].trim() };
           }
           return { mainAddr: addr, cityDept: '' };
         };
@@ -2218,6 +2261,27 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
           });
         };
 
+        const getCompanyCityDept = () => {
+          return new Promise((res) => {
+            try {
+              const sqlite3 = require('sqlite3').verbose();
+              const db = new sqlite3.Database(path.join(BASE_DIR, 'pb_data', 'data.db'), sqlite3.OPEN_READONLY);
+              db.get("SELECT tp.city, tp.department FROM settings s JOIN third_parties tp ON s.value = tp.id WHERE s.key = 'company_third_party_id'", (err, row) => {
+                db.close();
+                if (err || !row || (!row.city && !row.department)) {
+                  res('Cali, Valle del Cauca');
+                } else {
+                  const c = row.city || 'Cali';
+                  const d = row.department || 'Valle del Cauca';
+                  res(`${c}, ${d}`);
+                }
+              });
+            } catch (_) {
+              res('Cali, Valle del Cauca');
+            }
+          });
+        };
+
         // Fetch configurable texts from settings
         let configHeader = invoiceData && invoiceData.headerText;
         if (!configHeader) {
@@ -2227,25 +2291,64 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
           configHeader = 'Actividad Económica Principal 6201\nNo somos Gran Contribuyente\nNo somos Agente Retenedor del Impuesto sobre las Ventas - IVA\nNo somos Autorretenedor del Impuesto sobre la Renta y Complementarios';
         }
 
-        let configFooter = invoiceData && invoiceData.footerText;
-        if (!configFooter) {
-          configFooter = await getSettingFromDb('invoice_footer_text');
-        }
-        if (!configFooter) {
-          configFooter = 'Este documento es la representación gráfica de una Factura Electrónica de Venta generada conforme al Decreto 358 de 2020 y la Resolución 000042 de 2020 de la DIAN. La validez fiscal recae exclusivamente sobre el archivo XML firmado digitalmente.';
-        }
-
         // --- 1. PARSE UBL XML CONTENT ---
-        docId       = getTag('ID') || (invoiceData && invoiceData.docId) || filename;
+        const isAppResponse = cleanXml.includes('ApplicationResponse');
+        if (invoiceData && invoiceData.docId) {
+          docId = invoiceData.docId;
+        } else if (!isAppResponse && getTag('ID')) {
+          docId = getTag('ID');
+        } else {
+          docId = filename;
+        }
         issueDate   = getTag('IssueDate') || (invoiceData && invoiceData.issueDate) || '';
         issueTime   = getTag('IssueTime') || (invoiceData && invoiceData.issueTime) || '';
         cufe        = getTag('UUID') || (invoiceData && invoiceData.cufe) || 'No disponible';
         
         const docTypeRaw  = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?InvoiceTypeCode(?:\s[^>]*)?>(.*?)<\/(?:[a-zA-Z0-9_-]+:)?InvoiceTypeCode>/i);
         const docTypeCode = docTypeRaw ? stripTags(docTypeRaw[1].trim()) : '';
-        const isNC = filename.toUpperCase().includes('NC') || docTypeCode === '91';
-        const isND = filename.toUpperCase().includes('ND') || docTypeCode === '92';
-        docTypeLabel = isNC ? 'Nota Crédito' : isND ? 'Nota Débito' : 'Factura Electrónica de Venta';
+
+        const rawUpperDocId = String(docId || filename || '').toUpperCase();
+        const isDS = !!(
+          (invoiceData && (invoiceData.isDS || invoiceData.docType === 'DS')) ||
+          rawUpperDocId.startsWith('DS-') ||
+          rawUpperDocId.startsWith('DSE-') ||
+          rawUpperDocId.startsWith('DS') ||
+          rawUpperDocId.includes('DOC_SOPORTE') ||
+          docTypeCode === '05'
+        );
+        const isNDS = !isDS && !!(
+          (invoiceData && (invoiceData.isNDS || invoiceData.docType === 'NDS')) ||
+          rawUpperDocId.startsWith('NDS-') ||
+          rawUpperDocId.startsWith('NDSE-') ||
+          rawUpperDocId.includes('AJUSTE') ||
+          docTypeCode === '95'
+        );
+        const isNC = !isDS && !isNDS && (filename.toUpperCase().includes('NC') || docTypeCode === '91');
+        const isND = !isDS && !isNDS && (filename.toUpperCase().includes('ND') || docTypeCode === '92');
+
+        if (isNDS) {
+          docTypeLabel = 'Nota de Ajuste al Documento Soporte Electrónico';
+        } else if (isDS) {
+          docTypeLabel = 'Documento electrónico de soporte para no obligados a facturar';
+        } else if (isNC) {
+          docTypeLabel = 'Nota Crédito';
+        } else if (isND) {
+          docTypeLabel = 'Nota Débito';
+        } else {
+          docTypeLabel = 'Factura Electrónica de Venta';
+        }
+
+        let configFooter = invoiceData && invoiceData.footerText;
+        if (!configFooter) {
+          configFooter = await getSettingFromDb(isDS ? 'doc_soporte_footer_text' : 'invoice_footer_text');
+        }
+        if (!configFooter) {
+          if (isDS || isNDS) {
+            configFooter = 'Este documento es la representación gráfica de un Documento Soporte Electrónico en adquisiciones efectuadas a sujetos no obligados a expedir factura de venta o documento equivalente, transmitido conforme a la Resolución 000167 de 2021 de la DIAN. La validez fiscal recae exclusivamente sobre el archivo XML firmado digitalmente.';
+          } else {
+            configFooter = 'Este documento es la representación gráfica de una Factura Electrónica de Venta generada conforme al Decreto 358 de 2020 y la Resolución 000042 de 2020 de la DIAN. La validez fiscal recae exclusivamente sobre el archivo XML firmado digitalmente.';
+          }
+        }
 
         supplierName = extractField('AccountingSupplierParty', 'RegistrationName') || extractField('AccountingSupplierParty', 'Name') || (invoiceData && invoiceData.supplierName);
         supplierNit = extractField('AccountingSupplierParty', 'CompanyID') || (invoiceData && invoiceData.supplierNit);
@@ -2345,6 +2448,48 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
           }
         }
 
+        // If XML contained no lines (e.g. ApplicationResponse, minimal event XML), fallback to invoiceData.lines
+        if (lines.length === 0 && invoiceData && Array.isArray(invoiceData.lines) && invoiceData.lines.length > 0) {
+          lines = invoiceData.lines.map((l, idx) => ({
+            desc: l.desc || l.description || 'Producto / Concepto',
+            code: l.code && l.code !== '—' ? l.code : (l.standardId || String(idx + 1)),
+            standardId: l.standardId || '—',
+            qty: parseFloat(l.qty || 1),
+            unitPrice: parseFloat(l.unitPrice != null ? l.unitPrice : (l.price || 0)),
+            lineTotal: parseFloat(l.lineTotal != null ? l.lineTotal : (l.total || ((l.qty || 1) * (l.unitPrice || 0)))),
+            ivaRate: parseFloat(l.ivaRate || 0),
+            taxName: l.taxName || 'IVA',
+            taxVal: parseFloat(l.taxVal || 0),
+            discountRate: parseFloat(l.discountRate || 0),
+            discountVal: parseFloat(l.discountVal || 0),
+            um: l.um || 'EA'
+          }));
+        } else if (invoiceData && Array.isArray(invoiceData.lines) && invoiceData.lines.length === lines.length) {
+          // Harmonize generic test or placeholder items with actual business product details from invoice
+          lines.forEach((l, idx) => {
+            const dbLine = invoiceData.lines[idx];
+            if (dbLine) {
+              if (l.desc === 'Producto de venta' || !l.desc || l.desc === 'Producto / Concepto') {
+                l.desc = dbLine.desc || dbLine.description || l.desc;
+              }
+              if (l.code === 'P-01' || l.code === '—' || !l.code) {
+                l.code = dbLine.code || l.code;
+              }
+              if (l.um === 'ZZ' || !l.um || l.um === 'EA') {
+                l.um = dbLine.um || dbLine.unit || '94';
+              }
+            }
+          });
+        }
+
+        if (lineExtension === 0) {
+          const computedSubtotal = lines.reduce((acc, l) => acc + (l.lineTotal || 0), 0);
+          lineExtension = (invoiceData && (invoiceData.subtotal || invoiceData.payableAmount)) || computedSubtotal || payableAmount;
+        }
+        if (payableAmount === 0) {
+          payableAmount = (invoiceData && invoiceData.payableAmount) || (lineExtension + taxAmount);
+        }
+
         // Retrieve specs and calculate equivalences
         const uniqueCodes = Array.from(new Set(lines.map(line => line.code).filter(c => c && c !== '—')));
         const productSpecs = await loadProductSpecs(uniqueCodes);
@@ -2428,10 +2573,11 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
 
         let taxY = y + Math.max(logoHeight, 45) + 10;
 
-        // Draw configurable header block (Supplier name + paragraph layout)
+        // Draw configurable header block (Supplier/Company name + paragraph layout)
         doc.font('Helvetica').fontSize(7.5).fillColor('#1F2937');
-        const headerParagraph = supplierName 
-          ? `${supplierName}. ${configHeader.replace(/\\n/g, ' ')}`
+        const headerCompanyName = (isDS || isNDS) ? (customerName || 'GRAVY S.A.S') : (supplierName || 'GRAVY S.A.S');
+        const headerParagraph = headerCompanyName 
+          ? `${headerCompanyName}. ${configHeader.replace(/\\n/g, ' ')}`
           : configHeader.replace(/\\n/g, ' ');
           
         doc.text(headerParagraph, L, taxY, { width: 230, align: 'justify' });
@@ -2443,32 +2589,63 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         const rw = W - (rx - L);
         let ry = 30;
 
-        // Determine document prefix for title (FE / NC / ND)
-        const docPrefix = isNC ? 'NC' : isND ? 'ND' : 'FE';
+        // Determine document prefix for title (preserving original prefix: DSE, DS, FE, NC, ND, etc.)
+        let docPrefix = '';
+        let docNumOnly = docId;
 
-        // Extract referenced billing document for NC and ND
+        if (docId.includes('-')) {
+          const parts = docId.split('-');
+          docPrefix = parts[0].trim().toUpperCase();
+          docNumOnly = parts.slice(1).join('-').trim();
+        } else {
+          const m = docId.match(/^([A-Za-z]+)(\d+)$/);
+          if (m) {
+            docPrefix = m[1].toUpperCase();
+            docNumOnly = m[2];
+          } else {
+            docPrefix = (invoiceData && invoiceData.resolutionPrefix) || (isNDS ? 'NDS' : isDS ? 'DS' : isNC ? 'NC' : isND ? 'ND' : 'FE');
+            docNumOnly = docId.replace(/^[A-Za-z\-]+/g, '') || docId;
+          }
+        }
+        if (!docPrefix) {
+          docPrefix = (invoiceData && invoiceData.resolutionPrefix) || (isNDS ? 'NDS' : isDS ? 'DS' : isNC ? 'NC' : isND ? 'ND' : 'FE');
+        }
+
+        // Extract referenced billing document for NC, ND and NDS
         let referencedDocId = '';
-        if (isNC || isND) {
+        if (isNC || isND || isNDS) {
           const billingRefMatch = cleanXml.match(/<cac:BillingReference>[\s\S]*?<cbc:ID[^>]*>([\s\S]*?)<\/cbc:ID>/i);
           if (billingRefMatch) referencedDocId = stripTags(billingRefMatch[1]);
           if (!referencedDocId) {
             const discRefMatch = cleanXml.match(/<cac:DiscrepancyResponse>[\s\S]*?<cbc:ReferenceID[^>]*>([\s\S]*?)<\/cbc:ReferenceID>/i);
             if (discRefMatch) referencedDocId = stripTags(discRefMatch[1]);
           }
+          if (!referencedDocId && invoiceData && invoiceData.crossDocRef) {
+            referencedDocId = invoiceData.crossDocRef;
+          }
         }
 
         // Document Type Title + PREFIX - Number on same baseline
-        doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11.5);
-        const docNumOnly = docId.replace(/^[A-Za-z\-]+/g, '');
+        const titleFontSize = (isDS || isNDS) ? 9.5 : 11.5;
+        doc.fillColor('#000000').font('Helvetica-Bold').fontSize(titleFontSize);
         const docTitleStr = `${docTypeLabel.toUpperCase()}  ${docPrefix} - ${docNumOnly}`;
         doc.text(docTitleStr, rx, ry, { width: rw });
         const docTypeHeight = doc.heightOfString(docTitleStr, { width: rw });
         
-        ry += docTypeHeight + 2;
+        ry += docTypeHeight + 3;
         doc.font('Helvetica').fontSize(7).fillColor('#4B5563');
 
         // Authorization label and text — adapted per document type
-        if (isNC || isND) {
+        if (isNDS) {
+          doc.text('Autorización Nota de Ajuste Documento Soporte', rx, ry);
+          ry += 9;
+          const resText = referencedDocId
+            ? `Nota referenciada al Documento Soporte: ${referencedDocId}`
+            : 'Nota emitida bajo resolución del documento soporte original';
+          doc.text(resText, rx, ry, { width: rw });
+          const resHeight = doc.heightOfString(resText, { width: rw });
+          ry += Math.max(resHeight + 6, 18);
+        } else if (isNC || isND) {
           const docTypeName = isNC ? 'Nota Crédito' : 'Nota Débito';
           doc.text(`Autorización ${docTypeName} Electrónica`, rx, ry);
           ry += 9;
@@ -2478,11 +2655,20 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
           doc.text(resText, rx, ry, { width: rw });
           const resHeight = doc.heightOfString(resText, { width: rw });
           ry += Math.max(resHeight + 6, 18);
+        } else if (isDS) {
+          doc.text('Autorización Numeración de Documento Soporte', rx, ry);
+          ry += 9;
+          const resText = resolutionNumber 
+            ? `No. ${resolutionNumber} de ${resolutionDate} - ${resolutionExpiry} autoriza ${docPrefix} - ${resolutionRangeFrom} a ${docPrefix ? docPrefix + '-' : ''}${resolutionRangeTo}`
+            : 'Autorización de documento soporte en proceso';
+          doc.text(resText, rx, ry, { width: rw });
+          const resHeight = doc.heightOfString(resText, { width: rw });
+          ry += Math.max(resHeight + 6, 18);
         } else {
           doc.text('Autorización Numeración de Facturación Electrónica', rx, ry);
           ry += 9;
           const resText = resolutionNumber 
-            ? `No. ${resolutionNumber} de ${resolutionDate} - ${resolutionExpiry} autoriza FE - ${resolutionRangeFrom} a ${resolutionPrefix ? resolutionPrefix + '-' : ''}${resolutionRangeTo}`
+            ? `No. ${resolutionNumber} de ${resolutionDate} - ${resolutionExpiry} autoriza ${docPrefix} - ${resolutionRangeFrom} a ${docPrefix ? docPrefix + '-' : ''}${resolutionRangeTo}`
             : 'Autorización de facturación en proceso';
           doc.text(resText, rx, ry, { width: rw });
           const resHeight = doc.heightOfString(resText, { width: rw });
@@ -2504,14 +2690,15 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         const paymentModeStr = paymentMethod === 'CREDITO' ? 'Crédito' : 'Contado';
         const paymentDetailStr = paymentMethod === 'CREDITO' ? 'Acuerdo mutuo' : (paymentMethod || 'Consignación bancaria');
 
-        // Build metadata rows — add referenced doc row for NC/ND
+        // Build metadata rows — add referenced doc row for NC/ND/NDS
+        const opTypeStr = isNDS ? 'Nota Ajuste Doc. Soporte' : isDS ? 'Documento Soporte' : isNC ? 'Nota Crédito' : isND ? 'Nota Débito' : 'Estandar';
         const metaRows = [
-          ['Tipo de Operación', isNC ? 'Nota Crédito' : isND ? 'Nota Débito' : 'Estandar'],
+          ['Tipo de Operación', opTypeStr],
           ['Fecha de Generación', genDateStr],
           ['Fecha de Vencimiento', genDateStr],
           ['Fecha de Validación', genDateStr],
         ];
-        if ((isNC || isND) && referencedDocId) {
+        if ((isNC || isND || isNDS) && referencedDocId) {
           metaRows.push(['Doc. Referenciado', referencedDocId]);
         }
         metaRows.push(['Forma de Pago', paymentModeStr]);
@@ -2534,8 +2721,13 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
 
         // --- 4. EMITTER & CUSTOMER DETAILS SECTION ---
         doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#000000');
-        doc.text('DATOS DEL EMISOR', L, y, { width: 260, align: 'center' });
-        doc.text('DATOS DEL CLIENTE', L + 280, y, { width: 260, align: 'center' });
+        if (isDS || isNDS) {
+          doc.text('DATOS DEL ADQUIRENTE', L, y, { width: 260, align: 'center' });
+          doc.text('DATOS DEL PROVEEDOR (NO OBLIGADO)', L + 280, y, { width: 260, align: 'center' });
+        } else {
+          doc.text('DATOS DEL EMISOR', L, y, { width: 260, align: 'center' });
+          doc.text('DATOS DEL CLIENTE', L + 280, y, { width: 260, align: 'center' });
+        }
         
         y += 12;
         doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).stroke();
@@ -2559,17 +2751,17 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         const supplierTaxLevel = extractField('AccountingSupplierParty', 'TaxLevelCode') || 'NO APLICA';
         const customerTaxLevel = extractField('AccountingCustomerParty', 'TaxLevelCode') || 'NO APLICA';
 
+        const defaultCompanyCityDept = await getCompanyCityDept();
+
         // Emitter values
         const suppAddrInfo = parseAddress(supplierAddress);
-        drawInfoLine('Razón Social', supplierName, L, y);
-        drawInfoLine('NIT', rawSupplierNit + (supplierDv ? ` - ${supplierDv}` : ''), L, y + 11);
-        drawInfoLine('Obligación', supplierTaxLevel, L, y + 22);
-        drawInfoLine('Email', supplierEmail || '', L, y + 33);
-        drawInfoLine('Teléfono', supplierPhone || '', L, y + 44);
-        drawInfoLine('Dirección Fiscal', suppAddrInfo.mainAddr || '', L, y + 55);
-        if (suppAddrInfo.cityDept) {
-          drawInfoLine('', suppAddrInfo.cityDept, L, y + 66);
+        let suppCityDept = (invoiceData && (invoiceData.supplierCityDept || invoiceData.supplierCity))
+          ? (invoiceData.supplierCityDept || `${invoiceData.supplierCity}${invoiceData.supplierDepartment ? ', ' + invoiceData.supplierDepartment : ''}`)
+          : suppAddrInfo.cityDept;
+        if (!suppCityDept) {
+          suppCityDept = defaultCompanyCityDept;
         }
+
 
         // Customer clean NIT
         const rawCustomerNit = String(customerNit || '').split('-')[0];
@@ -2577,13 +2769,48 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
 
         // Customer values
         const custAddrInfo = parseAddress(customerAddress);
-        drawInfoLine('Razón Social', customerName, L + 280, y);
-        drawInfoLine('NIT', rawCustomerNit + (custDv ? ` - ${custDv}` : ''), L + 280, y + 11);
-        drawInfoLine('Obligación', customerTaxLevel, L + 280, y + 22);
-        drawInfoLine('Email', customerEmail || '', L + 280, y + 33);
-        drawInfoLine('Teléfono', customerPhone || '', L + 280, y + 44);
-        drawInfoLine('Dirección', custAddrInfo.mainAddr || '', L + 280, y + 55);
-        drawInfoLine('Ciudad, Depart.', custAddrInfo.cityDept || '', L + 280, y + 66);
+        let custCityDept = (invoiceData && (invoiceData.customerCityDept || invoiceData.customerCity))
+          ? (invoiceData.customerCityDept || `${invoiceData.customerCity}${invoiceData.customerDepartment ? ', ' + invoiceData.customerDepartment : ''}`)
+          : custAddrInfo.cityDept;
+        if (!custCityDept) {
+          custCityDept = suppCityDept || 'Cali, Valle del Cauca';
+        }
+
+        // Left party: Adquirente (customer) in DS/NDS, Emitter (supplier) in FV
+        const leftName = (isDS || isNDS) ? customerName : supplierName;
+        const leftNitRaw = (isDS || isNDS) ? rawCustomerNit : rawSupplierNit;
+        const leftDv = (isDS || isNDS) ? custDv : supplierDv;
+        const leftTaxLevel = (isDS || isNDS) ? customerTaxLevel : supplierTaxLevel;
+        const leftEmail = (isDS || isNDS) ? customerEmail : supplierEmail;
+        const leftPhone = (isDS || isNDS) ? customerPhone : supplierPhone;
+        const leftAddr = (isDS || isNDS) ? custAddrInfo.mainAddr : suppAddrInfo.mainAddr;
+        const leftCity = (isDS || isNDS) ? custCityDept : suppCityDept;
+
+        // Right party: Proveedor (supplier) in DS/NDS, Customer (customer) in FV
+        const rightName = (isDS || isNDS) ? supplierName : customerName;
+        const rightNitRaw = (isDS || isNDS) ? rawSupplierNit : rawCustomerNit;
+        const rightDv = (isDS || isNDS) ? supplierDv : custDv;
+        const rightTaxLevel = (isDS || isNDS) ? supplierTaxLevel : customerTaxLevel;
+        const rightEmail = (isDS || isNDS) ? supplierEmail : customerEmail;
+        const rightPhone = (isDS || isNDS) ? supplierPhone : customerPhone;
+        const rightAddr = (isDS || isNDS) ? suppAddrInfo.mainAddr : custAddrInfo.mainAddr;
+        const rightCity = (isDS || isNDS) ? suppCityDept : custCityDept;
+
+        drawInfoLine('Razón Social', leftName, L, y);
+        drawInfoLine('NIT', leftNitRaw + (leftDv ? ` - ${leftDv}` : ''), L, y + 11);
+        drawInfoLine('Obligación', leftTaxLevel, L, y + 22);
+        drawInfoLine('Email', leftEmail || '', L, y + 33);
+        drawInfoLine('Teléfono', leftPhone || '', L, y + 44);
+        drawInfoLine('Dirección Fiscal', leftAddr || '', L, y + 55);
+        drawInfoLine('Ciudad, Depart.', leftCity, L, y + 66);
+
+        drawInfoLine('Razón Social', rightName, L + 280, y);
+        drawInfoLine('NIT', rightNitRaw + (rightDv ? ` - ${rightDv}` : ''), L + 280, y + 11);
+        drawInfoLine('Obligación', rightTaxLevel, L + 280, y + 22);
+        drawInfoLine('Email', rightEmail || '', L + 280, y + 33);
+        drawInfoLine('Teléfono', rightPhone || '', L + 280, y + 44);
+        drawInfoLine('Dirección', rightAddr || '', L + 280, y + 55);
+        drawInfoLine('Ciudad, Depart.', rightCity, L + 280, y + 66);
 
         y += detailsBoxHeight + 8;
 
@@ -2828,15 +3055,21 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         
         y += 6;
         doc.font('Helvetica-Bold').fontSize(8).fillColor('#000000');
-        doc.text('FIRMA EMISOR', sigL, y, { width: sigLineW, align: 'center' });
-        doc.text('FIRMA CLIENTE', sigR, y, { width: sigLineW, align: 'center' });
+        if (isDS || isNDS) {
+          doc.text('FIRMA ADQUIRENTE', sigL, y, { width: sigLineW, align: 'center' });
+          doc.text('FIRMA PROVEEDOR (NO OBLIGADO)', sigR, y, { width: sigLineW, align: 'center' });
+        } else {
+          doc.text('FIRMA EMISOR', sigL, y, { width: sigLineW, align: 'center' });
+          doc.text('FIRMA CLIENTE', sigR, y, { width: sigLineW, align: 'center' });
+        }
 
         // --- 9. FOOTER SECTION ---
         const pageH = doc.page.height;
         doc.page.margins.bottom = 10;
         
+        const cudeLabel = (isDS || isNDS) ? 'CUDS: ' : 'CUFE: ';
         doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000')
-           .text('CUFE: ', L, pageH - 62, { continued: true })
+           .text(cudeLabel, L, pageH - 62, { continued: true })
            .font('Helvetica').fontSize(6.5).fillColor('#1F2937')
            .text(cufe, { width: W });
         
@@ -2861,17 +3094,24 @@ app.post('/api/dian/download-zip', async (req, res) => {
       return res.status(400).json({ error: 'Faltan parámetros requeridos (xmlContent, filename).' });
     }
 
+    let finalXml = String(xmlContent || '');
+    if (finalXml.startsWith('PD94bWwg') || (!finalXml.includes('<') && finalXml.length > 50)) {
+      try {
+        finalXml = Buffer.from(finalXml, 'base64').toString('utf8');
+      } catch (_) {}
+    }
+
     // Generate PDF representation
     let pdfBuffer = null;
     try {
-      pdfBuffer = await generateInvoicePdf(xmlContent, filename, invoiceData);
+      pdfBuffer = await generateInvoicePdf(finalXml, filename, invoiceData);
       console.log(`[GRAVY ORCHESTRATOR] PDF generado: ${pdfBuffer.length} bytes para ${filename}`);
     } catch (pdfErr) {
       console.warn(`[GRAVY ORCHESTRATOR] No se pudo generar PDF (se incluirá solo XML): ${pdfErr.message}`);
     }
 
     const zip = new AdmZip();
-    zip.addFile(`${filename}.xml`, Buffer.from(xmlContent, 'utf-8'));
+    zip.addFile(`${filename}.xml`, Buffer.from(finalXml, 'utf-8'));
     if (pdfBuffer) {
       zip.addFile(`${filename}.pdf`, pdfBuffer);
     }
@@ -2893,16 +3133,23 @@ app.post('/api/dian/generate-zip-file', async (req, res) => {
       return res.status(400).json({ error: 'Faltan parámetros requeridos (xmlContent, filename).' });
     }
 
+    let finalXml = String(xmlContent || '');
+    if (finalXml.startsWith('PD94bWwg') || (!finalXml.includes('<') && finalXml.length > 50)) {
+      try {
+        finalXml = Buffer.from(finalXml, 'base64').toString('utf8');
+      } catch (_) {}
+    }
+
     let pdfBuffer = null;
     try {
-      pdfBuffer = await generateInvoicePdf(xmlContent, filename, invoiceData);
+      pdfBuffer = await generateInvoicePdf(finalXml, filename, invoiceData);
       console.log(`[GRAVY ORCHESTRATOR] PDF generado para ZIP de correo: ${pdfBuffer.length} bytes para ${filename}`);
     } catch (pdfErr) {
       console.warn(`[GRAVY ORCHESTRATOR] No se pudo generar PDF para ZIP de correo (se incluirá solo XML): ${pdfErr.message}`);
     }
 
     const zip = new AdmZip();
-    zip.addFile(`${filename}.xml`, Buffer.from(xmlContent, 'utf-8'));
+    zip.addFile(`${filename}.xml`, Buffer.from(finalXml, 'utf-8'));
     if (pdfBuffer) {
       zip.addFile(`${filename}.pdf`, pdfBuffer);
     }
@@ -3068,9 +3315,60 @@ app.get('/api/orchestrate/ensure/:port', async (req, res) => {
   res.json({ success: true, port, wasAlive: isAlive });
 });
 
+// Endpoint para forzar reinicio limpio y recarga de hooks de una empresa
+app.all('/api/orchestrate/restart/:port', async (req, res) => {
+  const port = parseInt(req.params.port, 10);
+  if (!port) return res.status(400).json({ error: 'Puerto inválido' });
+
+  console.log(`[ORCHESTRATOR] Solicitando reinicio forzado de la empresa en el puerto ${port}...`);
+
+  // 1. Detener el proceso que escucha en ese puerto
+  await new Promise((resolve) => {
+    const killCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Stop-Process -Id $p -Force; write-host 'Proceso detenido.' } else { write-host 'No hay procesos en ese puerto.' }"`;
+    exec(killCmd, (err, stdout) => {
+      console.log(`[ORCHESTRATOR] Detener proceso ${port}: ${stdout ? stdout.trim() : ''}`);
+      resolve();
+    });
+  });
+
+  if (activeProcesses[port]) {
+    delete activeProcesses[port];
+  }
+
+  // 2. Sincronizar hooks desde pb_hooks a la empresa
+  const dirPath = path.join(EMPRESAS_DIR, `empresa_${port}`);
+  const companyPbHooks = path.join(dirPath, 'pb_hooks');
+  if (fs.existsSync(PB_HOOKS_DIR) && fs.existsSync(companyPbHooks)) {
+    try {
+      const hookFiles = fs.readdirSync(PB_HOOKS_DIR);
+      for (const hFile of hookFiles) {
+        if (hFile === 'setup.pb.js' || hFile === 'zz_seed_user.pb.js') continue;
+        const srcPath = path.join(PB_HOOKS_DIR, hFile);
+        const destPath = path.join(companyPbHooks, hFile);
+        if (fs.statSync(srcPath).isFile()) {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      }
+      console.log(`[ORCHESTRATOR] Hooks sincronizados para empresa ${port}.`);
+    } catch (e) {
+      console.warn(`[ORCHESTRATOR] Error sincronizando hooks:`, e.message);
+    }
+  }
+
+  // 3. Reiniciar la empresa
+  await new Promise(r => setTimeout(r, 1000));
+  startCompanyProcess(port);
+
+  res.json({ success: true, message: `Empresa ${port} reiniciada exitosamente.` });
+});
+
+
 // Registrar rutas y programador de respaldos desatendidos
 backupService.registerRoutes(app);
 backupService.setupScheduler(2); // Ejecutar respaldo automático diario a las 2:00 AM
+
+// Registrar rutas de sincronización e ingesta IMAP (RADIAN)
+imapService.registerRoutes(app);
 
 // Iniciar inquilinos registrados antes de escuchar
 startExistingCompanies();
@@ -3085,4 +3383,6 @@ app.listen(ORCHESTRATOR_PORT, () => {
 }).on('error', (err) => {
   writeCrashLog('LISTEN_ERROR', err);
 });
+
+module.exports = { generateInvoicePdf, app };
 

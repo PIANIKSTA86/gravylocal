@@ -318,14 +318,19 @@ const pb = {
     return err;
   },
 
-  /** Enviar solicitud HTTP genÃ©rica */
-  async send(path, options = {}) {
+  /** Enviar solicitud HTTP genérica */
+  async send(path, options: any = {}) {
     const url = path.startsWith('http') ? path : `${pb.baseUrl}${path}`;
     const headers = { ...this.headers(), ...options.headers };
+    let body = options.body;
+    if (body && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof Blob) && !(body instanceof URLSearchParams)) {
+      body = JSON.stringify(body);
+      headers['Content-Type'] = 'application/json';
+    }
     const res = await fetch(url, {
       method: options.method || 'GET',
       headers,
-      body: options.body,
+      body,
     });
     if (!res.ok) throw await this._err(res);
     return res.json();
@@ -1402,7 +1407,21 @@ const API = {
         // 1. SALIDAS / VENTAS
         if (isOut) {
           // A. Lotes
-          if (prod.track_lots) {
+          let isLotTracking = Boolean(prod.track_lots || line.lot_id);
+          if (!isLotTracking && mov.warehouse_id) {
+            try {
+              const activeLotsCheck = await pb.listAll('inventory_lots', {
+                filter: `product_id="${pb.escapeFilterValue(prod.id)}" && warehouse_id="${pb.escapeFilterValue(mov.warehouse_id)}" && status="active" && qty_on_hand > 0`,
+                perPage: 1
+              });
+              if (activeLotsCheck.length > 0) {
+                isLotTracking = true;
+                pb.update('products', prod.id, { track_lots: true }).catch(() => {});
+              }
+            } catch (_) {}
+          }
+
+          if (isLotTracking) {
             if (line.lot_id) {
               try {
                 const lot = await pb.get('inventory_lots', line.lot_id);
@@ -1441,7 +1460,21 @@ const API = {
           }
 
           // B. Estibas / Pallets (WMS)
-          if (prod.track_pallets) {
+          let isPalletTracking = Boolean(prod.track_pallets || line.pallet_id);
+          if (!isPalletTracking && mov.warehouse_id) {
+            try {
+              const activePltsCheck = await pb.listAll('inventory_pallets', {
+                filter: `product_id="${pb.escapeFilterValue(prod.id)}" && warehouse_id="${pb.escapeFilterValue(mov.warehouse_id)}" && status!="depleted" && units_available > 0`,
+                perPage: 1
+              });
+              if (activePltsCheck.length > 0) {
+                isPalletTracking = true;
+                pb.update('products', prod.id, { track_pallets: true }).catch(() => {});
+              }
+            } catch (_) {}
+          }
+
+          if (isPalletTracking) {
             if (line.pallet_id) {
               try {
                 const plt = await pb.get('inventory_pallets', line.pallet_id);
@@ -8543,6 +8576,12 @@ const API = {
         line_order: i + 1
       });
 
+      // Auto-habilitar trazabilidad de lotes y estibas en el producto maestro
+      await pb.update('products', l.product_id, {
+        track_lots: true,
+        track_pallets: true
+      }).catch(() => {});
+
       // Registrar o actualizar lotes en inventory_lots (multi-lote o fallback legacy)
       const lineLots = lotConfigs.filter((lc: any) => lc.import_line_id === l.id || (!lc.import_line_id && lc.product_id === l.product_id));
 
@@ -8559,14 +8598,17 @@ const API = {
             });
             if (existingLots.length) {
               const exLot = existingLots[0];
-              const currentLotQty = Number(exLot.qty_on_hand || 0);
+              const isSameImport = exLot.import_id === importId;
+              const currentLotQty = isSameImport ? 0 : Number(exLot.qty_on_hand || 0);
               const addQty = lotQty;
               const newQty = currentLotQty + addQty;
               const newCost = newQty > 0 ? (((currentLotQty * Number(exLot.unit_cost || 0)) + (addQty * Number(l.unit_cost_cop || 0))) / newQty) : Number(l.unit_cost_cop || 0);
               await pb.update('inventory_lots', exLot.id, {
+                initial_qty: isSameImport ? lotQty : Number(exLot.initial_qty || 0) + lotQty,
                 qty_on_hand: newQty,
                 unit_cost: Math.round(newCost * 100) / 100,
-                status: 'active'
+                status: newQty <= 0 ? 'depleted' : 'active',
+                import_id: importId
               });
             } else {
               await pb.create('inventory_lots', {
@@ -8596,14 +8638,17 @@ const API = {
           });
           if (existingLots.length) {
             const exLot = existingLots[0];
-            const currentLotQty = Number(exLot.qty_on_hand || 0);
+            const isSameImport = exLot.import_id === importId;
+            const currentLotQty = isSameImport ? 0 : Number(exLot.qty_on_hand || 0);
             const addQty = Number(l.qty || 0);
             const newQty = currentLotQty + addQty;
             const newCost = newQty > 0 ? (((currentLotQty * Number(exLot.unit_cost || 0)) + (addQty * Number(l.unit_cost_cop || 0))) / newQty) : Number(l.unit_cost_cop || 0);
             await pb.update('inventory_lots', exLot.id, {
+              initial_qty: isSameImport ? Number(l.qty || 0) : Number(exLot.initial_qty || 0) + Number(l.qty || 0),
               qty_on_hand: newQty,
               unit_cost: Math.round(newCost * 100) / 100,
-              status: 'active'
+              status: newQty <= 0 ? 'depleted' : 'active',
+              import_id: importId
             });
           } else {
             await pb.create('inventory_lots', {
@@ -8633,6 +8678,14 @@ const API = {
         sort: 'created'
       });
       if (palletConfigs.length) {
+        // Limpiar estibas previas huérfanas de este import_id para garantizar idempotencia
+        const existingPallets = await pb.listAll('inventory_pallets', {
+          filter: `import_id="${pb.escapeFilterValue(importId)}"`
+        }).catch(() => []);
+        for (const ep of existingPallets) {
+          await pb.delete('inventory_pallets', ep.id).catch(() => {});
+        }
+
         const impCleanNum = String(imp.number || '').replace(/^[^\d]+/, '') || '001';
         let palletSeq = 1;
         for (const cfg of palletConfigs) {
@@ -8674,6 +8727,64 @@ const API = {
     }
 
     await this.applyInventoryMovement(mov.id);
+
+    // ── RECONCILIACIÓN POST-CAPITALIZACIÓN CON STOCK REAL DE BODEGA ──
+    // Si la bodega ya tenía ventas previas (stock físico inferior a lo importado),
+    // reconciliar lotes y estibas recién creados mediante FEFO para reflejar la realidad física.
+    for (const l of lines) {
+      try {
+        const stockRows = await this.getInventoryStock({ warehouseId, productId: l.product_id }).catch(() => []);
+        const realStock = Math.max(0, Number(stockRows[0]?.qty_on_hand || 0));
+
+        // Obtener todos los lotes de este producto en la bodega
+        const prodLots = await pb.listAll('inventory_lots', {
+          filter: `product_id="${pb.escapeFilterValue(l.product_id)}" && warehouse_id="${pb.escapeFilterValue(warehouseId)}"`,
+          sort: 'created'
+        });
+
+        const totalLotStock = prodLots.reduce((acc: number, lt: any) => acc + Number(lt.qty_on_hand || 0), 0);
+        if (totalLotStock > realStock) {
+          let unitsToDeduct = totalLotStock - realStock;
+          for (const lt of prodLots) {
+            if (unitsToDeduct <= 0) break;
+            const curQ = Number(lt.qty_on_hand || 0);
+            const deduct = Math.min(curQ, unitsToDeduct);
+            const nQ = Math.max(0, curQ - deduct);
+            await pb.update('inventory_lots', lt.id, {
+              qty_on_hand: nQ,
+              status: nQ <= 0 ? 'depleted' : 'active'
+            });
+            unitsToDeduct -= deduct;
+          }
+        }
+
+        // Reconciliar estibas
+        const prodPallets = await pb.listAll('inventory_pallets', {
+          filter: `product_id="${pb.escapeFilterValue(l.product_id)}" && warehouse_id="${pb.escapeFilterValue(warehouseId)}"`,
+          sort: 'pallet_code,created'
+        });
+        const totalPltUnits = prodPallets.reduce((acc: number, pl: any) => acc + Number(pl.units_available || 0), 0);
+        if (totalPltUnits > realStock) {
+          let unitsToDeduct = totalPltUnits - realStock;
+          for (const pl of prodPallets) {
+            if (unitsToDeduct <= 0) break;
+            const curU = Number(pl.units_available || 0);
+            const deduct = Math.min(curU, unitsToDeduct);
+            const nU = Math.max(0, curU - deduct);
+            const uBox = Number(pl.units_per_box || 1);
+            const nB = Math.ceil(nU / uBox);
+            await pb.update('inventory_pallets', pl.id, {
+              units_available: nU,
+              boxes_current: nB,
+              status: nU <= 0 ? 'depleted' : (nB < Number(pl.boxes_initial || nB) ? 'partial' : 'full')
+            });
+            unitsToDeduct -= deduct;
+          }
+        }
+      } catch (recErr) {
+        console.warn(`[CapitalizeImport] Aviso en reconciliación de lote/estiba para ${l.product_id}:`, recErr);
+      }
+    }
 
     await pb.update('imports', importId, {
       status: 'recibido',

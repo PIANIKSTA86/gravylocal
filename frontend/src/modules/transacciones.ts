@@ -2949,11 +2949,11 @@ window.emitTxToDianFromDetail = async function(txId: string, txNumber: string) {
           }
         } else {
           const errorMsg = res?.dianResponse || res?.message || 'Respuesta de DIAN rechazada';
-          (window as any).showToast(`Facturatech / DIAN: ${errorMsg}`, 'error', 9000);
+          (window as any).showToast(`DIAN: ${errorMsg}`, 'error', 9000);
         }
       } catch (err: any) {
         const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error al emitir a la DIAN');
-        (window as any).showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9500);
+        (window as any).showToast(`DIAN: ${errMsg}`, 'error', 9500);
       }
     }
   );

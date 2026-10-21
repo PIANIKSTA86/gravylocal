@@ -377,7 +377,7 @@ function getDsPeriodDates(periodType: string): { from: string; to: string } {
   (window as any).__lastDsResolutions = dsResolutions;
 
   document.getElementById('btn-ds-config')?.addEventListener('click', () => openDocSoporteSettingsModal());
-  document.getElementById('btn-nuevo-ds')?.addEventListener('click', () => openNuevoDsModal(null, dsResolutions, thirds));
+  document.getElementById('btn-nuevo-ds')?.addEventListener('click', () => openNuevoDsModal(null, dsResolutions));
 
   const searchInput = document.getElementById('ds-search-input') as HTMLInputElement;
   const filterPeriod = document.getElementById('ds-filter-period') as HTMLSelectElement;
@@ -1785,6 +1785,8 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
         net_amount: origTx?.net_amount || 0,
         cross_amount: origTx?.cross_amount || 0,
         status: 'active',
+        cross_number: origTx?.number || '',
+        cross_doc_ref: origTx?.number || '',
         notes: `NDS Ajuste a DS ${origTx?.number || ''}: ${(document.getElementById('nds-reason') as HTMLTextAreaElement).value || 'Ajuste documento soporte'}`
       });
 
@@ -1851,9 +1853,9 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
     showToast('No hay una transacción vinculada a este documento soporte.', 'warning');
     return;
   }
-  confirmDialog('Firmar y Emitir Documento Soporte', `¿Confirmas el firmado digital y envío del Documento Soporte <strong>${esc(docNumber)}</strong> a la DIAN / Facturatech?`, async () => {
+  confirmDialog('Firmar y Emitir Documento Soporte', `¿Confirmas el firmado digital y envío del Documento Soporte <strong>${esc(docNumber)}</strong> a la DIAN?`, async () => {
     try {
-      showToast('Transmitiendo Documento Soporte a la DIAN / Facturatech...', 'info');
+      showToast('Transmitiendo Documento Soporte a la DIAN...', 'info');
       const res = await pb.send('/api/dian/emit', {
         method: 'POST',
         body: JSON.stringify({ txId: txId, isDocSoporte: true }),
@@ -1866,13 +1868,13 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
         else renderDocSoporte();
       } else {
         const errorMsg = res?.dianResponse || res?.message || 'Rechazado por el servidor';
-        showToast(`Facturatech / DIAN: ${errorMsg}`, 'error', 9000);
+        showToast(`DIAN: ${errorMsg}`, 'error', 9000);
         if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
         else renderDocSoporte();
       }
     } catch (err: any) {
       const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error al emitir Documento Soporte');
-      showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9500);
+      showToast(`DIAN: ${errMsg}`, 'error', 9500);
       if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
       else renderDocSoporte();
     }

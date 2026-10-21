@@ -190,7 +190,7 @@ const resolutionHandler = (e) => {
       const txNameLocal = (txTypeRecordLocal ? txTypeRecordLocal.getString("name") : "").toUpperCase();
 
       if (collectionName === "purchase_invoices") {
-        if (txCodeLocal === "NDS" || txPfxLocal === "NDS") docTypeLocal = "NDS";
+        if (txCodeLocal === "NDS" || txPfxLocal === "NDS" || txPfxLocal === "NADS" || prefixLocal === "NDS" || prefixLocal === "NDSE" || prefixLocal === "NADS") docTypeLocal = "NDS";
         else if (txCodeLocal === "DS" || txPfxLocal === "DS" || prefixLocal === "DS" || prefixLocal === "DSE") docTypeLocal = "DS";
         else docTypeLocal = "FC"; // Factura de Compra ordinaria (NO es Documento Soporte)
       } else {

@@ -807,7 +807,7 @@ async function renderConfiguracion(c) {
 
       try {
         const baseUrl = env === 'production' 
-          ? 'https://api.matias-api.com/api/ubl2.1' 
+          ? 'https://api-v2.matias-api.com/api/ubl2.1' 
           : 'https://sandbox-api.matias-api.com/api/ubl2.1';
         
         const url = `${baseUrl}/company${clientUuid ? '?client_uuid=' + encodeURIComponent(clientUuid) : ''}`;
@@ -950,7 +950,8 @@ async function renderConfiguracion(c) {
       try {
         const resp = await pb.send('/api/radian/test-imap', {
           method: 'POST',
-          body: { host, port, user, pass, tls }
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host, port, user, pass, tls })
         });
         if (resp?.success) {
           if (resDiv) {
@@ -961,10 +962,11 @@ async function renderConfiguracion(c) {
           throw new Error(resp?.error || 'No se pudo conectar al buzón');
         }
       } catch (e: any) {
+        const errorMsg = e?.data?.error || e?.data?.message || e?.message || 'Error desconocido';
         if (resDiv) {
-          resDiv.innerHTML = `<span class="text-red-600 font-semibold"><i class="fas fa-circle-xmark mr-1"></i>Error IMAP: ${e.message}</span>`;
+          resDiv.innerHTML = `<span class="text-red-600 font-semibold"><i class="fas fa-circle-xmark mr-1"></i>Error IMAP: ${errorMsg}</span>`;
         }
-        showToast(`Error al conectar con el buzón: ${e.message}`, 'error');
+        showToast(`Error al conectar con el buzón: ${errorMsg}`, 'error');
       }
     });
 

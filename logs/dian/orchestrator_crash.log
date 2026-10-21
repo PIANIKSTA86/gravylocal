@@ -29788,3 +29788,148 @@ Error: listen EADDRINUSE: address already in use :::8088
     at Module.load (node:internal/modules/cjs/loader:1533:32)
     at Module._load (node:internal/modules/cjs/loader:1335:12)
     at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+
+==================================================
+TIMESTAMP: 2026-10-19T17:42:41.417Z
+KIND: LISTEN_ERROR
+Error: listen EADDRINUSE: address already in use :::8088
+    at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at app.listen (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\node_modules\express\lib\application.js:605:24)
+    at Object.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:3191:5)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+
+==================================================
+TIMESTAMP: 2026-10-19T22:08:11.438Z
+KIND: LISTEN_ERROR
+Error: listen EADDRINUSE: address already in use :::8088
+    at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at app.listen (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\node_modules\express\lib\application.js:605:24)
+    at Object.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:3195:5)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+
+==================================================
+TIMESTAMP: 2026-10-19T23:03:04.668Z
+KIND: UNCAUGHT_EXCEPTION
+Error: Socket timeout
+    at TLSSocket.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\node_modules\imapflow\dist\cjs\imap-flow.js:1104:33)
+    at TLSSocket.emit (node:events:508:28)
+    at Socket._onTimeout (node:net:604:8)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
+
+==================================================
+TIMESTAMP: 2026-10-20T01:20:38.264Z
+KIND: LISTEN_ERROR
+Error: listen EADDRINUSE: address already in use :::8088
+    at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at app.listen (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\node_modules\express\lib\application.js:605:24)
+    at Object.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:3202:5)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+
+==================================================
+TIMESTAMP: 2026-10-20T02:14:41.936Z
+KIND: LISTEN_ERROR
+Error: listen EADDRINUSE: address already in use :::8088
+    at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at app.listen (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\node_modules\express\lib\application.js:605:24)
+    at Object.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:3202:5)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+
+==================================================
+TIMESTAMP: 2026-10-20T21:52:42.663Z
+KIND: LISTEN_ERROR
+Error: listen EADDRINUSE: address already in use :::8088
+    at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at app.listen (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\node_modules\express\lib\application.js:605:24)
+    at Object.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:3359:5)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+
+==================================================
+TIMESTAMP: 2026-10-20T21:52:44.427Z
+KIND: PROCESS_EXIT
+Error: Process exited with code 0
+    at process.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:97:33)
+    at process.emit (node:events:508:28)
+    at process.exit (node:internal/process/per_thread:236:15)
+    at runTests (C:\Users\JULIAN\Desktop\GravyLocalTABS\scratch\verify_pdf_logic.js:144:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+==================================================
+TIMESTAMP: 2026-10-20T21:57:02.158Z
+KIND: LISTEN_ERROR
+Error: listen EADDRINUSE: address already in use :::8088
+    at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at app.listen (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\node_modules\express\lib\application.js:605:24)
+    at Object.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:3380:5)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+
+==================================================
+TIMESTAMP: 2026-10-20T21:57:03.474Z
+KIND: PROCESS_EXIT
+Error: Process exited with code 0
+    at process.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:97:33)
+    at process.emit (node:events:508:28)
+    at process.exit (node:internal/process/per_thread:236:15)
+    at t ([eval]:1:1508)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+==================================================
+TIMESTAMP: 2026-10-20T21:57:33.760Z
+KIND: LISTEN_ERROR
+Error: listen EADDRINUSE: address already in use :::8088
+    at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at app.listen (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\node_modules\express\lib\application.js:605:24)
+    at Object.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:3381:5)
+    at Module._compile (node:internal/modules/cjs/loader:1812:14)
+    at Object..js (node:internal/modules/cjs/loader:1943:10)
+    at Module.load (node:internal/modules/cjs/loader:1533:32)
+    at Module._load (node:internal/modules/cjs/loader:1335:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+
+==================================================
+TIMESTAMP: 2026-10-20T21:57:34.999Z
+KIND: PROCESS_EXIT
+Error: Process exited with code 0
+    at process.<anonymous> (C:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:97:33)
+    at process.emit (node:events:508:28)
+    at process.exit (node:internal/process/per_thread:236:15)
+    at t ([eval]:1:1508)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)

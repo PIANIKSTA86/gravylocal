@@ -8,7 +8,7 @@ async function runMatiasTests() {
 
   const token = await getSetting('matias_api_token');
   const env = (await getSetting('matias_environment')) || 'sandbox';
-  const baseUrl = env === 'production' ? 'https://api.matias-api.com/api/ubl2.1' : 'https://sandbox-api.matias-api.com/api/ubl2.1';
+  const baseUrl = env === 'production' ? 'https://api-v2.matias-api.com/api/ubl2.1' : 'https://sandbox-api.matias-api.com/api/ubl2.1';
   const clientUuid = (await getSetting('matias_client_uuid')) || "3928b094-bde0-11f1-a742-d843ae899220";
 
   console.log('================================================================');

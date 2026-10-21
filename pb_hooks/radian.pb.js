@@ -25,16 +25,18 @@ function getRadianSetting(key, defVal) {
     return defVal;
   }
 }
+globalThis.getRadianSetting = getRadianSetting;
 
 // Obtener URL base de MATIAS API según ambiente
 function getMatiasBaseUrl() {
   const env = getRadianSetting("matias_environment", "sandbox");
   if (env === "production") {
     const customUrl = getRadianSetting("matias_custom_url", "");
-    return customUrl ? customUrl.replace(/\/+$/, "") : "https://api.matias-api.com/api/ubl2.1";
+    return customUrl ? customUrl.replace(/\/+$/, "") : "https://api-v2.matias-api.com/api/ubl2.1";
   }
   return "https://sandbox-api.matias-api.com/api/ubl2.1";
 }
+globalThis.getMatiasBaseUrl = getMatiasBaseUrl;
 
 // Invocador HTTP centralizado para MATIAS API
 function callMatiasApi(endpoint, method, payload) {
@@ -97,21 +99,33 @@ routerAdd('POST', '/api/radian/test-imap', (c) => {
 
     let parsed = {};
     try { parsed = JSON.parse(res.raw); } catch (_) { parsed = { error: res.raw }; }
+    if (res.statusCode !== 200) {
+      return c.json(200, { success: false, error: parsed.error || parsed.message || 'Error al conectar con el servidor IMAP' });
+    }
     return c.json(res.statusCode, parsed);
   } catch (err) {
-    return c.json(500, { success: false, error: 'Error contactando el microservicio IMAP: ' + err.message });
+    return c.json(200, { success: false, error: 'Error contactando el microservicio IMAP: ' + err.message });
   }
 });
 
 // --- 2. SINCRONIZAR CORREO DE FACTURACIÓN (BUZÓN IMAP) ---
 routerAdd('POST', '/api/radian/sync-email', (c) => {
   try {
-    const imapEnabled = getRadianSetting("imap_enabled", "0") === "1";
-    const imapHost = getRadianSetting("imap_host", "");
-    const imapPort = getRadianSetting("imap_port", "993");
-    const imapUser = getRadianSetting("imap_username", "");
-    const imapPass = getRadianSetting("imap_password", "");
-    const imapTls = getRadianSetting("imap_tls", "1") === "1";
+    const getSetting = (typeof globalThis.getRadianSetting === 'function')
+      ? globalThis.getRadianSetting
+      : (typeof getRadianSetting === 'function' ? getRadianSetting : function(k, d) {
+          try {
+            const r = $app.findFirstRecordByFilter("settings", "key = '" + String(k || '').replace(/'/g, "''") + "'");
+            return (r ? r.get("value") : null) || d;
+          } catch (_) { return d; }
+        });
+
+    const imapEnabled = getSetting("imap_enabled", "0") === "1";
+    const imapHost = getSetting("imap_host", "");
+    const imapPort = getSetting("imap_port", "993");
+    const imapUser = getSetting("imap_username", "");
+    const imapPass = getSetting("imap_password", "");
+    const imapTls = getSetting("imap_tls", "1") === "1";
 
     if (!imapEnabled || !imapHost || !imapUser || !imapPass) {
       return c.json(400, {
@@ -149,25 +163,102 @@ routerAdd('POST', '/api/radian/sync-email', (c) => {
     const invoices = hubData.invoices || [];
     let importedCount = 0;
     let existingCount = 0;
+    let foreignCount = 0;
+
+    // Obtener NIT de nuestra empresa para filtrar documentos ajenos
+    let companyNit = "";
+    try {
+      const rNit = $app.findFirstRecordByFilter("settings", "key = 'company_nit'");
+      if (rNit) {
+        companyNit = String(rNit.get("value") || "").split("-")[0].replace(/[^0-9]/g, "");
+      }
+    } catch (_) {}
+
+    // Obtener ID del usuario responsable para el registro del documento
+    let defaultUserId = c.get("authRecord")?.id || "";
+    if (!defaultUserId) {
+      try {
+        const uRec = $app.findFirstRecordByFilter("users", "id != ''");
+        if (uRec) defaultUserId = uRec.id;
+      } catch (_) {}
+    }
 
     const col = $app.findCollectionByNameOrId("electronic_documents");
+    const colItems = $app.findCollectionByNameOrId("electronic_document_items");
+    const colTaxes = $app.findCollectionByNameOrId("electronic_document_taxes");
 
     for (let i = 0; i < invoices.length; i++) {
       const inv = invoices[i];
       if (!inv.cufe) continue;
 
-      // Verificar si ya existe en la base de datos local
+      // 1. Filtrar si la factura NO pertenece a esta empresa (Adquirente / Cliente)
+      const docCustomerNit = String(inv.customerNit || "").split("-")[0].replace(/[^0-9]/g, "");
+      if (companyNit && docCustomerNit && docCustomerNit !== companyNit) {
+        console.warn(`[GRAVY RADIAN] Factura ${inv.number} (CUFE ${inv.cufe}) omitida: el adquirente (NIT ${docCustomerNit}) no coincide con nuestra empresa (NIT ${companyNit}).`);
+        foreignCount++;
+        continue;
+      }
+
+      // 2. Verificar si ya existe en la base de datos local
       let existingRecord = null;
       try {
         existingRecord = $app.findFirstRecordByFilter("electronic_documents", "uuid = '" + inv.cufe + "'");
       } catch (_) {}
 
       if (existingRecord) {
+        // Enriquecer ítems e impuestos si aún no los tiene registrados
+        try {
+          let hasItem = null;
+          try {
+            hasItem = colItems ? $app.findFirstRecordByFilter("electronic_document_items", "document_id = '" + existingRecord.id + "'") : null;
+          } catch (_) {
+            hasItem = null;
+          }
+
+          if (!hasItem && Array.isArray(inv.lines) && colItems) {
+            for (let j = 0; j < inv.lines.length; j++) {
+              const l = inv.lines[j];
+              const itemRec = new Record(colItems, {
+                document_id: existingRecord.id,
+                code: l.code || "",
+                description: l.description || "Producto / Servicio",
+                qty: l.qty || 1,
+                price: l.price || 0,
+                subtotal: l.subtotal || 0
+              });
+              $app.save(itemRec);
+            }
+          }
+
+          let hasTax = null;
+          try {
+            hasTax = colTaxes ? $app.findFirstRecordByFilter("electronic_document_taxes", "document_id = '" + existingRecord.id + "'") : null;
+          } catch (_) {
+            hasTax = null;
+          }
+
+          if (!hasTax && Array.isArray(inv.taxes) && colTaxes) {
+            for (let j = 0; j < inv.taxes.length; j++) {
+              const t = inv.taxes[j];
+              const taxRec = new Record(colTaxes, {
+                document_id: existingRecord.id,
+                tax_type: t.taxType || "iva",
+                rate: t.rate || 0,
+                base: t.base || 0,
+                amount: t.amount || 0
+              });
+              $app.save(taxRec);
+            }
+          }
+        } catch (enrichErr) {
+          console.warn("[GRAVY RADIAN] Advertencia enriqueciendo documento: " + enrichErr.message);
+        }
+
         existingCount++;
         continue;
       }
 
-      // Encolar en MATIAS API si hay token configurado
+      // 3. Encolar en MATIAS API si hay token configurado
       try {
         const token = getRadianSetting("matias_api_token", "");
         if (token) {
@@ -177,7 +268,7 @@ routerAdd('POST', '/api/radian/sync-email', (c) => {
         console.warn("[GRAVY RADIAN] Advertencia encolando CUFE en MATIAS API: " + eMatias.message);
       }
 
-      // Crear registro en electronic_documents
+      // 4. Crear registro en electronic_documents
       const newDoc = new Record(col, {
         uuid: inv.cufe,
         number: inv.number || "SIN-NUMERO",
@@ -195,6 +286,7 @@ routerAdd('POST', '/api/radian/sync-email', (c) => {
         processed: false,
         import_date: new Date().toISOString().replace("T", " ").slice(0, 19),
         reception_source: "email",
+        user_id: defaultUserId,
         radian_030_status: "none",
         radian_032_status: "none",
         radian_033_status: "none",
@@ -202,7 +294,48 @@ routerAdd('POST', '/api/radian/sync-email', (c) => {
       });
 
       $app.save(newDoc);
+
+      // 5. Guardar cada ítem del documento
+      if (Array.isArray(inv.lines) && colItems) {
+        for (let j = 0; j < inv.lines.length; j++) {
+          const l = inv.lines[j];
+          try {
+            const itemRec = new Record(colItems, {
+              document_id: newDoc.id,
+              code: l.code || "",
+              description: l.description || "Producto / Servicio",
+              qty: l.qty || 1,
+              price: l.price || 0,
+              subtotal: l.subtotal || 0
+            });
+            $app.save(itemRec);
+          } catch (_) {}
+        }
+      }
+
+      // 6. Guardar cada impuesto del documento
+      if (Array.isArray(inv.taxes) && colTaxes) {
+        for (let j = 0; j < inv.taxes.length; j++) {
+          const t = inv.taxes[j];
+          try {
+            const taxRec = new Record(colTaxes, {
+              document_id: newDoc.id,
+              tax_type: t.taxType || "iva",
+              rate: t.rate || 0,
+              base: t.base || 0,
+              amount: t.amount || 0
+            });
+            $app.save(taxRec);
+          } catch (_) {}
+        }
+      }
+
       importedCount++;
+    }
+
+    let summaryMsg = `Buzón sincronizado. Facturas nuevas: ${importedCount}, existentes: ${existingCount}.`;
+    if (foreignCount > 0) {
+      summaryMsg += ` Omitidas de otra empresa/NIT: ${foreignCount}.`;
     }
 
     return c.json(200, {
@@ -210,7 +343,8 @@ routerAdd('POST', '/api/radian/sync-email', (c) => {
       foundCount: invoices.length,
       importedCount: importedCount,
       existingCount: existingCount,
-      message: `Buzón sincronizado. Facturas nuevas: ${importedCount}, existentes: ${existingCount}.`
+      foreignCount: foreignCount,
+      message: summaryMsg
     });
   } catch (err) {
     console.error("[GRAVY RADIAN] Error en /api/radian/sync-email:", err);
@@ -234,7 +368,7 @@ routerAdd('POST', '/api/radian/import-excel', (c) => {
     });
 
     if (!matiasRes.ok) {
-      const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en MATIAS API (${matiasRes.statusCode})`;
+      const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en el servicio de procesamiento DIAN (${matiasRes.statusCode})`;
       return c.json(matiasRes.statusCode, { success: false, error: errMsg, details: matiasRes.data });
     }
 
@@ -290,7 +424,7 @@ routerAdd('POST', '/api/radian/import-excel', (c) => {
       success: true,
       matiasResult: matiasRes.data,
       syncedLocal: syncedLocal,
-      message: `Excel procesado exitosamente por MATIAS API. Facturas sincronizadas localmente: ${syncedLocal}`
+      message: `Excel procesado exitosamente. Facturas sincronizadas: ${syncedLocal}`
     });
   } catch (err) {
     console.error("[GRAVY RADIAN] Error en /api/radian/import-excel:", err);
@@ -308,11 +442,11 @@ routerAdd('POST', '/api/radian/import-cufe', (c) => {
       return c.json(400, { success: false, error: "Debe ingresar el CUFE o TrackID de la factura." });
     }
 
-    // Llamar a MATIAS API para importar el documento
+    // Llamar al servicio para importar el documento
     const matiasRes = callMatiasApi("/events/import-track-id", "POST", { trackId: cufe });
 
     if (!matiasRes.ok) {
-      const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error importando CUFE (${matiasRes.statusCode})`;
+      const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error al verificar CUFE (${matiasRes.statusCode})`;
       return c.json(matiasRes.statusCode, { success: false, error: errMsg, details: matiasRes.data });
     }
 
@@ -347,7 +481,7 @@ routerAdd('POST', '/api/radian/import-cufe', (c) => {
 
     return c.json(200, {
       success: true,
-      message: "Factura encolada con éxito en MATIAS API y registrada en GRAVY.",
+      message: "Factura registrada y vinculada exitosamente con el buzón tributario DIAN.",
       matiasData: matiasRes.data
     });
   } catch (err) {
@@ -364,6 +498,7 @@ routerAdd('POST', '/api/radian/send-event', (c) => {
     const eventCode = rawBody.code || "030"; // '030', '032', '033', '031'
     const notes = rawBody.notes || "";
     const claimCode = rawBody.claim_code || "";
+    const notifySupplier = !!rawBody.notifySupplier;
 
     if (!docId) {
       return c.json(400, { success: false, error: "Identificador del documento no suministrado." });
@@ -371,7 +506,7 @@ routerAdd('POST', '/api/radian/send-event', (c) => {
 
     const docRecord = $app.findRecordById("electronic_documents", docId);
     if (!docRecord) {
-      return c.json(404, { success: false, error: "Documento electrónico no encontrado en la base de datos." });
+      return c.json(404, { success: false, error: "Documento electrónico no encontrado en el buzón tributario." });
     }
 
     const cufe = docRecord.getString("uuid");
@@ -383,47 +518,70 @@ routerAdd('POST', '/api/radian/send-event', (c) => {
     if (eventCode === "032") {
       const s030 = docRecord.getString("radian_030_status");
       if (s030 !== "sent") {
-        return c.json(400, { success: false, error: "Debe emitir primero el evento 030 (Acuse de Recibo) antes de confirmar el recibo del bien." });
+        return c.json(400, { success: false, error: "Debe emitir primero el Evento 030 (Acuse de Recibo) antes de confirmar el recibo del bien o servicio." });
       }
     } else if (eventCode === "033") {
       const s032 = docRecord.getString("radian_032_status");
       if (s032 !== "sent") {
-        return c.json(400, { success: false, error: "Debe emitir primero el evento 032 (Recibo del Bien o Servicio) antes de la Aceptación Expresa." });
+        return c.json(400, { success: false, error: "Debe emitir primero el Evento 032 (Recibo del Bien o Servicio) antes de la Aceptación Expresa." });
       }
     } else if (eventCode === "031") {
       if (!claimCode) {
-        return c.json(400, { success: false, error: "Para registrar un reclamo (031) debe seleccionar una causal de reclamo oficial (claim_code: 01, 02, 03, 04)." });
+        return c.json(400, { success: false, error: "Para registrar un reclamo (Evento 031) debe seleccionar una causal legal oficial (01, 02, 03, 04)." });
       }
     }
 
-    // Payload para MATIAS API
+    // 1. Asegurar que el documento esté registrado previamente en el servicio de transmisión
+    try {
+      callMatiasApi("/events/import-track-id", "POST", { trackId: cufe });
+    } catch (ePreImport) {
+      // Si ya estaba registrado o responde aviso, se continúa normalmente
+    }
+
+    // 2. Construir payload del evento
+    const defaultNotes = {
+      "030": "Acuse de recibo de factura electrónica conforme a la Resolución DIAN 000085 de 2022",
+      "032": "Recibo del bien y/o prestación del servicio a satisfacción",
+      "033": "Aceptación expresa de la factura electrónica como título valor",
+      "031": "Reclamo formal de la factura electrónica ante la DIAN"
+    };
+
     const eventPayload = {
       code: eventCode,
-      notes: notes || (
-        eventCode === "030" ? "Acuse de recibo de factura electrónica" :
-        eventCode === "032" ? "Recibo del bien y/o prestación del servicio" :
-        eventCode === "033" ? "Aceptación expresa de la factura como título valor" :
-        "Reclamo de la factura electrónica"
-      )
+      notes: notes || defaultNotes[eventCode] || "Evento de Facturación Electrónica"
     };
 
     if (eventCode === "031") {
       eventPayload.claim_code = claimCode;
     }
 
-    // Enviar a MATIAS API: POST /events/send/{trackId}
+    // 3. Transmitir evento a la DIAN a través del servicio
     const matiasRes = callMatiasApi(`/events/send/${encodeURIComponent(cufe)}`, "POST", eventPayload);
 
     if (!matiasRes.ok) {
-      const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en DIAN/MATIAS API (${matiasRes.statusCode})`;
+      const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en el servicio de transmisión DIAN (${matiasRes.statusCode})`;
       return c.json(matiasRes.statusCode, { success: false, error: errMsg, details: matiasRes.data });
     }
 
     const resData = matiasRes.data || {};
     const nowIso = new Date().toISOString().replace("T", " ").slice(0, 19);
-    const eventCude = resData.cude || resData.uuid || resData.trackId || "";
+    let eventCude = resData.cude || resData.uuid || "";
+    let lastResponse = resData.message || "Evento emitido y encolado para firma ante la DIAN.";
 
-    // Actualizar campos correspondientes en el registro local
+    // 4. Intentar consultar de inmediato el estado por si la DIAN ya generó el CUDE
+    try {
+      const statusRes = callMatiasApi(`/events/status/${encodeURIComponent(cufe)}`, "GET");
+      if (statusRes.ok && statusRes.data) {
+        const d = statusRes.data;
+        const respDian = d.ResponseDian || d.responseDian || {};
+        if (respDian.XmlDocumentKey || respDian.cude || d.cude) {
+          eventCude = respDian.XmlDocumentKey || respDian.cude || d.cude;
+          lastResponse = respDian.StatusMessage || d.message || "Evento validado exitosamente ante la DIAN.";
+        }
+      }
+    } catch (_) {}
+
+    // 5. Actualizar campos correspondientes en el registro local
     if (eventCode === "030") {
       docRecord.set("radian_030_status", "sent");
       docRecord.set("radian_030_date", nowIso);
@@ -442,18 +600,31 @@ routerAdd('POST', '/api/radian/send-event', (c) => {
       docRecord.set("radian_031_notes", notes);
     }
 
-    docRecord.set("radian_last_response", resData.message || "Evento autorizado por la DIAN.");
+    docRecord.set("radian_last_response", lastResponse);
     $app.save(docRecord);
+
+    // 6. Notificar por correo al emisor si fue solicitado
+    let mailSent = false;
+    if (notifySupplier) {
+      try {
+        const mailRes = callMatiasApi(`/send/mail/${encodeURIComponent(cufe)}`, "POST", {});
+        mailSent = mailRes.ok;
+      } catch (eMail) {
+        console.warn("[GRAVY RADIAN] Notificación por correo: " + eMail.message);
+      }
+    }
 
     return c.json(200, {
       success: true,
       eventCode: eventCode,
-      message: resData.message || "Evento emitido y validado con éxito ante la DIAN.",
+      message: `DIAN - Evento ${eventCode} procesado exitosamente.`,
+      cude: eventCude,
+      mailNotified: mailSent,
       dianData: resData
     });
   } catch (err) {
     console.error("[GRAVY RADIAN] Error en /api/radian/send-event:", err);
-    return c.json(500, { success: false, error: err.message });
+    return c.json(500, { success: false, error: "Error en el servicio de transmisión DIAN: " + err.message });
   }
 });
 
@@ -520,7 +691,74 @@ routerAdd('GET', '/api/radian/documents', (c) => {
   }
 });
 
-// --- 7. CONSULTAR ESTADO DE EVENTO EN MATIAS API ---
+// --- 7. SINCRONIZAR Y CONSULTAR ESTADO DE EVENTO DIAN EN TIEMPO REAL ---
+routerAdd('POST', '/api/radian/sync-event-status', (c) => {
+  try {
+    const rawBody = c.requestInfo()?.body || {};
+    const docId = rawBody.docId || "";
+    let trackId = rawBody.trackId || rawBody.cufe || "";
+
+    let docRecord = null;
+    if (docId) {
+      docRecord = $app.findRecordById("electronic_documents", docId);
+      if (docRecord) {
+        trackId = docRecord.getString("uuid") || trackId;
+      }
+    } else if (trackId) {
+      try {
+        docRecord = $app.findFirstRecordByFilter("electronic_documents", "uuid = '" + trackId.replace(/'/g, "''") + "'");
+      } catch (_) {}
+    }
+
+    if (!trackId) {
+      return c.json(400, { success: false, error: "CUFE o Identificador del documento requerido." });
+    }
+
+    const res = callMatiasApi(`/events/status/${encodeURIComponent(trackId)}`, "GET");
+    if (!res.ok) {
+      const errMsg = res.data?.message || res.data?.error || `Error consultando estado DIAN (${res.statusCode})`;
+      return c.json(res.statusCode, { success: false, error: errMsg, details: res.data });
+    }
+
+    const d = res.data || {};
+    const respDian = d.ResponseDian || d.responseDian || {};
+    const dianCude = respDian.XmlDocumentKey || respDian.cude || d.cude || "";
+    const dianMessage = respDian.StatusMessage || d.message || "Consulta de estado exitosa.";
+
+    if (docRecord) {
+      let updated = false;
+      // Actualizar CUDE en los eventos que lo tengan pendiente
+      if (dianCude) {
+        if (docRecord.getString("radian_030_status") === "sent" && !docRecord.getString("radian_030_cude")) {
+          docRecord.set("radian_030_cude", dianCude);
+          updated = true;
+        }
+        if (docRecord.getString("radian_032_status") === "sent" && !docRecord.getString("radian_032_cude")) {
+          docRecord.set("radian_032_cude", dianCude);
+          updated = true;
+        }
+        if (docRecord.getString("radian_033_status") === "sent" && !docRecord.getString("radian_033_cude")) {
+          docRecord.set("radian_033_cude", dianCude);
+          updated = true;
+        }
+      }
+
+      docRecord.set("radian_last_response", dianMessage);
+      $app.save(docRecord);
+    }
+
+    return c.json(200, {
+      success: true,
+      message: dianMessage,
+      cude: dianCude,
+      dianDetails: d
+    });
+  } catch (err) {
+    return c.json(500, { success: false, error: "Error al sincronizar estado con la DIAN: " + err.message });
+  }
+});
+
+// Alias compatible para consultas de estado
 routerAdd('POST', '/api/radian/check-event-status', (c) => {
   try {
     const rawBody = c.requestInfo()?.body || {};
@@ -535,8 +773,7 @@ routerAdd('POST', '/api/radian/check-event-status', (c) => {
   }
 });
 
-
-// --- 8. REENVIAR CORREO DE EVENTO RADIAN ---
+// --- 8. REENVIAR CORREO DE EVENTO DIAN ---
 routerAdd('POST', '/api/radian/resend-email', (c) => {
   try {
     const rawBody = c.requestInfo()?.body || {};
@@ -545,9 +782,9 @@ routerAdd('POST', '/api/radian/resend-email', (c) => {
       return c.json(400, { success: false, error: "TrackId / CUFE requerido." });
     }
     const res = callMatiasApi(`/send/mail/${encodeURIComponent(trackId)}`, "POST", rawBody);
-    return c.json(res.statusCode, { success: res.ok, data: res.data });
+    return c.json(res.statusCode, { success: res.ok, data: res.data, message: "Notificación enviada al proveedor." });
   } catch (err) {
-    return c.json(500, { success: false, error: err.message });
+    return c.json(500, { success: false, error: "Error enviando notificación electrónica: " + err.message });
   }
 });
 

@@ -294,7 +294,7 @@ function getDianErrorMessage(err: any, fallback = 'Error en la comunicación con
   return clean || fallback;
 }
 
-function showDianErrorToast(err: any, prefixTitle = 'Facturatech / DIAN') {
+function showDianErrorToast(err: any, prefixTitle = 'DIAN') {
   const msg = getDianErrorMessage(err);
   showToast(`${prefixTitle}: ${msg}`, 'error', 8500);
 }

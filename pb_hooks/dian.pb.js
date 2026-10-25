@@ -2773,11 +2773,12 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       paymentMethod = invMethod || (paymentForm === "2" ? "CREDITO" : "EFECTIVO");
     }
 
-    if (paymentForm === "2" && dueDate && issueDate) {
+    const invDateStr = (invoice ? invoice.getString("date") : "") || (tx ? tx.getString("date") : "") || issueDate;
+    if (paymentForm === "2" && dueDate) {
       try {
-        const dIssue = new Date(issueDate + "T12:00:00Z");
+        const dBase = new Date((invDateStr.slice(0, 10) || issueDate) + "T12:00:00Z");
         const dDue = new Date(dueDate.slice(0, 10) + "T12:00:00Z");
-        const diffMs = dDue.getTime() - dIssue.getTime();
+        const diffMs = dDue.getTime() - dBase.getTime();
         const diffDays = Math.round(diffMs / 86400000);
         if (diffDays > 0) creditDays = diffDays;
       } catch (_) {}
@@ -2786,6 +2787,15 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       try {
         const cpDays = customer.getInt("payment_days");
         if (cpDays > 0) creditDays = cpDays;
+      } catch (_) {}
+    }
+    if (creditDays <= 0 && paymentForm === "2" && dueDate && issueDate) {
+      try {
+        const dIssue = new Date(issueDate + "T12:00:00Z");
+        const dDue = new Date(dueDate.slice(0, 10) + "T12:00:00Z");
+        const diffMs = dDue.getTime() - dIssue.getTime();
+        const diffDays = Math.round(diffMs / 86400000);
+        if (diffDays > 0) creditDays = diffDays;
       } catch (_) {}
     }
 
@@ -3350,7 +3360,8 @@ function sendInvoiceEmailHelper(txId, customEmail) {
           payment_method_id: (paymentForm === 'credito' || paymentForm === '2') ? 2 : 1,
           means_payment_id: parseInt(paymentDianCode || 10, 10),
           value_paid: parseFloat(total).toFixed(2),
-          payment_due_date: dueDate || issueDate
+          payment_due_date: dueDate || issueDate,
+          duration_measure: String(creditDays || "0")
         }],
         payment_form: {
           payment_form_id: (paymentForm === 'credito' || paymentForm === '2') ? 2 : 1,

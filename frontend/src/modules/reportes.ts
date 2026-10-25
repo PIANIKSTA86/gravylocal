@@ -9,6 +9,7 @@ let REPORT_STATE = {
   transactions: null,
   txLines: null,
   thirdParties: null,
+  bookType: (localStorage.getItem('report_book_type') || 'niif'), // 'niif' (default oficial), 'local' (fiscal), 'all' (ambos)
   // Portfolio-specific cache keyed by "mode|asOfDate"
   portfolioCache: {} as Record<string, any[]>,
 };
@@ -16,12 +17,16 @@ let REPORT_STATE = {
 function getScopeQueryParams(): string {
   const branchId = localStorage.getItem('active_branch_id') || 'TODAS';
   const costCenterId = localStorage.getItem('active_cost_center_id') || 'TODOS';
+  const bookType = REPORT_STATE.bookType || localStorage.getItem('report_book_type') || 'niif';
   let q = '';
   if (branchId && branchId !== 'TODAS' && branchId !== 'ALL') {
     q += `&branch_id=${encodeURIComponent(branchId)}`;
   }
   if (costCenterId && costCenterId !== 'TODOS' && costCenterId !== 'ALL') {
     q += `&cost_center_id=${encodeURIComponent(costCenterId)}`;
+  }
+  if (bookType) {
+    q += `&book_type=${encodeURIComponent(bookType)}`;
   }
   return q;
 }
@@ -162,6 +167,16 @@ async function renderReportes(c) {
         <h3 class="text-lg font-bold" style="color:#0D2137">Módulo de Reportes</h3>
         <p class="text-sm" style="color:#6B7280">Selecciona el reporte a generar. Se cargan bajo demanda.</p>
       </div>
+      <div class="flex items-center gap-2 bg-white px-3.5 py-1.5 rounded-xl border shadow-sm" style="border-color:#E2E8F0">
+        <label for="global-report-book-type" class="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+          <i class="fas fa-book-bookmark text-indigo-600"></i> Libro Contable:
+        </label>
+        <select id="global-report-book-type" class="form-input text-xs font-semibold py-1 px-2 border-0 bg-transparent focus:ring-0 cursor-pointer" style="min-width: 175px;">
+          <option value="niif" ${REPORT_STATE.bookType === 'niif' ? 'selected' : ''}>📘 Libro NIIF (Financiero)</option>
+          <option value="local" ${REPORT_STATE.bookType === 'local' ? 'selected' : ''}>📙 Libro Local (Fiscal)</option>
+          <option value="all" ${REPORT_STATE.bookType === 'all' ? 'selected' : ''}>📚 Multilibro (Todos)</option>
+        </select>
+      </div>
     </div>
 
     <!-- Categoría 1: Financieros & Contables -->
@@ -281,6 +296,23 @@ async function renderReportes(c) {
       REPORT_LAUNCHERS[reportId]();
     }
   });
+
+  const globalBookSelect = document.getElementById('global-report-book-type') as HTMLSelectElement;
+  if (globalBookSelect) {
+    globalBookSelect.addEventListener('change', () => {
+      const val = globalBookSelect.value;
+      REPORT_STATE.bookType = val;
+      localStorage.setItem('report_book_type', val);
+      REPORT_STATE.accounts = null;
+      REPORT_STATE.saldos = null;
+      REPORT_STATE.transactions = null;
+      REPORT_STATE.txLines = null;
+      const label = globalBookSelect.options[globalBookSelect.selectedIndex].text;
+      if (typeof (window as any).showToast === 'function') {
+        (window as any).showToast(`Libro activo actualizado a: ${label}`, 'info');
+      }
+    });
+  }
 }
 
 // ── Vistas Interactivas para Reportes de Inventarios ───────────────────────
@@ -1860,13 +1892,15 @@ function reportCard(id, title, subtitle) {
 }
 
 async function ensureAccountsSaldos() {
-  if (!REPORT_STATE.accounts || !REPORT_STATE.saldos) {
+  const currentBook = REPORT_STATE.bookType || localStorage.getItem('report_book_type') || 'niif';
+  if (!REPORT_STATE.accounts || !REPORT_STATE.saldos || (REPORT_STATE as any).cachedSaldosBook !== currentBook) {
     const [accounts, saldos] = await Promise.all([
       API.getAccounts(false),
-      API.getAccountSaldos(),
+      API.getAccountSaldos('', currentBook),
     ]);
     REPORT_STATE.accounts = accounts;
     REPORT_STATE.saldos = saldos;
+    (REPORT_STATE as any).cachedSaldosBook = currentBook;
   }
   return { accounts: REPORT_STATE.accounts, saldos: REPORT_STATE.saldos };
 }
@@ -1892,11 +1926,13 @@ async function ensureLedgerData(explicitToDate = '') {
     }
   }
 
-  // 2. Si la fecha límite requerida cambió, invalidamos la caché de transacciones y líneas
-  if ((REPORT_STATE as any).cachedToDate !== limitDate) {
+  // 2. Si la fecha límite o el libro contable requerido cambió, invalidamos la caché de transacciones y líneas
+  const currentBook = REPORT_STATE.bookType || localStorage.getItem('report_book_type') || 'niif';
+  if ((REPORT_STATE as any).cachedToDate !== limitDate || (REPORT_STATE as any).cachedLedgerBook !== currentBook) {
     REPORT_STATE.transactions = null;
     REPORT_STATE.txLines = null;
     (REPORT_STATE as any).cachedToDate = limitDate;
+    (REPORT_STATE as any).cachedLedgerBook = currentBook;
   }
 
   // Cargar terceros de manera independiente y eficiente si no están en caché
@@ -1909,6 +1945,14 @@ async function ensureLedgerData(explicitToDate = '') {
     if (limitDate) {
       txFilter += ` && date <= "${limitDate} 23:59:59"`;
       linesFilter += ` && tx_id.date <= "${limitDate} 23:59:59"`;
+    }
+
+    if (currentBook === 'niif') {
+      txFilter += ` && book_type != "local"`;
+      linesFilter += ` && tx_id.book_type != "local"`;
+    } else if (currentBook === 'local') {
+      txFilter += ` && book_type != "niif"`;
+      linesFilter += ` && tx_id.book_type != "niif"`;
     }
 
     const [transactions, txLines] = await Promise.all([
@@ -3022,7 +3066,15 @@ async function renderTrialBalance() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Balance de Prueba (Detallado)</h4>
-      <div class="grid grid-cols-1 md:grid-cols-9 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-10 gap-3">
+        <div class="form-group">
+          <label class="form-label">Libro Contable</label>
+          <select id="trial-book-type" class="form-input">
+            <option value="niif" ${REPORT_STATE.bookType === 'niif' ? 'selected' : ''}>📘 NIIF (Financiero)</option>
+            <option value="local" ${REPORT_STATE.bookType === 'local' ? 'selected' : ''}>📙 Local (Fiscal)</option>
+            <option value="all" ${REPORT_STATE.bookType === 'all' ? 'selected' : ''}>📚 Multilibro (Todos)</option>
+          </select>
+        </div>
         <div class="form-group">
           <label class="form-label">Desde</label>
           <input id="trial-from" type="date" class="form-input" value="${fromDefault}">
@@ -3091,6 +3143,11 @@ async function renderTrialBalance() {
   const generate = async () => {
     const results = $('#trial-results');
     if (!results) return;
+    const selectedBook = getSelectVal('trial-book-type');
+    if (selectedBook) {
+      REPORT_STATE.bookType = selectedBook;
+      localStorage.setItem('report_book_type', selectedBook);
+    }
     const fromDate = getInputVal('trial-from');
     const toDate = getInputVal('trial-to');
     const rawAccountFilter = getInputVal('trial-account-prefix').trim();
@@ -5015,7 +5072,15 @@ async function renderJournalBook() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Libro Diario</h4>
-      <div class="grid grid-cols-1 md:grid-cols-7 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-8 gap-3">
+        <div class="form-group">
+          <label class="form-label">Libro Contable</label>
+          <select id="journal-book-type" class="form-input">
+            <option value="niif" ${REPORT_STATE.bookType === 'niif' ? 'selected' : ''}>📘 NIIF (Financiero)</option>
+            <option value="local" ${REPORT_STATE.bookType === 'local' ? 'selected' : ''}>📙 Local (Fiscal)</option>
+            <option value="all" ${REPORT_STATE.bookType === 'all' ? 'selected' : ''}>📚 Multilibro (Todos)</option>
+          </select>
+        </div>
         <div class="form-group">
           <label class="form-label">Mes desde</label>
           <input id="journal-month-from" type="month" class="form-input" value="${currentMonth}">
@@ -5059,6 +5124,12 @@ async function renderJournalBook() {
   const generate = async () => {
     const results = $('#journal-results');
     if (!results) return;
+
+    const selectedBook = getSelectVal('journal-book-type');
+    if (selectedBook) {
+      REPORT_STATE.bookType = selectedBook;
+      localStorage.setItem('report_book_type', selectedBook);
+    }
 
     const fromMonth = getInputVal('journal-month-from');
     const toMonth = getInputVal('journal-month-to');
@@ -5726,8 +5797,11 @@ function closeAuxTxDetailPanel() {
 }
 
 async function openAuxTxDetailInReport(id) {
+  closeAuxTxDetailPanel();
+  if (typeof (window as any).seeTxDetail === 'function') {
+    return (window as any).seeTxDetail(id);
+  }
   try {
-    closeAuxTxDetailPanel();
     const panel = document.createElement('div');
     panel.id = 'aux-tx-detail-overlay';
     panel.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(13,33,55,.45);display:flex;align-items:center;justify-content:center;padding:20px';

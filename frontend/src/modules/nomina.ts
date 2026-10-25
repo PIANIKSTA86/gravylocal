@@ -112,6 +112,9 @@ const NOMINA_CONCEPTS = [
   { key: 'rodamiento', label: 'Auxilio de rodamiento', default_side: 'debit' },
   { key: 'ajuste_salarial', label: 'Ajuste Salarial (Base IBC)', default_side: 'debit' },
   { key: 'vacaciones_disfrutadas', label: 'Pago Vacaciones', default_side: 'debit' },
+  { key: 'prima_servicios', label: 'Prima de servicios', default_side: 'debit' },
+  { key: 'cesantias_pagadas', label: 'Pago Cesantías', default_side: 'debit' },
+  { key: 'intereses_cesantias', label: 'Pago Intereses cesantías', default_side: 'debit' },
   { key: 'deduction_health', label: 'Deduccion salud trabajador', default_side: 'credit' },
   { key: 'deduction_pension', label: 'Deduccion pension trabajador', default_side: 'credit' },
   { key: 'solidarity_fund', label: 'Fondo de solidaridad', default_side: 'credit' },
@@ -130,7 +133,7 @@ const NOMINA_CONCEPTS = [
   { key: 'caja_comp', label: 'Caja de compensacion', default_side: 'debit' },
   { key: 'cesantias', label: 'Cesantias causadas', default_side: 'debit' },
   { key: 'intereses_ces', label: 'Intereses cesantias', default_side: 'debit' },
-  { key: 'prima', label: 'Prima de servicios', default_side: 'debit' },
+  { key: 'prima', label: 'Prima de servicios (causación)', default_side: 'debit' },
   { key: 'vacaciones', label: 'Vacaciones causadas', default_side: 'debit' },
   { key: 'otros_ingresos', label: 'Otros ingresos', default_side: 'debit' },
 ];
@@ -153,6 +156,9 @@ const NOMINA_EXTRA_EARNING_KEYS = [
   'rodamiento',
   'ajuste_salarial',
   'vacaciones_disfrutadas',
+  'prima_servicios',
+  'cesantias_pagadas',
+  'intereses_cesantias',
   'otros_ingresos',
 ];
 
@@ -184,6 +190,12 @@ const NOMINA_CONCEPT_RULES = {
   compensatorios: { category: 'devengo', allowed_sides: ['debit'] },
   alimentacion: { category: 'devengo', allowed_sides: ['debit'] },
   rodamiento: { category: 'devengo', allowed_sides: ['debit'] },
+  ajuste_salarial: { category: 'devengo', allowed_sides: ['debit'] },
+  vacaciones_disfrutadas: { category: 'devengo', allowed_sides: ['debit'] },
+  prima_servicios: { category: 'devengo', allowed_sides: ['debit'] },
+  cesantias_pagadas: { category: 'devengo', allowed_sides: ['debit'] },
+  intereses_cesantias: { category: 'devengo', allowed_sides: ['debit'] },
+  otros_ingresos: { category: 'devengo', allowed_sides: ['debit'] },
   net_pay: { category: 'devengo', allowed_sides: ['credit'] },
 
   deduction_health: { category: 'descuento', allowed_sides: ['credit'] },
@@ -967,8 +979,41 @@ function getExtraDeductionsFromLine(payLine) {
 function getNominaConceptAmountsFromLine(payLine) {
   const meta = getNominaLineMeta(payLine);
   const conceptAmounts = meta && typeof meta.concept_amounts === 'object' && meta.concept_amounts
-    ? meta.concept_amounts
+    ? { ...meta.concept_amounts }
     : {};
+
+  // Compatibilidad hacia atrás: si no existe conceptAmounts.prima_servicios pero la prima fue inflada respecto a la provisión periódica
+  if (!conceptAmounts.prima_servicios && payLine) {
+    const days = (payLine.days_worked !== undefined && payLine.days_worked !== null && !isNaN(Number(payLine.days_worked))) ? Number(payLine.days_worked) : 30;
+    const basePeriodo = round2(((payLine.salary_base || 0) / 30) * days) + (payLine.transport_allowance || 0) + (payLine.overtime || 0);
+    const normalProvPrima = round2(basePeriodo * 0.0833);
+    const diffPrima = round2((payLine.prima || 0) - normalProvPrima);
+    if (diffPrima > 1000) {
+      conceptAmounts.prima_servicios = diffPrima;
+    }
+  }
+
+  if (!conceptAmounts.cesantias_pagadas && payLine) {
+    const days = (payLine.days_worked !== undefined && payLine.days_worked !== null && !isNaN(Number(payLine.days_worked))) ? Number(payLine.days_worked) : 30;
+    const basePeriodo = round2(((payLine.salary_base || 0) / 30) * days) + (payLine.transport_allowance || 0) + (payLine.overtime || 0);
+    const normalProvCes = round2(basePeriodo * 0.0833);
+    const diffCes = round2((payLine.cesantias || 0) - normalProvCes);
+    if (diffCes > 1000) {
+      conceptAmounts.cesantias_pagadas = diffCes;
+    }
+  }
+
+  if (!conceptAmounts.intereses_cesantias && payLine) {
+    const days = (payLine.days_worked !== undefined && payLine.days_worked !== null && !isNaN(Number(payLine.days_worked))) ? Number(payLine.days_worked) : 30;
+    const basePeriodo = round2(((payLine.salary_base || 0) / 30) * days) + (payLine.transport_allowance || 0) + (payLine.overtime || 0);
+    const normalProvCes = round2(basePeriodo * 0.0833);
+    const normalProvInt = round2(normalProvCes * 0.12);
+    const diffInt = round2((payLine.intereses_ces || 0) - normalProvInt);
+    if (diffInt > 1000) {
+      conceptAmounts.intereses_cesantias = diffInt;
+    }
+  }
+
   const out = {};
   [...NOMINA_EXTRA_EARNING_KEYS, ...NOMINA_EXTRA_DEDUCTION_KEYS].forEach((key) => {
     out[key] = round2(Number(conceptAmounts[key] || 0));
@@ -1020,6 +1065,33 @@ function getNominaConceptAmount(payLine, conceptKey) {
   if (conceptKey === 'solidarity_fund') return getExtraDeductionsFromLine(payLine).solidarity;
   if (conceptKey === 'withholding_tax') return getExtraDeductionsFromLine(payLine).withholding;
   if (conceptKey === 'overtime') return getNominaOvertimeMetaFromLine(payLine).total_amount;
+  if (conceptKey === 'prima') {
+    const amounts = getNominaConceptAmountsFromLine(payLine);
+    const paidPrima = amounts.prima_servicios || 0;
+    const rawPrima = round2(payLine.prima || 0);
+    if (paidPrima > 0 && rawPrima > paidPrima) {
+      return round2(rawPrima - paidPrima);
+    }
+    return rawPrima;
+  }
+  if (conceptKey === 'cesantias') {
+    const amounts = getNominaConceptAmountsFromLine(payLine);
+    const paidCes = amounts.cesantias_pagadas || 0;
+    const rawCes = round2(payLine.cesantias || 0);
+    if (paidCes > 0 && rawCes > paidCes) {
+      return round2(rawCes - paidCes);
+    }
+    return rawCes;
+  }
+  if (conceptKey === 'intereses_ces') {
+    const amounts = getNominaConceptAmountsFromLine(payLine);
+    const paidInt = amounts.intereses_cesantias || 0;
+    const rawInt = round2(payLine.intereses_ces || 0);
+    if (paidInt > 0 && rawInt > paidInt) {
+      return round2(rawInt - paidInt);
+    }
+    return rawInt;
+  }
   if (NOMINA_EXTRA_EARNING_KEYS.includes(conceptKey) || NOMINA_EXTRA_DEDUCTION_KEYS.includes(conceptKey)) {
     return getNominaConceptAmountsFromLine(payLine)[conceptKey] || 0;
   }
@@ -1072,6 +1144,29 @@ function resolveAllNominaMappings(mappings, conceptKey, employeeId, employeeGrou
     const def = forSide.find((m) => !m.employee_id && !m.group_id);
     if (def) result.push(def);
   }
+
+  // Fallback inteligente para conceptos de pago de prestaciones si el usuario no configuró un mapeo explícito:
+  // Debita automáticamente la cuenta de pasivo de provisión (lado crédito de la provisión)
+  if (!result.length) {
+    let fallbackConcept = '';
+    if (conceptKey === 'prima_servicios') fallbackConcept = 'prima';
+    else if (conceptKey === 'cesantias_pagadas') fallbackConcept = 'cesantias';
+    else if (conceptKey === 'intereses_cesantias') fallbackConcept = 'intereses_ces';
+    else if (conceptKey === 'vacaciones_disfrutadas') fallbackConcept = 'vacaciones';
+
+    if (fallbackConcept) {
+      const creditMapping = resolveAllNominaMappings(mappings, fallbackConcept, employeeId, employeeGroupId)
+        .find((m) => m.side === 'credit');
+      if (creditMapping) {
+        result.push({
+          ...creditMapping,
+          concept: conceptKey,
+          side: 'debit',
+        });
+      }
+    }
+  }
+
   return result;
 }
 
@@ -1081,9 +1176,13 @@ function resolveNominaTerceroId(conceptKey, line, effectiveRule, companyRules) {
   switch (conceptKey) {
     case 'net_pay':
     case 'cesantias':
+    case 'cesantias_pagadas':
     case 'intereses_ces':
+    case 'intereses_cesantias':
     case 'prima':
+    case 'prima_servicios':
     case 'vacaciones':
+    case 'vacaciones_disfrutadas':
       return empId;
     case 'deduction_health':
     case 'employer_health':
@@ -2485,15 +2584,15 @@ async function liquidarPeriodoMasivo(periodId) {
         : round2(salaryPrestPeriodo + transportPrestPeriodo + otAmount + comisiones + ajusteSalarial);
       const prima = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(round2(basePrestacionesPeriodo * 0.0833) + n_primaServicios);
+        : round2(basePrestacionesPeriodo * 0.0833);
 
       // 2. Cesantías e Intereses de Cesantías (sobre el período completo liquidado en días)
       const cesantias = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(round2(basePrestacionesPeriodo * 0.0833) + n_cesantias);
+        : round2(basePrestacionesPeriodo * 0.0833);
       const interesesCes = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(round2(cesantias * 0.12) + n_interesesCesantias);
+        : round2(cesantias * 0.12);
 
       // 3. Vacaciones causadas (sobre el período completo liquidado en días, sin auxilio de transporte)
       const baseVacacionesPeriodo = round2(salaryPrestPeriodo + otAmount + comisiones + ajusteSalarial);
@@ -2514,6 +2613,9 @@ async function liquidarPeriodoMasivo(periodId) {
         rodamiento: rodamiento,
         ajuste_salarial: ajusteSalarial,
         vacaciones_disfrutadas: vacacionesAmount,
+        prima_servicios: n_primaServicios,
+        cesantias_pagadas: n_cesantias,
+        intereses_cesantias: n_interesesCesantias,
         otros_ingresos: otrosIngresos,
         embargo: embargos,
         cxc: 0,
@@ -7605,7 +7707,7 @@ async function viewPeriodLines(periodId, periodName, periodStatus = 'draft') {
     const totDev = lines.reduce((s,l) => s + getNominaDevengadoTotal(l), 0);
     const totNeto = lines.reduce((s,l) => s + (l.net_pay||0), 0);
     const totPara = lines.reduce((s,l) => s + (l.employer_health||0)+(l.employer_pension||0)+(l.employer_arl||0)+(l.sena||0)+(l.icbf||0)+(l.caja_comp||0), 0);
-    const totProv = lines.reduce((s,l) => s + (l.cesantias||0)+(l.intereses_ces||0)+(l.prima||0)+(l.vacaciones||0), 0);
+    const totProv = lines.reduce((s,l) => s + getNominaConceptAmount(l, 'cesantias') + getNominaConceptAmount(l, 'intereses_ces') + getNominaConceptAmount(l, 'prima') + (l.vacaciones||0), 0);
     openModal(
       `Liquidaciones — ${esc(periodName)}`,
       `<div class="space-y-4">
@@ -7680,7 +7782,11 @@ async function viewPayrollLineDetail(id) {
     const dev = getNominaDevengadoTotal(l);
     const ded = getNominaDeduccionesTotal(l);
     const para = (l.employer_health||0) + (l.employer_pension||0) + (l.employer_arl||0) + (l.sena||0) + (l.icbf||0) + (l.caja_comp||0);
-    const prov = (l.cesantias||0) + (l.intereses_ces||0) + (l.prima||0) + (l.vacaciones||0);
+    const provCes = getNominaConceptAmount(l, 'cesantias');
+    const provInt = getNominaConceptAmount(l, 'intereses_ces');
+    const provPrima = getNominaConceptAmount(l, 'prima');
+    const provVac = round2(l.vacaciones || 0);
+    const prov = round2(provCes + provInt + provPrima + provVac);
 
     const effectiveDays = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
     const transportDays = Number(meta.transport_days !== undefined && meta.transport_days !== null && !isNaN(Number(meta.transport_days)) ? meta.transport_days : effectiveDays);
@@ -7743,10 +7849,10 @@ async function viewPayrollLineDetail(id) {
         </div>
         <div>
           <p class="font-semibold mb-2" style="color:#0D2137">Provisiones (Causadas)</p>
-           ${row('Cesantías (8.33%)', l.cesantias||0)}
-           ${row('Intereses cesantías (12%)', l.intereses_ces||0)}
-          ${row('Prima de servicios (8.33%)', l.prima||0)}
-          ${row('Vacaciones (4.17%)', l.vacaciones||0)}
+           ${row('Cesantías (8.33%)', provCes)}
+           ${row('Intereses cesantías (12%)', provInt)}
+          ${row('Prima de servicios (8.33%)', provPrima)}
+          ${row('Vacaciones (4.17%)', provVac)}
           ${row('TOTAL PROVISIONES', prov, true)}
         </div>
       </div>`,
@@ -8762,7 +8868,9 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     </div>
   `).join('');
 
-  const earningInputs = NOMINA_EXTRA_EARNING_KEYS.map((key) => `
+  const earningInputs = NOMINA_EXTRA_EARNING_KEYS
+    .filter((k) => !['prima_servicios', 'cesantias_pagadas', 'intereses_cesantias'].includes(k))
+    .map((key) => `
     <div class="form-group">
       <label class="form-label">${esc(NOMINA_CONCEPT_BY_KEY[key]?.label || key)}</label>
       <input id="pl-cpt-${esc(key)}" class="form-input" value="0">
@@ -8821,10 +8929,13 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
   );
 
   const getConceptAmountsFromForm = () => {
-    const values = {};
+    const values: Record<string, number> = {};
     [...NOMINA_EXTRA_EARNING_KEYS, ...NOMINA_EXTRA_DEDUCTION_KEYS].forEach((key) => {
       values[key] = round2(parseNum(getInputVal(`pl-cpt-${key}`)) || 0);
     });
+    values.prima_servicios = round2(parseNum(getInputVal('pl-prima')) || 0);
+    values.cesantias_pagadas = round2(parseNum(getInputVal('pl-cesantias')) || 0);
+    values.intereses_cesantias = round2(parseNum(getInputVal('pl-intereses-ces')) || 0);
     return values;
   };
 
@@ -8856,10 +8967,6 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     const employeeId = getSelectVal('pl-emp');
     if (salary <= 0) return;
 
-    const primaVal = parseNum(getInputVal('pl-prima')) || 0;
-    const cesantiasVal = parseNum(getInputVal('pl-cesantias')) || 0;
-    const interesesCesVal = parseNum(getInputVal('pl-intereses-ces')) || 0;
-
     const overtimeMeta = getOvertimeFromForm(salary);
     const ot = overtimeMeta.total_amount;
     const conceptAmounts = getConceptAmountsFromForm();
@@ -8872,7 +8979,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     const salProp = (salary / 30) * salaryDays;
     const baseSal = salProp + ot;
     const ibcVacaciones = conceptAmounts.es_retiro ? 0 : (conceptAmounts.vacaciones || 0);
-    const devengado = baseSal + aux + extraEarnings + primaVal + cesantiasVal + interesesCesVal;
+    const devengado = baseSal + aux + extraEarnings;
     const isIntegralSalary = empRule.is_integral_salary || String(empRule.salary_type || '').toUpperCase() === 'INTEGRAL';
 
     const rawIbc = Math.min(
@@ -8946,15 +9053,16 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     // Base prestaciones sociales del período (Cesantías, Intereses, Prima y Vacaciones sobre diasPeriodoBase):
     const monthlyAuxTransport = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? (companyRules.transport_allowance || 162000) : 0;
     
-    // Provisiones sobre días del período completo (diasPeriodoBase)
+    // Provisiones sobre días del período completo (diasPeriodoBase) sin incluir pagos de prestaciones
     const salPrest = round2((salary / 30) * diasPeriodoBase);
     const auxPrest = round2((monthlyAuxTransport / 30) * diasPeriodoBase);
-    const basePrest = (isIntegralSalary || isAprendiz) ? 0 : round2(salPrest + auxPrest + ot + extraEarnings);
+    const salarialesExtra = round2((conceptAmounts.comisiones || 0) + (conceptAmounts.ajuste_salarial || 0));
+    const basePrest = (isIntegralSalary || isAprendiz) ? 0 : round2(salPrest + auxPrest + ot + salarialesExtra);
     const primaProv = (isIntegralSalary || isAprendiz) ? 0 : round2(basePrest * 0.0833);
     const cesantiasProv = (isIntegralSalary || isAprendiz) ? 0 : round2(basePrest * 0.0833);
     const intCesProv = (isIntegralSalary || isAprendiz) ? 0 : round2(cesantiasProv * 0.12);
 
-    const baseVac = round2(salPrest + ot + extraEarnings);
+    const baseVac = round2(salPrest + ot + salarialesExtra);
     const vacProv = isAprendiz ? 0 : round2((isIntegralSalary ? devengado * 0.70 : baseVac) * 0.0417);
     const prov = round2(cesantiasProv + intCesProv + primaProv + vacProv);
 
@@ -9170,13 +9278,13 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     }
     if ($('#pl-aux')) $('#pl-aux').value = String(meta.transport_monthly || config.company_rules?.transport_allowance || 162000);
     if ($('#pl-ded-other')) $('#pl-ded-other').value = String(lineToEdit.deduction_other || 0);
-    if ($('#pl-prima')) $('#pl-prima').value = '0';
-    if ($('#pl-cesantias')) $('#pl-cesantias').value = '0';
-    if ($('#pl-intereses-ces')) $('#pl-intereses-ces').value = '0';
-
     const overtimeMeta = getNominaOvertimeMetaFromLine(lineToEdit);
     const conceptTotals = getNominaAdditionalConceptTotals(lineToEdit);
     const conceptAmounts = conceptTotals.conceptAmounts;
+
+    if ($('#pl-prima')) $('#pl-prima').value = String(conceptAmounts.prima_servicios || 0);
+    if ($('#pl-cesantias')) $('#pl-cesantias').value = String(conceptAmounts.cesantias_pagadas || 0);
+    if ($('#pl-intereses-ces')) $('#pl-intereses-ces').value = String(conceptAmounts.intereses_cesantias || 0);
 
     NOMINA_OVERTIME_TYPES.forEach((t) => {
       const field = overtimeMeta.breakdown?.find((x) => x.key === t.key) || overtimeMeta[t.key];
@@ -9252,10 +9360,6 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const extraEarnings = round2(NOMINA_EXTRA_EARNING_KEYS.filter(k => k !== 'dotaciones').reduce((sum, key) => sum + (conceptAmounts[key] || 0), 0));
       const extraDedConcepts = round2(NOMINA_EXTRA_DEDUCTION_KEYS.reduce((sum, key) => sum + (conceptAmounts[key] || 0), 0));
 
-      const primaVal = parseNum(getInputVal('pl-prima')) || 0;
-      const cesantiasVal = parseNum(getInputVal('pl-cesantias')) || 0;
-      const interesesCesVal = parseNum(getInputVal('pl-intereses-ces')) || 0;
-
       // Base salarial proporcional para devengo (se descuentan permisos no remunerados)
       const salaryProportional = (salary / 30) * salaryDays;
       const baseSalarial = salaryProportional + ot;
@@ -9274,7 +9378,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
 
       const isIntegralSalary = empRule.is_integral_salary || String(empRule.salary_type || '').toUpperCase() === 'INTEGRAL';
       const ibcVacaciones = conceptAmounts.es_retiro ? 0 : (conceptAmounts.vacaciones || 0);
-      const devengado = baseSalarial + aux + extraEarnings + primaVal + cesantiasVal + interesesCesVal;
+      const devengado = baseSalarial + aux + extraEarnings;
 
       const rawIbc = Math.min(
         baseSalarial + (conceptAmounts.incapacidades || 0) + (conceptAmounts.licencias || 0) + (conceptAmounts.comisiones || 0) + (conceptAmounts.ajuste_salarial || 0) + ibcVacaciones,
@@ -9333,31 +9437,29 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const cajaComp = isAprendiz ? 0 : round2(baseParafiscales * 0.04);
 
       // ─── Base para Prestaciones Sociales del Período (Cesantías, Intereses y Prima de Servicios) ───
-      // Art. 7 Ley 1 de 1963: Todo empleado que devengue hasta 2 SMMLV tiene derecho por mandato legal a que el auxilio de transporte
-      // se incorpore a la base de liquidación de cesantías y prima de servicios.
-      // ─── Base para Prestaciones Sociales del Período (Cesantías, Intereses, Prima y Vacaciones) ───
       // En contrato vigente, la empresa provisiona sobre el período completo liquidado (diasPeriodoBase)
       const monthlyAuxPrest = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? (companyRules.transport_allowance || 162000) : 0;
       
       const salPrestPeriodo = round2((salary / 30) * diasPeriodoBase);
       const auxPrestPeriodo = round2((monthlyAuxPrest / 30) * diasPeriodoBase);
+      const salarialesExtra = round2((conceptAmounts.comisiones || 0) + (conceptAmounts.ajuste_salarial || 0));
       const basePrestPeriodo = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(salPrestPeriodo + auxPrestPeriodo + ot + extraEarnings);
+        : round2(salPrestPeriodo + auxPrestPeriodo + ot + salarialesExtra);
       const prima = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(round2(basePrestPeriodo * 0.0833) + primaVal);
+        : round2(basePrestPeriodo * 0.0833);
 
       // Cesantías e Intereses de Cesantías sobre el período completo
       const cesantias = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(round2(basePrestPeriodo * 0.0833) + cesantiasVal);
+        : round2(basePrestPeriodo * 0.0833);
       const interesesCes = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(round2(cesantias * 0.12) + interesesCesVal);
+        : round2(cesantias * 0.12);
 
       // Vacaciones causadas sobre el período completo (sin auxilio de transporte)
-      const baseVacPeriodo = round2(salPrestPeriodo + ot + extraEarnings);
+      const baseVacPeriodo = round2(salPrestPeriodo + ot + salarialesExtra);
       const vacaciones = isAprendiz
         ? 0
         : round2((isIntegralSalary ? devengado * 0.70 : baseVacPeriodo) * 0.0417);
@@ -10442,12 +10544,13 @@ function calcularLiquidacionDefinitiva(params: {
   extra_deductions: number;
   include_indemnity: boolean;
   vacation_days_pending: number;
+  prima_days_pending?: number;
   transport_allowance?: number;
 }) {
   const {
     hire_date, settlement_date, basic_salary, apply_transport, smmlv,
     contract_type, pending_salary_days, extra_deductions,
-    include_indemnity, vacation_days_pending,
+    include_indemnity, vacation_days_pending, prima_days_pending,
     transport_allowance = AUX_TRANSPORTE_2026,
   } = params;
 
@@ -10467,7 +10570,10 @@ function calcularLiquidacionDefinitiva(params: {
 
   // Días 30/360
   const daysCesantias = _toDays30(startForCes, settlement_date);
-  const daysPrima = _toDays30(startForPrima, settlement_date);
+  const daysPrimaCalculated = _toDays30(startForPrima, settlement_date);
+  const daysPrima = (prima_days_pending !== undefined && !isNaN(prima_days_pending))
+    ? Math.max(0, prima_days_pending)
+    : daysPrimaCalculated;
   const daysVacaciones = vacation_days_pending;                              // Días pendientes por disfrutar
 
   // ─── Prestaciones sociales CST ────────────────────────────────────────
@@ -10519,7 +10625,7 @@ function calcularLiquidacionDefinitiva(params: {
   const cajaComp = r2(baseCajaComp * 0.04);
 
   return {
-    daysCesantias, daysPrima, daysVacaciones,
+    daysCesantias, daysPrima, daysPrimaCalculated, daysVacaciones,
     pending_salary_days, pendingSalary, pendingTransport,
     cesantias, interesesCes, prima, vacaciones, indemnity,
     transport, basePrest,
@@ -10966,6 +11072,35 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
               </p>
             </div>
 
+            <!-- Bloque interactivo de Prima de Servicios (Art. 306 CST) -->
+            <div class="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/60 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                  <i class="fas fa-award text-indigo-600"></i>Cálculo Semiautomático de Prima (Art. 306 CST)
+                </span>
+                <span id="sld-prima-earned-badge" class="badge" style="background:#EEF2FF;color:#4338CA;font-size:10px;font-weight:700">
+                  0 días en semestre
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Días ya cancelados en semestre</label>
+                  <input type="number" id="sld-prima-taken" class="w-full form-input text-sm bg-white" value="0" min="0" step="1" />
+                  <span class="text-xs text-gray-400">Pagados en nómina periódica</span>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-indigo-900 mb-1">Días pendientes a liquidar *</label>
+                  <input type="number" id="sld-prima-days" class="w-full form-input text-sm font-bold text-indigo-900 bg-white" value="0" min="0" step="1" />
+                  <span class="text-xs text-gray-400">Días netos de prima a pagar</span>
+                </div>
+              </div>
+
+              <div id="sld-prima-hint" class="text-xs text-indigo-900 leading-tight">
+                Selecciona un empleado para calcular los días de prima del semestre actual.
+              </div>
+            </div>
+
             <div>
               <label class="block text-xs font-semibold text-gray-600 mb-1">Otras Deducciones al Empleado (COP)</label>
               <input type="number" id="sld-extra-ded" class="w-full form-input text-sm" value="0" min="0" />
@@ -11056,6 +11191,68 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
       }
     };
 
+    const updatePrimaCalculations = async (resetTakenFromDb = false) => {
+      const empId = empSelect.value;
+      const hireDate = hireDateInput.value;
+      const settlementDate = (document.getElementById('sld-settlement-date') as HTMLInputElement)?.value;
+      const primaTakenInput = document.getElementById('sld-prima-taken') as HTMLInputElement;
+      const primaDaysInput = document.getElementById('sld-prima-days') as HTMLInputElement;
+      const badgeEl = document.getElementById('sld-prima-earned-badge');
+      const hintEl = document.getElementById('sld-prima-hint');
+      if (!empId || !hireDate || !settlementDate) return;
+
+      const semStart = _semesterStart(settlementDate);
+      const startForPrima = hireDate > semStart ? hireDate : semStart;
+      const earnedDays = _toDays30(startForPrima, settlementDate);
+
+      let takenDays = Number(primaTakenInput?.value || 0);
+
+      if (resetTakenFromDb) {
+        try {
+          // 1. Revisar si en payroll_lines ya se causó/pagó prima en este semestre
+          const lines = await pb.listAll('payroll_lines', {
+            filter: `employee_id="${pb.escapeFilterValue(empId)}"`,
+            expand: 'period_id',
+          });
+
+          const semLinesWithPrima = lines.filter((l: any) => {
+            const pFrom = l.expand?.period_id?.date_from || '';
+            const pTo = l.expand?.period_id?.date_to || '';
+            const amounts = getNominaConceptAmountsFromLine(l);
+            const paidPrima = Number(amounts.prima_servicios || 0);
+            return paidPrima > 0 && (pFrom >= semStart || pTo >= semStart);
+          });
+
+          // 2. Revisar si hay novedades registradas de PRIMA_SERVICIOS en el semestre
+          const novs = await pb.listAll('payroll_novelties', {
+            filter: `employee_id="${pb.escapeFilterValue(empId)}" && type="PRIMA_SERVICIOS" && date_from >= "${semStart}"`,
+          }).catch(() => [] as any[]);
+
+          if (semLinesWithPrima.length > 0 || novs.length > 0) {
+            takenDays = earnedDays;
+            if (primaTakenInput) primaTakenInput.value = String(takenDays);
+            const periodNames = semLinesWithPrima.map((l: any) => l.expand?.period_id?.name || 'período').join(', ');
+            if (hintEl) {
+              hintEl.innerHTML = `<div class="p-2 bg-amber-50 rounded border border-amber-200 text-amber-800 text-xs">
+                <i class="fas fa-check-circle text-emerald-600 mr-1"></i>
+                <strong>Pago previo detectado:</strong> Se identificó pago de Prima de Servicios en nómina ordinaria del semestre actual (${periodNames || 'novedades'}). Días pendientes ajustados a <strong>0</strong> para evitar doble desembolso.
+              </div>`;
+            }
+          } else {
+            takenDays = 0;
+            if (primaTakenInput) primaTakenInput.value = '0';
+          }
+        } catch (_) {}
+      }
+
+      const pendingDays = Math.max(0, earnedDays - takenDays);
+      if (primaDaysInput) primaDaysInput.value = String(pendingDays);
+      if (badgeEl) badgeEl.textContent = `${earnedDays} días en semestre`;
+      if (hintEl && takenDays === 0) {
+        hintEl.innerHTML = `Semestre actual (desde <strong>${startForPrima}</strong> hasta <strong>${settlementDate}</strong>): <strong>${earnedDays} días causados</strong> − Días ya cancelados: <strong>${takenDays} d</strong> = <strong>${pendingDays} días</strong> a liquidar.`;
+      }
+    };
+
     const loadEmployeeData = async () => {
       const empId = empSelect.value;
       if (!empId) return;
@@ -11134,12 +11331,19 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
       } catch (_) {}
 
       await updateVacationCalculations(true);
+      await updatePrimaCalculations(true);
     };
 
     if (preselectedId) loadEmployeeData();
     empSelect.addEventListener('change', loadEmployeeData);
-    hireDateInput.addEventListener('change', () => updateVacationCalculations(false));
-    document.getElementById('sld-settlement-date')?.addEventListener('change', () => updateVacationCalculations(false));
+    hireDateInput.addEventListener('change', () => {
+      updateVacationCalculations(false);
+      updatePrimaCalculations(false);
+    });
+    document.getElementById('sld-settlement-date')?.addEventListener('change', () => {
+      updateVacationCalculations(false);
+      updatePrimaCalculations(false);
+    });
     document.getElementById('sld-vac-taken')?.addEventListener('input', () => {
       const hireDate = hireDateInput.value;
       const settlementDate = (document.getElementById('sld-settlement-date') as HTMLInputElement)?.value;
@@ -11153,6 +11357,23 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
       if (vacDaysInput) vacDaysInput.value = String(pendingDays);
       if (hintEl) {
         hintEl.innerHTML = `Tiempo laborado: <strong>${totalDaysWorked} días</strong> | Causados por ley: <strong>${earnedDays} d</strong> − Ya disfrutados: <strong>${takenDays} d</strong> = <strong>${pendingDays} d</strong> a liquidar.`;
+      }
+    });
+
+    document.getElementById('sld-prima-taken')?.addEventListener('input', () => {
+      const hireDate = hireDateInput.value;
+      const settlementDate = (document.getElementById('sld-settlement-date') as HTMLInputElement)?.value;
+      const primaTakenInput = document.getElementById('sld-prima-taken') as HTMLInputElement;
+      const primaDaysInput = document.getElementById('sld-prima-days') as HTMLInputElement;
+      const hintEl = document.getElementById('sld-prima-hint');
+      const semStart = _semesterStart(settlementDate);
+      const startForPrima = hireDate > semStart ? hireDate : semStart;
+      const earnedDays = _toDays30(startForPrima, settlementDate);
+      const takenDays = Number(primaTakenInput?.value || 0);
+      const pendingDays = Math.max(0, earnedDays - takenDays);
+      if (primaDaysInput) primaDaysInput.value = String(pendingDays);
+      if (hintEl) {
+        hintEl.innerHTML = `Semestre actual (desde <strong>${startForPrima}</strong> hasta <strong>${settlementDate}</strong>): <strong>${earnedDays} días causados</strong> − Días ya cancelados: <strong>${takenDays} d</strong> = <strong>${pendingDays} días</strong> a liquidar.`;
       }
     });
 
@@ -11187,6 +11408,7 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
       const hireDate = hireDateInput.value || settlementDate;
       const pendingDays = Number((document.getElementById('sld-pending-days') as HTMLInputElement).value || 0);
       const vacDays = Number((document.getElementById('sld-vac-days') as HTMLInputElement).value || 0);
+      const primaDays = Number((document.getElementById('sld-prima-days') as HTMLInputElement)?.value || 0);
       const extraDed = Number((document.getElementById('sld-extra-ded') as HTMLInputElement).value || 0);
       const includeInd = indemnityCheck.checked;
       const reason = reasonSelect.value;
@@ -11204,6 +11426,7 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
           smmlv, contract_type: rule.contract_type || 'INDEFINIDO',
           pending_salary_days: pendingDays, extra_deductions: extraDed,
           include_indemnity: includeInd, vacation_days_pending: vacDays,
+          prima_days_pending: primaDays,
           transport_allowance: transportAllowance,
         });
 
@@ -11535,7 +11758,7 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
               total_deductions: calc.totalDeductions,
               net_pay: calc.netPay,
               provisions_applied: prov,
-              notes: `Motivo: ${reason}. Días vac liquidados: ${vacDays} (disfrutados prev: ${Number((document.getElementById('sld-vac-taken') as HTMLInputElement)?.value || 0)}). Doc cruce: LIQ-${settlementDate.replace(/-/g, '')}-EMP-${empDoc}`,
+              notes: `Motivo: ${reason}. Días vac liquidados: ${vacDays} (disfrutados prev: ${Number((document.getElementById('sld-vac-taken') as HTMLInputElement)?.value || 0)}). Días prima liquidados: ${calc.daysPrima} (cancelados prev: ${Number((document.getElementById('sld-prima-taken') as HTMLInputElement)?.value || 0)}). Doc cruce: LIQ-${settlementDate.replace(/-/g, '')}-EMP-${empDoc}`,
               status: 'approved',
               tx_id: tx.id,
             });

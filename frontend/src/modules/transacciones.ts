@@ -2579,12 +2579,18 @@ async function renderConsultaTx(c) {
           </select>
           <input id="txq" class="form-input md:col-span-2" placeholder="Buscar número, tercero, descripción...">
         </div>
-        <div class="flex gap-3 mt-3">
+        <div class="flex flex-wrap gap-3 mt-3">
           <select id="txq-status" class="form-input" style="max-width:180px">
             <option value="">Todos los estados</option>
             <option value="draft">Borrador</option>
             <option value="active">Activa</option>
             <option value="voided">Anulada</option>
+          </select>
+          <select id="txq-book-type" class="form-input" style="max-width:210px">
+            <option value="">Todos los libros</option>
+            <option value="niif">📘 Solo NIIF (Financiero)</option>
+            <option value="local">📙 Solo Local (Fiscal)</option>
+            <option value="both">📚 NIIF y Local (Común)</option>
           </select>
           <button class="btn btn-primary btn-sm" id="btn-txq-search"><i class="fas fa-search"></i> Buscar</button>
           <button class="btn btn-outline btn-sm" id="btn-txq-clear"><i class="fas fa-eraser"></i> Limpiar</button>
@@ -2637,7 +2643,7 @@ async function renderConsultaTx(c) {
     });
     $('#btn-txq-clear')?.addEventListener('click', async () => {
       ['txq'].forEach(id => setInputVal(id, ''));
-      ['txq-type','txq-status'].forEach(id => { const el = $(`#${id}`); if (el) el.value = ''; });
+      ['txq-type','txq-status','txq-book-type'].forEach(id => { const el = $(`#${id}`); if (el) el.value = ''; });
 
       const stateEl = $('#txq-period-state');
       if (stateEl) stateEl.value = 'open';
@@ -2702,6 +2708,15 @@ async function loadConsultaTxPage() {
       const safe = pb.escapeFilterValue(status);
       filters.push(`status="${safe}"`);
     }
+    const bookType = getSelectVal('txq-book-type');
+    if (bookType) {
+      const safeBook = pb.escapeFilterValue(bookType);
+      if (bookType === 'both') {
+        filters.push(`(book_type="both" || book_type="" || book_type=null)`);
+      } else {
+        filters.push(`book_type="${safeBook}"`);
+      }
+    }
     if (q) {
       const safe = pb.escapeFilterValue(q);
       filters.push(`(number~"${safe}" || description~"${safe}")`);
@@ -2743,7 +2758,7 @@ async function loadConsultaTxPage() {
     resultsDiv.innerHTML = `
       <div class="overflow-x-auto">
         <table class="data-table" id="tx-table">
-          <thead><tr><th>Número</th><th>Fecha</th><th>Tercero</th><th>Descripción</th><th>Débito</th><th>Crédito</th><th>Balance</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Número</th><th>Fecha</th><th>Libro</th><th>Tercero</th><th>Descripción</th><th>Débito</th><th>Crédito</th><th>Balance</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody>
             ${res.items.map(t => {
               const sums = totalsByTx.get(t.id) || { d: 0, c: 0 };
@@ -2753,10 +2768,16 @@ async function loadConsultaTxPage() {
               const roundedC = Math.round(((sums.c || 0) + Number.EPSILON) * factor) / factor;
               const diff = Math.abs(roundedD - roundedC);
               const balanced = diff < Math.pow(10, -decimals);
+              const bookBadge = t.book_type === 'niif'
+                ? '<span class="badge text-[10px] font-bold" style="background:#EDE9FE;color:#5B21B6;border:1px solid #DDD6FE" title="Comprobante exclusivo de Libro NIIF (Financiero)"><i class="fas fa-book-bookmark mr-1"></i>NIIF</span>'
+                : t.book_type === 'local'
+                ? '<span class="badge text-[10px] font-bold" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A" title="Comprobante exclusivo de Libro Local (Fiscal)"><i class="fas fa-scale-balanced mr-1"></i>Local</span>'
+                : '<span class="badge text-[10px] font-semibold" style="background:#F3F4F6;color:#374151;border:1px solid #E5E7EB" title="Afecta ambos libros (NIIF y Local)">NIIF y Local</span>';
               return `
               <tr>
                 <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${esc(t.number || '')}</span></td>
                 <td>${esc(t.date)}</td>
+                <td>${bookBadge}</td>
                 <td>${esc(t.expand?.third_party_id?.name || '—')}</td>
                 <td class="max-w-xs truncate" title="${esc(t.description || '')}">${esc(t.description || '—')}</td>
                 <td class="font-semibold" style="color:#065F46">${fmt(sums.d || 0)}</td>
@@ -2849,12 +2870,178 @@ async function exportConsultaTx() {
   } catch (err) { showToast(err.message, 'error'); }
 }
 
+async function resolveTxAuditInfo(tx: any, id: string): Promise<{
+  creatorName: string;
+  creatorEmail: string;
+  realCreatedAt: string;
+  updaterName: string;
+  realUpdatedAt: string;
+}> {
+  let creatorName = '';
+  let creatorEmail = '';
+  let realCreatedAt = '';
+  let updaterName = '';
+  let realUpdatedAt = '';
+
+  // 1. Intentar endpoint especializado en backend (pb_hooks)
+  try {
+    const res: any = await pb.send(`/api/gravy/tx-audit-detail?tx_id=${encodeURIComponent(id)}`, { method: 'GET' });
+    if (res && res.success && (res.creator_name || res.real_created_at)) {
+      if (res.creator_name && res.creator_name !== 'Sistema') creatorName = res.creator_name;
+      if (res.creator_email) creatorEmail = res.creator_email;
+      if (res.real_created_at) realCreatedAt = res.real_created_at;
+      if (res.updater_name) updaterName = res.updater_name;
+      if (res.real_updated_at) realUpdatedAt = res.real_updated_at;
+    }
+  } catch (_) {}
+
+  // 2. Intentar consulta directa a audit_log
+  try {
+    const auditRes = await pb.list('audit_log', {
+      filter: `entity="transactions" && entity_id="${id}"`,
+      sort: 'event_at',
+      perPage: 50,
+      expand: 'user_id',
+    });
+    if (auditRes && Array.isArray(auditRes.items) && auditRes.items.length > 0) {
+      const items = auditRes.items;
+      const createLog = items.find((l: any) => String(l.action || '').toUpperCase() === 'CREATE') || items[0];
+      const updateLogs = items.filter((l: any) => ['UPDATE', 'APPROVE', 'REVERT_DRAFT'].includes(String(l.action || '').toUpperCase()));
+      const lastUpdateLog = updateLogs.length > 0 ? updateLogs[updateLogs.length - 1] : null;
+
+      if (createLog) {
+        if (!realCreatedAt) realCreatedAt = createLog.event_at || createLog.created || '';
+        if (!creatorName || creatorName === 'Sistema') {
+          creatorName = createLog.expand?.user_id?.name || createLog.expand?.user_id?.full_name || createLog.username || '';
+          creatorEmail = createLog.expand?.user_id?.email || (createLog.username?.includes('@') ? createLog.username : '');
+        }
+      }
+
+      if (lastUpdateLog) {
+        if (!realUpdatedAt) realUpdatedAt = lastUpdateLog.event_at || lastUpdateLog.created || '';
+        if (!updaterName) {
+          updaterName = lastUpdateLog.expand?.user_id?.name || lastUpdateLog.expand?.user_id?.full_name || lastUpdateLog.username || '';
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 3. Si aún no tenemos fecha real de registro o creador, buscar en documentos origen vinculados
+  if (!realCreatedAt || !creatorName || creatorName === 'Sistema') {
+    const crossNum = tx.cross_number || tx.number || '';
+    const crossType = tx.cross_type || '';
+
+    // Buscar en Facturas de Venta / Notas Crédito
+    if (!realCreatedAt || crossType === 'invoices' || crossNum.startsWith('FV-') || crossNum.startsWith('NC-') || crossNum.startsWith('ND-')) {
+      try {
+        const invList = await pb.list('invoices', {
+          filter: `tx_id="${id}" || number="${crossNum}"`,
+          perPage: 1,
+          expand: 'user_id,seller_id'
+        });
+        if (invList && invList.items.length > 0) {
+          const inv = invList.items[0];
+          if (!realCreatedAt) realCreatedAt = inv.created || '';
+          if (!creatorName || creatorName === 'Sistema') {
+            creatorName = inv.expand?.user_id?.name || inv.expand?.user_id?.full_name || inv.expand?.seller_id?.name || '';
+            creatorEmail = inv.expand?.user_id?.email || '';
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Buscar en Facturas de Compra
+    if (!realCreatedAt || crossType === 'purchase_invoices' || crossNum.startsWith('FC-')) {
+      try {
+        const purList = await pb.list('purchase_invoices', {
+          filter: `tx_id="${id}" || number="${crossNum}"`,
+          perPage: 1,
+          expand: 'user_id'
+        });
+        if (purList && purList.items.length > 0) {
+          const pinv = purList.items[0];
+          if (!realCreatedAt) realCreatedAt = pinv.created || '';
+          if (!creatorName || creatorName === 'Sistema') {
+            creatorName = pinv.expand?.user_id?.name || pinv.expand?.user_id?.full_name || '';
+            creatorEmail = pinv.expand?.user_id?.email || '';
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Buscar en Movimientos de Inventario
+    if (!realCreatedAt || crossType === 'inventory_movements' || crossNum.startsWith('MOV-') || crossNum.startsWith('SI-')) {
+      try {
+        const movList = await pb.list('inventory_movements', {
+          filter: `tx_id="${id}" || number="${crossNum}"`,
+          perPage: 1,
+          expand: 'user_id'
+        });
+        if (movList && movList.items.length > 0) {
+          const mov = movList.items[0];
+          if (!realCreatedAt) realCreatedAt = mov.created || '';
+          if (!creatorName || creatorName === 'Sistema') {
+            creatorName = mov.expand?.user_id?.name || mov.expand?.user_id?.full_name || '';
+            creatorEmail = mov.expand?.user_id?.email || '';
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  // 4. Fallback con tx.user_id directo si existe
+  if (!creatorName || creatorName === 'Sistema') {
+    if (tx.expand?.user_id?.name || tx.expand?.user_id?.full_name) {
+      creatorName = tx.expand.user_id.name || tx.expand.user_id.full_name;
+      creatorEmail = tx.expand.user_id.email || '';
+    } else if (tx.user_id) {
+      try {
+        const u = await pb.get('users', tx.user_id);
+        creatorName = u.name || u.full_name || u.email || 'Sistema';
+        creatorEmail = u.email || '';
+      } catch (_) {
+        creatorName = 'Sistema';
+      }
+    } else {
+      creatorName = 'Sistema';
+    }
+  }
+
+  return {
+    creatorName: creatorName || 'Sistema',
+    creatorEmail: creatorEmail || '',
+    realCreatedAt: realCreatedAt || '',
+    updaterName: updaterName || '',
+    realUpdatedAt: realUpdatedAt || '',
+  };
+}
+
 async function seeTxDetail(id) {
   try {
-    const tx = await pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,user_id' });
-    const lines = await API.getTxLines(id);
-    
+    let tx: any = null;
+    let lines: any[] = [];
+
+    try {
+      const [txRes, linesRes] = await Promise.all([
+        pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,branch_id,import_id,user_id' }),
+        pb.listAll('tx_lines', {
+          filter: `tx_id="${id}"`,
+          sort: 'line_order',
+          expand: 'account_id,third_party_id,cost_center_id,branch_id',
+          ignoreBranch: true,
+        })
+      ]);
+      tx = txRes;
+      lines = linesRes || [];
+    } catch (_) {
+      tx = await pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,user_id' });
+      lines = await API.getTxLines(id);
+    }
+
+    const auditInfo = await resolveTxAuditInfo(tx, id);
+
     const txTypeCode = tx.expand?.tx_type_id?.code || '';
+    const txTypeName = tx.expand?.tx_type_id?.name || 'Comprobante Contable';
     const isDianDoc = ['FV', 'POS', 'NC', 'ND'].includes(txTypeCode);
     
     let isEmitted = false;
@@ -2881,15 +3068,17 @@ async function seeTxDetail(id) {
       const statusLabel = dianStatus.charAt(0).toUpperCase() + dianStatus.slice(1);
       
       dianHtml = `
-      <div class="p-3 rounded-xl mb-4 border text-xs" style="background:#F9FAFB;border-color:#E5E7EB">
+      <div class="p-3.5 rounded-xl mb-4 border text-xs shadow-xs" style="background:#F8FAFC;border-color:#E2E8F0">
         <div class="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <span class="text-xs font-semibold uppercase" style="color:#4B5563">Estado Facturación Electrónica (DIAN)</span>
-            <div class="flex items-center gap-2 mt-1">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <i class="fas fa-satellite-dish text-indigo-600"></i> Estado Facturación Electrónica (DIAN)
+            </span>
+            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
               <span class="badge ${badgeClass}"><i class="fas ${badgeIcon} mr-1"></i>${statusLabel}</span>
-              ${cufe ? `<span class="font-mono text-xs" style="color:#6B7280" title="${esc(cufe)}">CUFE: ${esc(cufe.slice(0, 20))}...</span>` : ''}
+              ${cufe ? `<span class="font-mono text-[11px] px-2 py-0.5 rounded bg-slate-200/80 text-slate-700" title="${esc(cufe)}">CUFE: ${esc(cufe.slice(0, 24))}...</span>` : ''}
             </div>
-            ${dianResponse ? `<p class="text-xs mt-1" style="color:#4B5563"><strong>Respuesta:</strong> ${esc(dianResponse)}</p>` : ''}
+            ${dianResponse ? `<p class="text-xs mt-1.5 text-slate-600"><strong>Respuesta DIAN:</strong> ${esc(dianResponse)}</p>` : ''}
           </div>
           ${(dianStatus !== 'aceptada' && tx.status === 'active') ? `
             <button class="btn btn-secondary btn-sm" onclick="window.emitTxToDianFromDetail('${esc(tx.id)}', '${esc(tx.number||'')}')">
@@ -2900,28 +3089,344 @@ async function seeTxDetail(id) {
       </div>`;
     }
 
+    // Datos del Tercero Principal
+    const third = tx.expand?.third_party_id;
+    const thirdName = third?.name || '—';
+    const thirdDocNum = third?.doc_number || third?.id_number || third?.nit || '';
+    const thirdDv = (third?.dv !== undefined && third?.dv !== null && third?.dv !== '') ? `-${third.dv}` : '';
+    const thirdDocType = third?.document_type || (thirdDocNum ? 'NIT/CC' : '');
+    const thirdDocFull = thirdDocNum ? `${thirdDocType} ${thirdDocNum}${thirdDv}` : '';
+
+    // Fechas de Causación y Vencimiento
+    let dueDate = tx.due_date || '';
+    if (!dueDate && tx.payment_days) {
+      dueDate = addDaysToDate(tx.date || todayStr(), tx.payment_days);
+    }
+    if (!dueDate) {
+      dueDate = tx.date || '';
+    }
+    const paymentDays = tx.payment_days || (typeof calcPaymentDays === 'function' ? calcPaymentDays(tx.date, dueDate) : 0);
+
+    // Auditoría y Fecha Real de Registro
+    const createdUser = auditInfo.creatorName || (tx.expand?.user_id?.name || tx.expand?.user_id?.email || 'Sistema');
+    const createdEmail = auditInfo.creatorEmail || (tx.expand?.user_id?.email || '');
+    const realCreatedAt = auditInfo.realCreatedAt || tx.created || '';
+    const updatedUser = auditInfo.updaterName || '';
+    const realUpdatedAt = auditInfo.realUpdatedAt || tx.updated || '';
+
+    const fmtAuditDateTimeStr = (dtStr: string): string => {
+      if (!dtStr || dtStr === '—') return '—';
+      try {
+        const raw = String(dtStr).trim();
+        const parts = raw.split(/[T\s]/);
+        const datePart = parts[0];
+        const timePart = parts[1] ? parts[1].slice(0, 8) : '';
+        const dParts = datePart.split('-');
+        if (dParts.length === 3) {
+          return `${dParts[2]}/${dParts[1]}/${dParts[0]}${timePart ? ' ' + timePart : ''}`;
+        }
+      } catch (_) {}
+      return dtStr;
+    };
+
+    // Sucursal y Libro Contable
+    const branch = tx.expand?.branch_id;
+    const branchName = branch ? `${branch.code ? branch.code + ' - ' : ''}${branch.name}` : 'Principal';
+    let bookTypeLabel = 'NIIF y Local';
+    if (tx.book_type === 'local') bookTypeLabel = 'Solo Local (Fiscal)';
+    else if (tx.book_type === 'niif') bookTypeLabel = 'Solo NIIF (Financiero)';
+
+    // Estado del Comprobante
+    let statusBadge = '';
+    const st = String(tx.status || 'active').toLowerCase();
+    if (st === 'active' || st === 'activa') {
+      statusBadge = `<span class="badge badge-green" style="background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;font-weight:700"><i class="fas fa-circle-check mr-1 text-xs"></i>Activa</span>`;
+    } else if (st === 'draft' || st === 'borrador') {
+      statusBadge = `<span class="badge badge-orange" style="background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;font-weight:700"><i class="fas fa-clock mr-1 text-xs"></i>Borrador</span>`;
+    } else if (st === 'voided' || st === 'anulada') {
+      statusBadge = `<span class="badge badge-red" style="background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;font-weight:700"><i class="fas fa-ban mr-1 text-xs"></i>Anulada</span>`;
+    } else {
+      statusBadge = `<span class="badge badge-gray font-semibold">${esc(st.toUpperCase())}</span>`;
+    }
+
+    // Totales y Sumas Iguales
+    const totalDebit = lines.reduce((acc, l) => acc + (Number(l.debit) || 0), 0);
+    const totalCredit = lines.reduce((acc, l) => acc + (Number(l.credit) || 0), 0);
+    const diff = Math.abs(totalDebit - totalCredit);
+    const isBalanced = diff < 0.01;
+
+    const sumasIgualesBadge = isBalanced
+      ? `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300">
+          <i class="fas fa-circle-check text-emerald-600"></i> Partida Doble Cuadrada ($0,00)
+         </span>`
+      : `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold text-red-800 bg-red-100/90 border border-red-300">
+          <i class="fas fa-triangle-exclamation text-red-600"></i> Descuadrado (Dif: $ ${fmt(diff)})
+         </span>`;
+
+    // Bloque de Comercio Exterior / Importación
+    const isImportTx = !!(tx.is_import || tx.import_id || tx.import_trm || tx.import_invoice_ref);
+    let importHtml = '';
+    if (isImportTx) {
+      const impObj = tx.expand?.import_id;
+      const impNumber = impObj?.number || tx.import_id || 'IMP';
+      const impNotes = impObj?.notes || '';
+      const trmFormatted = tx.import_trm ? `$ ${fmt(tx.import_trm)} COP` : 'No registrada';
+
+      importHtml = `
+      <div class="mb-4 p-3.5 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50/80 via-indigo-50/50 to-slate-50 shadow-xs">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-2 pb-2 border-b border-blue-100">
+          <div class="flex items-center gap-2">
+            <span class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs shadow-xs">
+              <i class="fas fa-ship"></i>
+            </span>
+            <div>
+              <span class="text-xs font-bold text-slate-800 uppercase tracking-wide">Transacción / Gasto de Importación (Comercio Exterior)</span>
+              <p class="text-[11px] text-slate-500">Imputación a liquidación de costos de importación</p>
+            </div>
+          </div>
+          <span class="badge badge-blue text-[11px] font-bold"><i class="fas fa-anchor mr-1"></i>Importación Activa</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div class="bg-white/80 p-2.5 rounded-lg border border-blue-100">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Código de Importación</span>
+            <span class="font-bold text-blue-900 text-sm font-mono">${esc(impNumber)}</span>
+            ${impNotes ? `<span class="text-[11px] text-slate-600 block truncate mt-0.5" title="${esc(impNotes)}">${esc(impNotes)}</span>` : ''}
+          </div>
+          <div class="bg-white/80 p-2.5 rounded-lg border border-blue-100">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">N° Factura de Referencia / BL</span>
+            <span class="font-mono font-semibold text-slate-800 text-sm">${esc(tx.import_invoice_ref || '—')}</span>
+          </div>
+          <div class="bg-white/80 p-2.5 rounded-lg border border-blue-100">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">TRM de la Transacción</span>
+            <span class="font-mono font-bold text-emerald-700 text-sm">${trmFormatted}</span>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // Generación de Líneas Contables
+    const linesRowsHtml = lines.map((l: any, idx: number) => {
+      const lineOrder = l.line_order || (idx + 1);
+      const accCode = l.expand?.account_id?.code || '';
+      const accName = l.expand?.account_id?.name || 'Cuenta no especificada';
+      
+      const lineThirdObj = l.expand?.third_party_id;
+      const lineThirdName = lineThirdObj?.name || (l.third_party_id ? 'Tercero: ' + l.third_party_id : '—');
+      const lineThirdDoc = lineThirdObj?.doc_number || lineThirdObj?.id_number || lineThirdObj?.nit || '';
+      const lineThirdDv = (lineThirdObj?.dv !== undefined && lineThirdObj?.dv !== null && lineThirdObj?.dv !== '') ? `-${lineThirdObj.dv}` : '';
+      const lineThirdFullDoc = lineThirdDoc ? `${lineThirdDoc}${lineThirdDv}` : '';
+
+      const ccObj = l.expand?.cost_center_id;
+      const ccDisplay = ccObj ? `${ccObj.code ? ccObj.code + ' - ' : ''}${ccObj.name}` : '';
+
+      const brObj = l.expand?.branch_id;
+      const brDisplay = brObj ? `${brObj.code ? brObj.code + ' - ' : ''}${brObj.name}` : '';
+
+      const hasCrossDoc = !!l.cross_doc_ref;
+      const hasImpConcept = !!l.import_concept;
+
+      const debitVal = Number(l.debit || 0);
+      const creditVal = Number(l.credit || 0);
+
+      return `
+      <tr class="hover:bg-slate-50/80 transition-colors text-xs border-b border-slate-100">
+        <td class="text-center font-mono text-slate-400 py-2.5 px-2 font-medium">${lineOrder}</td>
+        <td class="py-2.5 px-3 min-w-[200px]">
+          <div class="font-mono font-bold text-slate-800 text-[13px]">${esc(accCode)}</div>
+          <div class="text-[11px] text-slate-600 line-clamp-1" title="${esc(accName)}">${esc(accName)}</div>
+        </td>
+        <td class="py-2.5 px-3 min-w-[170px]">
+          <div class="font-medium text-slate-800 text-[12px]">${esc(lineThirdName)}</div>
+          ${lineThirdFullDoc ? `<span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 font-semibold mt-0.5">${esc(lineThirdFullDoc)}</span>` : ''}
+        </td>
+        <td class="py-2.5 px-3 min-w-[140px]">
+          ${ccObj ? `<span class="badge badge-gray text-[11px] font-medium block truncate" title="${esc(ccDisplay)}"><i class="fas fa-layer-group text-[10px] mr-1 text-slate-400"></i>${esc(ccDisplay)}</span>` : '<span class="text-slate-400">—</span>'}
+          ${brDisplay ? `<div class="text-[10px] text-slate-500 mt-0.5 truncate" title="${esc(brDisplay)}"><i class="fas fa-store text-[9px] mr-1"></i>${esc(brDisplay)}</div>` : ''}
+        </td>
+        <td class="py-2.5 px-3 min-w-[120px]">
+          ${hasCrossDoc ? `<span class="badge" style="background:#EDE9FE;color:#6D28D9;border:1px solid #DDD6FE;font-size:11px" title="Documento Cruce"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>` : '<span class="text-slate-400">—</span>'}
+          ${hasImpConcept ? `<div class="mt-1"><span class="badge badge-blue text-[10px]"><i class="fas fa-ship mr-1"></i>${esc(l.import_concept)}</span></div>` : ''}
+        </td>
+        <td class="py-2.5 px-3 text-slate-700 min-w-[180px]">
+          <div class="text-[12px] leading-snug break-words">${esc(l.description || '—')}</div>
+        </td>
+        <td class="py-2.5 px-3 text-right font-mono font-semibold ${debitVal > 0 ? 'text-slate-900 bg-emerald-50/25' : 'text-slate-400'} text-[13px] whitespace-nowrap">
+          ${debitVal > 0 ? '$ ' + fmt(debitVal) : '$ 0,00'}
+        </td>
+        <td class="py-2.5 px-3 text-right font-mono font-semibold ${creditVal > 0 ? 'text-slate-900 bg-blue-50/25' : 'text-slate-400'} text-[13px] whitespace-nowrap">
+          ${creditVal > 0 ? '$ ' + fmt(creditVal) : '$ 0,00'}
+        </td>
+      </tr>`;
+    }).join('');
+
+    const descHtml = tx.description ? `
+      <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 mb-4 flex items-start gap-2.5 shadow-2xs">
+        <i class="fas fa-quote-left text-slate-400 mt-0.5 text-xs"></i>
+        <div class="flex-1">
+          <strong class="text-slate-800 block mb-0.5 text-[11px] uppercase tracking-wider font-bold">Descripción / Justificación Contable</strong>
+          <span class="text-slate-600 leading-relaxed">${esc(tx.description)}</span>
+        </div>
+      </div>` : '';
+
+    const canEdit = (typeof can === 'function' ? can('canWrite') : true) && tx.status !== 'voided';
+
     openModal(
       `Transacción ${esc(tx.number || '')}`,
       `
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-sm">
-        <div><strong>Fecha:</strong> ${esc(tx.date)}</div>
-        <div><strong>Tercero:</strong> ${esc(tx.expand?.third_party_id?.name || '—')}</div>
-        <div><strong>Estado:</strong> ${esc(tx.status)}</div>
+      <!-- Tarjetas de Información Clave (KPI Cards) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <!-- Tarjeta 1: Tercero Principal -->
+        <div class="p-3 rounded-xl border border-slate-200/90 bg-white shadow-xs">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="font-bold uppercase tracking-wider text-[10px] text-slate-500">Tercero Principal</span>
+            <i class="fas fa-building text-slate-400"></i>
+          </div>
+          <div class="font-bold text-slate-800 text-sm truncate" title="${esc(thirdName)}">${esc(thirdName)}</div>
+          <div class="text-xs text-slate-500 font-mono mt-0.5">${esc(thirdDocFull || '— Sin identificación —')}</div>
+        </div>
+
+        <!-- Tarjeta 2: Fechas del Comprobante (Contable vs Real) -->
+        <div class="p-3 rounded-xl border border-slate-200/90 bg-white shadow-xs">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="font-bold uppercase tracking-wider text-[10px] text-slate-500">Fechas del Comprobante</span>
+            <i class="fas fa-calendar-alt text-slate-400"></i>
+          </div>
+          <div class="text-xs font-medium text-slate-700">
+            <strong>Fecha Contable:</strong> <span class="font-semibold text-slate-900">${typeof fmtDate === 'function' ? fmtDate(tx.date) : esc(tx.date)}</span>
+          </div>
+          <div class="text-[11px] text-slate-600 mt-0.5" title="Fecha y hora real en que se digitó en el sistema">
+            <strong>Digitado (Real):</strong> <span class="font-mono font-medium text-slate-800">${fmtAuditDateTimeStr(realCreatedAt)}</span>
+          </div>
+          <div class="text-[11px] text-slate-500 mt-0.5">
+            <strong>Vence:</strong> ${typeof fmtDate === 'function' ? fmtDate(dueDate) : esc(dueDate)}
+            ${paymentDays > 0 ? `<span class="badge badge-gray text-[10px] ml-1 font-bold">${paymentDays} d</span>` : ''}
+          </div>
+        </div>
+
+        <!-- Tarjeta 3: Sede y Libro -->
+        <div class="p-3 rounded-xl border border-slate-200/90 bg-white shadow-xs">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="font-bold uppercase tracking-wider text-[10px] text-slate-500">Sede y Libro Contable</span>
+            <i class="fas fa-book text-slate-400"></i>
+          </div>
+          <div class="text-xs font-semibold text-slate-800 truncate" title="${esc(branchName)}">
+            <i class="fas fa-store text-slate-400 mr-1 text-[11px]"></i>${esc(branchName)}
+          </div>
+          <div class="text-[11px] text-indigo-700 font-medium mt-0.5">
+            <i class="fas fa-layer-group text-indigo-500 mr-1 text-[10px]"></i>${esc(bookTypeLabel)}
+          </div>
+        </div>
+
+        <!-- Tarjeta 4: Total y Cuadre -->
+        <div class="p-3 rounded-xl border border-slate-200/90 bg-white shadow-xs">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="font-bold uppercase tracking-wider text-[10px] text-slate-500">Total y Cuadre</span>
+            <i class="fas fa-scale-balanced text-slate-400"></i>
+          </div>
+          <div class="font-mono font-bold text-slate-900 text-sm">
+            $ ${fmt(totalDebit)}
+          </div>
+          <div class="mt-1">
+            ${sumasIgualesBadge}
+          </div>
+        </div>
       </div>
-      <p class="mb-4 text-sm" style="color:#6B7280">${esc(tx.description || '')}</p>
-      
+
+      <!-- Justificación / Descripción -->
+      ${descHtml}
+
+      <!-- Banner DIAN (si aplica) -->
       ${dianHtml}
-      
-      <div class="overflow-x-auto">
-        <table class="data-table"><thead><tr><th>Cuenta</th><th>Tercero línea</th><th>Doc. Cruce</th><th>Descripción</th><th>Débito</th><th>Crédito</th></tr></thead>
-          <tbody>${lines.map(l => `<tr><td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td><td>${esc(l.expand?.third_party_id?.name || '\u2014')}</td><td>${l.cross_doc_ref ? `<span class="badge" style="background:#EDE9FE;color:#7C3AED"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>` : '\u2014'}</td><td>${esc(l.description || '\u2014')}</td><td>${fmt(l.debit || 0)}</td><td>${fmt(l.credit || 0)}</td></tr>`).join('')}</tbody>
-        </table>
+
+      <!-- Banner Importación / Comercio Exterior (si aplica) -->
+      ${importHtml}
+
+      <!-- Tabla Detallada de Asientos Contables -->
+      <div class="border border-slate-200 rounded-xl overflow-hidden shadow-xs bg-white mb-2">
+        <div class="overflow-x-auto">
+          <table class="data-table w-full mb-0">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase tracking-wider font-semibold">
+                <th class="w-10 text-center py-2.5 px-2">#</th>
+                <th class="py-2.5 px-3">Cuenta Contable</th>
+                <th class="py-2.5 px-3">Tercero Línea</th>
+                <th class="py-2.5 px-3">Centro Costo / Sucursal</th>
+                <th class="py-2.5 px-3">Doc. Cruce / Concepto</th>
+                <th class="py-2.5 px-3">Descripción</th>
+                <th class="py-2.5 px-3 text-right">Débito</th>
+                <th class="py-2.5 px-3 text-right">Crédito</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${linesRowsHtml || `<tr><td colspan="8" class="text-center py-6 text-slate-400">No se encontraron líneas contables para esta transacción.</td></tr>`}
+            </tbody>
+            <tfoot>
+              <tr class="bg-slate-100/90 border-t-2 border-slate-300 font-semibold text-xs text-slate-800">
+                <td colspan="6" class="py-3 px-4 text-right">
+                  <div class="flex items-center justify-between flex-wrap gap-2">
+                    <span class="font-bold text-[11px] uppercase tracking-wider text-slate-600">SUMAS IGUALES (PARTIDA DOBLE):</span>
+                    <div>${sumasIgualesBadge}</div>
+                  </div>
+                </td>
+                <td class="py-3 px-3 text-right font-mono font-bold text-sm text-slate-900 bg-emerald-100/30 whitespace-nowrap">
+                  $ ${fmt(totalDebit)}
+                </td>
+                <td class="py-3 px-3 text-right font-mono font-bold text-sm text-slate-900 bg-blue-100/30 whitespace-nowrap">
+                  $ ${fmt(totalCredit)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- Pie de Auditoría e Inmutabilidad -->
+      <div class="pt-2 flex items-center justify-between flex-wrap gap-2 text-[11px] text-slate-500">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span>
+            <i class="fas fa-user-pen mr-1 text-slate-400"></i> Elaborado por: 
+            <strong class="text-slate-800">${esc(createdUser)}</strong>
+            ${createdEmail && createdEmail !== createdUser ? `<span class="text-slate-400 font-mono text-[10px] ml-0.5">(${esc(createdEmail)})</span>` : ''}
+          </span>
+          <span>
+            <i class="fas fa-calendar-check mr-1 text-slate-400"></i> Digitado en Sistema: 
+            <span class="font-mono font-semibold text-slate-700">${fmtAuditDateTimeStr(realCreatedAt)}</span>
+          </span>
+          ${realUpdatedAt && realUpdatedAt !== realCreatedAt ? `
+            <span>
+              <i class="fas fa-clock-rotate-left mr-1 text-slate-400"></i> Modificado: 
+              <span class="font-mono text-slate-700">${fmtAuditDateTimeStr(realUpdatedAt)}</span>
+              ${updatedUser ? ` por <strong class="text-slate-700">${esc(updatedUser)}</strong>` : ''}
+            </span>
+          ` : ''}
+        </div>
+        <div class="font-mono text-[10px] text-slate-400">ID: ${esc(tx.id)}</div>
       </div>`,
-      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
-       <button class="btn btn-outline" style="border-color:#334155;color:#334155" onclick="printTxNotaContable('${esc(id)}')"><i class="fas fa-print mr-1"></i>Imprimir nota contable</button>`,
+      `
+      <div class="flex items-center justify-between w-full flex-wrap gap-2">
+        <div class="flex items-center gap-2">
+          <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+          <button class="btn btn-outline" title="Copiar resumen del comprobante" onclick="window.copyTxSummaryToClipboard('${esc(id)}')">
+            <i class="fas fa-copy mr-1 text-slate-500"></i> Copiar Resumen
+          </button>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-outline" style="border-color:#10B981;color:#047857" onclick="window.exportSingleTxLinesToExcel('${esc(id)}')">
+            <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Exportar Excel
+          </button>
+          <button class="btn btn-outline" style="border-color:#334155;color:#334155" onclick="printTxNotaContable('${esc(id)}')">
+            <i class="fas fa-print mr-1 text-slate-600"></i> Imprimir nota contable
+          </button>
+          ${canEdit ? `
+            <button class="btn btn-primary" onclick="closeModal(); setTimeout(() => editTx('${esc(id)}'), 150)">
+              <i class="fas fa-pencil mr-1"></i> Editar transacción
+            </button>
+          ` : ''}
+        </div>
+      </div>`,
       true
     );
-  } catch (err) {
+  } catch (err: any) {
     showToast(err.message, 'error');
   }
 }
@@ -2957,6 +3462,94 @@ window.emitTxToDianFromDetail = async function(txId: string, txNumber: string) {
       }
     }
   );
+};
+
+(window as any).exportSingleTxLinesToExcel = async function(id: string) {
+  try {
+    const [tx, lines] = await Promise.all([
+      pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,branch_id,import_id' }),
+      pb.listAll('tx_lines', {
+        filter: `tx_id="${id}"`,
+        sort: 'line_order',
+        expand: 'account_id,third_party_id,cost_center_id,branch_id',
+        ignoreBranch: true,
+      }).catch(async () => await API.getTxLines(id))
+    ]);
+
+    const exportRows = (lines || []).map((l: any, idx: number) => {
+      const acc = l.expand?.account_id;
+      const th = l.expand?.third_party_id || tx.expand?.third_party_id;
+      const cc = l.expand?.cost_center_id;
+      const br = l.expand?.branch_id || tx.expand?.branch_id;
+      const thDoc = th?.doc_number || th?.id_number || th?.nit || '';
+      const thDv = (th?.dv !== undefined && th?.dv !== null && th?.dv !== '') ? `-${th.dv}` : '';
+      return {
+        '# Línea': l.line_order || (idx + 1),
+        'Comprobante': tx.number || '',
+        'Tipo': tx.expand?.tx_type_id?.name || '',
+        'Fecha': tx.date || '',
+        'Vencimiento': tx.due_date || tx.date || '',
+        'Cuenta Código': acc?.code || '',
+        'Cuenta Nombre': acc?.name || '',
+        'Tercero': th?.name || '',
+        'NIT / Identificación': thDoc ? `${thDoc}${thDv}` : '',
+        'Centro de Costo': cc ? `${cc.code ? cc.code + ' - ' : ''}${cc.name}` : '',
+        'Sucursal': br ? `${br.code ? br.code + ' - ' : ''}${br.name}` : '',
+        'Doc. Cruce': l.cross_doc_ref || '',
+        'Concepto Importación': l.import_concept || '',
+        'Importación Código': tx.is_import ? (tx.expand?.import_id?.number || tx.import_id || '') : '',
+        'Factura Ref': tx.is_import ? (tx.import_invoice_ref || '') : '',
+        'TRM': tx.is_import ? (tx.import_trm || '') : '',
+        'Descripción': l.description || tx.description || '',
+        'Débito': Number(l.debit || 0),
+        'Crédito': Number(l.credit || 0),
+      };
+    });
+
+    if (typeof (window as any).exportToExcel === 'function') {
+      (window as any).exportToExcel(exportRows, `comprobante_${tx.number || id}_${tx.date || ''}`);
+    } else {
+      showToast('No se encontró el módulo de exportación a Excel', 'warning');
+    }
+  } catch (err: any) {
+    showToast(err.message, 'error');
+  }
+};
+
+(window as any).copyTxSummaryToClipboard = async function(id: string) {
+  try {
+    const tx = await pb.get('transactions', id, { expand: 'tx_type_id,third_party_id' });
+    const lines = await API.getTxLines(id);
+    const totalDebit = lines.reduce((acc: number, l: any) => acc + (Number(l.debit) || 0), 0);
+    const totalCredit = lines.reduce((acc: number, l: any) => acc + (Number(l.credit) || 0), 0);
+
+    const th = tx.expand?.third_party_id;
+    const thDoc = th?.doc_number || th?.id_number || '';
+    const text = [
+      `COMPROBANTE: ${tx.number || id} (${tx.expand?.tx_type_id?.name || 'TX'})`,
+      `FECHA: ${tx.date || ''} | ESTADO: ${tx.status || 'active'}`,
+      `TERCERO: ${th?.name || '—'} ${thDoc ? `[NIT: ${thDoc}]` : ''}`,
+      `DESCRIPCIÓN: ${tx.description || '—'}`,
+      `TOTAL DÉBITO: $ ${fmt(totalDebit)} | TOTAL CRÉDITO: $ ${fmt(totalCredit)}`,
+      `LÍNEAS CONTABLES:`,
+      ...lines.map((l: any, i: number) => ` ${i + 1}. [${l.expand?.account_id?.code || ''}] ${l.expand?.account_id?.name || ''} | Débito: $ ${fmt(l.debit || 0)} | Crédito: $ ${fmt(l.credit || 0)} | ${l.description || ''}`)
+    ].join('\n');
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      showToast('Resumen del comprobante copiado al portapapeles', 'success');
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      showToast('Resumen copiado al portapapeles', 'success');
+    }
+  } catch (err: any) {
+    showToast(err.message, 'error');
+  }
 };
 
 function approveTx(id, number) {
@@ -3863,25 +4456,66 @@ async function _confirmDeleteTx(id: string, number: string) {
 // ── Impresión: Nota Contable ─────────────────────────────────────────────────
 async function printTxNotaContable(id) {
   try {
-    const [tx, lines, salesInvoices, purchaseInvoices, companyName, companyNit, companyAddress] = await Promise.all([
-      pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,user_id' }),
-      API.getTxLines(id),
-      pb.listAll('invoices', { filter: `tx_id="${id}"` }).catch(() => []),
-      pb.listAll('purchase_invoices', { filter: `tx_id="${id}"` }).catch(() => []),
-      API.getSetting('company_name').catch(() => ''),
-      API.getSetting('company_nit').catch(() => ''),
-      API.getSetting('company_address').catch(() => ''),
-    ]);
+    let tx: any = null;
+    let lines: any[] = [];
+    let salesInvoices: any[] = [];
+    let purchaseInvoices: any[] = [];
+    let companyName = '';
+    let companyNit = '';
+    let companyAddress = '';
+    let companyPhone = '';
+
+    try {
+      const [txRes, linesRes, sInvRes, pInvRes, cName, cNit, cAddr, cPhone] = await Promise.all([
+        pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,branch_id,import_id,user_id' }),
+        pb.listAll('tx_lines', {
+          filter: `tx_id="${id}"`,
+          sort: 'line_order',
+          expand: 'account_id,third_party_id,cost_center_id,branch_id',
+          ignoreBranch: true,
+        }).catch(async () => await API.getTxLines(id)),
+        pb.listAll('invoices', { filter: `tx_id="${id}"` }).catch(() => []),
+        pb.listAll('purchase_invoices', { filter: `tx_id="${id}"` }).catch(() => []),
+        API.getSetting('company_name').catch(() => ''),
+        API.getSetting('company_nit').catch(() => ''),
+        API.getSetting('company_address').catch(() => ''),
+        API.getSetting('company_phone').catch(() => ''),
+      ]);
+      tx = txRes;
+      lines = linesRes || [];
+      salesInvoices = sInvRes || [];
+      purchaseInvoices = pInvRes || [];
+      companyName = cName || 'EMPRESA';
+      companyNit = cNit || '';
+      companyAddress = cAddr || '';
+      companyPhone = cPhone || '';
+    } catch (_) {
+      tx = await pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,user_id' });
+      lines = await API.getTxLines(id);
+    }
+
+    // Resolución limpia del creador para el bloque de firmas (obviando detalles técnicos de auditoría)
+    const auditInfo = await resolveTxAuditInfo(tx, id);
+    const createdByName = auditInfo.creatorName || tx.expand?.user_id?.name || tx.expand?.user_id?.email || 'Sistema';
+    const printedByName = pb.currentUser?.name || pb.currentUser?.email || 'Usuario del Sistema';
 
     const totalDebit  = lines.reduce((s, l) => s + Number(l.debit  || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
-    const txTypeName  = tx.expand?.tx_type_id?.name || tx.expand?.tx_type_id?.prefix || '';
-    const thirdName   = tx.expand?.third_party_id?.name || '';
-    const thirdDoc    = tx.expand?.third_party_id?.doc_number || '';
-    const createdByName  = tx.expand?.user_id?.name || '';
-    const printedByName  = pb.currentUser?.name || '';
+    const diff = Math.abs(totalDebit - totalCredit);
+    const isBalanced = diff < 0.005;
 
-    // Determinación de fecha de documento y fecha de vencimiento
+    const txTypeCode = tx.expand?.tx_type_id?.code || '';
+    const txTypeName = tx.expand?.tx_type_id?.name || tx.expand?.tx_type_id?.prefix || 'COMPROBANTE CONTABLE';
+
+    // Datos del Tercero Principal
+    const third = tx.expand?.third_party_id;
+    const thirdName = third?.name || tx.third_party_name || '—';
+    const thirdDocNum = third?.doc_number || third?.id_number || third?.nit || '';
+    const thirdDv = (third?.dv !== undefined && third?.dv !== null && third?.dv !== '') ? `-${third.dv}` : '';
+    const thirdDocType = third?.document_type || (thirdDocNum ? 'NIT/CC' : '');
+    const thirdDocFull = thirdDocNum ? `${thirdDocType} ${thirdDocNum}${thirdDv}` : '';
+
+    // Determinación de fechas y plazos
     let dueDate = tx.due_date || '';
     if (!dueDate && salesInvoices.length > 0 && salesInvoices[0].due_date) {
       dueDate = salesInvoices[0].due_date;
@@ -3898,25 +4532,64 @@ async function printTxNotaContable(id) {
 
     const docDate = tx.date || '—';
     const docDueDate = dueDate || docDate;
+    const paymentDays = tx.payment_days || (typeof calcPaymentDays === 'function' ? calcPaymentDays(tx.date, docDueDate) : 0);
+
+    // Sede y Libro
+    const branchObj = tx.expand?.branch_id;
+    const branchName = branchObj ? `${branchObj.code ? branchObj.code + ' - ' : ''}${branchObj.name}` : 'Principal';
+    let bookTypeLabel = 'Multilibro (NIIF y Local)';
+    if (tx.book_type === 'local') bookTypeLabel = 'Solo Local (Fiscal)';
+    else if (tx.book_type === 'niif') bookTypeLabel = 'Solo NIIF (Financiero)';
+
+    // Bloque opcional de Comercio Exterior / Importación
+    const isImportTx = !!(tx.is_import || tx.import_id || tx.import_trm || tx.import_invoice_ref);
+    let importBannerHtml = '';
+    if (isImportTx) {
+      const impObj = tx.expand?.import_id;
+      const impCode = impObj?.number || tx.import_id || 'IMP';
+      const trmFormatted = tx.import_trm ? `$ ${fmt(tx.import_trm)} COP` : '—';
+      importBannerHtml = `
+      <div class="import-block">
+        <div class="import-title">OPERACIÓN DE COMERCIO EXTERIOR / IMPORTACIÓN</div>
+        <div class="import-grid">
+          <div><span class="lbl">Código Importación:</span> <strong class="val">${esc(impCode)}</strong></div>
+          <div><span class="lbl">Factura / BL Ref:</span> <strong class="val">${esc(tx.import_invoice_ref || '—')}</strong></div>
+          <div><span class="lbl">TRM Liquidada:</span> <strong class="val">${trmFormatted}</strong></div>
+        </div>
+      </div>`;
+    }
 
     const linesHtml = lines.map((l, i) => {
       const accCode = l.expand?.account_id?.code || '';
       const accName = l.expand?.account_id?.name || '';
-      const lineThird = l.expand?.third_party_id?.name || (thirdName ? thirdName : '—');
+      const lineThirdObj = l.expand?.third_party_id;
+      const lineThirdName = lineThirdObj?.name || (l.third_party_id ? 'Tercero: ' + l.third_party_id : (thirdName !== '—' ? thirdName : '—'));
+      const lineThirdDoc = lineThirdObj?.doc_number || lineThirdObj?.id_number || lineThirdObj?.nit || '';
+      const lineThirdDv = (lineThirdObj?.dv !== undefined && lineThirdObj?.dv !== null && lineThirdObj?.dv !== '') ? `-${lineThirdObj.dv}` : '';
+      const lineThirdFullDoc = lineThirdDoc ? `${lineThirdDoc}${lineThirdDv}` : '';
+
+      const ccObj = l.expand?.cost_center_id;
+      const ccDisplay = ccObj ? `${ccObj.code ? ccObj.code + ' - ' : ''}${ccObj.name}` : '';
+
       const crossRef  = l.cross_doc_ref || '';
+      const lineDesc = l.description || tx.description || '';
       const debit  = Number(l.debit  || 0);
       const credit = Number(l.credit || 0);
-      const isDebit = debit > 0;
+
       return `
         <tr class="${i % 2 === 0 ? 'row-even' : 'row-odd'}">
           <td class="col-num">${i + 1}</td>
           <td class="col-code">${esc(accCode)}</td>
           <td class="col-acct">${esc(accName)}</td>
-          <td class="col-third">${esc(lineThird)}</td>
-          <td class="col-cross">${crossRef ? esc(crossRef) : ''}</td>
-          <td class="col-desc">${esc(l.description || tx.description || '')}</td>
-          <td class="col-money debit">${isDebit ? fmt(debit) : ''}</td>
-          <td class="col-money credit">${!isDebit ? fmt(credit) : ''}</td>
+          <td class="col-third">
+            <div class="third-name">${esc(lineThirdName)}</div>
+            ${lineThirdFullDoc ? `<div class="sub-text">${esc(lineThirdFullDoc)}</div>` : ''}
+          </td>
+          <td class="col-cc">${ccDisplay ? esc(ccDisplay) : '<span class="sub-text">—</span>'}</td>
+          <td class="col-cross">${crossRef ? esc(crossRef) : '<span class="sub-text">—</span>'}</td>
+          <td class="col-desc">${esc(lineDesc)}</td>
+          <td class="col-money debit">${debit > 0 ? fmt(debit) : '0,00'}</td>
+          <td class="col-money credit">${credit > 0 ? fmt(credit) : '0,00'}</td>
         </tr>`;
     }).join('');
 
@@ -3927,104 +4600,342 @@ async function printTxNotaContable(id) {
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Nota Contable ${esc(tx.number || '')}</title>
+  <title>${esc(txTypeName)} - ${esc(tx.number || '')}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter', Arial, Helvetica, sans-serif; font-size: 9.5pt; color: #111; background: #fff; padding: 18mm 15mm 15mm 15mm; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #0D2137; padding-bottom: 8px; margin-bottom: 10px; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-size: 8.5pt;
+      color: #0F172A;
+      background: #fff;
+      padding: 14mm 12mm 12mm 12mm;
+      line-height: 1.35;
+    }
+
+    /* Encabezado */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #0F172A;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+    }
     .company-block { flex: 1; }
-    .company-name { font-size: 13pt; font-weight: bold; color: #0D2137; }
-    .company-sub { font-size: 8.5pt; color: #444; margin-top: 2px; }
-    .doc-block { text-align: right; min-width: 200px; }
-    .doc-number { font-size: 14pt; font-weight: bold; color: #7C3AED; letter-spacing: 0.5px; }
-    .doc-type { font-size: 8.5pt; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
-    .doc-dates-header { font-size: 8.5pt; color: #333; margin-top: 3px; }
-    .doc-dates-header div { display: flex; justify-content: flex-end; gap: 4px; }
-    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin-bottom: 12px; font-size: 9pt; }
-    .meta-row { display: flex; gap: 6px; }
-    .meta-label { font-weight: bold; color: #0D2137; white-space: nowrap; min-width: 110px; }
-    .meta-value { color: #333; }
-    .section-title { font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #6B7280; border-bottom: 1px solid #E5E7EB; padding-bottom: 3px; margin-bottom: 6px; }
-    table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
-    thead tr { background: #0D2137; color: #fff; }
-    thead th { padding: 5px 6px; text-align: left; font-weight: 600; border: 1px solid #0D2137; white-space: nowrap; }
+    .company-name {
+      font-size: 14pt;
+      font-weight: 800;
+      color: #0F172A;
+      letter-spacing: -0.3px;
+    }
+    .company-sub {
+      font-size: 8.5pt;
+      color: #475569;
+      margin-top: 1px;
+    }
+    .doc-block {
+      text-align: right;
+      min-width: 220px;
+    }
+    .doc-type {
+      font-size: 8.5pt;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 700;
+    }
+    .doc-number {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 15pt;
+      font-weight: 800;
+      color: #4338CA;
+      letter-spacing: 0.5px;
+      margin: 1px 0;
+    }
+    .void-badge {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 2px 8px;
+      background: #FEE2E2;
+      color: #991B1B;
+      border: 1px solid #FCA5A5;
+      font-size: 8.5pt;
+      font-weight: 800;
+      letter-spacing: 1px;
+      border-radius: 4px;
+    }
+
+    /* Grilla de Metadatos del Documento */
+    .meta-box {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px 14px;
+      font-size: 8pt;
+    }
+    .meta-item { display: flex; flex-direction: column; }
+    .meta-item.span-2 { grid-column: span 2; }
+    .meta-item.span-4 { grid-column: span 4; }
+    .meta-label {
+      font-size: 7pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748B;
+      margin-bottom: 1px;
+    }
+    .meta-value {
+      color: #0F172A;
+      font-weight: 600;
+      word-break: break-word;
+    }
+    .meta-value.mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Bloque de Comercio Exterior / Importación */
+    .import-block {
+      background: #EFF6FF;
+      border: 1px solid #BFDBFE;
+      border-radius: 6px;
+      padding: 6px 12px;
+      margin-bottom: 10px;
+      font-size: 8pt;
+    }
+    .import-title {
+      font-size: 7.5pt;
+      font-weight: 800;
+      color: #1E40AF;
+      letter-spacing: 0.6px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid #DBEAFE;
+      padding-bottom: 2px;
+    }
+    .import-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .import-grid .lbl { color: #64748B; font-size: 7.5pt; }
+    .import-grid .val { color: #1E3A8A; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+    /* Tabla de Partidas Contables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8pt;
+      margin-bottom: 10px;
+      page-break-inside: auto;
+    }
+    thead tr {
+      background: #0F172A;
+      color: #FFFFFF;
+    }
+    thead th {
+      padding: 5px 6px;
+      text-align: left;
+      font-weight: 700;
+      border: 1px solid #0F172A;
+      white-space: nowrap;
+      font-size: 7.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
     thead th.col-money { text-align: right; }
+    tbody tr { page-break-inside: avoid; }
     tbody tr.row-even { background: #F8FAFC; }
-    tbody tr.row-odd  { background: #fff; }
-    tbody td { padding: 4px 6px; border: 1px solid #E5E7EB; vertical-align: top; }
-    td.debit, td.credit, th.col-money { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    td.debit  { color: #065F46; font-weight: 600; }
-    td.credit { color: #1E3A8A; font-weight: 600; }
-    .col-num   { width: 26px; text-align: center; }
-    .col-code  { width: 90px; font-family: monospace; font-size: 8pt; }
-    .col-acct  { min-width: 120px; }
-    .col-third { min-width: 100px; }
-    .col-cross { width: 80px; font-family: monospace; font-size: 8pt; }
-    .col-desc  { min-width: 100px; color: #555; }
-    .col-money { width: 95px; }
-    tfoot td { border: 1px solid #CBD5E1; padding: 5px 6px; font-weight: bold; font-size: 9pt; }
-    .totals-label { text-align: right; color: #0D2137; }
-    .totals-debit  { text-align: right; color: #065F46; }
-    .totals-credit { text-align: right; color: #1E3A8A; }
-    .balanced-ok  { color: #059669; font-weight: bold; font-size: 8pt; }
-    .balanced-err { color: #DC2626; font-weight: bold; font-size: 8pt; }
-    .footer-bar { margin-top: 18px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 8pt; color: #555; border-top: 1px solid #D1D5DB; padding-top: 8px; }
-    .sig-block { text-align: center; min-width: 140px; }
-    .sig-line  { border-top: 1px solid #888; margin-top: 28px; padding-top: 3px; font-size: 7.5pt; color: #444; }
+    tbody tr.row-odd  { background: #FFFFFF; }
+    tbody td {
+      padding: 4px 6px;
+      border: 1px solid #E2E8F0;
+      vertical-align: top;
+      color: #1E293B;
+    }
+    td.debit, td.credit, th.col-money {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-family: 'JetBrains Mono', monospace;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    td.debit  { color: #065F46; }
+    td.credit { color: #1E3A8A; }
+
+    .col-num   { width: 22px; text-align: center; color: #94A3B8; font-family: 'JetBrains Mono', monospace; }
+    .col-code  { width: 85px; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #0F172A; }
+    .col-acct  { min-width: 130px; font-weight: 500; }
+    .col-third { min-width: 120px; }
+    .third-name { font-weight: 600; }
+    .col-cc    { width: 95px; font-size: 7.5pt; }
+    .col-cross { width: 75px; font-family: 'JetBrains Mono', monospace; font-size: 7.5pt; }
+    .col-desc  { min-width: 120px; color: #475569; }
+    .col-money { width: 92px; font-size: 8pt; }
+    .sub-text  { font-size: 7pt; color: #64748B; font-family: 'JetBrains Mono', monospace; }
+
+    /* Totales y Sumas Iguales */
+    tfoot tr.totals-row td {
+      border: 1px solid #CBD5E1;
+      background: #F1F5F9;
+      padding: 6px 8px;
+      font-weight: 800;
+      font-size: 8.5pt;
+    }
+    .totals-label { text-align: right; color: #0F172A; }
+    .totals-debit  { text-align: right; color: #065F46; font-family: 'JetBrains Mono', monospace; }
+    .totals-credit { text-align: right; color: #1E3A8A; font-family: 'JetBrains Mono', monospace; }
+
+    .balance-status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 5px;
+      margin-bottom: 16px;
+      font-size: 8pt;
+      font-weight: 700;
+    }
+    .balance-ok {
+      background: #ECFDF5;
+      color: #065F46;
+      border: 1px solid #A7F3D0;
+    }
+    .balance-err {
+      background: #FEF2F2;
+      color: #991B1B;
+      border: 1px solid #FECACA;
+    }
+
+    /* Bloque Oficial de Firmas (Norma Colombiana Art. 124 D. 2649/93) */
+    .signatures-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 14px;
+      page-break-inside: avoid;
+    }
+    .sig-box {
+      border: 1px solid #CBD5E1;
+      border-radius: 4px;
+      padding: 8px 6px;
+      text-align: center;
+      min-height: 80px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: #FFFFFF;
+    }
+    .sig-name {
+      font-size: 8pt;
+      font-weight: 700;
+      color: #0F172A;
+      margin-bottom: 24px;
+      min-height: 12px;
+    }
+    .sig-line {
+      border-top: 1px solid #475569;
+      padding-top: 3px;
+      font-size: 7.5pt;
+      font-weight: 800;
+      color: #0F172A;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sig-role {
+      font-size: 6.5pt;
+      color: #64748B;
+      margin-top: 1px;
+    }
+
+    /* Pie de página */
+    .print-footer {
+      margin-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7pt;
+      color: #94A3B8;
+      border-top: 1px solid #E2E8F0;
+      padding-top: 6px;
+      page-break-inside: avoid;
+    }
+
     @media print {
       body { padding: 0; }
-      @page { margin: 14mm 12mm 12mm 12mm; size: letter portrait; }
+      @page {
+        margin: 10mm 10mm 10mm 10mm;
+        size: letter portrait;
+      }
+      table { page-break-inside: auto; }
+      tr { page-break-inside: avoid; page-break-after: auto; }
+      .signatures-grid, .print-footer, .balance-status-bar {
+        page-break-inside: avoid;
+      }
     }
   </style>
 </head>
 <body>
+  <!-- Encabezado Institucional -->
   <div class="header">
     <div class="company-block">
-      <div class="company-name">${esc(companyName || 'GRAVY')}</div>
-      ${companyNit ? `<div class="company-sub">NIT: ${esc(companyNit)}</div>` : ''}
-      ${companyAddress ? `<div class="company-sub">${esc(companyAddress)}</div>` : ''}
+      <div class="company-name">${esc(companyName)}</div>
+      ${companyNit ? `<div class="company-sub"><strong>NIT:</strong> ${esc(companyNit)}</div>` : ''}
+      ${companyAddress ? `<div class="company-sub">${esc(companyAddress)}${companyPhone ? ' &bull; Tel: ' + esc(companyPhone) : ''}</div>` : ''}
     </div>
     <div class="doc-block">
       <div class="doc-type">${esc(txTypeName)}</div>
       <div class="doc-number">${esc(tx.number || '')}</div>
-      <div class="doc-dates-header">
-        <div><strong>Fecha:</strong> <span>${esc(docDate)}</span></div>
-        <div><strong>Vencimiento:</strong> <span>${esc(docDueDate)}</span></div>
-      </div>
-      ${tx.status === 'voided' ? '<div style="color:#DC2626;font-weight:bold;font-size:10pt;margin-top:4px">&#x26D4; ANULADO</div>' : ''}
+      ${tx.status === 'voided' ? '<div class="void-badge">&#x26D4; DOCUMENTO ANULADO</div>' : ''}
     </div>
   </div>
 
-  <div class="meta-grid">
-    <div class="meta-row">
-      <span class="meta-label">Tercero:</span>
-      <span class="meta-value">${thirdName ? esc(thirdName) + (thirdDoc ? ' — ' + esc(thirdDoc) : '') : '—'}</span>
+  <!-- Ficha de Datos del Comprobante -->
+  <div class="meta-box">
+    <div class="meta-item span-2">
+      <span class="meta-label">Tercero Principal / Razón Social:</span>
+      <span class="meta-value">${esc(thirdName)}</span>
     </div>
-    <div class="meta-row">
-      <span class="meta-label">Impreso por:</span>
-      <span class="meta-value">${esc(printedByName || '—')}</span>
+    <div class="meta-item">
+      <span class="meta-label">Identificación (NIT/CC):</span>
+      <span class="meta-value mono">${esc(thirdDocFull || '—')}</span>
     </div>
-    <div class="meta-row">
-      <span class="meta-label">Fecha doc.:</span>
-      <span class="meta-value">${esc(docDate)}</span>
+    <div class="meta-item">
+      <span class="meta-label">Sede / Sucursal:</span>
+      <span class="meta-value">${esc(branchName)}</span>
     </div>
-    <div class="meta-row">
-      <span class="meta-label">Fecha impresión:</span>
-      <span class="meta-value">${printDate}</span>
+
+    <div class="meta-item">
+      <span class="meta-label">Fecha Contable:</span>
+      <span class="meta-value mono">${esc(docDate)}</span>
     </div>
-    <div class="meta-row">
-      <span class="meta-label">Fecha vencimiento:</span>
-      <span class="meta-value">${esc(docDueDate)}</span>
+    <div class="meta-item">
+      <span class="meta-label">Fecha Vencimiento:</span>
+      <span class="meta-value mono">${esc(docDueDate)}${paymentDays > 0 ? ` (${paymentDays} días)` : ''}</span>
     </div>
-    <div class="meta-row">
-      <span class="meta-label">Concepto:</span>
-      <span class="meta-value">${esc(tx.description || '—')}</span>
+    <div class="meta-item">
+      <span class="meta-label">Libro Contable:</span>
+      <span class="meta-value">${esc(bookTypeLabel)}</span>
+    </div>
+    <div class="meta-item">
+      <span class="meta-label">Estado:</span>
+      <span class="meta-value" style="text-transform:capitalize">${esc(tx.status || 'Activa')}</span>
+    </div>
+
+    <div class="meta-item span-4">
+      <span class="meta-label">Concepto General / Detalle:</span>
+      <span class="meta-value" style="font-weight:400;color:#334155">${esc(tx.description || '—')}</span>
     </div>
   </div>
 
-  <div class="section-title">Partidas contables</div>
+  <!-- Bloque Opcional de Comercio Exterior -->
+  ${importBannerHtml}
+
+  <!-- Partidas Contables -->
   <table>
     <thead>
       <tr>
@@ -4032,6 +4943,7 @@ async function printTxNotaContable(id) {
         <th class="col-code">Código</th>
         <th class="col-acct">Cuenta</th>
         <th class="col-third">Tercero</th>
+        <th class="col-cc">C. Costo</th>
         <th class="col-cross">Doc. Cruce</th>
         <th class="col-desc">Descripción</th>
         <th class="col-money">Débito</th>
@@ -4040,43 +4952,59 @@ async function printTxNotaContable(id) {
     </thead>
     <tbody>${linesHtml}</tbody>
     <tfoot>
-      <tr>
-        <td colspan="6" class="totals-label">TOTALES</td>
+      <tr class="totals-row">
+        <td colspan="7" class="totals-label">TOTALES:</td>
         <td class="totals-debit">${fmt(totalDebit)}</td>
         <td class="totals-credit">${fmt(totalCredit)}</td>
-      </tr>
-      <tr>
-        <td colspan="8" style="text-align:right;border-top:none;padding-top:3px">
-          ${Math.abs(totalDebit - totalCredit) < 0.0001
-            ? '<span class="balanced-ok">&#x2713; Comprobante cuadrado — Débito = Crédito</span>'
-            : `<span class="balanced-err">&#x26A0; Descuadre: ${fmt(Math.abs(totalDebit - totalCredit))}</span>`}
-        </td>
       </tr>
     </tfoot>
   </table>
 
-  <div class="footer-bar">
-    <div class="sig-block">
-      <div style="margin-bottom:32px;font-weight:500;color:#111">${esc(createdByName)}</div>
-      <div class="sig-line">elaborado por</div>
+  <!-- Barra de Verificación de Partida Doble -->
+  <div class="balance-status-bar ${isBalanced ? 'balance-ok' : 'balance-err'}">
+    <div>
+      ${isBalanced
+        ? '&#x2713; SUMAS IGUALES VERIFICADAS &mdash; Partida doble cuadrada correctamente ($0,00)'
+        : `&#x26A0; ATENCIÓN: COMPROBANTE DESCUADRADO &mdash; Diferencia: $ ${fmt(diff)}`}
     </div>
-    <div class="sig-block">
-      <div class="sig-line">Revisado por</div>
+    <div>Partidas registradas: ${lines.length}</div>
+  </div>
+
+  <!-- Bloque Oficial de Firmas (Responsables Contables) -->
+  <div class="signatures-grid">
+    <div class="sig-box">
+      <div class="sig-name">${esc(createdByName)}</div>
+      <div class="sig-line">ELABORÓ</div>
+      <div class="sig-role">Digitador / Responsable</div>
     </div>
-    <div class="sig-block">
-      <div class="sig-line">Aprobado por</div>
+    <div class="sig-box">
+      <div class="sig-name">&nbsp;</div>
+      <div class="sig-line">REVISÓ</div>
+      <div class="sig-role">Auxiliar / Coordinador</div>
     </div>
-    <div style="text-align:right;font-size:7.5pt;color:#9CA3AF">
-      GRAVY &mdash; Plataforma contable inteligente<br>
-      ${esc(tx.number || '')} &mdash; Fecha: ${esc(docDate)} &mdash; Vencimiento: ${esc(docDueDate)}
+    <div class="sig-box">
+      <div class="sig-name">&nbsp;</div>
+      <div class="sig-line">APROBÓ</div>
+      <div class="sig-role">Gerencia / Auditoría</div>
     </div>
+    <div class="sig-box">
+      <div class="sig-name">&nbsp;</div>
+      <div class="sig-line">CONTABILIZÓ</div>
+      <div class="sig-role">Contador Público &bull; T.P. N°</div>
+    </div>
+  </div>
+
+  <!-- Pie de Impresión Institucional -->
+  <div class="print-footer">
+    <div>GRAVY ERP &bull; Comprobante oficial de contabilidad &bull; Conforme al Art. 124 D. 2649/93 y Anexo 6 DUR 2420/15</div>
+    <div>Impreso por: ${esc(printedByName)} &bull; ${printDate}</div>
   </div>
 
   <script>window.onload = function(){ window.print(); }<\/script>
 </body>
 </html>`;
 
-    const win = window.open('', '_blank', 'width=900,height=700,scrollbars=yes');
+    const win = window.open('', '_blank', 'width=950,height=720,scrollbars=yes');
     if (!win) return showToast('El navegador bloqueó la ventana emergente. Permite ventanas emergentes para imprimir.', 'warning');
     win.document.open();
     win.document.write(html);

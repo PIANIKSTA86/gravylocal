@@ -127,9 +127,9 @@ const PAGE_TITLES: Record<string, string> = {
   'inmo-liquidacion': 'Liquidación de Arrendamiento',
   crm:               'Seguimiento de Ventas (CRM)',
   despachos:         'Gestión de Despachos y Entregas',
-  'mis-rutas':       'Mi Agenda de Rutas',
+  'mis-rutas':       'Control y Planificación de Rutas',
   'rutas-gestion':   'Control y Planificación de Rutas',
-  'rutas-vendedores':'Mi Agenda de Rutas',
+  'rutas-vendedores':'Control y Planificación de Rutas',
   niif:              'Gestión NIIF (IFRS)',
   'niif-diagnostico': 'Diagnóstico NIIF',
   'niif-politicas':   'Políticas Contables NIIF',
@@ -396,9 +396,9 @@ const PAGE_RENDERERS: Record<string, (container: HTMLElement) => void> = {
   'inmo-liquidacion': (c) => typeof (window as any).renderInmoLiquidacionPage === 'function' && (window as any).renderInmoLiquidacionPage(c),
   crm:                (c) => typeof renderCRM              === 'function' && renderCRM(c),
   despachos:          (c) => typeof renderDespachos        === 'function' && renderDespachos(c),
-  'mis-rutas':        (c) => typeof (window as any).renderMiAgendaRutas === 'function' ? (window as any).renderMiAgendaRutas(c) : (typeof (window as any).renderRutasVisitas === 'function' && (window as any).renderRutasVisitas(c)),
+  'mis-rutas':        (c) => typeof (window as any).renderControlRutasAdmin === 'function' ? (window as any).renderControlRutasAdmin(c) : (typeof (window as any).renderRutasVisitas === 'function' && (window as any).renderRutasVisitas(c)),
   'rutas-gestion':    (c) => typeof (window as any).renderControlRutasAdmin === 'function' ? (window as any).renderControlRutasAdmin(c) : (typeof (window as any).renderRutasVisitas === 'function' && (window as any).renderRutasVisitas(c)),
-  'rutas-vendedores': (c) => typeof (window as any).renderRutasVisitas === 'function' && (window as any).renderRutasVisitas(c),
+  'rutas-vendedores': (c) => typeof (window as any).renderControlRutasAdmin === 'function' ? (window as any).renderControlRutasAdmin(c) : (typeof (window as any).renderRutasVisitas === 'function' && (window as any).renderRutasVisitas(c)),
   niif:               () => navigate('niif-diagnostico'),
   'niif-diagnostico': (c) => typeof (window as any).renderNIIF === 'function' && (window as any).renderNIIF(c, 'diagnostico'),
   'niif-politicas':   (c) => typeof (window as any).renderNIIF === 'function' && (window as any).renderNIIF(c, 'politicas'),
@@ -702,6 +702,7 @@ function navigate(page: string, forceReload: boolean = false): void {
   if (page === 'niif') page = 'niif-diagnostico';
   if (page === 'inventario') page = 'inventario-stock';
   if (page === 'embalaje') page = 'inventario-pallets';
+  if (page === 'mis-rutas' || page === 'rutas-vendedores') page = 'rutas-gestion';
 
   if (!PAGE_RENDERERS[page]) { page = 'dashboard'; }
 

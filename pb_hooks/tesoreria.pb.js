@@ -223,10 +223,16 @@ onRecordCreateRequest((e) => {
         if (propId && !inAllowed && !esCuentaAnticipo && !isAntRefForProp) continue;
         if (!propId && inBlocked && !esCuentaAnticipo) continue;
 
+        let txDate = "";
         try {
           const tx = $app.findRecordById("transactions", line.get("tx_id"));
           if (tx && tx.get("status") === "voided") continue;
+          if (tx) txDate = String(tx.get("date") || "").slice(0, 10);
         } catch(_) {}
+
+        const lineDueDate = String(line.get("due_date") || "").slice(0, 10);
+        const lineCrossDate = String(line.get("cross_doc_date") || "").slice(0, 10);
+        const effectiveDate = lineCrossDate || txDate || "";
 
         // Agrupar anticipos bajo antRef para consolidar el saldo neto a favor disponible
         const docRefKey = esCuentaAnticipo ? antRef : ref;
@@ -235,8 +241,17 @@ onRecordCreateRequest((e) => {
           docsMap[key] = {
             key, cross_doc_ref: docRefKey, account_id: lineAccountId, account_code: code,
             isAnticipo: esCuentaAnticipo,
-            debit: 0, credit: 0
+            debit: 0, credit: 0,
+            firstDate: effectiveDate,
+            dueDate: lineDueDate || effectiveDate
           };
+        } else {
+          if (effectiveDate && (!docsMap[key].firstDate || effectiveDate < docsMap[key].firstDate)) {
+            docsMap[key].firstDate = effectiveDate;
+          }
+          if (lineDueDate && (!docsMap[key].dueDate || lineDueDate < docsMap[key].dueDate)) {
+            docsMap[key].dueDate = lineDueDate;
+          }
         }
         docsMap[key].debit  += Number(line.get("debit")  || 0);
         docsMap[key].credit += Number(line.get("credit") || 0);
@@ -378,18 +393,43 @@ onRecordCreateRequest((e) => {
       const cxcItems      = openItems.filter(i => !i.isAnticipo);
       const rules         = params.reglas || {};
 
+      function isPartidaInteres(item) {
+        const ref = String(item.cross_doc_ref || "").toUpperCase();
+        if (ref.endsWith("-MORA") || ref.includes("-INT-") || ref.endsWith("-INT") || ref.includes("[MORA]")) return true;
+        const code = String(item.account_code || "");
+        if (code.startsWith("13459502") || code === "134510" || code.startsWith("134510")) return true;
+        if (Array.isArray(rules.cuentasInteres) && rules.cuentasInteres.length > 0 && rules.cuentasInteres.includes(code)) return true;
+        try {
+          const acct = $app.findRecordById("accounts", item.account_id);
+          if (acct) {
+            const name = String(acct.get("name") || "").toUpperCase();
+            if (name.includes("INTERES") || name.includes("MORA")) return true;
+            const acctCode = String(acct.get("code") || "");
+            if (Array.isArray(rules.cuentasInteres) && rules.cuentasInteres.includes(acctCode)) return true;
+          }
+        } catch(_) {}
+        return false;
+      }
+
       cxcItems.sort((a, b) => {
-        if (rules.interesPrioridad && Array.isArray(rules.cuentasInteres) && rules.cuentasInteres.length > 0) {
-          try {
-            const aAcct = $app.findRecordById("accounts", a.account_id);
-            const bAcct = $app.findRecordById("accounts", b.account_id);
-            const aIsInt = rules.cuentasInteres.includes(String(aAcct.get("code")));
-            const bIsInt = rules.cuentasInteres.includes(String(bAcct.get("code")));
-            if (aIsInt && !bIsInt) return -1;
-            if (!aIsInt && bIsInt) return 1;
-          } catch(_) {}
+        const aIsInt = isPartidaInteres(a);
+        const bIsInt = isPartidaInteres(b);
+
+        // 1. Regla legal y contable: Intereses moratorios primero
+        if (rules.interesPrioridad !== false) {
+          if (aIsInt && !bIsInt) return -1;
+          if (!aIsInt && bIsInt) return 1;
         }
-        return 0;
+
+        // 2. Regla FIFO: Antigüedad de la deuda (fechas más antiguas primero)
+        const aDate = a.firstDate || a.dueDate || "";
+        const bDate = b.firstDate || b.dueDate || "";
+        if (aDate && bDate && aDate !== bDate) {
+          return aDate.localeCompare(bDate);
+        }
+
+        // 3. Desempate por referencia
+        return String(a.cross_doc_ref || "").localeCompare(String(b.cross_doc_ref || ""));
       });
 
       let anticipoDisponible = anticipoItems.reduce((s, i) => s + i.saldo, 0);

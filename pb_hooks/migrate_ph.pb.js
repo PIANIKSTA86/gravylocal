@@ -727,5 +727,27 @@ onBootstrap((e) => {
     console.log('[GRAVY-PH] Aviso al crear índices únicos PH: ' + err);
   }
 
+  // ──────────────────────────────────────────────────────────
+  // SANEAMIENTO IDEMPOTENTE: Limpiar cross_doc_ref en cuentas sin maneja_cruce para CF
+  // ──────────────────────────────────────────────────────────
+  try {
+    $app.nonconcurrentDB().newQuery(`
+      UPDATE tx_lines
+      SET cross_doc_ref = ''
+      WHERE cross_doc_ref != ''
+        AND tx_id IN (
+          SELECT t.id FROM transactions t
+          JOIN transaction_types tt ON tt.id = t.tx_type_id
+          WHERE tt.code = 'CF'
+        )
+        AND account_id IN (
+          SELECT a.id FROM accounts a
+          WHERE a.maneja_cruce = 0 OR a.maneja_cruce IS NULL OR a.maneja_cruce = 'false'
+        )
+    `).execute();
+  } catch (errClean) {
+    console.log('[GRAVY-PH] Aviso al normalizar cross_doc_ref en comprobantes CF: ' + errClean);
+  }
+
   console.log('[GRAVY-PH] Migración Copropiedades completada.');
 });

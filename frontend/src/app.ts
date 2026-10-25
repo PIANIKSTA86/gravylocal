@@ -247,9 +247,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           <i class="fas fa-file-signature"></i>
           <span>Pedidos</span>
         </button>
-        <button data-page="mis-rutas" class="mob-nav-btn ${cur === 'mis-rutas' || cur === 'rutas-vendedores' ? 'active' : ''}">
-          <i class="fas fa-route"></i>
-          <span>Rutas</span>
+        <button data-page="ventas" class="mob-nav-btn ${cur === 'ventas' ? 'active' : ''}">
+          <i class="fas fa-receipt"></i>
+          <span>Ventas</span>
         </button>
       `;
     } else if (role === 'propietario') {

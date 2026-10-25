@@ -678,7 +678,7 @@ async function renderVendedorDashboard(c: HTMLElement): Promise<void> {
           </div>
 
           <!-- KPI 4: Visitas de Hoy -->
-          <div class="stat-card cursor-pointer" onclick="navigate('mis-rutas')" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+          <div class="stat-card cursor-pointer" onclick="navigate('rutas-gestion')" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
             <div class="flex items-center justify-between mb-2">
               <span class="text-[11px] font-bold uppercase text-purple-900/75 tracking-wider">Visitas de Hoy</span>
               <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">
@@ -718,13 +718,13 @@ async function renderVendedorDashboard(c: HTMLElement): Promise<void> {
               </div>
             </button>
 
-            <button type="button" onclick="navigate('mis-rutas')" class="bg-white border border-slate-200 text-slate-900 p-4 rounded-2xl flex flex-col items-start justify-between gap-3 text-left shadow-xs hover:shadow-md hover:bg-slate-50 active:scale-95 transition-all">
+            <button type="button" onclick="navigate('rutas-gestion')" class="bg-white border border-slate-200 text-slate-900 p-4 rounded-2xl flex flex-col items-start justify-between gap-3 text-left shadow-xs hover:shadow-md hover:bg-slate-50 active:scale-95 transition-all">
               <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg">
                 <i class="fas fa-route"></i>
               </div>
               <div>
-                <span class="font-extrabold text-sm block leading-tight">Mi Agenda Hoy</span>
-                <span class="text-[11px] text-slate-500">Rutas de clientes</span>
+                <span class="font-extrabold text-sm block leading-tight">Control de Rutas</span>
+                <span class="text-[11px] text-slate-500">Supervisión y control</span>
               </div>
             </button>
 
@@ -756,7 +756,7 @@ async function renderVendedorDashboard(c: HTMLElement): Promise<void> {
                   <p class="text-[11px] text-slate-400 font-semibold">${todayVisits.length} clientes agendados para hoy</p>
                 </div>
               </div>
-              <button type="button" onclick="navigate('mis-rutas')" class="text-xs font-extrabold text-indigo-600 hover:underline">
+              <button type="button" onclick="navigate('rutas-gestion')" class="text-xs font-extrabold text-indigo-600 hover:underline">
                 Ver Todo <i class="fas fa-arrow-right ml-1"></i>
               </button>
             </div>
@@ -767,7 +767,7 @@ async function renderVendedorDashboard(c: HTMLElement): Promise<void> {
                   <i class="fas fa-calendar-check text-slate-300 text-3xl mb-2"></i>
                   <p class="text-xs font-bold text-slate-600">No tienes visitas agendadas para hoy</p>
                   <p class="text-[11px] text-slate-400 mt-0.5">Puedes crear una nueva ruta o visitar clientes directamente.</p>
-                  <button type="button" onclick="navigate('mis-rutas')" class="btn btn-outline btn-sm mt-3 text-xs">
+                  <button type="button" onclick="navigate('rutas-gestion')" class="btn btn-outline btn-sm mt-3 text-xs">
                     <i class="fas fa-plus mr-1"></i> Planear Ruta
                   </button>
                 </div>

@@ -61,82 +61,10 @@ export const OBJECTIVES: Record<string, { label: string; icon: string }> = {
 // 1. VISTA VENDEDOR: MI AGENDA DE RUTAS (100% VERTICAL TÁCTIL)
 // ═════════════════════════════════════════════════════════════════════════
 
-export async function renderMiAgendaRutas(container: HTMLElement, initialDate?: string) {
-  const esc = (window as any).esc;
-  const pb = (window as any).pb;
-  const targetDate = initialDate || new Date().toISOString().slice(0, 10);
-
-  container.innerHTML = `
-    <div class="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
-      <div class="text-center py-10 text-gray-400">
-        <i class="fas fa-spinner fa-spin text-2xl mb-2 text-teal-600 block"></i>
-        Cargando tu ruta del día...
-      </div>
-    </div>
-  `;
-
-  try {
-    const currentUserId = pb?.currentUser?.id || '';
-    const currentUserName = (pb?.currentUser?.full_name || pb?.currentUser?.name || pb?.currentUser?.email?.split('@')[0] || '').toLowerCase().trim();
-    const currentUserEmail = (pb?.currentUser?.email || '').toLowerCase().trim();
-    const currentTpId = pb?.currentUser?.third_party_id || '';
-    const isVendedor = pb?.currentUser?.role === 'vendedor';
-
-    // Buscar si el usuario actual corresponde a un tercero vendedor
-    const [allVisits, allSellers] = await Promise.all([
-      pb.listAll('vendor_visits', {
-        filter: `visit_date = "${targetDate}"`,
-        expand: 'seller_id,client_id,sales_order_id',
-        sort: 'order_seq',
-      }).catch(() => []),
-      pb.listAll('third_parties', {
-        filter: 'type="VENDEDOR" || type="EMPLEADO"',
-        fields: 'id,name,email,doc_number'
-      }).catch(() => []),
-    ]);
-
-    const matchedSeller = allSellers.find((s: any) => 
-      s.id === currentTpId || 
-      (s.email && s.email.toLowerCase().trim() === currentUserEmail) ||
-      (currentUserName && s.name && s.name.toLowerCase().includes(currentUserName)) ||
-      (currentUserName && s.name && currentUserName.includes(s.name.toLowerCase()))
-    );
-
-    const sellerIds = [currentUserId];
-    if (currentTpId) sellerIds.push(currentTpId);
-    if (matchedSeller) sellerIds.push(matchedSeller.id);
-
-    let visits: VendorVisit[] = allVisits;
-    if (isVendedor && sellerIds.length > 0) {
-      const myVisits = allVisits.filter((v: any) => {
-        if (!v.seller_id) return true; // Si no tiene vendedor asignado explícitamente, está disponible
-        if (sellerIds.includes(v.seller_id)) return true;
-        const sName = (v.expand?.seller_id?.name || '').toLowerCase();
-        if (currentUserName && sName && (sName.includes(currentUserName) || currentUserName.includes(sName))) return true;
-        return false;
-      });
-      visits = myVisits.length > 0 ? myVisits : allVisits;
-    }
-
-    // Iniciar rastreo satelital continuo en segundo plano para el vendedor
-    const activeSellerId = matchedSeller?.id || currentTpId || currentUserId;
-    if (activeSellerId) {
-      geoTracking.startTracking(activeSellerId, matchedSeller?.name || currentUserName || 'Vendedor', currentUserId);
-      const activeVisit = visits.find(v => v.status === 'EN_CURSO');
-      if (activeVisit) {
-        geoTracking.setCurrentVisit(activeVisit.id);
-      }
-    }
-
-    _renderVendorAgendaUI(container, visits, targetDate, currentUserName || 'Vendedor');
-  } catch (err: any) {
-    container.innerHTML = `
-      <div class="p-6 text-center text-red-500 bg-red-50 rounded-2xl m-4 border border-red-200">
-        <i class="fas fa-circle-exclamation text-2xl mb-2 block"></i>
-        Error al cargar la ruta: ${esc(err.message)}
-      </div>
-    `;
-  }
+export async function renderMiAgendaRutas(container: HTMLElement, _initialDate?: string) {
+  // [DEPRECADO EN WEB]: La gestión operativa y ejecución de rutas en terreno corresponde
+  // exclusivamente a la Aplicación Móvil nativa. La versión Web ofrece el centro de control y planificación.
+  return renderControlRutasAdmin(container);
 }
 
 function _renderVendorAgendaUI(container: HTMLElement, visits: VendorVisit[], activeDate: string, sellerName: string) {
@@ -692,7 +620,7 @@ export async function renderControlRutasAdmin(container: HTMLElement) {
   `;
 
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
     const [visits, sellers, clients] = await Promise.all([
       pb.listAll('vendor_visits', {
         expand: 'seller_id,client_id,sales_order_id',
@@ -931,49 +859,110 @@ function _renderAdminLiveMapTab(
     </div>
   `;
 
-  // Inicializar Leaflet tras montaje en DOM
+  let pollingInterval: any = null;
+
+  // Inicializar Leaflet tras montaje en DOM de este tab
   setTimeout(async () => {
-    const mapEl = document.getElementById('live-map-element');
+    const mapEl = contentEl.querySelector('#live-map-element') as HTMLElement;
     if (!mapEl) return;
 
-    map = L.map(mapEl, {
-      zoomControl: true,
-      scrollWheelZoom: true,
-    }).setView([4.6097, -74.0817], 12); // Bogotá default
+    if ((mapEl as any)._leaflet_id) {
+      delete (mapEl as any)._leaflet_id;
+    }
+    if (map) {
+      try { map.remove(); } catch (_) {}
+      map = null;
+    }
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19,
-    }).addTo(map);
+    try {
+      map = L.map(mapEl, {
+        zoomControl: true,
+        scrollWheelZoom: true,
+      }).setView([4.6097, -74.0817], 12); // Bogotá default
 
-    clientMarkersLayer = L.layerGroup().addTo(map);
-    historyPolylineLayer = L.layerGroup().addTo(map);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      clientMarkersLayer = L.layerGroup().addTo(map);
+      historyPolylineLayer = L.layerGroup().addTo(map);
+
+      setTimeout(() => {
+        try { map?.invalidateSize(); } catch (_) {}
+      }, 250);
+    } catch (mapErr) {
+      console.warn('[GRAVY-MAP] Advertencia inicializando Leaflet:', mapErr);
+    }
 
     // Cargar datos iniciales
     await loadInitialData();
 
     // Suscribirse a SSE de PocketBase para recibir actualizaciones telemétricas en vivo
     try {
-      pb.collection('seller_live_locations').subscribe('*', (e: any) => {
+      await pb.collection('seller_live_locations').subscribe('*', (e: any) => {
         handleRealtimeLocationEvent(e);
       });
       isSubscribed = true;
+      const statusEl = contentEl.querySelector('#live-sse-status');
+      if (statusEl) {
+        statusEl.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+        statusEl.innerHTML = '<span class="flex h-2 w-2 relative"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span></span> Telemetría en Vivo';
+      }
     } catch (err: any) {
-      console.warn('[GRAVY-MAP] No se pudo establecer suscripción SSE:', err.message);
+      console.warn('[GRAVY-MAP] No se pudo establecer suscripción SSE, operando en modo polling:', err.message);
       const statusEl = contentEl.querySelector('#live-sse-status');
       if (statusEl) {
         statusEl.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200';
         statusEl.innerHTML = '<i class="fas fa-triangle-exclamation mr-1"></i> Modo Polling';
       }
     }
-  }, 60);
+
+    // Polling preventivo de refresco cada 20 segundos
+    pollingInterval = setInterval(() => {
+      loadInitialData();
+    }, 20000);
+  }, 80);
 
   // Carga inicial de datos de PocketBase
   async function loadInitialData() {
     try {
-      const records = await pb.listAll('seller_live_locations', {
+      let records = await pb.listAll('seller_live_locations', {
         expand: 'seller_id,user_id,current_visit_id',
       }).catch(() => []);
+
+      // Si seller_live_locations está vacía o incompleta, consultar el rastro histórico del día
+      if (!records || records.length === 0) {
+        const todayLogs = await pb.listAll('seller_tracking_logs', {
+          filter: `visit_date = "${activeDate}"`,
+          sort: '-timestamp',
+          expand: 'seller_id',
+        }).catch(() => []);
+
+        if (todayLogs.length > 0) {
+          const sellerLatestMap = new Map();
+          todayLogs.forEach((log: any) => {
+            if (log.seller_id && !sellerLatestMap.has(log.seller_id)) {
+              const rawSt = (log.status || 'EN_TRANSITO').toUpperCase();
+              sellerLatestMap.set(log.seller_id, {
+                id: log.id,
+                seller_id: log.seller_id,
+                seller_name: log.expand?.seller_id?.name || 'Vendedor',
+                lat: log.lat,
+                lng: log.lng,
+                speed: log.speed || 0,
+                heading: null,
+                accuracy: 10,
+                battery_level: null,
+                status: rawSt === 'EN_RUTA' ? 'EN_TRANSITO' : (rawSt === 'EN_VISITA' ? 'EN_VISITA' : (rawSt === 'DETENIDO' ? 'DETENIDO' : 'EN_TRANSITO')),
+                last_ping: log.timestamp || log.created,
+                expand: log.expand,
+              });
+            }
+          });
+          records = Array.from(sellerLatestMap.values());
+        }
+      }
 
       liveLocationsData = records;
       updateMapMarkers();
@@ -1194,7 +1183,7 @@ function _renderAdminLiveMapTab(
         <div class="p-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2">
           <i class="fas fa-satellite text-2xl text-slate-300 block"></i>
           <p class="font-bold text-slate-600">No hay asesores transmitiendo en este momento</p>
-          <p class="text-[11px] text-slate-400">La posición se activará automáticamente cuando los vendedores ingresen a su aplicación en 'Mi Agenda de Rutas'.</p>
+          <p class="text-[11px] text-slate-400">La posición se activará automáticamente cuando los vendedores inicien ruta en su aplicación móvil.</p>
         </div>
       `;
       return;
@@ -1397,13 +1386,19 @@ function _renderAdminLiveMapTab(
 
   // Retornar función de limpieza
   return () => {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+    }
     if (isSubscribed) {
       try {
         pb.collection('seller_live_locations').unsubscribe('*');
       } catch (_) {}
     }
     if (map) {
-      map.remove();
+      try {
+        map.remove();
+      } catch (_) {}
       map = null;
     }
   };
@@ -1639,7 +1634,7 @@ function _renderAdminPlannerTab(container: HTMLElement, visits: VendorVisit[], s
 
         <div>
           <label class="block text-xs font-bold text-gray-700 mb-1">Fecha de la Ruta</label>
-          <input type="date" id="admin-plan-date" value="${new Date().toISOString().slice(0, 10)}" class="form-input text-xs w-full">
+          <input type="date" id="admin-plan-date" value="${new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())}" class="form-input text-xs w-full">
         </div>
 
         <div>
@@ -1847,12 +1842,8 @@ function _openNewVisitModal(sellers: any[], clients: any[], defaultDate: string,
   });
 }
 
-// Router general
+// Router general (Siempre conduce al Centro de Control y Planificación en la Web)
 export async function renderRutasVisitas(container: HTMLElement) {
-  const role = (window as any).pb?.currentUser?.role;
-  if (role === 'vendedor') {
-    return renderMiAgendaRutas(container);
-  }
   return renderControlRutasAdmin(container);
 }
 

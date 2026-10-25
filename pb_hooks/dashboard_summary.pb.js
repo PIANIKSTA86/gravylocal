@@ -1040,20 +1040,28 @@ routerAdd("GET", "/api/gravy/account-saldos", (e) => {
 
   // Obtener period de forma robusta y compatible en Echo/Goja
   let period = "";
+  let bookType = "";
   try {
     period = e.queryParam("period") || "";
+    bookType = e.queryParam("book_type") || e.queryParam("bookType") || "";
   } catch (_) {
     try {
       period = e.QueryParam("period") || "";
+      bookType = e.QueryParam("book_type") || e.QueryParam("bookType") || "";
     } catch (_) {
       try {
         const q = e.requestInfo().query;
-        if (q && q.period) {
-          period = Array.isArray(q.period) ? q.period[0] : q.period;
+        if (q) {
+          if (q.period) period = Array.isArray(q.period) ? q.period[0] : q.period;
+          if (q.book_type) bookType = Array.isArray(q.book_type) ? q.book_type[0] : q.book_type;
+          else if (q.bookType) bookType = Array.isArray(q.bookType) ? q.bookType[0] : q.bookType;
         }
       } catch (_) {}
     }
   }
+
+  bookType = String(bookType || "").toLowerCase().trim();
+  if (!bookType) bookType = "niif"; // Por defecto estándar oficial NIIF
 
   try {
     let sql = `
@@ -1064,6 +1072,12 @@ routerAdd("GET", "/api/gravy/account-saldos", (e) => {
       INNER JOIN transactions t ON t.id = l.tx_id
       WHERE t.status = 'active'
     `;
+
+    if (bookType === "niif") {
+      sql += " AND (t.book_type != 'local' OR t.book_type IS NULL OR t.book_type = '')";
+    } else if (bookType === "local") {
+      sql += " AND (t.book_type != 'niif' OR t.book_type IS NULL OR t.book_type = '')";
+    }
 
     const bindParams = {};
     if (period && /^\d{4}-\d{2}$/.test(period)) {

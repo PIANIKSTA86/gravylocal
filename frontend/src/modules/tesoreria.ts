@@ -1207,10 +1207,34 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     const allAnticipos = allDocs.filter(d => d.isAnticipo && d.saldo > 0.01);
     const totalAnticipo = allAnticipos.reduce((s, i) => s + i.saldo, 0);
 
-    _tesoCurrentAnticipos = allAnticipos;
+    const isInteresDoc = (item: any) => {
+      const ref = String(item.ref || "").toUpperCase();
+      if (ref.endsWith("-MORA") || ref.includes("-INT-") || ref.endsWith("-INT") || ref.includes("[MORA]")) return true;
+      const code = String(item.accountCode || "");
+      if (code.startsWith("13459502") || code === "134510" || code.startsWith("134510")) return true;
+      const name = String(item.accountName || "").toUpperCase();
+      if (name.includes("INTERES") || name.includes("MORA")) return true;
+      return false;
+    };
+
     _tesoCurrentOpenItems = allDocs
       .filter(d => !d.isAnticipo && Math.abs(d.saldo) > 0.01)
-      .sort((a, b) => a.firstDate.localeCompare(b.firstDate));
+      .sort((a, b) => {
+        // 1. Prelación legal y contable: Intereses moratorios primero
+        const aIsInt = isInteresDoc(a);
+        const bIsInt = isInteresDoc(b);
+        if (aIsInt && !bIsInt) return -1;
+        if (!aIsInt && bIsInt) return 1;
+
+        // 2. Método FIFO: Facturas y cuotas más antiguas primero
+        const aDate = a.firstDate || "";
+        const bDate = b.firstDate || "";
+        if (aDate && bDate && aDate !== bDate) {
+          return aDate.localeCompare(bDate);
+        }
+
+        return String(a.ref || "").localeCompare(String(b.ref || ""));
+      });
 
     const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
     const saldoNeto = Math.max(0, totalCartera - totalAnticipo);
@@ -1265,6 +1289,14 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
               accountId: openDoc?.accountId || ''
             });
           }
+
+          _tesoConceptRows.sort((a, b) => {
+            const aIsMora = a.conceptCode.toUpperCase().includes('MORA') || a.conceptName.toUpperCase().includes('MORA') || a.conceptName.toUpperCase().includes('INTERES');
+            const bIsMora = b.conceptCode.toUpperCase().includes('MORA') || b.conceptName.toUpperCase().includes('MORA') || b.conceptName.toUpperCase().includes('INTERES');
+            if (aIsMora && !bIsMora) return -1;
+            if (!aIsMora && bIsMora) return 1;
+            return a.period.localeCompare(b.period);
+          });
         }
       } catch (errLines) {
         console.warn('[TESO] Aviso cargando conceptos de facturas PH:', errLines);

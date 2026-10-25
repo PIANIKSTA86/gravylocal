@@ -602,6 +602,8 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
 
     // 3. Cachear cuentas contables en memoria
     const accountByCode = {};
+    const accountById = {};
+
     function getAcc(code) {
       if (!code) return null;
       if (accountByCode[code]) return accountByCode[code];
@@ -609,10 +611,38 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
         const found = $app.findFirstRecordByFilter("accounts", "code = '" + String(code).replace(/'/g, "''") + "'");
         if (found) {
           accountByCode[code] = found;
+          accountById[found.id] = found;
           return found;
         }
       } catch (_) {}
       return null;
+    }
+
+    function getAccById(accId) {
+      if (!accId) return null;
+      if (accountById[accId]) return accountById[accId];
+      try {
+        const found = $app.findRecordById("accounts", accId);
+        if (found) {
+          accountById[accId] = found;
+          accountByCode[found.getString("code")] = found;
+          return found;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    function accountHandlesCross(accId) {
+      if (!accId) return false;
+      const acc = getAccById(accId);
+      if (!acc) return false;
+      return Boolean(
+        acc.getBool("maneja_cruce") ||
+        acc.get("maneja_cruce") === true ||
+        acc.get("maneja_cruce") === 1 ||
+        acc.get("maneja_cruce") === "true" ||
+        acc.get("maneja_cruce") === "1"
+      );
     }
 
     const cxcAcc = getAcc(cxcCode);
@@ -629,9 +659,15 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
     const conceptCodeMap = {};
     for (const cr of conceptRecords) {
       const accId = cr.getString("account_id");
-      if (accId) conceptAccIdMap[cr.id] = accId;
+      if (accId) {
+        conceptAccIdMap[cr.id] = accId;
+        getAccById(accId);
+      }
       const cxcId = cr.getString("cxc_account_id");
-      if (cxcId) conceptCxcAccIdMap[cr.id] = cxcId;
+      if (cxcId) {
+        conceptCxcAccIdMap[cr.id] = cxcId;
+        getAccById(cxcId);
+      }
       const cCode = cr.getString("code");
       if (cCode) conceptCodeMap[cr.id] = String(cCode).trim().toUpperCase();
     }
@@ -700,6 +736,7 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
         const propInfo = propMap[inv.getString("property_id")] || {};
         const ownerId = propInfo.owner_id || "";
         const invDate = inv.getString("date") || `${period}-01`;
+        const invDueDate = inv.getString("due_date") || invDate;
         const invNumber = inv.getString("number");
 
         if (invTotal <= 0 || !invLines.length) {
@@ -769,7 +806,13 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
             debitLine.set("description", `Factura ${invNumber} [${cCode}] - ${period} - Unidad ${propInfo.code || ""}`);
             debitLine.set("debit", lnAmt);
             debitLine.set("credit", 0);
-            debitLine.set("cross_doc_ref", refConcepto);
+            if (accountHandlesCross(targetCxcAccId)) {
+              debitLine.set("cross_doc_ref", refConcepto);
+              debitLine.set("cross_doc_date", invDate);
+              debitLine.set("due_date", invDueDate);
+            } else {
+              debitLine.set("cross_doc_ref", "");
+            }
             txApp.save(debitLine);
           }
 
@@ -804,7 +847,13 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
             creditLine.set("description", `${ln.description || "Cuota administración"} - Factura ${invNumber}`);
             creditLine.set("debit", 0);
             creditLine.set("credit", lnAmt);
-            creditLine.set("cross_doc_ref", refConcepto);
+            if (accountHandlesCross(targetAccId)) {
+              creditLine.set("cross_doc_ref", refConcepto);
+              creditLine.set("cross_doc_date", invDate);
+              creditLine.set("due_date", invDueDate);
+            } else {
+              creditLine.set("cross_doc_ref", "");
+            }
             txApp.save(creditLine);
           }
         }

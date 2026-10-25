@@ -204,7 +204,7 @@ const pb = {
     return true;
   },
 
-  /** Compatibilidad PocketBase SDK: pb.collection(col).getList / getOne / getFullList / create / update / delete */
+  /** Compatibilidad PocketBase SDK: pb.collection(col).getList / getOne / getFullList / create / update / delete / subscribe / unsubscribe */
   collection(collectionName) {
     return {
       getList: (page = 1, perPage = 200, options = {}) => this.list(collectionName, { page, perPage, ...options }),
@@ -212,7 +212,12 @@ const pb = {
       getOne: (id, options = {}) => this.get(collectionName, id, options),
       create: (data) => this.create(collectionName, data),
       update: (id, data) => this.update(collectionName, id, data),
-      delete: (id) => this.delete(collectionName, id)
+      delete: (id) => this.delete(collectionName, id),
+      subscribe: async (_topic = '*', _callback = () => {}) => {
+        // En cliente HTTP mínimo sin SSE nativo, delega a polling
+        return () => {};
+      },
+      unsubscribe: async (_topic = '*') => {}
     };
   },
 
@@ -497,12 +502,15 @@ const API = {
     return pb.listAll('accounts', { filter, sort: 'code', expand: 'account_type_id' });
   },
 
-  async getAccountSaldos(period = '') {
+  async getAccountSaldos(period = '', bookType = 'niif') {
     // Consume el endpoint optimizado que realiza la agregación directamente en el servidor SQLite
     try {
       const url = new URL(`${pb.baseUrl}/api/gravy/account-saldos`);
       if (period) {
         url.searchParams.append('period', period);
+      }
+      if (bookType) {
+        url.searchParams.append('book_type', bookType);
       }
       const res = await fetch(url.toString(), {
         method: 'GET',
@@ -517,6 +525,11 @@ const API = {
 
     // Fallback original si por alguna razón falla el endpoint optimizado
     let filter = 'tx_id.status="active"';
+    if (bookType === 'niif') {
+      filter += ' && tx_id.book_type != "local"';
+    } else if (bookType === 'local') {
+      filter += ' && tx_id.book_type != "niif"';
+    }
     if (period && /^\d{4}-\d{2}$/.test(period)) {
       const [yearStr, monthStr] = period.split('-');
       const year = parseInt(yearStr, 10);
@@ -5748,15 +5761,26 @@ const API = {
 
   /**
    * Normaliza etiquetas de concepto para reportes de cartera.
-   * Evita separar el mismo concepto por sufijos de fecha (ej. "Interes de mora a 2026-06-01").
+   * Evita separar el mismo concepto por sufijos de fecha (ej. "Interes de mora a 2026-06-01")
+   * o notas de prorrateo/proporcional según entrega material (ej. "Cuota de administración (Proporcional 15/30 días - Entrega: ...)").
    */
   normalizePhCarteraConceptLabel(rawLabel) {
     const txt = String(rawLabel || '').trim();
     if (!txt) return 'Concepto';
 
-    // Unifica variantes de interes de mora con fecha de corte incrustada.
     const norm = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // 1. Unifica variantes de interés de mora con fecha de corte incrustada.
     if (norm.includes('interes') && norm.includes('mora')) return 'Interés de mora';
+
+    // 2. Unifica cualquier concepto de administración (incluyendo prorrateos por días/entrega)
+    if (norm.includes('administra')) {
+      return 'Cuota de administración';
+    }
+
+    // 3. Limpiar cualquier texto de prorrateo/proporcional entre paréntesis para otros conceptos
+    const cleaned = txt.replace(/\s*\((?:proporcional|prorrateo)[^)]*\)/gi, '').trim();
+    if (cleaned) return cleaned;
 
     return txt;
   },
@@ -5936,7 +5960,7 @@ const API = {
           estado = 'vencido';
         }
 
-        const rawConcepto = line.description || line.account_code || 'Concepto';
+        const rawConcepto = line.expand?.concept_id?.name || line.description || line.account_code || 'Concepto';
         const normalizedConcepto = this.normalizePhCarteraConceptLabel(rawConcepto);
         const normalizedConceptId = line.concept_id
           ? String(line.concept_id)

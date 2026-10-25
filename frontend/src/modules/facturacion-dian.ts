@@ -690,9 +690,27 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
 
   const docNotes = (invoice?.notes || tx.description || '').trim();
 
+  const invDateStr = (invoice?.date || tx.date || '').slice(0, 10);
+  const dueDateStr = invoice?.due_date ? invoice.due_date.slice(0, 10) : '';
+  let creditDays = 0;
+  if (dueDateStr && invDateStr) {
+    try {
+      const d1 = new Date(invDateStr + 'T00:00:00');
+      const d2 = new Date(dueDateStr + 'T00:00:00');
+      const diff = Math.round((d2.getTime() - d1.getTime()) / 86400000);
+      if (diff > 0) creditDays = diff;
+    } catch (_) {}
+  }
+  if (!creditDays && customer?.payment_days) {
+    const pd = parseInt(customer.payment_days, 10);
+    if (pd > 0) creditDays = pd;
+  }
+
   const invoiceData = {
     docId: tx.number,
     issueDate: tx.date,
+    dueDate: dueDateStr || tx.date,
+    creditDays: creditDays,
     issueTime: doc.sent_at ? doc.sent_at.split(' ')[1] || '12:00:00' : '12:00:00',
     cufe: doc.cufe || 'N/A',
     payableAmount: payableAmount,
@@ -721,6 +739,8 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
     companyLogo: settingsMap.get('company_logo') || '',
     cajero: cashierName,
     paymentMethod: invoice?.payment_method || 'EFECTIVO',
+    paymentForm: invoice?.payment_form || (invoice?.payment_method === 'CREDITO' ? 'CREDITO' : 'CONTADO'),
+    paymentDianCode: invoice?.payment_dian_code || '',
     received: 0,
     change: 0,
     resolutionName: resName,

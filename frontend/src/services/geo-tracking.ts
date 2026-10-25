@@ -58,50 +58,17 @@ class GeoTrackingService {
 
   /**
    * Inicia el rastreo telemétrico continuo
+   * [DEPRECADO EN WEB]: La adquisición y transmisión de telemetría GPS está delegada
+   * exclusivamente a la aplicación móvil nativa. La versión web no emite coordenadas.
    */
   public async startTracking(sellerId: string, sellerName?: string, userId?: string) {
-    if (!navigator.geolocation) {
-      this.notify(false, undefined, 'Geolocalización no soportada por este navegador');
-      return;
-    }
-
     this.sellerId = sellerId;
     this.sellerName = sellerName || 'Vendedor';
     this.userId = userId || null;
 
-    if (this.watchId !== null) {
-      return; // Ya está activo
-    }
-
-    try {
-      // Buscar si ya existe un registro de live location para reutilizar su ID
-      const pb = (window as any).pb;
-      if (pb) {
-        const existing = await pb.listAll('seller_live_locations', {
-          filter: `seller_id = "${sellerId}"`,
-          limit: 1,
-        }).catch(() => []);
-        if (existing.length > 0) {
-          this.liveRecordId = existing[0].id;
-        }
-      }
-    } catch (_) {}
-
-    this.watchId = navigator.geolocation.watchPosition(
-      (pos) => this.handlePositionUpdate(pos),
-      (err) => {
-        console.warn('[GRAVY-GEO] Error de GPS:', err.message);
-        this.notify(false, undefined, err.message);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 20000,
-        maximumAge: 10000,
-      }
-    );
-
-    this.notify(true);
-    console.log('[GRAVY-GEO] Servicio de telemetría GPS iniciado para vendedor:', sellerId);
+    console.info('[GRAVY-GEO] Emisión de GPS web desactivada por arquitectura. La telemetría en tiempo real corresponde a la App Móvil nativa.');
+    this.notify(false, undefined, 'Emisión GPS delegada exclusivamente a la App Móvil.');
+    return;
   }
 
   /**
@@ -205,62 +172,12 @@ class GeoTrackingService {
 
   /**
    * Sincroniza la ubicación actual con PocketBase
+   * [DESACTIVADO EN WEB]: La versión web opera en modo solo lectura/visualizador.
+   * La app móvil es la única responsable de escribir en seller_live_locations y seller_tracking_logs.
    */
-  private async syncLocation(t: TrackingTelemetry) {
-    if (!this.sellerId || this.isSending) return;
-    const pb = (window as any).pb;
-    if (!pb) return;
-
-    this.isSending = true;
-
-    try {
-      const payload: any = {
-        seller_id: this.sellerId,
-        user_id: this.userId || undefined,
-        seller_name: this.sellerName || 'Vendedor',
-        lat: t.lat,
-        lng: t.lng,
-        accuracy: t.accuracy,
-        speed: t.speed,
-        heading: t.heading,
-        battery_level: t.batteryLevel,
-        is_charging: t.isCharging,
-        status: t.status,
-        current_visit_id: this.currentVisitId || undefined,
-        last_ping: t.lastPing,
-      };
-
-      if (this.liveRecordId) {
-        await pb.update('seller_live_locations', this.liveRecordId, payload);
-      } else {
-        const created = await pb.create('seller_live_locations', payload);
-        this.liveRecordId = created.id;
-      }
-
-      this.lastSentLat = t.lat;
-      this.lastSentLng = t.lng;
-      this.lastSentTime = Date.now();
-
-      // Guardar en log histórico si han pasado más de 3 minutos o es el primero
-      const now = Date.now();
-      if (now - this.lastLogTime >= 180000 || this.lastLogTime === 0) {
-        const today = new Date().toISOString().slice(0, 10);
-        await pb.create('seller_tracking_logs', {
-          seller_id: this.sellerId,
-          visit_date: today,
-          lat: t.lat,
-          lng: t.lng,
-          speed: t.speed,
-          status: t.status,
-          timestamp: t.lastPing,
-        }).catch(() => {});
-        this.lastLogTime = now;
-      }
-    } catch (err: any) {
-      console.warn('[GRAVY-GEO] Error al sincronizar telemetría:', err.message);
-    } finally {
-      this.isSending = false;
-    }
+  private async syncLocation(_t: TrackingTelemetry) {
+    // No-op en la web: la telemetría corresponde exclusivamente a la app móvil.
+    return;
   }
 
   /**

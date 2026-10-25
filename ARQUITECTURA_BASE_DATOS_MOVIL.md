@@ -242,16 +242,40 @@ Colección: 'vendor_visits'
 
 --- FLUJO B: TELEMETRÍA EN VIVO DEL VENDEDOR (TRACKING GPS) ---
 Colección: 'seller_live_locations' (actualización continua en segundo plano)
-1. Cada 30-60 segundos, la app reporta su posición:
+Colección complementaria: 'seller_tracking_logs' (histórico inmutable para trazabilidad y viáticos)
+
+REGLA ARQUITECTÓNICA MANDATORIA:
+La aplicación móvil nativa es la ÚNICA entidad autorizada para emitir telemetría en tiempo real
+a 'seller_live_locations' y 'seller_tracking_logs'. La versión Web de GRAVY opera exclusivamente
+en modo visor/consumidor gerencial (suscripción SSE) y no emite coordenadas bajo ninguna circunstancia.
+
+1. Al iniciar la jornada laboral de ruta, la app móvil activa un Foreground Service con GPS satelital.
+2. Cada 30-60 segundos (o por desplazamiento >30 metros), la app reporta su posición instantánea:
    PATCH /api/collections/seller_live_locations/records/{seller_location_id}
    {
+     "seller_id": "usr_vendedor123",
+     "seller_name": "Juan Pérez",
+     "lat": 4.61025,
+     "lng": -74.08210,
+     "accuracy": 8,
+     "speed": 18.5,
+     "heading": 120,
+     "battery_level": 82,
+     "is_charging": false,
+     "status": "EN_TRANSITO",
+     "current_visit_id": "vv_visita_activa_id",
+     "last_ping": "2026-09-16 09:35:00"
+   }
+3. Cada 3 minutos (o en eventos clave de check-in), la app inserta un registro histórico inmutable:
+   POST /api/collections/seller_tracking_logs/records
+   {
+     "seller_id": "usr_vendedor123",
+     "visit_date": "2026-09-16",
      "lat": 4.61025,
      "lng": -74.08210,
      "speed": 18.5,
-     "battery_level": 82,
-     "is_charging": false,
-     "status": "EN_RUTA",
-     "last_ping": "2026-09-16 09:35:00"
+     "status": "EN_TRANSITO",
+     "timestamp": "2026-09-16 09:35:00"
    }
 
 --- FLUJO C: TOMA DE PEDIDO EN CALLE (PREVENTA / SALES ORDER) ---

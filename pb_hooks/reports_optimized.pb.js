@@ -4,7 +4,8 @@
  * GRAVY v2.0 — reports_optimized.pb.js
  * 
  * Endpoints optimizados para la generación inmediata de reportes contables
- * con filtrado uniforme por Sucursal (branch_id) y Centro de Costo (cost_center_id).
+ * con filtrado uniforme por Sucursal (branch_id), Centro de Costo (cost_center_id)
+ * y Libro Contable Multilibro (book_type: 'niif', 'local', 'all').
  */
 
 routerAdd("GET", "/api/gravy/report-balances", (c) => {
@@ -20,6 +21,16 @@ routerAdd("GET", "/api/gravy/report-balances", (c) => {
 
   let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || queryParams.costCenterId || '').trim();
   if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || '').trim();
+
+  let bookType = String((queryParams && (queryParams.book_type || queryParams.bookType)) || '').toLowerCase().trim();
+  if (Array.isArray(bookType)) bookType = String(bookType[0] || '').toLowerCase().trim();
+  if (!bookType) bookType = 'niif';
+  let bookCond = " ";
+  if (bookType === 'niif') {
+    bookCond = " AND (t.book_type != 'local' OR t.book_type IS NULL OR t.book_type = '') ";
+  } else if (bookType === 'local') {
+    bookCond = " AND (t.book_type != 'niif' OR t.book_type IS NULL OR t.book_type = '') ";
+  }
 
   if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
   if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
@@ -59,6 +70,7 @@ routerAdd("GET", "/api/gravy/report-balances", (c) => {
       sql += " AND l.cost_center_id = {:costCenterId}";
       binds.costCenterId = costCenterId;
     }
+    sql += bookCond;
 
     sql += " GROUP BY l.account_id";
 
@@ -572,6 +584,15 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
       binds.costCenterId = costCenterId;
     }
 
+    let tbBookType = String((queryParams && (queryParams.book_type || queryParams.bookType)) || '').toLowerCase().trim();
+    if (Array.isArray(tbBookType)) tbBookType = String(tbBookType[0] || '').toLowerCase().trim();
+    if (!tbBookType) tbBookType = 'niif';
+    if (tbBookType === 'niif') {
+      accountWhere += " AND (t.book_type != 'local' OR t.book_type IS NULL OR t.book_type = '') ";
+    } else if (tbBookType === 'local') {
+      accountWhere += " AND (t.book_type != 'niif' OR t.book_type IS NULL OR t.book_type = '') ";
+    }
+
     if (includeThird && includeProperty) {
       sql = `
         SELECT
@@ -751,6 +772,15 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
         AND t.date <= {:toDate}
     `;
 
+    let jnlBookType = String((queryParams && (queryParams.book_type || queryParams.bookType)) || '').toLowerCase().trim();
+    if (Array.isArray(jnlBookType)) jnlBookType = String(jnlBookType[0] || '').toLowerCase().trim();
+    if (!jnlBookType) jnlBookType = 'niif';
+    if (jnlBookType === 'niif') {
+      sql += " AND (t.book_type != 'local' OR t.book_type IS NULL OR t.book_type = '') ";
+    } else if (jnlBookType === 'local') {
+      sql += " AND (t.book_type != 'niif' OR t.book_type IS NULL OR t.book_type = '') ";
+    }
+
     const binds = { fromDate, toDate: toDate + " 23:59:59" };
     if (txTypeId) {
       sql += " AND t.tx_type_id = {:txTypeId}";
@@ -857,6 +887,15 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
       extraCond += " AND l.cost_center_id = {:costCenterId} ";
       openingBinds.costCenterId = costCenterId;
       periodBinds.costCenterId = costCenterId;
+    }
+
+    let auxBookType = String((queryParams && (queryParams.book_type || queryParams.bookType)) || '').toLowerCase().trim();
+    if (Array.isArray(auxBookType)) auxBookType = String(auxBookType[0] || '').toLowerCase().trim();
+    if (!auxBookType) auxBookType = 'niif';
+    if (auxBookType === 'niif') {
+      extraCond += " AND (t.book_type != 'local' OR t.book_type IS NULL OR t.book_type = '') ";
+    } else if (auxBookType === 'local') {
+      extraCond += " AND (t.book_type != 'niif' OR t.book_type IS NULL OR t.book_type = '') ";
     }
 
     // ── Filtro por Unidad Habitacional (propertyId) ──────────────────
@@ -1869,6 +1908,15 @@ routerAdd("GET", "/api/gravy/report-cost-centers", (c) => {
     if (costCenterId) {
       sql += " AND l.cost_center_id = {:costCenterId}";
       binds.costCenterId = costCenterId;
+    }
+
+    let ccBookType = String((queryParams && (queryParams.book_type || queryParams.bookType)) || '').toLowerCase().trim();
+    if (Array.isArray(ccBookType)) ccBookType = String(ccBookType[0] || '').toLowerCase().trim();
+    if (!ccBookType) ccBookType = 'niif';
+    if (ccBookType === 'niif') {
+      sql += " AND (t.book_type != 'local' OR t.book_type IS NULL OR t.book_type = '') ";
+    } else if (ccBookType === 'local') {
+      sql += " AND (t.book_type != 'niif' OR t.book_type IS NULL OR t.book_type = '') ";
     }
 
     sql += " GROUP BY l.cost_center_id";

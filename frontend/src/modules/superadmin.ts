@@ -70,6 +70,7 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
       <!-- Navigation Tabs -->
       <div style="display:flex;gap:4px;margin-bottom:24px;border-bottom:2px solid #E5E7EB;padding-bottom:0">
         <button class="sa-tab active" data-tab="empresas" style="padding:12px 20px;font-weight:700;font-size:14px;color:#2446B8;border-bottom:3px solid #2446B8;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;cursor:pointer"><i class="fas fa-building mr-2"></i>Empresas</button>
+        <button class="sa-tab" data-tab="sesiones" style="padding:12px 20px;font-weight:600;font-size:14px;color:#6B7280;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;cursor:pointer"><i class="fas fa-users-viewfinder mr-2"></i>Usuarios Activos <span id="sa-tab-online-badge" style="display:inline-block;padding:2px 7px;font-size:11px;font-weight:800;border-radius:20px;background:#ECFDF5;color:#10B981;margin-left:6px">0</span></button>
         <button class="sa-tab" data-tab="licencias" style="padding:12px 20px;font-weight:600;font-size:14px;color:#6B7280;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;cursor:pointer"><i class="fas fa-key mr-2"></i>Licencias</button>
         <button class="sa-tab" data-tab="sistema" style="padding:12px 20px;font-weight:600;font-size:14px;color:#6B7280;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;cursor:pointer"><i class="fas fa-server mr-2"></i>Sistema</button>
       </div>
@@ -408,6 +409,16 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
           </div>
         </div>
       </div>
+
+      <!-- Tab 4: Usuarios Activos en Tiempo Real -->
+      <div id="sa-tab-sesiones" class="sa-tab-content" style="display:none">
+        <div id="sa-active-sessions-root">
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:32px;text-align:center;color:#6B7280">
+            <i class="fas fa-spinner fa-spin text-2xl text-purple-600 mb-2 block"></i>
+            Cargando sesiones activas en tiempo real...
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -431,6 +442,13 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
       });
       const tabContent = container.querySelector(`#sa-tab-${target}`);
       if (tabContent) (tabContent as HTMLElement).style.display = 'block';
+
+      if (target === 'sesiones') {
+        _loadSAActiveSessions();
+        _startSASessionsAutoRefresh();
+      } else {
+        _stopSASessionsAutoRefresh();
+      }
     });
   });
 
@@ -438,7 +456,8 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
   await Promise.all([
     _loadSACompany(),
     _loadSALicenses(),
-    _loadSADbStats()
+    _loadSADbStats(),
+    _loadSAActiveSessions()
   ]);
 }
 
@@ -949,3 +968,465 @@ async function saToggleLicense(moduleKey: string, enabled: boolean, targetCompan
     btn.innerHTML = 'Eliminar Definitivamente';
   }
 };
+
+// ==========================================
+// 4. MONITOREO DE USUARIOS ACTIVOS EN TIEMPO REAL
+// ==========================================
+
+let _saActiveSessionsInterval: any = null;
+let _saSessionsCache: any[] = [];
+
+function _startSASessionsAutoRefresh() {
+  _stopSASessionsAutoRefresh();
+  const toggle = document.getElementById('sa-autorefresh-toggle') as HTMLInputElement;
+  if (!toggle || toggle.checked) {
+    _saActiveSessionsInterval = setInterval(() => {
+      const activeTab = document.querySelector('.sa-tab.active') as HTMLElement;
+      if (activeTab && activeTab.dataset.tab === 'sesiones') {
+        _loadSAActiveSessions(true);
+      } else {
+        _stopSASessionsAutoRefresh();
+      }
+    }, 15000);
+  }
+}
+
+function _stopSASessionsAutoRefresh() {
+  if (_saActiveSessionsInterval) {
+    clearInterval(_saActiveSessionsInterval);
+    _saActiveSessionsInterval = null;
+  }
+}
+
+async function _loadSAActiveSessions(silent: boolean = false) {
+  const root = document.getElementById('sa-active-sessions-root');
+  if (!root) return;
+
+  if (!silent && !root.querySelector('#sa-sessions-table-body')) {
+    root.innerHTML = `
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:32px;text-align:center;color:#6B7280">
+        <i class="fas fa-spinner fa-spin text-2xl text-purple-600 mb-2 block"></i>
+        Obteniendo usuarios y sesiones activas en tiempo real...
+      </div>
+    `;
+  }
+
+  const esc = (window as any).esc || ((s: any) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
+  const pb = (window as any).pb;
+
+  try {
+    const res = await fetch(`${pb.baseUrl}/api/superadmin/active-sessions`, {
+      headers: pb.headers()
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.message || 'Error consultando sesiones activas');
+    }
+
+    const data = await res.json();
+    const summary = data.summary || { total_users: 0, online_count: 0, idle_count: 0, offline_count: 0, server_time: '' };
+    _saSessionsCache = data.users || [];
+
+    // Actualizar badge en la pestaña
+    const badgeEl = document.getElementById('sa-tab-online-badge');
+    if (badgeEl) {
+      badgeEl.textContent = String(summary.online_count || 0);
+      badgeEl.style.backgroundColor = summary.online_count > 0 ? '#ECFDF5' : '#F3F4F6';
+      badgeEl.style.color = summary.online_count > 0 ? '#10B981' : '#6B7280';
+    }
+
+    // Renderizar estructura completa si es primera carga o refresco general
+    const existingTable = document.getElementById('sa-sessions-table-body');
+    if (!existingTable) {
+      root.innerHTML = `
+        <div class="space-y-6">
+          
+          <!-- Banner Header con KPIs -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            <!-- KPI 1: En Línea -->
+            <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);position:relative;overflow:hidden">
+              <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#10B981"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:#065F46;letter-spacing:0.5px">En Línea (Tiempo Real)</span>
+                <span style="position:relative;display:flex;width:10px;height:10px">
+                  <span style="animation:ping 1s cubic-bezier(0,0,0.2,1) infinite;position:absolute;display:inline-flex;height:100%;width:100%;border-radius:9999px;background:#34D399;opacity:0.75"></span>
+                  <span style="position:relative;display:inline-flex;border-radius:9999px;width:10px;height:10px;background:#10B981"></span>
+                </span>
+              </div>
+              <div id="sa-kpi-online" style="font-size:28px;font-weight:900;color:#111827;font-family:monospace">${summary.online_count}</div>
+              <div style="font-size:11px;color:#059669;font-weight:600;margin-top:4px">Latido activo hace &lt;3 min</div>
+            </div>
+
+            <!-- KPI 2: Inactivos Recientes -->
+            <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);position:relative;overflow:hidden">
+              <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#F59E0B"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400E;letter-spacing:0.5px">En Espera / Inactivos</span>
+                <div style="width:24px;height:24px;border-radius:8px;background:#FEF3C7;color:#D97706;display:flex;align-items:center;justify-content:center;font-size:11px">
+                  <i class="fas fa-hourglass-half"></i>
+                </div>
+              </div>
+              <div id="sa-kpi-idle" style="font-size:28px;font-weight:900;color:#111827;font-family:monospace">${summary.idle_count}</div>
+              <div style="font-size:11px;color:#D97706;font-weight:600;margin-top:4px">Sin actividad entre 3 y 15 min</div>
+            </div>
+
+            <!-- KPI 3: Desconectados -->
+            <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);position:relative;overflow:hidden">
+              <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#9CA3AF"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:#4B5563;letter-spacing:0.5px">Desconectados</span>
+                <div style="width:24px;height:24px;border-radius:8px;background:#F3F4F6;color:#6B7280;display:flex;align-items:center;justify-content:center;font-size:11px">
+                  <i class="fas fa-power-off"></i>
+                </div>
+              </div>
+              <div id="sa-kpi-offline" style="font-size:28px;font-weight:900;color:#111827;font-family:monospace">${summary.offline_count}</div>
+              <div style="font-size:11px;color:#6B7280;font-weight:600;margin-top:4px">Sin sesión activa reciente</div>
+            </div>
+
+            <!-- KPI 4: Total Cuentas -->
+            <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.05);position:relative;overflow:hidden">
+              <div style="position:absolute;top:0;left:0;right:0;height:4px;background:#7C3AED"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:#5B21B6;letter-spacing:0.5px">Total Usuarios</span>
+                <div style="width:24px;height:24px;border-radius:8px;background:#F5F3FF;color:#7C3AED;display:flex;align-items:center;justify-content:center;font-size:11px">
+                  <i class="fas fa-users"></i>
+                </div>
+              </div>
+              <div id="sa-kpi-total" style="font-size:28px;font-weight:900;color:#111827;font-family:monospace">${summary.total_users}</div>
+              <div style="font-size:11px;color:#6D28D9;font-weight:600;margin-top:4px">Cuentas activas en esta instancia</div>
+            </div>
+
+          </div>
+
+          <!-- Barra de Filtros y Control -->
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:16px 20px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+            
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;flex:1">
+              <!-- Búsqueda en Vivo -->
+              <div style="position:relative;min-width:240px;flex:1;max-width:320px">
+                <i class="fas fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#9CA3AF;font-size:12px"></i>
+                <input type="text" id="sa-sessions-search" class="form-input" placeholder="Buscar por nombre, email o IP..." style="padding-left:32px;font-size:12px;border-radius:10px;width:100%">
+              </div>
+
+              <!-- Filtro por Estado -->
+              <select id="sa-sessions-filter-status" class="form-input" style="font-size:12px;border-radius:10px;padding:7px 12px;font-weight:600;color:#374151">
+                <option value="ALL">Todos los Estados</option>
+                <option value="online">🟢 Solo En Línea</option>
+                <option value="idle">🟡 Solo Inactivos</option>
+                <option value="offline">⚪ Solo Desconectados</option>
+              </select>
+
+              <!-- Filtro por Rol -->
+              <select id="sa-sessions-filter-role" class="form-input" style="font-size:12px;border-radius:10px;padding:7px 12px;font-weight:600;color:#374151">
+                <option value="ALL">Todos los Roles</option>
+                <option value="superadmin">SuperAdmin</option>
+                <option value="administrador">Administrador</option>
+                <option value="contador">Contador</option>
+                <option value="auxiliar">Auxiliar</option>
+                <option value="vendedor">Vendedor</option>
+                <option value="cajero">Cajero</option>
+                <option value="auditor">Auditor</option>
+              </select>
+            </div>
+
+            <!-- Controles de Refresco -->
+            <div style="display:flex;align-items:center;gap:14px">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#4B5563;cursor:pointer;user-select:none">
+                <input type="checkbox" id="sa-autorefresh-toggle" checked style="accent-color:#10B981;cursor:pointer">
+                <span>Auto-refresco (15s)</span>
+              </label>
+
+              <button class="btn btn-secondary btn-sm" id="btn-sa-refresh-sessions" style="border-radius:10px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px" onclick="_loadSAActiveSessions(false)">
+                <i class="fas fa-rotate-right"></i> Refrescar
+              </button>
+            </div>
+
+          </div>
+
+          <!-- Tabla de Sesiones Activas -->
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+            <div class="table-responsive" style="max-height:600px;overflow-y:auto">
+              <table style="width:100%;border-collapse:collapse;text-align:left;font-size:13px">
+                <thead>
+                  <tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB;color:#4B5563;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px">
+                    <th style="padding:14px 18px">Usuario</th>
+                    <th style="padding:14px 18px">Rol en Sistema</th>
+                    <th style="padding:14px 18px">Estado de Sesión</th>
+                    <th style="padding:14px 18px">Sede / Sucursal</th>
+                    <th style="padding:14px 18px">Dirección IP</th>
+                    <th style="padding:14px 18px">Última Actividad</th>
+                    <th style="padding:14px 18px;text-align:right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="sa-sessions-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      `;
+
+      // Listeners de filtros
+      const searchInp = document.getElementById('sa-sessions-search') as HTMLInputElement;
+      const statusSel = document.getElementById('sa-sessions-filter-status') as HTMLSelectElement;
+      const roleSel = document.getElementById('sa-sessions-filter-role') as HTMLSelectElement;
+      const autoToggle = document.getElementById('sa-autorefresh-toggle') as HTMLInputElement;
+
+      const triggerFilter = () => {
+        _filterAndRenderSASessions(searchInp?.value || '', statusSel?.value || 'ALL', roleSel?.value || 'ALL');
+      };
+
+      searchInp?.addEventListener('input', triggerFilter);
+      statusSel?.addEventListener('change', triggerFilter);
+      roleSel?.addEventListener('change', triggerFilter);
+      autoToggle?.addEventListener('change', () => {
+        if (autoToggle.checked) {
+          _startSASessionsAutoRefresh();
+        } else {
+          _stopSASessionsAutoRefresh();
+        }
+      });
+    } else {
+      // Actualizar contadores si la tabla ya existía
+      const kpiOnline = document.getElementById('sa-kpi-online');
+      const kpiIdle = document.getElementById('sa-kpi-idle');
+      const kpiOffline = document.getElementById('sa-kpi-offline');
+      const kpiTotal = document.getElementById('sa-kpi-total');
+      if (kpiOnline) kpiOnline.textContent = String(summary.online_count || 0);
+      if (kpiIdle) kpiIdle.textContent = String(summary.idle_count || 0);
+      if (kpiOffline) kpiOffline.textContent = String(summary.offline_count || 0);
+      if (kpiTotal) kpiTotal.textContent = String(summary.total_users || 0);
+    }
+
+    // Renderizar datos en la tabla con los filtros actuales
+    const sInp = (document.getElementById('sa-sessions-search') as HTMLInputElement)?.value || '';
+    const stSel = (document.getElementById('sa-sessions-filter-status') as HTMLSelectElement)?.value || 'ALL';
+    const rSel = (document.getElementById('sa-sessions-filter-role') as HTMLSelectElement)?.value || 'ALL';
+    _filterAndRenderSASessions(sInp, stSel, rSel);
+
+  } catch (err: any) {
+    console.error('[GRAVY SuperAdmin] Error cargando sesiones:', err);
+    if (!silent) {
+      root.innerHTML = `
+        <div style="background:#FEF2F2;border:1px solid #FEE2E2;border-radius:16px;padding:24px;text-align:center;color:#991B1B">
+          <i class="fas fa-circle-exclamation text-2xl mb-2 block text-red-500"></i>
+          <h4 style="font-size:14px;font-weight:700;margin-bottom:4px">Error al consultar sesiones en tiempo real</h4>
+          <p style="font-size:12px;color:#B91C1C;margin-bottom:12px">${esc(err.message)}</p>
+          <button class="btn btn-outline" style="border-radius:10px;font-size:12px" onclick="_loadSAActiveSessions(false)">Reintentar</button>
+        </div>
+      `;
+    }
+  }
+}
+
+function _filterAndRenderSASessions(search: string, statusFilter: string, roleFilter: string) {
+  const tbody = document.getElementById('sa-sessions-table-body');
+  if (!tbody) return;
+
+  const esc = (window as any).esc || ((s: any) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'));
+  const sTerm = (search || '').toLowerCase().trim();
+
+  let filtered = _saSessionsCache.filter(u => {
+    if (statusFilter !== 'ALL' && u.status !== statusFilter) return false;
+    if (roleFilter !== 'ALL') {
+      const uRoles = Array.isArray(u.roles) ? u.roles : [u.roles];
+      if (!uRoles.includes(roleFilter)) return false;
+    }
+    if (sTerm) {
+      const matchName = (u.full_name || '').toLowerCase().includes(sTerm);
+      const matchEmail = (u.email || '').toLowerCase().includes(sTerm);
+      const matchIp = (u.last_login_ip || '').toLowerCase().includes(sTerm);
+      if (!matchName && !matchEmail && !matchIp) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="padding:48px 20px;text-align:center;color:#9CA3AF">
+          <i class="fas fa-users-slash text-3xl mb-2 text-slate-300 block"></i>
+          <p style="font-weight:700;color:#6B7280;margin-bottom:2px">No se encontraron usuarios coincidentes</p>
+          <p style="font-size:11px;color:#9CA3AF">Prueba cambiando los filtros de búsqueda o estado.</p>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  const roleColorMap: Record<string, { bg: string; text: string; border: string }> = {
+    superadmin:    { bg: '#F5F3FF', text: '#6D28D9', border: '#DDD6FE' },
+    administrador: { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+    admin:         { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+    contador:      { bg: '#ECFDF5', text: '#047857', border: '#A7F3D0' },
+    auxiliar:      { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
+    cajero:        { bg: '#EEF2FF', text: '#4338CA', border: '#C7D2FE' },
+    vendedor:      { bg: '#F0FDFA', text: '#0F766E', border: '#99F6E4' },
+    auditor:       { bg: '#F8FAFC', text: '#475569', border: '#CBD5E1' },
+    propietario:   { bg: '#FAF5FF', text: '#7E22CE', border: '#E9D5FF' },
+  };
+
+  tbody.innerHTML = filtered.map(u => {
+    // Formato de tiempo relativo
+    let timeAgoText = '';
+    if (u.seconds_ago !== null && u.seconds_ago !== undefined) {
+      if (u.seconds_ago < 60) timeAgoText = `Hace ${u.seconds_ago} seg`;
+      else if (u.seconds_ago < 3600) timeAgoText = `Hace ${Math.floor(u.seconds_ago / 60)} min`;
+      else if (u.seconds_ago < 86400) timeAgoText = `Hace ${Math.floor(u.seconds_ago / 3600)} h`;
+      else timeAgoText = `Hace ${Math.floor(u.seconds_ago / 86400)} d`;
+    }
+
+    // Badge de estado
+    let statusBadgeHtml = '';
+    if (u.status === 'online') {
+      statusBadgeHtml = `
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;border-radius:20px;font-size:11px;font-weight:800">
+          <span style="position:relative;display:flex;width:8px;height:8px">
+            <span style="animation:ping 1s cubic-bezier(0,0,0.2,1) infinite;position:absolute;display:inline-flex;height:100%;width:100%;border-radius:9999px;background:#34D399;opacity:0.75"></span>
+            <span style="position:relative;display:inline-flex;border-radius:9999px;width:8px;height:8px;background:#10B981"></span>
+          </span>
+          En Línea ${timeAgoText ? `<span style="opacity:0.8;font-weight:600">(${timeAgoText})</span>` : ''}
+        </span>
+      `;
+    } else if (u.status === 'idle') {
+      statusBadgeHtml = `
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;border-radius:20px;font-size:11px;font-weight:700">
+          <span style="width:8px;height:8px;border-radius:9999px;background:#F59E0B"></span>
+          Inactivo ${timeAgoText ? `<span style="opacity:0.8;font-weight:600">(${timeAgoText})</span>` : ''}
+        </span>
+      `;
+    } else {
+      statusBadgeHtml = `
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:#F3F4F6;color:#4B5563;border:1px solid #E5E7EB;border-radius:20px;font-size:11px;font-weight:600">
+          <span style="width:8px;height:8px;border-radius:9999px;background:#9CA3AF"></span>
+          Desconectado
+        </span>
+      `;
+    }
+
+    // Badges de roles
+    const uRoles = Array.isArray(u.roles) ? u.roles : (u.roles ? [u.roles] : ['viewer']);
+    const rolesHtml = uRoles.map((r: string) => {
+      const rc = roleColorMap[r] || { bg: '#F3F4F6', text: '#4B5563', border: '#E5E7EB' };
+      return `<span style="display:inline-block;padding:2px 8px;background:${rc.bg};color:${rc.text};border:1px solid ${rc.border};border-radius:8px;font-size:10px;font-weight:800;text-transform:uppercase">${esc(r)}</span>`;
+    }).join(' ');
+
+    // Iniciales
+    const initials = (u.full_name || u.name || u.email || 'U').split(' ').slice(0, 2).map((w: string) => w[0]?.toUpperCase()).join('');
+
+    // IP limpia
+    let cleanIp = u.last_login_ip || 'No registrada';
+    if (cleanIp === '0000:0000:0000:0000:0000:0000:0000:0001' || cleanIp === '::1' || cleanIp === '127.0.0.1') {
+      cleanIp = 'Servidor Local (LAN)';
+    }
+
+    return `
+      <tr style="border-bottom:1px solid #F3F4F6;transition:background 0.15s" onmouseover="this.style.background='#F9FAFB'" onmouseout="this.style.background='white'">
+        
+        <!-- Usuario -->
+        <td style="padding:14px 18px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#7C3AED,#2446B8);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;box-shadow:0 2px 4px rgba(36,70,184,0.15);flex-shrink:0">
+              ${initials}
+            </div>
+            <div style="min-width:0">
+              <div style="font-weight:700;color:#111827;display:flex;align-items:center;gap:6px">
+                <span class="truncate">${esc(u.full_name)}</span>
+                ${u.is_current_user ? '<span style="font-size:9px;font-weight:800;background:#EDE9FE;color:#7C3AED;padding:1px 6px;border-radius:6px">TÚ</span>' : ''}
+              </div>
+              <div style="font-size:11px;color:#6B7280;font-family:monospace" class="truncate">${esc(u.email)}</div>
+            </div>
+          </div>
+        </td>
+
+        <!-- Rol -->
+        <td style="padding:14px 18px">
+          <div style="display:flex;flex-wrap:wrap;gap:4px">
+            ${rolesHtml}
+          </div>
+        </td>
+
+        <!-- Estado -->
+        <td style="padding:14px 18px">
+          ${statusBadgeHtml}
+        </td>
+
+        <!-- Sede / Sucursal -->
+        <td style="padding:14px 18px">
+          <div style="font-size:12px;font-weight:600;color:#374151;display:flex;align-items:center;gap:6px">
+            <i class="fas fa-building text-slate-400 text-xs"></i>
+            <span>${esc(u.branch_name)}</span>
+          </div>
+        </td>
+
+        <!-- IP -->
+        <td style="padding:14px 18px">
+          <div style="font-size:11px;font-family:monospace;font-weight:600;color:#4B5563;display:flex;align-items:center;gap:6px">
+            <i class="fas fa-network-wired text-slate-400 text-xs"></i>
+            <span>${esc(cleanIp)}</span>
+          </div>
+        </td>
+
+        <!-- Última Actividad / Ingreso -->
+        <td style="padding:14px 18px">
+          <div style="font-size:11px;color:#111827;font-weight:600">
+            ${u.last_activity_at ? `<i class="fas fa-wave-square text-emerald-500 mr-1"></i>${esc(u.last_activity_at.slice(11, 19))}` : '<span style="color:#9CA3AF">--:--:--</span>'}
+          </div>
+          <div style="font-size:10px;color:#6B7280">
+            Ingreso: ${u.last_login_at ? esc(u.last_login_at.slice(0, 16)) : 'Nunca'}
+          </div>
+        </td>
+
+        <!-- Acciones -->
+        <td style="padding:14px 18px;text-align:right">
+          ${u.is_current_user ? `
+            <span style="font-size:11px;font-weight:700;color:#7C3AED;background:#F5F3FF;padding:4px 10px;border-radius:10px;border:1px solid #DDD6FE;display:inline-block">
+              <i class="fas fa-shield mr-1"></i>Sesión en Uso
+            </span>
+          ` : (u.status === 'online' || u.status === 'idle') ? `
+            <button class="btn btn-sm" style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5;border-radius:10px;font-size:11px;font-weight:700;padding:5px 12px;transition:all 0.15s;cursor:pointer" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background='#FEF2F2'" onclick="terminateUserSession('${u.id}', '${esc(u.full_name)}')">
+              <i class="fas fa-right-from-bracket mr-1"></i> Forzar Cierre
+            </button>
+          ` : `
+            <span style="font-size:11px;color:#9CA3AF;font-style:italic">Inactivo</span>
+          `}
+        </td>
+
+      </tr>
+    `;
+  }).join('');
+}
+
+async function terminateUserSession(userId: string, userName: string) {
+  if (!confirm(`¿Estás seguro de cerrar forzosamente la sesión de "${userName}"?\n\nEl usuario será desconectado inmediatamente en su próximo latido o intento de acción.`)) {
+    return;
+  }
+
+  const pb = (window as any).pb;
+  const showToast = (window as any).showToast || alert;
+
+  try {
+    const res = await fetch(`${pb.baseUrl}/api/superadmin/terminate-session`, {
+      method: 'POST',
+      headers: pb.headers(),
+      body: JSON.stringify({ user_id: userId })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || 'Error al cerrar sesión');
+    }
+
+    showToast(`Sesión de "${userName}" cerrada forzosamente con éxito.`, 'success');
+    _loadSAActiveSessions(false);
+  } catch (err: any) {
+    showToast(`Error al forzar desconexión: ${err.message}`, 'error');
+  }
+}
+
+// Exponer globalmente
+(window as any).terminateUserSession = terminateUserSession;
+(window as any)._loadSAActiveSessions = _loadSAActiveSessions;
+

@@ -168,7 +168,7 @@ function applyModuleVisibility(): void {
 
   // Páginas permitidas por rol restringido
   const CAJERO_PAGES = new Set(['pos', 'dashboard']);
-  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'comisiones', 'crm', 'tienda-virtual', 'spa', 'spa-belleza', 'mis-reservas', 'productos', 'mis-rutas', 'rutas-vendedores', 'dashboard']);
+  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'comisiones', 'crm', 'tienda-virtual', 'spa', 'spa-belleza', 'mis-reservas', 'productos', 'rutas-gestion', 'dashboard']);
   const PROPIETARIO_PAGES = new Set(['copro-reservas', 'copro-pqrs', 'dashboard']);
 
   $$('#nav-menu .nav-item').forEach((item: any) => {

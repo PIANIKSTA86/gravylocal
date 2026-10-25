@@ -1086,9 +1086,14 @@ async function renderPhCartera(c) {
         <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
           <div class="px-5 py-3 border-b flex items-center justify-between gap-3" style="border-color:#F0F0F0">
             <span class="font-bold text-sm" style="color:#0D2137">Saldos CxC PH por Unidad y Concepto</span>
-            <button class="btn btn-outline btn-sm" id="ph-cartera-pdf-bal" disabled>
-              <i class="fas fa-file-pdf"></i> PDF
-            </button>
+            <div class="flex items-center gap-2">
+              <button class="btn btn-outline btn-sm" id="ph-cartera-excel-bal" disabled title="Exportar a Excel">
+                <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Excel
+              </button>
+              <button class="btn btn-outline btn-sm" id="ph-cartera-pdf-bal" disabled title="Exportar a PDF">
+                <i class="fas fa-file-pdf mr-1 text-rose-600"></i> PDF
+              </button>
+            </div>
           </div>
           <div id="ph-cartera-bal-meta" class="p-4 border-b text-sm" style="border-color:#F3F4F6;color:#6B7280">
             <i class="fas fa-calendar-days mr-1"></i>Selecciona filtros y pulsa Actualizar.
@@ -1120,9 +1125,14 @@ async function renderPhCartera(c) {
         <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
           <div class="px-5 py-3 border-b flex items-center justify-between gap-3" style="border-color:#F0F0F0">
             <span class="font-bold text-sm" style="color:#0D2137">Cartera por Edades PH por Concepto</span>
-            <button class="btn btn-outline btn-sm" id="ph-cartera-pdf-aging" disabled>
-              <i class="fas fa-file-pdf"></i> PDF
-            </button>
+            <div class="flex items-center gap-2">
+              <button class="btn btn-outline btn-sm" id="ph-cartera-excel-aging" disabled title="Exportar a Excel">
+                <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Excel
+              </button>
+              <button class="btn btn-outline btn-sm" id="ph-cartera-pdf-aging" disabled title="Exportar a PDF">
+                <i class="fas fa-file-pdf mr-1 text-rose-600"></i> PDF
+              </button>
+            </div>
           </div>
           <div id="ph-cartera-aging-meta" class="p-4 border-b text-sm" style="border-color:#F3F4F6;color:#6B7280">
             <i class="fas fa-hourglass-half mr-1"></i>Distribución por vencer / 0-30 / 31-60 / 61-90 / más de 90 días.
@@ -1267,6 +1277,88 @@ async function renderPhCartera(c) {
       }
     }
 
+    async function exportPhCarteraBalExcel() {
+      if (!lastBalPdf?.rows?.length) {
+        showToast('No hay datos para exportar en Saldos CxC.', 'warning');
+        return;
+      }
+      const XLSX = (window as any).XLSX;
+      if (!XLSX) {
+        showToast('La librería XLSX no se encuentra disponible.', 'error');
+        return;
+      }
+      try {
+        const unitSel = document.getElementById('ph-cartera-unit-filter') as HTMLSelectElement;
+        const unitLabel = unitSel?.selectedOptions?.[0]?.textContent?.trim() || 'Todas las unidades';
+        const toDate = (document.getElementById('ph-cartera-to') as HTMLInputElement)?.value || new Date().toISOString().slice(0, 10);
+        const companyName = String(sessionStorage.getItem('company_name') || 'COPROPIEDAD').trim();
+
+        const aoa: any[][] = [];
+        aoa.push([companyName.toUpperCase()]);
+        aoa.push(['SALDOS CUENTAS POR COBRAR PH POR CONCEPTO']);
+        aoa.push([`Fecha de Corte: ${toDate}`, `Unidad: ${unitLabel}`, `Generado: ${new Date().toLocaleString('es-CO')}`]);
+        aoa.push([]);
+
+        // Encabezados
+        aoa.push([
+          'Unidad',
+          'Propietario / Tercero',
+          'Documento',
+          ...lastBalPdf.concepts.map(c => c.label),
+          'Total Facturado',
+          'Anticipos (Cuenta 28)',
+          'Saldo Neto Real',
+        ]);
+
+        lastBalPdf.rows.forEach(r => {
+          const saldoAnticipo = Number(r.saldoAnticipo || 0);
+          const totalGeneral = Number(r.totalGeneral || 0);
+          const saldoNeto = Math.max(0, totalGeneral - saldoAnticipo);
+          aoa.push([
+            r.unidad,
+            r.ownerName || '—',
+            r.ownerDoc || '—',
+            ...lastBalPdf.concepts.map(c => Number(r.byConcept[c.id] || 0)),
+            totalGeneral,
+            saldoAnticipo,
+            saldoNeto,
+          ]);
+        });
+
+        // Fila Total General
+        let grandAnticipos = 0;
+        lastBalPdf.rows.forEach(r => { grandAnticipos += Number(r.saldoAnticipo || 0); });
+        const grandNeto = Math.max(0, Number(lastBalPdf.grandTotal || 0) - grandAnticipos);
+        aoa.push([
+          'TOTAL GENERAL',
+          '',
+          '',
+          ...lastBalPdf.concepts.map(c => Number(lastBalPdf.totalByConcept[c.id] || 0)),
+          Number(lastBalPdf.grandTotal || 0),
+          grandAnticipos,
+          grandNeto,
+        ]);
+
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols'] = [
+          { wch: 20 },
+          { wch: 30 },
+          { wch: 15 },
+          ...lastBalPdf.concepts.map(() => ({ wch: 18 })),
+          { wch: 18 },
+          { wch: 18 },
+          { wch: 18 },
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Saldos CxC PH');
+        XLSX.writeFile(wb, `ph_saldos_cxc_${getPhPdfDateStamp()}.xlsx`);
+        showToast('Saldos CxC exportados exitosamente a Excel.', 'success');
+      } catch (err: any) {
+        showToast(`Error al exportar Excel: ${err.message}`, 'error');
+      }
+    }
+
     async function exportPhCarteraAgingPdf() {
       if (!lastAgingPdf?.rows?.length) {
         showToast('No hay datos para exportar en Cartera por Edades.', 'warning');
@@ -1402,6 +1494,131 @@ async function renderPhCartera(c) {
       }
     }
 
+    async function exportPhCarteraAgingExcel() {
+      if (!lastAgingPdf?.rows?.length) {
+        showToast('No hay datos para exportar en Cartera por Edades.', 'warning');
+        return;
+      }
+      const XLSX = (window as any).XLSX;
+      if (!XLSX) {
+        showToast('La librería XLSX no se encuentra disponible.', 'error');
+        return;
+      }
+      try {
+        const unitSel = document.getElementById('ph-cartera-unit-filter') as HTMLSelectElement;
+        const unitLabel = unitSel?.selectedOptions?.[0]?.textContent?.trim() || 'Todas las unidades';
+        const toDate = (document.getElementById('ph-cartera-to') as HTMLInputElement)?.value || new Date().toISOString().slice(0, 10);
+        const companyName = String(sessionStorage.getItem('company_name') || 'COPROPIEDAD').trim();
+
+        const rows = lastAgingPdf.rows;
+        const aoa: any[][] = [];
+
+        // Encabezado institucional
+        aoa.push([companyName.toUpperCase()]);
+        aoa.push(['CARTERA POR EDADES PH POR CONCEPTO Y UNIDAD HABITACIONAL']);
+        aoa.push([`Fecha de Corte: ${toDate}`, `Filtro Unidad: ${unitLabel}`, `Generado: ${new Date().toLocaleString('es-CO')}`]);
+        aoa.push([]);
+
+        // Encabezados de columnas
+        aoa.push([
+          'Unidad',
+          'Propietario / Tercero',
+          'Documento',
+          'Concepto',
+          'Por Vencer',
+          '0 a 30 días',
+          '31 a 60 días',
+          '61 a 90 días',
+          'Más de 90 días',
+          'Total',
+        ]);
+
+        let currentUnidad = null;
+        let subtotal = { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
+
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          if (currentUnidad !== r.unidad) {
+            currentUnidad = r.unidad;
+            subtotal = { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
+          }
+
+          aoa.push([
+            r.unidad,
+            r.ownerName || '—',
+            r.ownerDoc || '—',
+            r.concepto,
+            Number(r.por_vencer || 0),
+            Number(r.de_0_a_30 || 0),
+            Number(r.de_31_a_60 || 0),
+            Number(r.de_61_a_90 || 0),
+            Number(r.mayor_a_90 || 0),
+            Number(r.total || 0),
+          ]);
+
+          subtotal.por_vencer += Number(r.por_vencer || 0);
+          subtotal.de_0_a_30 += Number(r.de_0_a_30 || 0);
+          subtotal.de_31_a_60 += Number(r.de_31_a_60 || 0);
+          subtotal.de_61_a_90 += Number(r.de_61_a_90 || 0);
+          subtotal.mayor_a_90 += Number(r.mayor_a_90 || 0);
+          subtotal.total += Number(r.total || 0);
+
+          // Si es el último row o cambia de unidad en el siguiente, agregar subtotal por unidad habitacional
+          const nextUnidad = rows[i + 1]?.unidad;
+          if (nextUnidad !== currentUnidad) {
+            aoa.push([
+              `Subtotal ${currentUnidad}`,
+              '',
+              '',
+              'SUBTOTAL UNIDAD',
+              subtotal.por_vencer,
+              subtotal.de_0_a_30,
+              subtotal.de_31_a_60,
+              subtotal.de_61_a_90,
+              subtotal.mayor_a_90,
+              subtotal.total,
+            ]);
+            aoa.push([]); // Línea en blanco estética entre unidades
+          }
+        }
+
+        // Fila Total General
+        aoa.push([
+          'TOTAL GENERAL',
+          '',
+          '',
+          'TOTAL CARTERA COPROPIEDAD',
+          Number(lastAgingPdf.totals.por_vencer || 0),
+          Number(lastAgingPdf.totals.de_0_a_30 || 0),
+          Number(lastAgingPdf.totals.de_31_a_60 || 0),
+          Number(lastAgingPdf.totals.de_61_a_90 || 0),
+          Number(lastAgingPdf.totals.mayor_a_90 || 0),
+          Number(lastAgingPdf.totals.total || 0),
+        ]);
+
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols'] = [
+          { wch: 22 },
+          { wch: 30 },
+          { wch: 15 },
+          { wch: 25 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 16 },
+          { wch: 18 },
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Cartera por Edades');
+        XLSX.writeFile(wb, `ph_cartera_edades_${getPhPdfDateStamp()}.xlsx`);
+        showToast('Cartera por Edades exportada exitosamente a Excel.', 'success');
+      } catch (err: any) {
+        showToast(`Error al exportar Excel: ${err.message}`, 'error');
+      }
+    }
+
     function renderIntegrity(info) {
       const box = document.getElementById('ph-cartera-integrity');
       if (!box) return;
@@ -1448,12 +1665,18 @@ async function renderPhCartera(c) {
       const thead = document.getElementById('ph-cartera-resumen-thead');
       const colgroup = document.getElementById('ph-cartera-resumen-colgroup');
 
-      const conceptKey = (label) => String(label || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toUpperCase();
+      const conceptKey = (label) => {
+        let s = String(label || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s*\((?:proporcional|prorrateo)[^)]*\)/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toUpperCase();
+        if (s.includes('ADMINISTRA')) return 'CUOTA DE ADMINISTRACION';
+        if (s.includes('INTERES') && s.includes('MORA')) return 'INTERES DE MORA';
+        return s;
+      };
 
       const norm = (str: string) => String(str || '')
         .normalize('NFD')
@@ -1522,13 +1745,22 @@ async function renderPhCartera(c) {
           document.getElementById('ph-cartera-resumen-tfoot').innerHTML = '';
           document.getElementById('ph-cartera-bal-meta').innerHTML = `<i class="fas fa-info-circle mr-1"></i>Sin datos de saldo abierto.`;
           lastBalPdf = null;
-          const pdfBtn = document.getElementById('ph-cartera-pdf-bal');
+          const pdfBtn = document.getElementById('ph-cartera-pdf-bal') as HTMLButtonElement;
+          const excelBtn = document.getElementById('ph-cartera-excel-bal') as HTMLButtonElement;
           if (pdfBtn) pdfBtn.disabled = true;
+          if (excelBtn) excelBtn.disabled = true;
         } else {
           const conceptMap = new Map();
           for (const p of activeParties) {
-            const cLabel = String(p.concepto || 'Concepto').trim() || 'Concepto';
+            let cLabel = String(p.concepto || 'Concepto').trim() || 'Concepto';
             const cKey = conceptKey(cLabel);
+            if (cKey === 'CUOTA DE ADMINISTRACION') {
+              cLabel = 'Cuota de administración';
+            } else if (cKey === 'INTERES DE MORA') {
+              cLabel = 'Interés de mora';
+            } else {
+              cLabel = cLabel.replace(/\s*\((?:proporcional|prorrateo)[^)]*\)/gi, '').trim() || 'Concepto';
+            }
             if (!conceptMap.has(cKey)) conceptMap.set(cKey, cLabel);
           }
           const concepts = [...conceptMap.entries()]
@@ -1625,8 +1857,10 @@ async function renderPhCartera(c) {
             </tr>`;
 
           lastBalPdf = { concepts, rows, totalByConcept, grandTotal };
-          const pdfBtn = document.getElementById('ph-cartera-pdf-bal');
-          if (pdfBtn) pdfBtn.disabled = false;
+          const pdfBalBtn = document.getElementById('ph-cartera-pdf-bal') as HTMLButtonElement;
+          const excelBalBtn = document.getElementById('ph-cartera-excel-bal') as HTMLButtonElement;
+          if (pdfBalBtn) pdfBalBtn.disabled = false;
+          if (excelBalBtn) excelBalBtn.disabled = false;
         }
       } catch (err) {
         console.error(err);
@@ -1649,8 +1883,10 @@ async function renderPhCartera(c) {
         document.getElementById('ph-cartera-resumen-tfoot').innerHTML = '';
         renderIntegrity(null);
         lastBalPdf = null;
-        const pdfBtn = document.getElementById('ph-cartera-pdf-bal');
-        if (pdfBtn) pdfBtn.disabled = true;
+        const pdfBalBtn = document.getElementById('ph-cartera-pdf-bal') as HTMLButtonElement;
+        const excelBalBtn = document.getElementById('ph-cartera-excel-bal') as HTMLButtonElement;
+        if (pdfBalBtn) pdfBalBtn.disabled = true;
+        if (excelBalBtn) excelBalBtn.disabled = true;
       }
 
       try {
@@ -1660,8 +1896,10 @@ async function renderPhCartera(c) {
           document.getElementById('ph-cartera-detalle-tfoot').innerHTML = '';
           document.getElementById('ph-cartera-aging-meta').innerHTML = `<i class="fas fa-info-circle mr-1"></i>Sin datos de cartera por edades.`;
           lastAgingPdf = null;
-          const pdfBtn = document.getElementById('ph-cartera-pdf-aging');
-          if (pdfBtn) pdfBtn.disabled = true;
+          const pdfAgingBtn = document.getElementById('ph-cartera-pdf-aging') as HTMLButtonElement;
+          const excelAgingBtn = document.getElementById('ph-cartera-excel-aging') as HTMLButtonElement;
+          if (pdfAgingBtn) pdfAgingBtn.disabled = true;
+          if (excelAgingBtn) excelAgingBtn.disabled = true;
         } else {
           const bucketize = (days) => {
             const d = Number(days || 0);
@@ -1678,7 +1916,15 @@ async function renderPhCartera(c) {
             const bucket = bucketize(p.diasMoraRaw !== undefined ? p.diasMoraRaw : p.diasMora);
             const amount = Number(p.amount || 0);
             const uLabel = [p.propertyCode, p.propertyName].filter(Boolean).join(' - ') || 'Unidad';
-            const concept = p.concepto || 'Concepto';
+            let concept = String(p.concepto || 'Concepto').trim();
+            const cKey = conceptKey(concept);
+            if (cKey === 'CUOTA DE ADMINISTRACION') {
+              concept = 'Cuota de administración';
+            } else if (cKey === 'INTERES DE MORA') {
+              concept = 'Interés de mora';
+            } else {
+              concept = concept.replace(/\s*\((?:proporcional|prorrateo)[^)]*\)/gi, '').trim() || 'Concepto';
+            }
             if (!grouped[uLabel]) grouped[uLabel] = {};
             if (!grouped[uLabel][concept]) {
               grouped[uLabel][concept] = {
@@ -1781,8 +2027,10 @@ async function renderPhCartera(c) {
             </tr>`;
 
           lastAgingPdf = { rows: allRows, totals };
-          const pdfBtn = document.getElementById('ph-cartera-pdf-aging');
-          if (pdfBtn) pdfBtn.disabled = false;
+          const pdfAgingBtn = document.getElementById('ph-cartera-pdf-aging') as HTMLButtonElement;
+          const excelAgingBtn = document.getElementById('ph-cartera-excel-aging') as HTMLButtonElement;
+          if (pdfAgingBtn) pdfAgingBtn.disabled = false;
+          if (excelAgingBtn) excelAgingBtn.disabled = false;
         }
       } catch (err) {
         console.error(err);
@@ -1790,14 +2038,18 @@ async function renderPhCartera(c) {
           <tr><td colspan="9" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
         document.getElementById('ph-cartera-detalle-tfoot').innerHTML = '';
         lastAgingPdf = null;
-        const pdfBtn = document.getElementById('ph-cartera-pdf-aging');
-        if (pdfBtn) pdfBtn.disabled = true;
+        const pdfAgingBtn = document.getElementById('ph-cartera-pdf-aging') as HTMLButtonElement;
+        const excelAgingBtn = document.getElementById('ph-cartera-excel-aging') as HTMLButtonElement;
+        if (pdfAgingBtn) pdfAgingBtn.disabled = true;
+        if (excelAgingBtn) excelAgingBtn.disabled = true;
       }
     }
 
     document.getElementById('ph-cartera-refresh-btn')?.addEventListener('click', loadCartera);
     document.getElementById('ph-cartera-pdf-bal')?.addEventListener('click', exportPhCarteraBalPdf);
+    document.getElementById('ph-cartera-excel-bal')?.addEventListener('click', exportPhCarteraBalExcel);
     document.getElementById('ph-cartera-pdf-aging')?.addEventListener('click', exportPhCarteraAgingPdf);
+    document.getElementById('ph-cartera-excel-aging')?.addEventListener('click', exportPhCarteraAgingExcel);
     // No ejecutar loadCartera automáticamente ni al cambiar filtros, solo con el botón Actualizar
 
   } catch (err) {

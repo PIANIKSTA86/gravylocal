@@ -521,7 +521,7 @@ function renderDsRows(list: DocSoporteItem[]): string {
           ${(d.status_dian === 'rechazada' || (d.dian_response && d.status_dian !== 'aceptada')) && d.dian_response ? `
             <div class="text-[11px] text-rose-600 mt-1 max-w-[200px] mx-auto truncate font-medium flex items-center justify-center gap-1" title="${esc(d.dian_response)}">
               <i class="fas fa-circle-exclamation text-rose-500 text-[10px]"></i>
-              <span class="truncate">${esc(d.dian_response.replace(/^Error de emisión:\s*/i, '').replace(/^Facturatech:\s*/i, ''))}</span>
+              <span class="truncate">${esc(d.dian_response.replace(/^Error de emisión:\s*/i, '').replace(/^Facturatech:\s*/i, '').replace(/^MATIAS API(?:\s+Error)?:\s*/i, ''))}</span>
             </div>
           ` : ''}
         </td>
@@ -550,7 +550,7 @@ function renderDsRows(list: DocSoporteItem[]): string {
             ` : ''}
 
             ${(d.status_dian === 'enviada' || d.status_dian === 'aceptada' || d.status_dian === 'rechazada' || !d.cuds || d.cuds === '404') ? `
-              <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado Facturatech / DIAN" onclick="window.checkFtechStatus('${esc(d.id)}','${esc(d.tx_id || '')}')">
+              <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado DIAN" onclick="window.checkFtechStatus('${esc(d.id)}','${esc(d.tx_id || '')}')">
                 <i class="fas fa-arrows-rotate text-blue-600"></i>
               </button>
             ` : ''}
@@ -2083,12 +2083,12 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
       <div class="flex flex-wrap items-center justify-between w-full gap-2">
         <div class="flex flex-wrap items-center gap-2">
           ${txId ? `
-            <button class="btn btn-outline btn-sm border-blue-600 text-blue-600 hover:bg-blue-50" title="Consultar estado actualizado en Facturatech y DIAN" onclick="window.refreshDsStatusFromModal('${esc(id)}','${esc(txId)}')">
-              <i class="fas fa-arrows-rotate mr-1.5 text-blue-600"></i>Actualizar Estado Facturatech
+            <button class="btn btn-outline btn-sm border-blue-600 text-blue-600 hover:bg-blue-50" title="Consultar estado actualizado en la DIAN" onclick="window.refreshDsStatusFromModal('${esc(id)}','${esc(txId)}')">
+              <i class="fas fa-arrows-rotate mr-1.5 text-blue-600"></i>Actualizar Estado DIAN
             </button>
           ` : ''}
           ${(!hasValidCuds || statusVal !== 'aceptada') && txId ? `
-            <button class="btn btn-outline btn-sm border-orange-500 text-orange-600 hover:bg-orange-50" title="Reenviar documento a Facturatech / DIAN" onclick="window.reemitFromDsModal('${esc(id)}','${esc(txId)}','${esc(docNum)}')">
+            <button class="btn btn-outline btn-sm border-orange-500 text-orange-600 hover:bg-orange-50" title="Reenviar documento a la DIAN" onclick="window.reemitFromDsModal('${esc(id)}','${esc(txId)}','${esc(docNum)}')">
               <i class="fas fa-paper-plane mr-1.5 text-orange-600"></i>Reenviar a DIAN
             </button>
           ` : ''}
@@ -2114,7 +2114,7 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
           <div><span class="form-label font-bold text-gray-500">Fecha</span><p>${esc(d.date || d.created || (tx && tx.date) || '—')}</p></div>
           <div class="col-span-2 md:col-span-3"><span class="form-label font-bold text-gray-500">CUDS / CUFE</span><p class="font-mono text-xs break-all p-2 rounded" style="background:#F9FAFB;border:1px solid #E5E7EB">${esc(currentCuds || 'Pendiente de transmisión')}</p></div>
           <div class="col-span-2 md:col-span-3">
-            <span class="form-label font-bold text-gray-500">Respuesta Servidor DIAN / Facturatech</span>
+            <span class="form-label font-bold text-gray-500">Respuesta del Servidor DIAN</span>
             <div class="p-2.5 rounded text-sm font-medium border flex items-start gap-2 ${statusVal === 'rechazada' ? 'bg-rose-50 text-rose-800 border-rose-200' : (statusVal === 'aceptada' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200')}">
               <i class="fas ${statusVal === 'rechazada' ? 'fa-circle-xmark text-rose-600 mt-0.5' : (statusVal === 'aceptada' ? 'fa-circle-check text-emerald-600 mt-0.5' : 'fa-circle-info text-slate-500 mt-0.5')}"></i>
               <span>${esc(d.dian_response || '—')}</span>

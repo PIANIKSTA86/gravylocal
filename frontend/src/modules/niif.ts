@@ -3500,9 +3500,10 @@ async function checkDepreciationStatus(month: string) {
   let checkTxItems: any[] = [];
   let checkEventItems: any[] = [];
   let subsequentTxItems: any[] = [];
+  let markedAssetItems: any[] = [];
 
   try {
-    const [txByCross, txByDesc, evRes, subseqRes] = await Promise.all([
+    const [txByCross, txByDesc, evRes, subseqRes, assetsRes] = await Promise.all([
       pb.listAll('transactions', {
         filter: `(cross_type = "DEPRECIACION_MENSUAL" || cross_type = "DEPRE_MENSUAL_NIIF" || cross_type = "DEPRE_MENSUAL_FISCAL") && cross_number = "${month}" && status = "active"`
       }).catch(() => []),
@@ -3514,6 +3515,9 @@ async function checkDepreciationStatus(month: string) {
       }).catch(() => []),
       pb.listAll('transactions', {
         filter: `date > "${endDate} 23:59:59" && (cross_type ~ "DEPRE" || description ~ "depreciaci" || description ~ "Depreciaci") && status = "active"`
+      }).catch(() => []),
+      pb.listAll('niif_assets', {
+        filter: `last_depreciation_period = "${month}"`
       }).catch(() => [])
     ]);
 
@@ -3522,16 +3526,22 @@ async function checkDepreciationStatus(month: string) {
     checkTxItems = Array.from(txMap.values());
     checkEventItems = evRes || [];
     subsequentTxItems = subseqRes || [];
+    markedAssetItems = assetsRes || [];
   } catch (err: any) {
     console.warn('[Depreciation Check] Query check note:', err);
   }
 
   const activeTxList = checkTxItems.filter((t: any) => t.status === 'active');
   const hasSubsequentPosted = subsequentTxItems.length > 0;
+  const desyncAssets = (checkEventItems.length === 0 && activeTxList.length === 0)
+    ? markedAssetItems.filter((a: any) => a.is_depreciable !== false)
+    : [];
 
-  let state: 'posted' | 'inconsistent' | 'available' = 'available';
+  let state: 'posted' | 'inconsistent' | 'desync_unsupported' | 'available' = 'available';
   if (activeTxList.length > 0) {
     state = 'posted';
+  } else if (desyncAssets.length > 0) {
+    state = 'desync_unsupported';
   } else if (checkEventItems.length > 0) {
     state = 'inconsistent';
   }
@@ -3556,6 +3566,7 @@ async function checkDepreciationStatus(month: string) {
     txNIIF,
     txFiscal,
     checkEventItems,
+    desyncAssets,
     hasSubsequentPosted,
     subsequentTxCount: subsequentTxItems.length
   };
@@ -3575,8 +3586,11 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
     txTypes = [{ id: 'na_default', code: 'NA', name: 'Nota contable y de ajuste', prefix: 'AC' }];
   }
 
+  const hasDP = txTypes.some((x: any) => x.prefix === 'DP' || x.code === 'DP' || (x.name && x.name.toUpperCase().includes('DEPRECIA')));
   const txTypeOptions = txTypes.map((t: any) => {
-    const isDefault = t.code === 'NA' || t.prefix === 'AC' || t.name.toLowerCase().includes('ajuste') || t.name.toLowerCase().includes('nota');
+    const isDefault = hasDP
+      ? (t.prefix === 'DP' || t.code === 'DP' || (t.name && t.name.toUpperCase().includes('DEPRECIA')))
+      : (t.code === 'NA' || t.prefix === 'AC' || t.name.toLowerCase().includes('ajuste') || t.name.toLowerCase().includes('nota'));
     return `<option value="${t.id}" ${isDefault ? 'selected' : ''}>${esc(t.code)} - ${esc(t.name)} (${esc(t.prefix || t.code)})</option>`;
   }).join('');
 
@@ -3650,9 +3664,9 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
         evalRes: evaluateAssetDepreciationForPeriod(a, month)
       }));
 
-      // Si el periodo ya está contabilizado, incluir en la vista principal tanto los elegibles como los que ya quedaron marcados con last_depreciation_period === month
+      // Si el periodo ya está contabilizado o desincronizado, incluir en la vista principal tanto los elegibles como los que ya quedaron marcados con last_depreciation_period === month
       const eligibleItems = evaluatedList.filter(({ asset, evalRes }) => {
-        if (deprStatus.state === 'posted' && asset.last_depreciation_period === month && evalRes.reasonCode === 'already_depreciated_period') {
+        if ((deprStatus.state === 'posted' || deprStatus.state === 'desync_unsupported') && asset.last_depreciation_period === month && evalRes.reasonCode === 'already_depreciated_period') {
           return true;
         }
         return evalRes.eligible;
@@ -3667,11 +3681,12 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
       let totalFiscal = 0;
 
       const tableRows = eligibleItems.length > 0 ? eligibleItems.map(({ asset: a, evalRes }) => {
-        // Si ya fue contabilizado en este mes, mostrar la cuota nominal que se le aplicó; si está pendiente, mostrar la cuota proyectada
-        const deprNIIF = (deprStatus.state === 'posted' && a.last_depreciation_period === month && evalRes.deprNIIF === 0)
+        // Si ya fue contabilizado o marcado en este mes, mostrar la cuota nominal que se le aplicó; si está pendiente, mostrar la cuota proyectada
+        const isMarkedInMonth = a.last_depreciation_period === month;
+        const deprNIIF = ((deprStatus.state === 'posted' || deprStatus.state === 'desync_unsupported') && isMarkedInMonth && evalRes.deprNIIF === 0)
           ? Math.round(evalRes.nominalNIIF)
           : evalRes.deprNIIF;
-        const deprFiscal = (deprStatus.state === 'posted' && a.last_depreciation_period === month && evalRes.deprFiscal === 0)
+        const deprFiscal = ((deprStatus.state === 'posted' || deprStatus.state === 'desync_unsupported') && isMarkedInMonth && evalRes.deprFiscal === 0)
           ? Math.round(evalRes.nominalFiscal)
           : evalRes.deprFiscal;
 
@@ -3833,6 +3848,27 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
             </div>
           </div>
         `;
+      } else if (deprStatus.state === 'desync_unsupported') {
+        stateBadge = '<span class="badge badge-amber"><i class="fas fa-triangle-exclamation mr-1"></i>Desincronización Detectada</span>';
+
+        statusCard = `
+          <div class="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl space-y-3 text-xs text-amber-950">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <span class="w-9 h-9 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-800 text-base shadow-sm">
+                  <i class="fas fa-triangle-exclamation"></i>
+                </span>
+                <div>
+                  <h5 class="font-bold text-amber-900 text-sm">Desincronización de Periodo ${month} Detectada</h5>
+                  <p class="text-xxs text-amber-700">Se encontraron <strong>${deprStatus.desyncAssets.length}</strong> activo(s) marcados con cierre en el periodo <strong>${month}</strong>, pero <strong>no existe comprobante contable activo</strong> de depreciación en el libro diario. Sincronice los saldos para reabrir el periodo y procesar formalmente.</p>
+                </div>
+              </div>
+              <button class="btn btn-warning btn-sm" id="btn-depr-resync-period" data-month="${month}">
+                <i class="fas fa-rotate-left mr-1.5"></i>Sincronizar y Reabrir Periodo ${month}
+              </button>
+            </div>
+          </div>
+        `;
       } else if (deprStatus.state === 'inconsistent') {
         stateBadge = '<span class="badge badge-rose"><i class="fas fa-triangle-exclamation mr-1"></i>Inconsistencia Detectada</span>';
 
@@ -3912,6 +3948,11 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
           postBtn.classList.add('opacity-60', 'cursor-not-allowed');
           postBtn.title = 'Periodo ya contabilizado. Para volver a procesarlo, primero debe levantar la liquidación existente.';
           postBtn.innerHTML = `<i class="fas fa-lock mr-1.5"></i>Periodo Contabilizado`;
+        } else if (deprStatus.state === 'desync_unsupported') {
+          postBtn.disabled = true;
+          postBtn.classList.add('opacity-60', 'cursor-not-allowed');
+          postBtn.title = 'Se detectó desincronización de activos sin comprobante. Presione "Sincronizar y Reabrir Periodo" antes de procesar.';
+          postBtn.innerHTML = `<i class="fas fa-rotate-left mr-1.5"></i>Requiere Sincronización`;
         } else if (deprStatus.state === 'inconsistent') {
           postBtn.disabled = true;
           postBtn.classList.add('opacity-60', 'cursor-not-allowed');
@@ -3929,6 +3970,71 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
           postBtn.innerHTML = `<i class="fas fa-floppy-disk mr-1.5"></i>Procesar y Contabilizar`;
         }
       }
+
+      // Handler para Sincronizar y Reabrir Periodo Desincronizado
+      $('#btn-depr-resync-period')?.addEventListener('click', () => {
+        confirmDialog(
+          'Sincronizar y Reabrir Periodo',
+          `Se detectaron <strong>${deprStatus.desyncAssets?.length || 0}</strong> activos marcados con periodo <strong>${month}</strong> sin comprobante contable en el libro diario.<br><br>
+           Esta acción de contingencia:<br>
+           <ul class="list-disc pl-4 space-y-1 text-xs text-amber-900 mt-2">
+             <li>Restaurará los activos al corte previo de saldo inicial/anterior.</li>
+             <li>Reajustará las cuotas no asentadas en la contabilidad.</li>
+             <li>Reabrirá el periodo <strong>${month}</strong> para permitir una liquidación limpia con su respectivo comprobante contable.</li>
+           </ul><br>¿Desea sincronizar y reabrir el periodo ahora?`,
+          async () => {
+            const btn = $('#btn-depr-resync-period') as HTMLButtonElement | null;
+            if (btn) {
+              btn.disabled = true;
+              btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Sincronizando...`;
+            }
+            try {
+              const prevPeriod = getPreviousPeriod(month);
+              for (const a of (deprStatus.desyncAssets || [])) {
+                const acqPeriod = extractAssetAcquisitionPeriod(a);
+                const isBoughtInOrAfterMonth = acqPeriod && month <= acqPeriod;
+
+                if (isBoughtInOrAfterMonth) {
+                  await pb.update('niif_assets', a.id, {
+                    accumulated_depreciation_niif: 0,
+                    accumulated_depreciation_fiscal: 0,
+                    last_depreciation_period: ''
+                  });
+                } else {
+                  const isImm = Boolean(a.is_immediate_depreciation);
+                  const nominalNIIF = (a.cost - (isImm ? 0 : (a.residual_value || 0))) / (isImm ? 1 : (a.useful_life_niif || 1));
+                  const nominalFiscal = a.cost / (isImm ? 1 : (a.useful_life_fiscal || 1));
+                  const minInitNIIF = Number(a.initial_depreciation_niif || 0);
+                  const minInitFiscal = Number(a.initial_depreciation_fiscal || 0);
+
+                  const newAccumNIIF = Math.max(minInitNIIF, Number(a.accumulated_depreciation_niif || 0) - Math.round(nominalNIIF));
+                  const newAccumFiscal = Math.max(minInitFiscal, Number(a.accumulated_depreciation_fiscal || 0) - Math.round(nominalFiscal));
+
+                  await pb.update('niif_assets', a.id, {
+                    accumulated_depreciation_niif: newAccumNIIF,
+                    accumulated_depreciation_fiscal: newAccumFiscal,
+                    last_depreciation_period: prevPeriod
+                  });
+                }
+              }
+
+              for (const ev of deprStatus.checkEventItems) {
+                try { await pb.delete('niif_asset_events', ev.id); } catch (_) {}
+              }
+
+              await API.logAudit('REPAIR', 'Depreciation Run', month, `Sincronizó y reabrió periodo ${month} tras desincronización de comprobantes`);
+              showToast(`Periodo ${month} sincronizado y reabierto con éxito.`, 'success');
+              $('#btn-depr-proj')?.click();
+            } catch (err: any) {
+              showToast('Error al sincronizar periodo: ' + err.message, 'error');
+              if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fas fa-rotate-left mr-1.5"></i>Sincronizar y Reabrir Periodo ${month}`;
+              }
+            }
+          }
+        );
+      });
 
       // Handler para Subsanar Inconsistencias Huérfanas
       $('#btn-depr-clean-orphan')?.addEventListener('click', () => {
@@ -4082,6 +4188,11 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
     // Validación estricta de bloqueo
     if (currentDeprStatus && currentDeprStatus.state === 'posted') {
       showToast(`El periodo ${month} ya se encuentra contabilizado en firme. Para volver a procesarlo debe levantar primero dicha liquidación.`, 'error', 6000);
+      return;
+    }
+
+    if (currentDeprStatus && currentDeprStatus.state === 'desync_unsupported') {
+      showToast(`El periodo ${month} presenta desincronización de saldos. Por favor presione "Sincronizar y Reabrir Periodo" antes de procesar.`, 'warning', 6000);
       return;
     }
 

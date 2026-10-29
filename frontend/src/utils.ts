@@ -246,7 +246,7 @@ function showToast(msg, type = 'success', duration = 3500) {
   }, duration);
 }
 
-function getDianErrorMessage(err: any, fallback = 'Error en la comunicación con el proveedor tecnológico / DIAN'): string {
+function getDianErrorMessage(err: any, fallback = 'Error en la comunicación con el servicio de emisión DIAN'): string {
   if (!err) return fallback;
 
   let raw = '';
@@ -283,12 +283,14 @@ function getDianErrorMessage(err: any, fallback = 'Error en la comunicación con
     else raw = fallback;
   }
 
-  // Clean common backend wrapper prefixes to surface the pure provider/DIAN message
+  // Clean common backend wrapper prefixes to surface the pure DIAN message
   const clean = String(raw)
     .replace(/^Error al procesar la emisión DIAN:\s*/i, '')
     .replace(/^Error de emisión:\s*/i, '')
     .replace(/^Facturatech Hub Error \(\d+\):\s*/i, '')
     .replace(/^Error al consultar estado Facturatech:\s*/i, '')
+    .replace(/^Facturatech:\s*/i, '')
+    .replace(/^MATIAS API(?:\s+Error)?:\s*/i, '')
     .trim();
 
   return clean || fallback;

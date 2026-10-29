@@ -313,7 +313,7 @@ async function renderFacturacionDIAN(c: HTMLElement) {
                     
                     ${canEmit ? `<button class="btn btn-outline btn-sm p-1.5 border-orange-500 hover:bg-orange-50" title="Solicitar Firma DIAN" onclick="window.emitDianDocFromList('${esc(item.id)}','${esc(item.tx.id)}','${esc(item.number)}')"><i class="fas fa-paper-plane text-orange-600"></i></button>` : ''}
                     
-                    ${canCheck ? `<button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado Facturatech" onclick="window.checkFtechStatus('${esc(item.id)}','${esc(item.tx.id)}')"><i class="fas fa-arrows-rotate text-blue-600"></i></button>` : ''}
+                    ${canCheck ? `<button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado DIAN" onclick="window.checkFtechStatus('${esc(item.id)}','${esc(item.tx.id)}')"><i class="fas fa-arrows-rotate text-blue-600"></i></button>` : ''}
                     
                     ${canDownload ? `<button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Descargar ZIP XML" onclick="window.downloadDianZip('${esc(item.tx.id)}','${esc(item.number)}')"><i class="fas fa-file-zipper text-emerald-600"></i></button>` : ''}
                     

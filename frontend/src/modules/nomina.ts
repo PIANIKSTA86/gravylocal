@@ -5922,8 +5922,8 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
                         <td class="text-right">
                           <div class="flex gap-1 justify-end">
                             <button class="btn btn-outline btn-sm p-1.5 border-gray-300 hover:bg-gray-100" title="Ver Detalle y XML UBL 2.1" onclick="window.openNominaWorkerDetailModal('${esc(r.id)}')"><i class="fas fa-eye text-gray-600"></i></button>
-                            <button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Firmar y Transmitir ante DIAN / Facturatech" onclick="window.emitNominaElectronicaDian('${esc(r.id)}')"><i class="fas fa-paper-plane text-emerald-600"></i></button>
-                            <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado DIAN / Facturatech" onclick="window.checkNominaFtechStatus('${esc(r.id)}')"><i class="fas fa-arrows-rotate text-blue-600"></i></button>
+                            <button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Firmar y Transmitir ante la DIAN" onclick="window.emitNominaElectronicaDian('${esc(r.id)}')"><i class="fas fa-paper-plane text-emerald-600"></i></button>
+                            <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado DIAN" onclick="window.checkNominaFtechStatus('${esc(r.id)}')"><i class="fas fa-arrows-rotate text-blue-600"></i></button>
                             <button class="btn btn-outline btn-sm p-1.5 border-purple-500 hover:bg-purple-50" title="Descargar PDF (Desprendible con CUNE)" onclick="window.downloadNominaPdf('${esc(r.id)}')"><i class="fas fa-file-pdf text-purple-600"></i></button>
                             <button class="btn btn-outline btn-sm p-1.5 border-amber-500 hover:bg-amber-50" title="Descargar XML UBL 2.1 Individual" onclick="window.downloadNominaXml('${esc(r.id)}')"><i class="fas fa-file-code text-amber-600"></i></button>
                             <button class="btn btn-outline btn-sm p-1.5 border-indigo-500 hover:bg-indigo-50" title="Reenviar Comprobante por Correo" onclick="window.resendNominaEmail('${esc(r.id)}')"><i class="fas fa-envelope text-indigo-600"></i></button>
@@ -6703,11 +6703,11 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
 
         <div class="border rounded-xl p-3 bg-white space-y-1 text-3xs">
           <div class="flex justify-between items-center"><span class="text-gray-400">CUNE:</span><span class="font-mono text-gray-700 font-bold break-all">${cuneDetailLabel}</span></div>
-          <div class="flex justify-between"><span class="text-gray-400">ID Transacción Facturatech:</span><span class="font-mono text-gray-700">${esc(rec.ftech_transaction_id || '—')}</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">ID Transacción DIAN:</span><span class="font-mono text-gray-700">${esc(rec.ftech_transaction_id || '—')}</span></div>
           <div class="flex justify-between"><span class="text-gray-400">Estado DIAN:</span><span class="font-bold">${esc(rec.estado_dian || 'PENDIENTE')}</span></div>
           ${rec.dian_response ? `
             <div class="mt-2 pt-2 border-t text-left">
-              <span class="text-gray-400 block mb-0.5 font-medium">Respuesta Proveedor Tecnológico / DIAN:</span>
+              <span class="text-gray-400 block mb-0.5 font-medium">Respuesta del Servidor DIAN:</span>
               <div class="p-2 rounded font-mono text-3xs ${rec.estado_dian === 'RECHAZADO' ? 'text-red-800 bg-red-50 border border-red-200' : 'text-gray-700 bg-gray-50 border'}">${esc(rec.dian_response)}</div>
             </div>
           ` : ''}
@@ -6983,7 +6983,7 @@ function openNominaBatchProgressModal(year: number, month: number) {
 
 (window as any).checkNominaFtechStatus = async function(id) {
   try {
-    showToast('Consultando estado en Facturatech...', 'info');
+    showToast('Consultando estado en la DIAN...', 'info');
     const res = await pb.send('/api/dian/nomina/check-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -6996,7 +6996,7 @@ function openNominaBatchProgressModal(year: number, month: number) {
       showToast(res.message || 'Error al consultar estado', 'error');
     }
   } catch (err) {
-    showToast(err.message || 'Error al consultar Facturatech', 'error');
+    showToast(err.message || 'Error al consultar estado DIAN', 'error');
   }
 };
 
@@ -7626,7 +7626,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
         </div>
 
         <div class="text-center text-3xs text-gray-400 border-t pt-2">
-          Representación Gráfica de Nómina Individual. Software: GRAVY v2.0 | Proveedor tecnológico: Facturatech / Cadena.
+          Representación Gráfica de Nómina Individual. Software: GRAVY v2.0 | Emisión Electrónica DIAN UBL 2.1.
         </div>
       </div>
     `;

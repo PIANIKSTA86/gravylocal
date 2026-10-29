@@ -4606,7 +4606,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
     const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id,pos_shift_id,seller_id,sales_order_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
-    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compDept, compCountry, logoBase64] = await Promise.all([
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compDept, compCountry, logoBase64, customFooterText] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
       (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
@@ -4616,6 +4616,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
       (window as any).API.getSetting('company_dept').catch(() => (window as any).API.getSetting('company_department').catch(() => '')),
       (window as any).API.getSetting('company_country').catch(() => ''),
       (window as any).API.getSetting('company_logo').catch(() => ''),
+      (window as any).API.getSetting('invoice_footer_text').catch(() => ''),
     ]);
 
     // --- DIAN Resolution & CUFE / Signature Lookup ---
@@ -5608,7 +5609,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
             </div>
 
             <p style="margin:4px 0; text-align:justify; font-size:9px; color:#333;">
-              Esta factura es un título valor según el Artículo 774 del Código de Comercio colombiano. Factura de venta generada por Software ERP GRAVY v2.0. Autoriza ${compName} / NIT.${compNit}. Proveedor Tecnológico CADENA S.A. / NIT.890.930.534-0. Para transferencias por favor hacer su pago en la cuenta bancaria de ahorros autorizada de ${compName}.
+              ${customFooterText ? (window as any).esc(customFooterText) : `Esta factura es un título valor según el Artículo 774 del Código de Comercio colombiano. Factura de venta generada por Software ERP GRAVY v2.0 (UBL 2.1 DIAN). Autoriza ${(window as any).esc(compName)} / NIT.${(window as any).esc(compNit)}. Para transferencias por favor hacer su pago en la cuenta bancaria de ahorros autorizada de ${(window as any).esc(compName)}.`}
             </p>
 
             <p style="margin:4px 0; font-size:8.5px; color:#475569; font-weight:semibold;">
@@ -5914,7 +5915,7 @@ window.emitInvoiceToDian = async function(txId: string, docNumber: string) {
 
 window.showDianLogsModal = async function(txId: string, docNumber: string) {
   (window as any).openModal(
-    `<i class="fas fa-satellite-dish mr-2 text-indigo-600"></i>Logs DIAN / MATIAS — ${(window as any).esc(docNumber || txId)}`,
+    `<i class="fas fa-satellite-dish mr-2 text-indigo-600"></i>Logs de Transmisión DIAN — ${(window as any).esc(docNumber || txId)}`,
     `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando historial de transmisión...</div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
     true
@@ -5932,7 +5933,7 @@ window.showDianLogsModal = async function(txId: string, docNumber: string) {
           <p class="text-xs text-gray-400 mt-1">Usa el botón "Emitir a DIAN" para enviar este comprobante.</p>
         </div>
       `;
-      (window as any).openModal(`<i class="fas fa-satellite-dish mr-2 text-indigo-600"></i>Logs DIAN / MATIAS — ${(window as any).esc(docNumber || txId)}`, emptyHtml, `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`, true);
+      (window as any).openModal(`<i class="fas fa-satellite-dish mr-2 text-indigo-600"></i>Logs de Transmisión DIAN — ${(window as any).esc(docNumber || txId)}`, emptyHtml, `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`, true);
       return;
     }
 
@@ -5950,7 +5951,7 @@ window.showDianLogsModal = async function(txId: string, docNumber: string) {
                 <div class="flex items-center gap-2">
                   <span class="font-bold text-gray-800 text-sm font-mono">Intento #${logs.length - i}</span>
                   ${statusBadge}
-                  <span class="badge badge-gray text-[10px] font-mono">${(window as any).esc(l.provider || 'MATIAS')} · ${l.duration_ms || 0}ms</span>
+                  <span class="badge badge-gray text-[10px] font-mono">${(window as any).esc(l.provider && !/matias|facturatech/i.test(l.provider) ? l.provider : 'UBL 2.1')} · ${l.duration_ms || 0}ms</span>
                 </div>
                 <span class="text-gray-500 font-mono">${l.created ? l.created.slice(0, 19).replace('T', ' ') : ''}</span>
               </div>
@@ -5984,7 +5985,7 @@ window.showDianLogsModal = async function(txId: string, docNumber: string) {
     `;
 
     (window as any).openModal(
-      `<i class="fas fa-satellite-dish mr-2 text-indigo-600"></i>Logs DIAN / MATIAS — ${(window as any).esc(docNumber || txId)}`,
+      `<i class="fas fa-satellite-dish mr-2 text-indigo-600"></i>Logs de Transmisión DIAN — ${(window as any).esc(docNumber || txId)}`,
       bodyHtml,
       `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
       true

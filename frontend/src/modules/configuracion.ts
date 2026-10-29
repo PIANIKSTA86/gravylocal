@@ -233,7 +233,7 @@ async function renderConfiguracion(c) {
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
             <h4 class="font-bold" style="color:#0D2137">Facturación Electrónica</h4>
-            <p class="text-sm" style="color:#6B7280">Configura el método de facturación electrónica (Directo DIAN o Proveedor Tecnológico Facturatech).</p>
+            <p class="text-sm" style="color:#6B7280">Configura el método de facturación electrónica DIAN (UBL 2.1).</p>
           </div>
           ${canEdit ? '<button class="btn btn-secondary btn-sm" id="btn-save-dian"><i class="fas fa-server mr-1"></i> Guardar configuración Facturación</button>' : ''}
         </div>
@@ -242,8 +242,8 @@ async function renderConfiguracion(c) {
           <div class="form-group md:col-span-2">
             <label class="form-label">Método de Integración</label>
             <select id="einvoice-method" class="form-input" ${canEdit ? '' : 'disabled'}>
-              <option value="matias" ${byKey['einvoice_method']?.value === 'matias' || (!byKey['einvoice_method']?.value && byKey['einvoice_method']?.value !== 'facturatech' && byKey['einvoice_method']?.value !== 'dian') ? 'selected' : ''}>MATIAS API (Emisión DIAN + Eventos RADIAN)</option>
-              <option value="facturatech" ${byKey['einvoice_method']?.value === 'facturatech' ? 'selected' : ''}>Proveedor Tecnológico (Facturatech)</option>
+              <option value="matias" ${byKey['einvoice_method']?.value === 'matias' || (!byKey['einvoice_method']?.value && byKey['einvoice_method']?.value !== 'facturatech' && byKey['einvoice_method']?.value !== 'dian') ? 'selected' : ''}>Servicio Cloud DIAN (UBL 2.1)</option>
+              <option value="facturatech" style="display:none" ${byKey['einvoice_method']?.value === 'facturatech' ? 'selected' : ''}>Proveedor Tecnológico Integrado (Legado)</option>
               <option value="dian" ${byKey['einvoice_method']?.value === 'dian' ? 'selected' : ''}>Directo DIAN (Software Propio / En desarrollo)</option>
             </select>
           </div>
@@ -251,12 +251,12 @@ async function renderConfiguracion(c) {
           <!-- CONTENEDOR MATIAS API -->
           <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3" id="matias-fields-container" style="${(byKey['einvoice_method']?.value === 'matias' || (!byKey['einvoice_method']?.value && byKey['einvoice_method']?.value !== 'facturatech' && byKey['einvoice_method']?.value !== 'dian')) ? '' : 'display:none'}">
             <div class="form-group">
-              <label class="form-label">Ambiente MATIAS API</label>
+              <label class="form-label">Ambiente de Emisión Electrónica DIAN</label>
               <select id="matias-environment" class="form-input" ${canEdit ? '' : 'disabled'}>
                 <option value="sandbox" ${byKey['matias_environment']?.value === 'sandbox' || !byKey['matias_environment']?.value ? 'selected' : ''}>Ambiente de Pruebas (Sandbox Gratuito)</option>
                 <option value="production" ${byKey['matias_environment']?.value === 'production' ? 'selected' : ''}>Ambiente de Producción DIAN</option>
               </select>
-              <p class="text-xs mt-1" style="color:#6B7280">En Sandbox use la cuenta de <b>sandbox-auth.matias-api.com</b> (No requiere contrato DIAN).</p>
+              <p class="text-xs mt-1" style="color:#6B7280">En Sandbox puede realizar pruebas de habilitación y emisión UBL 2.1 sin validez fiscal.</p>
             </div>
 
             <div class="form-group">
@@ -272,14 +272,14 @@ async function renderConfiguracion(c) {
                   <i class="fas fa-eye mr-1"></i>Ver / Ocultar
                 </button>
               </div>
-              <input id="matias-api-token" type="password" class="form-input font-mono text-xs" value="${esc(byKey['matias_api_token']?.value || '')}" placeholder="Pegue aquí el Bearer Token de MATIAS API" ${canEdit ? '' : 'readonly'}>
+              <input id="matias-api-token" type="password" class="form-input font-mono text-xs" value="${esc(byKey['matias_api_token']?.value || '')}" placeholder="Pegue aquí el Bearer Token de integración DIAN" ${canEdit ? '' : 'readonly'}>
               <div class="flex flex-wrap items-center justify-between gap-2 mt-2">
-                <p class="text-xs" style="color:#9CA3AF">Token obtenido en el portal de MATIAS API para emisión de facturas y eventos RADIAN.</p>
+                <p class="text-xs" style="color:#9CA3AF">Token generado para emisión de facturas y eventos RADIAN UBL 2.1.</p>
                 <div class="flex flex-wrap gap-2">
                   <button type="button" class="btn btn-outline btn-sm text-xs" id="btn-test-matias">
-                    <i class="fas fa-plug mr-1"></i> Probar Conexión MATIAS API
+                    <i class="fas fa-plug mr-1"></i> Probar Conexión DIAN
                   </button>
-                  <button type="button" class="btn btn-primary btn-sm text-xs" id="btn-sync-resolutions-matias" title="Descarga prefijos y números de resolución de DIAN configurados en Matías API">
+                  <button type="button" class="btn btn-primary btn-sm text-xs" id="btn-sync-resolutions-matias" title="Descarga prefijos y números de resolución configurados ante la DIAN">
                     <i class="fas fa-sync-alt mr-1"></i> Sincronizar Resoluciones DIAN
                   </button>
                 </div>
@@ -340,7 +340,7 @@ async function renderConfiguracion(c) {
           <!-- CONTENEDOR FACTURATECH -->
           <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3" id="ftech-fields-container" style="${byKey['einvoice_method']?.value === 'facturatech' ? '' : 'display:none'}">
             <div class="form-group">
-              <label class="form-label">Ambiente Facturatech</label>
+              <label class="form-label">Ambiente de Integración (Legado)</label>
               <select id="ftech-environment" class="form-input" ${canEdit ? '' : 'disabled'}>
                 <option value="2" ${byKey['ftech_environment']?.value === '2' ? 'selected' : ''}>Ambiente de Pruebas / Habilitación</option>
                 <option value="1" ${byKey['ftech_environment']?.value === '1' ? 'selected' : ''}>Ambiente de Producción</option>
@@ -353,9 +353,9 @@ async function renderConfiguracion(c) {
             </div>
             
             <div class="form-group md:col-span-2">
-              <label class="form-label">Contraseña Web Service Facturatech</label>
-              <input id="ftech-password" type="password" class="form-input" value="${esc(byKey['ftech_password']?.value || '')}" placeholder="Contraseña Web Service provista por soportews@facturatech.co" ${canEdit ? '' : 'readonly'}>
-              <p class="text-xs mt-1" style="color:#9CA3AF">Ingrese la contraseña exclusiva para consumo de webservice de Facturatech. Si se deja vacía, funcionará en modo simulación.</p>
+              <label class="form-label">Contraseña Web Service</label>
+              <input id="ftech-password" type="password" class="form-input" value="${esc(byKey['ftech_password']?.value || '')}" placeholder="Contraseña Web Service provista por soporte técnico" ${canEdit ? '' : 'readonly'}>
+              <p class="text-xs mt-1" style="color:#9CA3AF">Ingrese la contraseña exclusiva para consumo de webservice. Si se deja vacía, funcionará en modo simulación.</p>
             </div>
           </div>
 
@@ -798,11 +798,11 @@ async function renderConfiguracion(c) {
       const env = (getInputVal('matias-environment') || 'sandbox').trim();
       const clientUuid = (getInputVal('matias-client-uuid') || '').trim();
       const resDiv = $('#matias-test-result');
-      if (!token) return showToast('Ingrese el token de MATIAS API antes de probar la conexión', 'error');
+      if (!token) return showToast('Ingrese el token de emisión DIAN antes de probar la conexión', 'error');
 
       if (resDiv) {
         resDiv.classList.remove('hidden');
-        resDiv.innerHTML = '<span class="text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>Conectando con MATIAS API...</span>';
+        resDiv.innerHTML = '<span class="text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>Conectando con el Servicio Cloud DIAN...</span>';
       }
 
       try {
@@ -822,9 +822,9 @@ async function renderConfiguracion(c) {
           const data = await resp.json().catch(() => ({}));
           const companyName = data?.data?.name || data?.name || data?.company?.name || 'Empresa conectada';
           if (resDiv) {
-            resDiv.innerHTML = `<span class="text-green-600 font-semibold"><i class="fas fa-check-circle mr-1"></i>¡Conexión Exitosa con MATIAS API (${env.toUpperCase()})! ${companyName}</span>`;
+            resDiv.innerHTML = `<span class="text-green-600 font-semibold"><i class="fas fa-check-circle mr-1"></i>¡Conexión Exitosa con el Servicio DIAN (${env.toUpperCase()})! ${companyName}</span>`;
           }
-          showToast('Conexión con MATIAS API exitosa', 'success');
+          showToast('Conexión con el Servicio DIAN exitosa', 'success');
         } else {
           const errData = await resp.json().catch(() => ({}));
           const errMsg = errData?.message || errData?.error || `Error HTTP ${resp.status}`;
@@ -837,7 +837,7 @@ async function renderConfiguracion(c) {
         if (resDiv) {
           resDiv.innerHTML = `<span class="text-red-600 font-semibold"><i class="fas fa-circle-xmark mr-1"></i>Error de red: ${e.message}</span>`;
         }
-        showToast(`Fallo al contactar MATIAS API: ${e.message}`, 'error');
+        showToast(`Fallo al contactar el Servicio DIAN: ${e.message}`, 'error');
       }
     });
 
@@ -848,12 +848,12 @@ async function renderConfiguracion(c) {
       const clientUuid = (getInputVal('matias-client-uuid') || '').trim();
 
       if (!token) {
-        showToast('Debes ingresar el token de MATIAS API antes de sincronizar', 'warning');
+        showToast('Debes ingresar el token de emisión DIAN antes de sincronizar', 'warning');
         return;
       }
 
       if (btn) btn.disabled = true;
-      showToast('Sincronizando resoluciones DIAN desde MATIAS API...', 'info');
+      showToast('Sincronizando resoluciones desde el Servicio DIAN...', 'info');
       try {
         const res = await pb.send('/api/dian/sync-matias-resolutions', {
           method: 'POST',

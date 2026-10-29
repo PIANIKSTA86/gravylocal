@@ -635,18 +635,23 @@ const API = {
     // Si el endpoint no está disponible, hace fallback al método línea-por-línea.
 
     const txBranchId = txData.branch_id || null;
+    const isUpdateMode = Boolean(txData.id || txData.allow_update);
 
-    // Generar o preservar clave de idempotencia determinista
-    const idempotencyKey = txData.idempotency_key || (
-      txData.cross_type && txData.cross_number
-        ? `idemp_${txData.cross_type}_${txData.cross_number}`
-        : (txData.description && txData.date && txData.tx_type_id
-            ? `idemp_${txData.tx_type_id}_${txData.date}_${String(txData.description).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 60)}`
-            : `idemp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`)
-    );
+    // Generar o preservar clave de idempotencia determinista (solo para creaciones puras)
+    const idempotencyKey = isUpdateMode
+      ? `upd_${txData.id || txData.number || Date.now()}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      : (txData.idempotency_key || (
+          txData.cross_type && txData.cross_number
+            ? `idemp_${txData.cross_type}_${txData.cross_number}`
+            : (txData.description && txData.date && txData.tx_type_id
+                ? `idemp_${txData.tx_type_id}_${txData.date}_${String(txData.description).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 60)}`
+                : `idemp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`)
+        ));
 
     // Evitar peticiones concurrentes idénticas en vuelo desde el cliente
-    const lockKey = idempotencyKey || (txData.cross_type && txData.cross_number ? `${txData.cross_type}:${txData.cross_number}` : '');
+    const lockKey = !isUpdateMode
+      ? (idempotencyKey || (txData.cross_type && txData.cross_number ? `${txData.cross_type}:${txData.cross_number}` : ''))
+      : '';
     if (lockKey && _inFlightTransactions.has(lockKey)) {
       return await _inFlightTransactions.get(lockKey);
     }
@@ -659,8 +664,11 @@ const API = {
           headers: pb.headers(),
           body: JSON.stringify({
             idempotency_key: idempotencyKey,
+            allow_update: isUpdateMode,
+            skip_pdf_archive: !!txData.skip_pdf_archive,
             txData: {
               ...txData,
+              allow_update: isUpdateMode,
               idempotency_key: idempotencyKey,
               number: txData.number || 'AUTO',
               status: txData.status || 'active',
@@ -693,6 +701,10 @@ const API = {
         }
         // Si fue un error de red puro (fetch failed), intentar fallback
         console.warn('[createTransaction] Bulk endpoint falló, usando fallback:', bulkErr?.message || bulkErr);
+      }
+
+      if (txData.id) {
+        return await this.updateTransaction(txData.id, txData, lines);
       }
 
       // ── Fallback: si cross_type y cross_number están definidos, verificar si ya existe ──
@@ -748,6 +760,98 @@ const API = {
         _inFlightTransactions.delete(lockKey);
       }
     }
+  },
+
+  async checkExistingTransactionsBulk(numbers: string[]): Promise<Record<string, { id: string; number: string; status: string; date: string }>> {
+    const cleanNums = Array.from(new Set((numbers || []).map(n => String(n || '').trim()).filter(Boolean)));
+    if (!cleanNums.length) return {};
+
+    try {
+      const res = await fetch(`${pb.baseUrl}/api/gravy/bulk-tx-check`, {
+        method: 'POST',
+        headers: pb.headers(),
+        body: JSON.stringify({ numbers: cleanNums }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data?.existing || {};
+      }
+    } catch (_) {}
+
+    // Fallback si el endpoint bulk-tx-check no está disponible
+    const existing: Record<string, { id: string; number: string; status: string; date: string }> = {};
+    const CHUNK = 30;
+    for (let i = 0; i < cleanNums.length; i += CHUNK) {
+      const slice = cleanNums.slice(i, i + CHUNK);
+      const filterStr = slice.map(n => `number="${pb.escapeFilterValue(n)}"`).join(' || ');
+      try {
+        const rows = await pb.listAll('transactions', { filter: filterStr, ignoreBranch: true });
+        rows.forEach((r: any) => {
+          if (r && r.number) {
+            existing[r.number] = { id: r.id, number: r.number, status: r.status, date: r.date };
+          }
+        });
+      } catch (_) {}
+    }
+    return existing;
+  },
+
+  async bulkUpsertTransactionsBatch(items: Array<{ group?: string; txData: any; lines: any[] }>): Promise<{
+    created: number;
+    updated: number;
+    failed: number;
+    errors: string[];
+    results: any[];
+  }> {
+    if (!Array.isArray(items) || !items.length) {
+      return { created: 0, updated: 0, failed: 0, errors: [], results: [] };
+    }
+
+    try {
+      const res = await fetch(`${pb.baseUrl}/api/gravy/bulk-tx-batch`, {
+        method: 'POST',
+        headers: pb.headers(),
+        body: JSON.stringify({
+          allow_update: true,
+          skip_pdf_archive: true,
+          items,
+        }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status !== 404) {
+        throw await pb._err(res);
+      }
+    } catch (err: any) {
+      if (err && err.status !== undefined && err.status !== 404) {
+        throw err;
+      }
+    }
+
+    // Fallback individual si el endpoint bulk-tx-batch no estuviese activo
+    let created = 0;
+    let updated = 0;
+    let failed = 0;
+    const errors: string[] = [];
+    const results: any[] = [];
+
+    for (const item of items) {
+      const label = item.group || item.txData?.number || 'Comprobante';
+      try {
+        const r = await this.createTransaction(
+          { ...item.txData, allow_update: true, skip_pdf_archive: true },
+          item.lines
+        );
+        if (r?._updated || item.txData?.id) updated++;
+        else created++;
+        results.push(r);
+      } catch (e: any) {
+        failed++;
+        errors.push(`${label}: ${e?.message || String(e)}`);
+      }
+    }
+    return { created, updated, failed, errors, results };
   },
 
   async getTransactions(opts = {}) {
@@ -962,13 +1066,17 @@ const API = {
     };
   },
 
-  async getDashboardSummary(branchId = '', advisorId = '') {
+  async getDashboardSummary(branchId = '', advisorId = '', bookType = '') {
     const url = new URL(`${pb.baseUrl}/api/gravy/dashboard-summary`);
     if (branchId) {
       url.searchParams.append('branch_id', branchId);
     }
     if (advisorId) {
       url.searchParams.append('advisor_id', advisorId);
+    }
+    const currentBook = bookType || localStorage.getItem('report_book_type') || 'niif';
+    if (currentBook) {
+      url.searchParams.append('book_type', currentBook);
     }
     const res = await fetch(url.toString(), {
       method: 'GET',
@@ -2195,21 +2303,25 @@ const API = {
       const key = String(code).trim();
       if (accountByCodeCache[key]) return accountByCodeCache[key];
       const safeCode = pb.escapeFilterValue(key);
-      const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
-      if (!res.items.length) {
-        // Fallback por prefijo si la subcuenta no existe
+      const res = await pb.list('accounts', { filter: `code="${safeCode}" && active=true`, perPage: 1 });
+      let candidate = res.items.length ? res.items[0] : null;
+
+      // Si la cuenta encontrada es de mayor (<= 4 dígitos) o no existe exacta, buscar un auxiliar activo (longitud >= 6)
+      const candidateDigits = candidate ? String(candidate.code || '').replace(/\D/g, '') : '';
+      if (!candidate || candidateDigits.length <= 4) {
         const prefixSafe = safeCode.length > 4 ? safeCode.substring(0, 4) : safeCode;
-        const resPref = await pb.list('accounts', { filter: `code ~ "${prefixSafe}"`, perPage: 1 });
-        if (resPref.items.length) {
-          accountByCodeCache[key] = resPref.items[0];
-          accountByIdCache[resPref.items[0].id] = resPref.items[0];
-          return resPref.items[0];
+        const resPref = await pb.list('accounts', { filter: `code ~ "${prefixSafe}" && active=true`, sort: '-code', perPage: 20 });
+        const bestAux = resPref.items.find((a: any) => String(a.code || '').replace(/\D/g, '').length >= 6);
+        if (bestAux) {
+          candidate = bestAux;
+        } else if (!candidate) {
+          throw new Error(`Cuenta contable ${key} no encontrada o inactiva en el plan de cuentas.`);
         }
-        throw new Error(`Cuenta contable ${key} no encontrada en el plan de cuentas.`);
       }
-      accountByCodeCache[key] = res.items[0];
-      accountByIdCache[res.items[0].id] = res.items[0];
-      return res.items[0];
+
+      accountByCodeCache[key] = candidate;
+      accountByIdCache[candidate.id] = candidate;
+      return candidate;
     };
 
     const buildTxLine = async ({
@@ -2221,11 +2333,18 @@ const API = {
       crossDocRef = '',
       crossDocDate = null,
       dueDate = null,
-      isIvaCost = false
+      isIvaCost = false,
+      costCenterId = null,
     }: any) => {
       const acc = await getAccById(accountId);
       if (acc.active === false) {
         throw new Error(`La cuenta contable ${acc.code} - ${acc.name} se encuentra inactiva.`);
+      }
+
+      // Validar nivel de imputabilidad (no se puede contabilizar en cuentas de mayor clase/grupo de <= 4 dígitos)
+      const codeDigits = String(acc.code || '').replace(/\D/g, '');
+      if (codeDigits.length <= 4) {
+        throw new Error(`La cuenta contable ${acc.code} - ${acc.name} es una cuenta de mayor o grupo y no admite movimientos contables directos. Utiliza una subcuenta o auxiliar de último nivel.`);
       }
 
       // 1. Respetar requires_third_party
@@ -2247,7 +2366,11 @@ const API = {
         line_order: txLines.length + 1,
       };
 
-      // 2. Respetar maneja_cruce
+      if (costCenterId) {
+        line.cost_center_id = costCenterId;
+      }
+
+      // 2. Respetar estrictamente maneja_cruce según propiedades de la cuenta
       const isAccCruce = Boolean(acc.maneja_cruce === true || acc.maneja_cruce === 1 || acc.maneja_cruce === 'true' || acc.maneja_cruce === '1');
       if (isAccCruce) {
         let ref = String(crossDocRef || effectiveCrossDoc || '').trim();
@@ -2257,8 +2380,11 @@ const API = {
         line.cross_doc_ref = ref;
         line.cross_doc_date = crossDocDate || inv.date || new Date().toISOString().slice(0, 10);
         line.due_date = dueDate || inv.due_date || line.cross_doc_date;
-      } else if (String(crossDocRef || '').trim()) {
-        line.cross_doc_ref = String(crossDocRef).trim();
+      } else {
+        // Cuentas de gasto, costo, inventario, impuestos, etc., que NO manejan cruce
+        line.cross_doc_ref = '';
+        line.cross_doc_date = null;
+        line.due_date = null;
       }
 
       return line;
@@ -2301,10 +2427,11 @@ const API = {
         debit: effectiveDebit,
         credit: 0,
         description: line.description || inv.expand?.supplier_id?.name || '',
-        crossDocRef: isCredit ? effectiveCrossDoc : '',
-        crossDocDate: inv.date,
-        dueDate: isCredit ? dueDate : inv.date,
+        crossDocRef: '',
+        crossDocDate: null,
+        dueDate: null,
         isIvaCost: isIvaAsCost && ivaAmt > 0,
+        costCenterId: (line as any).cost_center_id || (inv as any).cost_center_id || null,
       }));
 
       if (prod?.type === 'BIEN') {
@@ -2393,9 +2520,9 @@ const API = {
         debit: amount,
         credit: 0,
         description: `IVA ${rateKey}% compra ${inv.number}`,
-        crossDocRef: isCredit ? effectiveCrossDoc : '',
-        crossDocDate: inv.date,
-        dueDate: isCredit ? dueDate : inv.date,
+        crossDocRef: '',
+        crossDocDate: null,
+        dueDate: null,
       }));
     }
 
@@ -2412,9 +2539,9 @@ const API = {
         debit: 0,
         credit: amount,
         description: `Retenciones compra ${inv.number}`,
-        crossDocRef: isCredit ? effectiveCrossDoc : '',
-        crossDocDate: inv.date,
-        dueDate: isCredit ? dueDate : inv.date,
+        crossDocRef: '',
+        crossDocDate: null,
+        dueDate: null,
       }));
     }
 
@@ -5790,19 +5917,23 @@ const API = {
     const safeFrom = pb.escapeFilterValue(fromPeriod);
     const safeTo = pb.escapeFilterValue(toPeriod);
 
-    // Filtro base: facturas no anuladas
-    let filter = `status!="voided"`;
+    // Filtro base: facturas no anuladas y debidamente contabilizadas (con tx_id activo)
+    let filter = `status!="voided" && tx_id!=""`;
     if (propertyId) filter += ` && property_id="${safePropertyId}"`;
-    // El perÃ­odo es una cadena YYYY-MM, sirve para filtrar lotes de facturaciÃ³n
+    // El período es una cadena YYYY-MM, sirve para filtrar lotes de facturación
     if (fromPeriod) filter += ` && period>="${safeFrom}"`;
     if (toPeriod) filter += ` && period<="${safeTo}"`;
 
     let invoices = [];
     try {
       const res = await pb.listAll('ph_invoices', { filter, sort: '-date' });
-      // Asegurar unicidad de facturas por ID
+      // Asegurar unicidad de facturas por ID y que tengan asiento contable válido
       const uniqueMap = new Map();
-      (res || []).forEach(inv => uniqueMap.set(inv.id, inv));
+      (res || []).forEach(inv => {
+        if (inv && inv.id && inv.tx_id && String(inv.tx_id).trim() !== '') {
+          uniqueMap.set(inv.id, inv);
+        }
+      });
       invoices = Array.from(uniqueMap.values());
     } catch (_) { invoices = []; }
 
@@ -10051,6 +10182,709 @@ const API = {
       count: total,
       message: `Se renumeraron exitosamente ${total} referencias de productos.`
     };
+  },
+
+  // ──────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────
+  // GESTIÓN CENTRALIZADA DE DEVOLUCIONES DE MERCANCÍAS
+  // ──────────────────────────────────────────────────────────
+  async getMerchandiseReturns(params: any = {}) {
+    let from = params.from || '';
+    let to = params.to || '';
+
+    if (!from && params.filter) {
+      const matchFrom = String(params.filter).match(/date\s*>=\s*"([^"]+)"/);
+      if (matchFrom) from = matchFrom[1].trim();
+    }
+    if (!to && params.filter) {
+      const matchTo = String(params.filter).match(/date\s*<=\s*"([^"]+)"/);
+      if (matchTo) to = matchTo[1].trim().split(' ')[0];
+    }
+
+    // 1. Devoluciones del módulo propio (merchandise_returns)
+    let retFilter = '';
+    if (from && to) retFilter = `date >= "${from}" && date <= "${to} 23:59:59"`;
+    else if (from) retFilter = `date >= "${from}"`;
+    else if (to) retFilter = `date <= "${to} 23:59:59"`;
+
+    const listDirect = await pb.list('merchandise_returns', {
+      page: 1,
+      perPage: 500,
+      filter: retFilter,
+      sort: '-date,-number',
+      expand: 'third_party_id,warehouse_id,loss_warehouse_id,invoice_id,purchase_invoice_id,tx_id,inv_movement_id,user_id',
+    }).catch(() => ({ items: [] }));
+
+    const mappedDirect = (listDirect.items || []).map((r: any) => ({
+      ...r,
+      origin_source: 'MERCHANDISE_RETURN',
+    }));
+
+    // 2. Facturas de Venta que son Notas Crédito (NC)
+    let invFilter = `(number ~ "NC" || tx_type_id.code = "NC" || parent_invoice_id != "")`;
+    if (from && to) invFilter += ` && date >= "${from}" && date <= "${to} 23:59:59"`;
+    else if (from) invFilter += ` && date >= "${from}"`;
+    else if (to) invFilter += ` && date <= "${to} 23:59:59"`;
+
+    const listInvoices = await pb.list('invoices', {
+      page: 1,
+      perPage: 500,
+      filter: invFilter,
+      sort: '-date,-number',
+      expand: 'customer_id,warehouse_id,tx_type_id,parent_invoice_id',
+    }).catch(() => ({ items: [] }));
+
+    const mappedInvoices = (listInvoices.items || [])
+      .filter((inv: any) => !mappedDirect.some((d: any) => d.invoice_id === inv.id || d.number === inv.number))
+      .map((inv: any) => {
+        const dianMatch = String(inv.notes || '').match(/\[Ajuste DIAN:\s*(\d+)\]/i);
+        const dianVal = dianMatch ? dianMatch[1] : '';
+        let reasonCode = 'OTRO';
+        if (dianVal === '1') reasonCode = 'CALIDAD_DEFECTO';
+        else if (dianVal === '2') reasonCode = 'DISCONFORMIDAD_PRECIO';
+        else if (dianVal === '3') reasonCode = 'DISCONFORMIDAD_PRECIO';
+
+        let origDocNum = inv.cross_doc_ref || '';
+        if (!origDocNum && inv.notes) {
+          const matchNum = inv.notes.match(/Factura Electrónica N°\s*([A-Za-z0-9\-]+)/i);
+          if (matchNum) origDocNum = matchNum[1];
+        }
+        if (!origDocNum && inv.expand?.parent_invoice_id?.number) {
+          origDocNum = inv.expand.parent_invoice_id.number;
+        }
+
+        return {
+          id: inv.id,
+          number: inv.number,
+          return_type: 'VENTA',
+          date: inv.date,
+          status: inv.status || 'posted',
+          third_party_id: inv.customer_id,
+          warehouse_id: inv.warehouse_id,
+          reason_code: reasonCode,
+          reason_notes: inv.notes || '',
+          subtotal: Number(inv.subtotal || 0),
+          iva_total: Number(inv.iva_total || 0),
+          ret_total: Number(inv.ret_total || 0),
+          total: Number(inv.payable_total ?? inv.total ?? 0),
+          settlement_mode: 'CRUCE_DOC_ORIGINAL',
+          tx_id: inv.tx_id,
+          inv_movement_id: inv.inv_movement_id,
+          origin_source: 'INVOICE_NC',
+          expand: {
+            third_party_id: inv.expand?.customer_id,
+            warehouse_id: inv.expand?.warehouse_id,
+            invoice_id: { number: origDocNum, id: inv.parent_invoice_id },
+          }
+        };
+      });
+
+    // 3. Facturas de Compra que son Notas de Ajuste / Crédito (NDS / NC)
+    let purFilter = `(number ~ "NC" || number ~ "NDS" || tx_type_id.code = "NDS" || tx_type_id.code = "NC")`;
+    if (from && to) purFilter += ` && date >= "${from}" && date <= "${to} 23:59:59"`;
+    else if (from) purFilter += ` && date >= "${from}"`;
+    else if (to) purFilter += ` && date <= "${to} 23:59:59"`;
+
+    const listPurchases = await pb.list('purchase_invoices', {
+      page: 1,
+      perPage: 500,
+      filter: purFilter,
+      sort: '-date,-number',
+      expand: 'supplier_id,warehouse_id,tx_type_id',
+    }).catch(() => ({ items: [] }));
+
+    const mappedPurchases = (listPurchases.items || [])
+      .filter((pur: any) => !mappedDirect.some((d: any) => d.purchase_invoice_id === pur.id || d.number === pur.number))
+      .map((pur: any) => ({
+        id: pur.id,
+        number: pur.number,
+        return_type: 'COMPRA',
+        date: pur.date,
+        status: pur.status || 'posted',
+        third_party_id: pur.supplier_id,
+        warehouse_id: pur.warehouse_id,
+        reason_code: 'CALIDAD_DEFECTO',
+        reason_notes: pur.notes || '',
+        subtotal: Number(pur.subtotal || 0),
+        iva_total: Number(pur.iva_total || 0),
+        ret_total: Number(pur.ret_total || 0),
+        total: Number(pur.payable_total ?? pur.total ?? 0),
+        settlement_mode: 'CRUCE_DOC_ORIGINAL',
+        tx_id: pur.tx_id,
+        inv_movement_id: pur.inv_movement_id,
+        origin_source: 'PURCHASE_NC',
+        expand: {
+          third_party_id: pur.expand?.supplier_id,
+          warehouse_id: pur.expand?.warehouse_id,
+          purchase_invoice_id: { number: pur.supplier_ref || 'Compra Proveedor' },
+        }
+      }));
+
+    const all = [...mappedDirect, ...mappedInvoices, ...mappedPurchases];
+    all.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.number || '').localeCompare(a.number || ''));
+
+    return {
+      items: all,
+      totalItems: all.length,
+      totalPages: 1,
+      page: 1,
+      perPage: all.length,
+    };
+  },
+
+  async getMerchandiseReturn(id: string) {
+    try {
+      const ret = await pb.get('merchandise_returns', id, {
+        expand: 'third_party_id,warehouse_id,loss_warehouse_id,invoice_id,purchase_invoice_id,tx_id,inv_movement_id,user_id',
+      });
+      const lines = await pb.listAll('merchandise_return_lines', {
+        filter: `return_id="${pb.escapeFilterValue(id)}"`,
+        sort: 'line_order',
+        expand: 'product_id,account_id,target_warehouse_id',
+      });
+      return { ...ret, lines, origin_source: 'MERCHANDISE_RETURN' };
+    } catch (_) {
+      // Si no está en merchandise_returns, buscar en invoices (NC de venta)
+      try {
+        const inv = await pb.get('invoices', id, {
+          expand: 'customer_id,warehouse_id,tx_type_id,parent_invoice_id',
+        });
+        const invLines = await this.getInvoiceLines(id);
+        const mappedLines = invLines.map((l: any) => ({
+          product_id: l.product_id,
+          qty_returned: l.qty,
+          unit_price: l.unit_price,
+          subtotal: l.subtotal,
+          total: l.total,
+          physical_condition: 'BUENO_REINGRESABLE',
+          expand: { product_id: l.expand?.product_id },
+        }));
+        let origDocNum = inv.cross_doc_ref || '';
+        if (!origDocNum && inv.notes) {
+          const matchNum = inv.notes.match(/Factura Electrónica N°\s*([A-Za-z0-9\-]+)/i);
+          if (matchNum) origDocNum = matchNum[1];
+        }
+        return {
+          id: inv.id,
+          number: inv.number,
+          return_type: 'VENTA',
+          date: inv.date,
+          status: inv.status || 'posted',
+          third_party_id: inv.customer_id,
+          warehouse_id: inv.warehouse_id,
+          reason_code: 'CALIDAD_DEFECTO',
+          reason_notes: inv.notes || '',
+          subtotal: inv.subtotal,
+          iva_total: inv.iva_total,
+          total: inv.payable_total ?? inv.total ?? 0,
+          settlement_mode: 'CRUCE_DOC_ORIGINAL',
+          tx_id: inv.tx_id,
+          inv_movement_id: inv.inv_movement_id,
+          lines: mappedLines,
+          origin_source: 'INVOICE_NC',
+          expand: {
+            third_party_id: inv.expand?.customer_id,
+            warehouse_id: inv.expand?.warehouse_id,
+            invoice_id: { number: origDocNum, id: inv.parent_invoice_id },
+          }
+        };
+      } catch (err2) {
+        // Buscar en purchase_invoices
+        const pur = await pb.get('purchase_invoices', id, {
+          expand: 'supplier_id,warehouse_id,tx_type_id',
+        });
+        const purLines = await this.getPurchaseInvoiceLines(id);
+        const mappedLines = purLines.map((l: any) => ({
+          product_id: l.product_id,
+          qty_returned: l.qty,
+          unit_price: l.unit_price,
+          subtotal: l.subtotal,
+          total: l.total,
+          physical_condition: 'BUENO_REINGRESABLE',
+          expand: { product_id: l.expand?.product_id },
+        }));
+        return {
+          id: pur.id,
+          number: pur.number,
+          return_type: 'COMPRA',
+          date: pur.date,
+          status: pur.status || 'posted',
+          third_party_id: pur.supplier_id,
+          warehouse_id: pur.warehouse_id,
+          reason_code: 'CALIDAD_DEFECTO',
+          reason_notes: pur.notes || '',
+          subtotal: pur.subtotal,
+          iva_total: pur.iva_total,
+          total: pur.payable_total ?? pur.total ?? 0,
+          settlement_mode: 'CRUCE_DOC_ORIGINAL',
+          tx_id: pur.tx_id,
+          inv_movement_id: pur.inv_movement_id,
+          lines: mappedLines,
+          origin_source: 'PURCHASE_NC',
+          expand: {
+            third_party_id: pur.expand?.supplier_id,
+            warehouse_id: pur.expand?.warehouse_id,
+            purchase_invoice_id: { number: pur.supplier_ref || 'Compra Proveedor' },
+          }
+        };
+      }
+    }
+  },
+
+  async getNextReturnNumber(returnType: 'VENTA' | 'COMPRA' = 'VENTA') {
+    const prefix = returnType === 'VENTA' ? 'DEV-V' : 'DEV-C';
+    try {
+      const last = await pb.list('merchandise_returns', {
+        filter: `number ~ "${prefix}"`,
+        sort: '-number',
+        perPage: 1,
+      });
+      if (last.items.length) {
+        const match = String(last.items[0].number || '').match(/(\d+)$/);
+        if (match) {
+          const nextVal = parseInt(match[1], 10) + 1;
+          return `${prefix}-${String(nextVal).padStart(5, '0')}`;
+        }
+      }
+    } catch (_) {}
+    return `${prefix}-00001`;
+  },
+
+  async getReturnableInvoiceLines(type: 'VENTA' | 'COMPRA', invoiceId: string) {
+    if (type === 'VENTA') {
+      const inv = await pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' });
+      const lines = await this.getInvoiceLines(invoiceId);
+      const prevReturns = await pb.listAll('merchandise_returns', {
+        filter: `invoice_id="${pb.escapeFilterValue(invoiceId)}" && status!="voided"`,
+      });
+      const returnedByProduct: Record<string, number> = {};
+      for (const pr of prevReturns) {
+        const prLines = await pb.listAll('merchandise_return_lines', { filter: `return_id="${pr.id}"` });
+        prLines.forEach((prl: any) => {
+          const k = prl.product_id || prl.account_id || '';
+          returnedByProduct[k] = (returnedByProduct[k] || 0) + Number(prl.qty_returned || 0);
+        });
+      }
+      return {
+        invoice: inv,
+        lines: lines.map((l: any) => {
+          const k = l.product_id || l.account_id || '';
+          const prevQty = returnedByProduct[k] || 0;
+          const maxQty = Math.max(0, Number(l.qty || 0) - prevQty);
+          return {
+            ...l,
+            qty_previously_returned: prevQty,
+            qty_available_to_return: maxQty,
+          };
+        }),
+      };
+    } else {
+      const pur = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id' });
+      const lines = await this.getPurchaseInvoiceLines(invoiceId);
+      const prevReturns = await pb.listAll('merchandise_returns', {
+        filter: `purchase_invoice_id="${pb.escapeFilterValue(invoiceId)}" && status!="voided"`,
+      });
+      const returnedByProduct: Record<string, number> = {};
+      for (const pr of prevReturns) {
+        const prLines = await pb.listAll('merchandise_return_lines', { filter: `return_id="${pr.id}"` });
+        prLines.forEach((prl: any) => {
+          const k = prl.product_id || prl.account_id || '';
+          returnedByProduct[k] = (returnedByProduct[k] || 0) + Number(prl.qty_returned || 0);
+        });
+      }
+      return {
+        invoice: pur,
+        lines: lines.map((l: any) => {
+          const k = l.product_id || l.account_id || '';
+          const prevQty = returnedByProduct[k] || 0;
+          const maxQty = Math.max(0, Number(l.qty || 0) - prevQty);
+          return {
+            ...l,
+            qty_previously_returned: prevQty,
+            qty_available_to_return: maxQty,
+          };
+        }),
+      };
+    }
+  },
+
+  async createMerchandiseReturn(data: any, lines: any[]) {
+    if (!data.number) {
+      data.number = await this.getNextReturnNumber(data.return_type || 'VENTA');
+    }
+    const rec = await pb.create('merchandise_returns', data);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      await pb.create('merchandise_return_lines', {
+        return_id: rec.id,
+        line_order: i + 1,
+        ...line,
+      });
+    }
+    await this.logAudit('CREATE', 'Devoluciones', rec.id, `Devolución ${rec.number} (${rec.return_type}) registrada en borrador.`);
+    return rec;
+  },
+
+  async updateMerchandiseReturn(id: string, data: any, lines?: any[]) {
+    const rec = await pb.update('merchandise_returns', id, data);
+    if (Array.isArray(lines)) {
+      const existing = await pb.listAll('merchandise_return_lines', { filter: `return_id="${pb.escapeFilterValue(id)}"` });
+      for (const ex of existing) {
+        await pb.delete('merchandise_return_lines', ex.id);
+      }
+      for (let i = 0; i < lines.length; i++) {
+        await pb.create('merchandise_return_lines', {
+          return_id: id,
+          line_order: i + 1,
+          ...lines[i],
+        });
+      }
+    }
+    await this.logAudit('UPDATE', 'Devoluciones', id, `Devolución ${rec.number} actualizada.`);
+    return rec;
+  },
+
+  async postMerchandiseReturn(returnId: string) {
+    const ret = await this.getMerchandiseReturn(returnId);
+    if (ret.status === 'posted') throw new Error('Esta devolución ya fue contabilizada.');
+    if (ret.status === 'voided') throw new Error('Esta devolución se encuentra anulada.');
+    if (!ret.lines || !ret.lines.length) throw new Error('La devolución no contiene líneas de productos.');
+
+    const dp = typeof (window as any).getDecimalPlaces === 'function' ? (window as any).getDecimalPlaces() : 2;
+    const rDec = (v: any) => typeof (window as any).roundDecimals === 'function' ? (window as any).roundDecimals(v, dp) : Math.round((Number(v || 0) + Number.EPSILON) * Math.pow(10, dp)) / Math.pow(10, dp);
+
+    let returnsConfig: any = {};
+    try {
+      const rawCfg = await this.getSetting('returns_settings_v1');
+      if (rawCfg) returnsConfig = JSON.parse(rawCfg);
+    } catch (_) {}
+
+    const isSale = ret.return_type === 'VENTA';
+    const docLabel = isSale ? 'Devolución de Venta' : 'Devolución a Proveedor';
+    const products = await this.getProducts({ activeOnly: false });
+
+    const findAccByCode = async (code: string) => {
+      const key = String(code || '').trim();
+      if (!key) throw new Error('Código de cuenta requerido.');
+      const res = await pb.list('accounts', { filter: `code="${pb.escapeFilterValue(key)}"`, perPage: 1 });
+      if (!res.items.length) throw new Error(`Cuenta ${key} no encontrada.`);
+      return res.items[0];
+    };
+
+    const txLines: any[] = [];
+    const buildTxLine = async ({ accountId, thirdPartyId = null, debit = 0, credit = 0, description = '', crossDocRef = '' }: any) => {
+      let accRec = accountId;
+      if (typeof accountId === 'string' && accountId.length < 15 && !accountId.includes('-')) {
+        accRec = await findAccByCode(accountId);
+      } else if (typeof accountId === 'string') {
+        accRec = await pb.get('accounts', accountId);
+      }
+      return {
+        account_id: accRec.id,
+        third_party_id: thirdPartyId || ret.third_party_id || null,
+        debit: rDec(debit),
+        credit: rDec(credit),
+        description,
+        line_order: txLines.length + 1,
+        cross_doc_ref: crossDocRef || ret.number,
+        cross_doc_date: ret.date,
+        due_date: ret.date,
+      };
+    };
+
+    let txTypeCode = isSale ? 'NC' : 'NDS';
+    let txTypeRes = await pb.list('transaction_types', { filter: `active=true && code="${txTypeCode}"`, perPage: 1 });
+    if (!txTypeRes.items.length && !isSale) {
+      txTypeRes = await pb.list('transaction_types', { filter: `active=true && (code="CM" || code="NC" || code="AJ")`, perPage: 1 });
+    }
+    if (!txTypeRes.items.length) {
+      txTypeRes = await pb.list('transaction_types', { filter: `active=true`, perPage: 1 });
+    }
+    const effectiveTxTypeId = txTypeRes.items[0]?.id;
+
+    const crossRef = ret.settlement_mode === 'CRUCE_DOC_ORIGINAL'
+      ? (ret.expand?.invoice_id?.number || ret.expand?.purchase_invoice_id?.number || ret.number)
+      : ret.number;
+
+    if (isSale) {
+      // 1. Débito a Devoluciones en Ventas (417505)
+      const salesRefundCode = returnsConfig.refund_sale_code || '417505';
+      const refAcc = await findAccByCode(salesRefundCode);
+      txLines.push(await buildTxLine({
+        accountId: refAcc.id,
+        thirdPartyId: ret.third_party_id,
+        debit: ret.subtotal,
+        credit: 0,
+        description: `Devolución en ventas ${ret.number}${ret.expand?.invoice_id?.number ? ' s/Fac ' + ret.expand.invoice_id.number : ''}`,
+        crossDocRef: crossRef,
+      }));
+
+      // 2. Débito a IVA Reversado (240805)
+      if (ret.iva_total > 0) {
+        const ivaAcc = await findAccByCode(returnsConfig.iva_sale_code || '240805');
+        txLines.push(await buildTxLine({
+          accountId: ivaAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: ret.iva_total,
+          credit: 0,
+          description: `IVA reversado por devolución ${ret.number}`,
+          crossDocRef: crossRef,
+        }));
+      }
+
+      // 3. Crédito a Retenciones reversadas
+      if (ret.ret_total > 0) {
+        const retAcc = await findAccByCode('135515');
+        txLines.push(await buildTxLine({
+          accountId: retAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: 0,
+          credit: ret.ret_total,
+          description: `Reversión retención a favor por devolución ${ret.number}`,
+          crossDocRef: crossRef,
+        }));
+      }
+
+      // 4. Contrapartida Financiera (Crédito a Cartera / Anticipo / Caja)
+      if (ret.settlement_mode === 'SALDO_A_FAVOR') {
+        const antAcc = await findAccByCode(returnsConfig.advance_customer_code || '280505');
+        txLines.push(await buildTxLine({
+          accountId: antAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: 0,
+          credit: ret.total,
+          description: `Saldo a favor generado por devolución ${ret.number}`,
+          crossDocRef: ret.number,
+        }));
+      } else if (ret.settlement_mode === 'REEMBOLSO_INMEDIATO') {
+        const cashAcc = await findAccByCode(returnsConfig.cash_code || '110505');
+        txLines.push(await buildTxLine({
+          accountId: cashAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: 0,
+          credit: ret.total,
+          description: `Reembolso de caja por devolución ${ret.number}`,
+          crossDocRef: ret.number,
+        }));
+      } else {
+        const cxcAcc = await findAccByCode(returnsConfig.cxc_code || '130505');
+        txLines.push(await buildTxLine({
+          accountId: cxcAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: 0,
+          credit: ret.total,
+          description: `Abono/Cruce CxC por devolución ${ret.number}`,
+          crossDocRef: crossRef,
+        }));
+      }
+
+      // 5. Costo de Ventas e Inventario
+      let totalRestockCost = 0;
+      let totalLossCost = 0;
+      for (const line of ret.lines) {
+        const prod = products.find(p => p.id === line.product_id);
+        if (!prod || prod.type !== 'BIEN') continue;
+        const lineCost = rDec(Number(line.unit_cost || prod.cost_price || 0) * Number(line.qty_returned || 0));
+        if (line.physical_condition === 'AVERIA_PERDIDA') {
+          totalLossCost = rDec(totalLossCost + lineCost);
+        } else {
+          totalRestockCost = rDec(totalRestockCost + lineCost);
+        }
+      }
+
+      if (totalRestockCost > 0) {
+        const cogsAcc = await findAccByCode(returnsConfig.cogs_code || '613505');
+        const invAcc = await findAccByCode(returnsConfig.inventory_code || '143505');
+        txLines.push(await buildTxLine({
+          accountId: invAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: totalRestockCost,
+          credit: 0,
+          description: `Reingreso inventario por devolución ${ret.number}`,
+          crossDocRef: ret.number,
+        }));
+        txLines.push(await buildTxLine({
+          accountId: cogsAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: 0,
+          credit: totalRestockCost,
+          description: `Reversión costo de ventas por devolución ${ret.number}`,
+          crossDocRef: ret.number,
+        }));
+      }
+
+      if (totalLossCost > 0) {
+        const lossAcc = await findAccByCode(returnsConfig.loss_code || '531520');
+        const cogsAcc = await findAccByCode(returnsConfig.cogs_code || '613505');
+        txLines.push(await buildTxLine({
+          accountId: lossAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: totalLossCost,
+          credit: 0,
+          description: `Gasto pérdida/avería por devolución ${ret.number}`,
+          crossDocRef: ret.number,
+        }));
+        txLines.push(await buildTxLine({
+          accountId: cogsAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: 0,
+          credit: totalLossCost,
+          description: `Reversión costo de ventas por mercancía dañada ${ret.number}`,
+          crossDocRef: ret.number,
+        }));
+      }
+    } else {
+      // COMPRAS: Devolución a Proveedor
+      const purRefundCode = returnsConfig.refund_purchase_code || '622505';
+      const refAcc = await findAccByCode(purRefundCode);
+      txLines.push(await buildTxLine({
+        accountId: refAcc.id,
+        thirdPartyId: ret.third_party_id,
+        debit: 0,
+        credit: ret.subtotal,
+        description: `Devolución a proveedor ${ret.number}${ret.expand?.purchase_invoice_id?.number ? ' s/Compra ' + ret.expand.purchase_invoice_id.number : ''}`,
+        crossDocRef: crossRef,
+      }));
+
+      if (ret.iva_total > 0) {
+        const ivaAcc = await findAccByCode(returnsConfig.iva_purchase_code || '240810');
+        txLines.push(await buildTxLine({
+          accountId: ivaAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: 0,
+          credit: ret.iva_total,
+          description: `IVA descontable reversado por devolución compra ${ret.number}`,
+          crossDocRef: crossRef,
+        }));
+      }
+
+      if (ret.ret_total > 0) {
+        const retAcc = await findAccByCode('236540');
+        txLines.push(await buildTxLine({
+          accountId: retAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: ret.ret_total,
+          credit: 0,
+          description: `Reversión retención practicada al proveedor ${ret.number}`,
+          crossDocRef: crossRef,
+        }));
+      }
+
+      if (ret.settlement_mode === 'SALDO_A_FAVOR') {
+        const antAcc = await findAccByCode(returnsConfig.advance_supplier_code || '133005');
+        txLines.push(await buildTxLine({
+          accountId: antAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: ret.total,
+          credit: 0,
+          description: `Anticipo/Saldo a favor con proveedor por devolución ${ret.number}`,
+          crossDocRef: ret.number,
+        }));
+      } else {
+        const cxpAcc = await findAccByCode(returnsConfig.cxp_code || '220505');
+        txLines.push(await buildTxLine({
+          accountId: cxpAcc.id,
+          thirdPartyId: ret.third_party_id,
+          debit: ret.total,
+          credit: 0,
+          description: `Rebaja CxP a proveedor por devolución ${ret.number}`,
+          crossDocRef: crossRef,
+        }));
+      }
+    }
+
+    const txPayload: any = {
+      tx_type_id: effectiveTxTypeId,
+      number: ret.number,
+      date: ret.date,
+      description: `${docLabel} ${ret.number} - ${ret.expand?.third_party_id?.name || ''}`,
+      third_party_id: ret.third_party_id,
+      payment_days: 0,
+      cross_enabled: true,
+      cross_type: isSale ? 'invoices' : 'purchase_invoices',
+      cross_number: crossRef,
+      cross_amount: ret.total,
+      cross_purpose: 'Devolución',
+      status: 'active',
+      branch_id: ret.branch_id || null,
+    };
+    const txCreated = await this.createTransaction(txPayload, txLines);
+
+    let invMovId = null;
+    const invLinesToMove: any[] = [];
+    for (const l of ret.lines) {
+      const prod = products.find(p => p.id === l.product_id);
+      if (!prod || prod.type !== 'BIEN') continue;
+      if (isSale && l.physical_condition === 'AVERIA_PERDIDA') continue;
+      invLinesToMove.push({
+        product_id: l.product_id,
+        qty: Number(l.qty_returned || 0),
+        unit_cost: Number(l.unit_cost || prod.cost_price || 0),
+        subtotal: rDec(Number(l.qty_returned || 0) * Number(l.unit_cost || prod.cost_price || 0)),
+      });
+    }
+
+    if (invLinesToMove.length > 0) {
+      const movType = isSale ? 'ENTRADA' : 'SALIDA';
+      const targetWh = ret.warehouse_id;
+      const movNumber = await this.getNextInventoryMovementNumber(ret.date, movType);
+      const movCreated = await pb.create('inventory_movements', {
+        number: movNumber,
+        mov_type: movType,
+        date: ret.date,
+        warehouse_id: targetWh,
+        third_party_id: ret.third_party_id,
+        notes: `${docLabel} ${ret.number}`,
+        status: 'draft',
+        tx_id: txCreated.id,
+        branch_id: ret.branch_id || null,
+      });
+      for (let i = 0; i < invLinesToMove.length; i++) {
+        await pb.create('inventory_movement_lines', {
+          movement_id: movCreated.id,
+          line_order: i + 1,
+          ...invLinesToMove[i],
+        });
+      }
+      await this.applyInventoryMovement(movCreated.id);
+      invMovId = movCreated.id;
+    }
+
+    await pb.update('merchandise_returns', returnId, {
+      status: 'posted',
+      tx_id: txCreated.id,
+      inv_movement_id: invMovId,
+    });
+
+    await this.logAudit('POST', 'Devoluciones', returnId, `${docLabel} ${ret.number} contabilizada exitosamente con Kardex y asiento contable.`);
+    return { success: true, txId: txCreated.id, invMovementId: invMovId };
+  },
+
+  async voidMerchandiseReturn(returnId: string, reason: string) {
+    const ret = await this.getMerchandiseReturn(returnId);
+    if (ret.status === 'voided') throw new Error('Esta devolución ya se encuentra anulada.');
+    if (ret.status === 'posted') {
+      if (ret.inv_movement_id) {
+        try {
+          await this.revertInventoryMovement(ret.inv_movement_id);
+        } catch (e: any) {
+          console.warn('Error revirtiendo inventario:', e.message);
+        }
+      }
+      if (ret.tx_id) {
+        try {
+          await this.voidTransaction(ret.tx_id, reason || 'Anulación de devolución');
+        } catch (e: any) {
+          console.warn('Error anulando transacción contable:', e.message);
+        }
+      }
+    }
+    await pb.update('merchandise_returns', returnId, {
+      status: 'voided',
+      reason_notes: `${ret.reason_notes || ''}\n[ANULADA]: ${reason || 'Sin motivo'}`.trim(),
+    });
+    await this.logAudit('VOID', 'Devoluciones', returnId, `Devolución ${ret.number} anulada.`);
+    return { success: true };
   },
 };
 

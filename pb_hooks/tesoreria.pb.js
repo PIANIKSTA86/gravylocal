@@ -11,6 +11,16 @@ onRecordCreateRequest((e) => {
   
   const colName = String(rec.collection().name);
   if (colName !== 'transactions') return e.next();
+
+  // Asegurar que user_id quede asignado al usuario autenticado si no fue provisto
+  try {
+    if (!rec.get('user_id')) {
+      const authRecord = e.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(e).authRecord : null);
+      if (authRecord && authRecord.id) {
+        rec.set('user_id', authRecord.id);
+      }
+    }
+  } catch (_) {}
   
   const txTypeId = rec.get('tx_type_id');
   if (!txTypeId) return e.next();

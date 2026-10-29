@@ -297,6 +297,15 @@ async function renderReportes(c) {
     }
   });
 
+  // Auto-lanzar reporte si fue solicitado desde el Dashboard
+  const autoOpenReport = sessionStorage.getItem('gravy_open_report');
+  if (autoOpenReport && typeof REPORT_LAUNCHERS[autoOpenReport] === 'function') {
+    sessionStorage.removeItem('gravy_open_report');
+    setTimeout(() => {
+      REPORT_LAUNCHERS[autoOpenReport]();
+    }, 120);
+  }
+
   const globalBookSelect = document.getElementById('global-report-book-type') as HTMLSelectElement;
   if (globalBookSelect) {
     globalBookSelect.addEventListener('change', () => {
@@ -2103,9 +2112,10 @@ function getScopeCostCenterNameSync(specificCostCenterId?: string): string {
 (window as any).getScopeCostCenterNameSync = getScopeCostCenterNameSync;
 
 async function getPdfHeaderContext(opts?: { branchId?: string; costCenterId?: string }) {
-  const [companyName, companyNit, companyAddress, companyCity, companyCountry, softwareName, branchName, costCenterName] = await Promise.all([
+  const [companyName, companyNit, companyDv, companyAddress, companyCity, companyCountry, softwareName, branchName, costCenterName] = await Promise.all([
     API.getSetting('company_name').catch(() => ''),
     API.getSetting('company_nit').catch(() => ''),
+    API.getSetting('company_dv').catch(() => ''),
     API.getSetting('company_address').catch(() => ''),
     API.getSetting('company_city').catch(() => ''),
     API.getSetting('company_country').catch(() => ''),
@@ -2128,10 +2138,14 @@ async function getPdfHeaderContext(opts?: { branchId?: string; costCenterId?: st
 
   // Robust resolve NIT
   let resolvedNit = String(companyNit || '').trim();
+  const dvStr = String(companyDv || '').trim();
+  if (resolvedNit && dvStr && !resolvedNit.includes('-')) {
+    resolvedNit = `${resolvedNit}-${dvStr}`;
+  }
   if (!resolvedNit || resolvedNit === 'N/A') {
     try {
       const activeCo = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
-      if (activeCo.company_nit) resolvedNit = String(activeCo.company_nit).trim();
+      if (activeCo.company_nit || activeCo.nit) resolvedNit = String(activeCo.company_nit || activeCo.nit).trim();
     } catch (_) {}
   }
   if (!resolvedNit || resolvedNit === 'N/A') {
@@ -2149,6 +2163,15 @@ async function getPdfHeaderContext(opts?: { branchId?: string; costCenterId?: st
   if (!resolvedAddress) {
     resolvedAddress = String(localStorage.getItem('active_company_address') || localStorage.getItem('company_address') || (window as any).COMPANY_ADDRESS_CACHE || '').trim();
   }
+
+  if (typeof (window as any).syncActiveCompanyCache === 'function') {
+    (window as any).syncActiveCompanyCache({
+      companyName: resolvedCompanyName,
+      companyNit: resolvedNit,
+      companyAddress: resolvedAddress,
+    });
+  }
+
   if (!resolvedAddress) {
     resolvedAddress = 'Dirección no configurada';
   }
@@ -4160,6 +4183,19 @@ async function renderIncomeStatement() {
   };
 
   $('#btn-gen-er')?.addEventListener('click', generate);
+
+  // Auto-ejecución con parámetros preestablecidos desde el Dashboard
+  const autoMonth = sessionStorage.getItem('gravy_income_month');
+  const autoPeriod = sessionStorage.getItem('gravy_income_period_type');
+  if (autoMonth) {
+    sessionStorage.removeItem('gravy_income_month');
+    sessionStorage.removeItem('gravy_income_period_type');
+    const monthInp = document.getElementById('inc-month') as HTMLInputElement;
+    if (monthInp) monthInp.value = autoMonth;
+    const periodSel = document.getElementById('inc-period-type') as HTMLSelectElement;
+    if (periodSel && autoPeriod) periodSel.value = autoPeriod;
+    setTimeout(generate, 150);
+  }
   $('#btn-exp-er')?.addEventListener('click', () => {
     if (!lastExportRows.length) return;
     exportToExcel(lastExportRows, [
@@ -5273,7 +5309,7 @@ async function renderJournalBook() {
                 <td>${showHeader ? (line.terceroDoc ? `<div class="font-medium text-slate-800 leading-tight">${esc(line.tercero)}</div><div class="text-[11px] text-slate-500 font-mono mt-0.5"><i class="fas fa-id-card text-slate-400 mr-1 text-[10px]"></i>${esc(line.terceroDoc)}</div>` : esc(line.tercero)) : ''}</td>
                 <td>${esc(line.cuenta)}</td>
                 <td>${line.doc_cruce ? `<span class="badge" style="background:#F3F4F6;color:#374151;font-family:monospace;font-size:11px">${esc(line.doc_cruce)}</span>` : '<span class="text-gray-400">—</span>'}</td>
-                <td class="text-xs text-gray-500">${esc(line.descripcion !== g.descripcion ? line.descripcion : '')}</td>
+                <td class="text-xs text-gray-500" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(line.descripcion || '')}">${esc(line.descripcion || '')}</td>
                 <td class="text-right">${fmt(line.debito)}</td>
                 <td class="text-right">${fmt(line.credito)}</td>
               </tr>
@@ -5828,14 +5864,17 @@ async function openAuxTxDetailInReport(id) {
             <table class="data-table">
               <thead><tr><th>Cuenta</th><th>Tercero línea</th><th>Doc. Cruce</th><th>Descripción</th><th>Débito</th><th>Crédito</th></tr></thead>
               <tbody>
-                ${lines.map(l => `<tr>
+                ${lines.map(l => {
+                  const lineDesc = String(l.description || '').trim() || String(tx.description || '').trim();
+                  return `<tr>
                   <td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td>
                   <td>${esc(l.expand?.third_party_id?.name || '—')}</td>
                   <td>${l.cross_doc_ref ? `<span class="badge" style="background:#F3F4F6;color:#374151">${esc(l.cross_doc_ref)}</span>` : '—'}</td>
-                  <td>${esc(l.description || '—')}</td>
+                  <td title="${esc(lineDesc)}" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(lineDesc || '—')}</td>
                   <td>${fmt(l.debit || 0)}</td>
                   <td>${fmt(l.credit || 0)}</td>
-                </tr>`).join('')}
+                </tr>`;
+                }).join('')}
               </tbody>
             </table>
           </div>
@@ -6340,7 +6379,7 @@ async function generateAuxiliaryRows() {
         <td style="font-weight:600;color:#1F2937">${esc(r.tercero || '')}</td>
         <td>${esc(r.fecha || '')}</td>
         <td style="font-family:monospace;font-size:0.8rem">${esc(r.cruce || '')}</td>
-        <td>${esc(r.detalle || '')}</td>
+        <td title="${esc(r.detalle || '')}" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.detalle || '')}</td>
         <td>${r.txId ? `<a href="#" onclick="event.preventDefault(); openAuxTxDetailInReport('${esc(r.txId)}');" style="color:#2563EB;font-weight:700;text-decoration:underline">${esc(r.comprobante || '')}</a>` : esc(r.comprobante || '')}</td>
         <td style="text-align:right">${fmtSignedPlain(r.saldo_anterior || 0)}</td>
         <td style="text-align:right">${fmt(r.debito || 0)}</td>
@@ -6377,18 +6416,10 @@ async function generateAuxiliaryRows() {
 
     $('#btn-exp-aux')?.addEventListener('click', async () => {
       try {
-        const [companyName, companyNit, companyAddress, companyCity, companyCountry, softwareName] = await Promise.all([
-          API.getSetting('company_name').catch(() => ''),
-          API.getSetting('company_nit').catch(() => ''),
-          API.getSetting('company_address').catch(() => ''),
-          API.getSetting('company_city').catch(() => ''),
-          API.getSetting('company_country').catch(() => ''),
-          API.getSetting('software_name').catch(() => ''),
-        ]);
-
-        const companyLine1 = (companyName || 'EMPRESA').trim();
-        const companyLine2 = companyNit ? `NIT: ${companyNit.trim()}` : '';
-        const companyLine3 = [companyAddress, companyCity, companyCountry].map(v => String(v || '').trim()).filter(Boolean).join(' / ');
+        const headerCtx = await getPdfHeaderContext();
+        const companyLine1 = headerCtx.companyName;
+        const companyLine2 = headerCtx.companyNit && headerCtx.companyNit !== 'N/A' ? `NIT: ${headerCtx.companyNit}` : '';
+        const companyLine3 = headerCtx.companyAddress;
         const reportTypeLine = mode === 'cuenta-sin-tercero' ? 'Por Cuenta (Sin Terceros)' : `${primaryLabel} -> ${secondaryLabel}`;
         const reportDateLine = `Desde: ${dateFrom || 'Inicio'}  Hasta: ${dateTo || 'Hoy'}`;
         const selectedAcc = accountId ? accounts.find(a => a.id === accountId) : null;
@@ -6396,9 +6427,9 @@ async function generateAuxiliaryRows() {
           ? [selectedAcc.code, selectedAcc.name].map(v => String(v || '').trim()).filter(Boolean).join(' - ') || 'Cuenta seleccionada'
           : 'Todas';
         const reportAccountLine = `Cuentas consultadas: ${selectedAccLabel}`;
-        const softwareLine = (softwareName || 'GRAVY v2.0').trim();
-        const userName = (sessionStorage.getItem('user_name') || 'Usuario').trim();
-        const generatedAt = new Date().toLocaleString('es-CO');
+        const softwareLine = headerCtx.softwareName;
+        const userName = headerCtx.userName;
+        const generatedAt = headerCtx.generatedAt;
 
         const exportRows = layoutRows.map((r) => ({
           cuenta: r.cuenta || '',
@@ -6450,23 +6481,16 @@ async function generateAuxiliaryRows() {
           return;
         }
 
-        const [companyName, companyNit, companyAddress, companyCity, companyCountry, softwareName] = await Promise.all([
-          API.getSetting('company_name').catch(() => ''),
-          API.getSetting('company_nit').catch(() => ''),
-          API.getSetting('company_address').catch(() => ''),
-          API.getSetting('company_city').catch(() => ''),
-          API.getSetting('company_country').catch(() => ''),
-          API.getSetting('software_name').catch(() => ''),
-        ]);
+        const headerCtx = await getPdfHeaderContext();
 
         const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
         const pageWidth = doc.internal.pageSize.getWidth();
-        const generatedAt = new Date().toLocaleString('es-CO');
+        const generatedAt = headerCtx.generatedAt;
         const pageMarginLeft = 24;
         const pageMarginRight = pageWidth - 24;
-        const companyLine1 = (companyName || 'EMPRESA').trim();
-        const companyLine2 = `NIT: ${(companyNit || 'N/A').trim()}`;
-        const companyLine3 = [companyAddress, companyCity, companyCountry].map(v => String(v || '').trim()).filter(Boolean).join(' / ') || 'Direccion no configurada';
+        const companyLine1 = headerCtx.companyName;
+        const companyLine2 = `NIT: ${headerCtx.companyNit}`;
+        const companyLine3 = headerCtx.companyAddress;
         const reportTypeLine = mode === 'cuenta-sin-tercero' ? 'Por Cuenta (Sin Terceros)' : `${primaryLabel} -> ${secondaryLabel}`;
         const reportDateLine = `Desde: ${dateFrom || 'Inicio'}  Hasta: ${dateTo || 'Hoy'}`;
         const selectedAcc = accountId ? accounts.find(a => a.id === accountId) : null;
@@ -6474,8 +6498,8 @@ async function generateAuxiliaryRows() {
           ? [selectedAcc.code, selectedAcc.name].map(v => String(v || '').trim()).filter(Boolean).join(' - ') || 'Cuenta seleccionada'
           : 'Todas';
         const reportAccountLine = `Cuentas consultadas: ${selectedAccLabel}`;
-        const softwareLine = (softwareName || 'GRAVY v2.0').trim();
-        const userName = (sessionStorage.getItem('user_name') || 'Usuario').trim();
+        const softwareLine = headerCtx.softwareName;
+        const userName = headerCtx.userName;
 
         // === ENCABEZADO EN 3 BLOQUES ===
         // Bloque izquierdo: Empresa
@@ -8899,10 +8923,9 @@ async function exportIvaToExcel() {
   const data = (window as any)._ivaReportData;
   if (!data) return;
 
-  const [companyName, companyNit] = await Promise.all([
-    API.getSetting('company_name').catch(() => 'EMPRESA'),
-    API.getSetting('company_nit').catch(() => 'N/A'),
-  ]);
+  const headerCtx = await getPdfHeaderContext();
+  const companyName = headerCtx.companyName || 'EMPRESA';
+  const companyNit = headerCtx.companyNit || 'N/A';
 
   const fromDate = data.fromDate;
   const toDate = data.toDate;
@@ -9884,10 +9907,9 @@ async function exportRetToExcel() {
   const data = (window as any)._retReportData;
   if (!data) return;
 
-  const [companyName, companyNit] = await Promise.all([
-    API.getSetting('company_name').catch(() => 'EMPRESA'),
-    API.getSetting('company_nit').catch(() => 'N/A'),
-  ]);
+  const headerCtx = await getPdfHeaderContext();
+  const companyName = headerCtx.companyName || 'EMPRESA';
+  const companyNit = headerCtx.companyNit || 'N/A';
 
   const fromDate = data.fromDate;
   const toDate = data.toDate;
@@ -12488,7 +12510,7 @@ function showDetailedBudgetDrilldown(lineId, monthIdx) {
       const txId = tl.expand?.tx_id?.id || '';
       const third = tl.expand?.third_party_id?.name || 'Sin tercero';
       const acc = `${tl.expand?.account_id?.code || ''} - ${tl.expand?.account_id?.name || ''}`;
-      const desc = tl.description || '';
+      const desc = String(tl.description || '').trim() || String(tl.expand?.tx_id?.description || '').trim();
       const debit = tl.debit || 0;
       const credit = tl.credit || 0;
       const net = debit - credit;
@@ -12499,7 +12521,7 @@ function showDetailedBudgetDrilldown(lineId, monthIdx) {
           <td class="font-semibold text-gray-700">${num}</td>
           <td>${esc(third)}</td>
           <td><span class="font-semibold">${tl.expand?.account_id?.code || ''}</span></td>
-          <td>${esc(desc)}</td>
+          <td title="${esc(desc)}" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(desc)}</td>
           <td class="text-right text-gray-600">${fmt(debit)}</td>
           <td class="text-right text-gray-600">${fmt(credit)}</td>
           <td class="text-right font-semibold ${net < 0 ? 'text-red-600' : 'text-gray-700'}">${fmt(net)}</td>
@@ -12523,7 +12545,15 @@ function exportDetailedBudgetToExcel() {
   const data = (window as any)._detailedBudgetReportData;
   if (!data) return;
 
+  const headerInfo = typeof (window as any).getActiveCompanyHeaderSync === 'function'
+    ? (window as any).getActiveCompanyHeaderSync()
+    : { companyName: 'EMPRESA', companyNit: '' };
+  const compLine = headerInfo.companyNit
+    ? `${headerInfo.companyName.toUpperCase()} — NIT: ${headerInfo.companyNit}`
+    : headerInfo.companyName.toUpperCase();
+
   const wsMatrixData = [
+    [compLine],
     ['Ejecución Presupuestal Detallada - ' + data.budgetName + ' (' + data.budgetYear + ')'],
     [],
     ['Cuenta', 'Presupuesto Anual', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic', 'Total Ejecutado', 'Diferencia', '% Ejecución']
@@ -12549,6 +12579,7 @@ function exportDetailedBudgetToExcel() {
   
   // Sheet 2: Transactions
   const wsTxData = [
+    [compLine],
     ['Detalle de Transacciones de Ejecución Presupuestal - ' + data.budgetName],
     [],
     ['Fecha', 'Comprobante', 'Tercero', 'Cuenta Contable', 'Descripción', 'Débito', 'Crédito', 'Neto']
@@ -12559,7 +12590,7 @@ function exportDetailedBudgetToExcel() {
     const num = tl.expand?.tx_id?.number || '';
     const third = tl.expand?.third_party_id?.name || 'Sin tercero';
     const acc = `${tl.expand?.account_id?.code || ''} - ${tl.expand?.account_id?.name || ''}`;
-    const desc = tl.description || '';
+    const desc = String(tl.description || '').trim() || String(tl.expand?.tx_id?.description || '').trim();
     const net = (tl.debit || 0) - (tl.credit || 0);
     wsTxData.push([dStr, num, third, acc, desc, tl.debit || 0, tl.credit || 0, net]);
   });
@@ -12682,6 +12713,48 @@ async function exportDetailedBudgetToPdf() {
         drawPdfFooter(doc, dt.pageNumber);
       }
     });
+
+    if (Array.isArray(data.txLines) && data.txLines.length > 0) {
+      let txStartY = ((doc as any).lastAutoTable?.finalY || (doc as any).previousAutoTable?.finalY || header.startY) + 18;
+      if (txStartY > doc.internal.pageSize.getHeight() - 90) {
+        doc.addPage();
+        txStartY = 36;
+      }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(13, 33, 55);
+      doc.text(`Detalle de Transacciones de Ejecución Presupuestal - ${data.budgetName}`, header.marginLeft, txStartY);
+
+      const txBody = data.txLines.map((tl: any) => {
+        const dStr = tl.expand?.tx_id?.date || '';
+        const num = tl.expand?.tx_id?.number || '';
+        const third = tl.expand?.third_party_id?.name || 'Sin tercero';
+        const acc = `${tl.expand?.account_id?.code || ''} - ${tl.expand?.account_id?.name || ''}`;
+        const desc = String(tl.description || '').trim() || String(tl.expand?.tx_id?.description || '').trim();
+        const debit = Number(tl.debit || 0);
+        const credit = Number(tl.credit || 0);
+        const net = debit - credit;
+        return [dStr, num, third, acc, desc, fmtPdfNum(debit), fmtPdfNum(credit), fmtPdfNum(net)];
+      });
+
+      (doc as any).autoTable({
+        startY: txStartY + 6,
+        margin: { left: header.marginLeft, right: doc.internal.pageSize.getWidth() - header.marginRight },
+        head: [['Fecha', 'Comprobante', 'Tercero', 'Cuenta Contable', 'Descripción', 'Débito', 'Crédito', 'Neto']],
+        body: txBody,
+        theme: 'grid',
+        styles: { fontSize: 6.5, cellPadding: 2, overflow: 'linebreak' },
+        headStyles: { fillColor: [13, 33, 55], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          5: { halign: 'right' },
+          6: { halign: 'right' },
+          7: { halign: 'right' },
+        },
+        didDrawPage: (dt) => {
+          drawPdfFooter(doc, dt.pageNumber);
+        }
+      });
+    }
 
     doc.save(`Ejecucion_Presupuestal_Detallada_${data.budgetYear}_${todayStr()}.pdf`);
   } catch (err: any) {
@@ -15163,6 +15236,12 @@ const tabsHtml = `
   const exportExcel = () => {
     if (!_auditGroups.length || !_auditParams) return;
     const { dateFrom, dateTo, showAll } = _auditParams;
+    const headerInfo = typeof (window as any).getActiveCompanyHeaderSync === 'function'
+      ? (window as any).getActiveCompanyHeaderSync()
+      : { companyName: 'EMPRESA', companyNit: '' };
+    const compLabel = headerInfo.companyNit
+      ? `${headerInfo.companyName.toUpperCase()} — NIT: ${headerInfo.companyNit}`
+      : headerInfo.companyName.toUpperCase();
 
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`;
     html += `<head><meta charset="utf-8"/><style>
@@ -15179,7 +15258,7 @@ const tabsHtml = `
       const filename = showAll ? `auditoria_detalle_${dateFrom}_${dateTo}` : `auditoria_novedades_${dateFrom}_${dateTo}`;
       // ── TABLE 1: RESUMEN ──
       html += `<table>`;
-      html += `<tr><th colspan="9" class="header-section" style="background-color:#0D2137; color:#FFFFFF; font-size:11pt; font-weight:bold; padding:8px; text-align:center;">RESUMEN DE AUDITORÍA DE CONSECUTIVOS (${dateFrom} al ${dateTo})</th></tr>`;
+      html += `<tr><th colspan="9" class="header-section" style="background-color:#0D2137; color:#FFFFFF; font-size:11pt; font-weight:bold; padding:8px; text-align:center;">${esc(compLabel)} — RESUMEN DE AUDITORÍA DE CONSECUTIVOS (${dateFrom} al ${dateTo})</th></tr>`;
       html += `<tr>
         <th style="background-color:#7C3AED; color:#FFFFFF;">Prefijo</th>
         <th style="background-color:#7C3AED; color:#FFFFFF;">Nombre</th>
@@ -15310,7 +15389,7 @@ const tabsHtml = `
       // ── DETALLE COMERCIAL EXCEL (Exact match with reporteCompras / 31 columnas) ──
       const filename = `reporte_comercial_auditoria_${dateFrom}_${dateTo}`;
       html += `<table>`;
-      html += `<tr><th colspan="32" class="header-section" style="background-color:#0D2137; color:#FFFFFF; font-size:12pt; font-weight:bold; padding:10px; text-align:center;">LISTADO COMERCIAL DE TRANSACCIONES Y DOCUMENTOS EN AUDITORÍA DE CONSECUTIVOS</th></tr>`;
+      html += `<tr><th colspan="32" class="header-section" style="background-color:#0D2137; color:#FFFFFF; font-size:12pt; font-weight:bold; padding:10px; text-align:center;">${esc(compLabel)} — LISTADO COMERCIAL DE TRANSACCIONES Y DOCUMENTOS EN AUDITORÍA DE CONSECUTIVOS</th></tr>`;
       html += `<tr><th colspan="32" class="text-center" style="background-color:#1F2937; color:#FFFFFF; font-size:9pt; padding:4px;">Periodo Desde: ${dateFrom} Hasta ${dateTo}</th></tr>`;
       
       const excelHeaders = [
@@ -15625,7 +15704,15 @@ async function renderCostCentersReport() {
 
 function exportCostCentersExcel(rows, fromDate, toDate) {
   try {
+    const headerInfo = typeof (window as any).getActiveCompanyHeaderSync === 'function'
+      ? (window as any).getActiveCompanyHeaderSync()
+      : { companyName: 'EMPRESA', companyNit: '' };
+    const compLine = headerInfo.companyNit
+      ? `${headerInfo.companyName.toUpperCase()} — NIT: ${headerInfo.companyNit}`
+      : headerInfo.companyName.toUpperCase();
+
     const data = [
+      [compLine],
       ["REPORTE: BALANCE POR CENTRO DE COSTO"],
       [`Período: ${fromDate} a ${toDate}`],
       ["Fecha de Generación:", todayStr()],
@@ -15653,21 +15740,14 @@ function exportCostCentersExcel(rows, fromDate, toDate) {
   }
 }
 
-function exportCostCentersPDF(rows, fromDate, toDate) {
+async function exportCostCentersPDF(rows, fromDate, toDate) {
   try {
     const doc = new (window as any).jspdf.jsPDF('p', 'pt', 'letter');
-    const headerCtx = {
-      title: 'BALANCE POR CENTRO DE COSTO',
-      subtitle: `Período: ${fromDate} a ${toDate}`,
-      company: localStorage.getItem('active_company_name') || 'GRAVY',
-      branch: getSelectVal('cc-rep-branch') || 'TODAS',
-      user: pb.currentUser?.name || 'Administrador',
-      date: todayStr(),
-    };
+    const headerCtx = await getPdfHeaderContext({ branchId: getSelectVal('cc-rep-branch') || 'TODAS' });
 
-    const header = (window as any).drawPdfHeader(doc, headerCtx, {
+    const header = drawPdfHeader(doc, headerCtx, {
       title: 'Balance por Centro de Costo',
-      subtitle: `Período: ${fromDate} a ${toDate}`,
+      subtitles: [`Período: ${fromDate} a ${toDate}`],
     });
 
     const body = [];
@@ -15908,6 +15988,9 @@ async function renderAccountStatementReport() {
         generateAccountStatementRows();
       }
     });
+
+    $('#btn-pdf-account-statement')?.addEventListener('click', exportAccountStatementPDF);
+    $('#btn-exp-account-statement')?.addEventListener('click', exportAccountStatementExcel);
 
   } catch (err: any) {
     view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
@@ -16286,7 +16369,7 @@ async function generateAccountStatementRows() {
                 </td>
                 <td class="font-mono text-xs">${esc(l.doc_cruce)}</td>
                 <td class="text-xs">${esc(l.cuenta)}</td>
-                <td class="text-xs">${esc(l.descripcion)}</td>
+                <td class="text-xs" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.descripcion || '')}">${esc(l.descripcion || '')}</td>
                 <td class="text-right font-mono ${l.debito > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-400'}">${l.debito > 0 ? fmt(l.debito) : '0.00'}</td>
                 <td class="text-right font-mono ${l.credito > 0 ? 'text-rose-700 font-semibold' : 'text-gray-400'}">${l.credito > 0 ? fmt(l.credito) : '0.00'}</td>
                 <td class="text-right font-mono font-bold" style="color:${lineSaldoPolarity.color}">${lineSaldoPolarity.text}</td>
@@ -16308,9 +16391,6 @@ async function generateAccountStatementRows() {
         </table>
       </div>`;
 
-    $('#btn-pdf-account-statement')?.addEventListener('click', exportAccountStatementPDF);
-    $('#btn-exp-account-statement')?.addEventListener('click', exportAccountStatementExcel);
-
   } catch (err: any) {
     results.innerHTML = `<div class="p-6 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>Error al consultar estado de cuenta: ${esc(err.message)}</div>`;
   }
@@ -16324,12 +16404,18 @@ async function exportAccountStatementPDF() {
     const jsPdfCtor = getPdfCtorOrWarn();
     if (!jsPdfCtor) return;
 
+    const isProp = Boolean(data.isPropertyMode && data.prop);
+    const prop = data.prop || {};
+    const third = data.third || {};
+
     const doc = new jsPdfCtor('p', 'pt', 'letter');
     const headerCtx = await getPdfHeaderContext();
     const header = drawPdfHeader(doc, headerCtx, {
-      title: 'ESTADO DE CUENTA POR TERCERO',
+      title: isProp ? 'ESTADO DE CUENTA POR UNIDAD HABITACIONAL' : 'ESTADO DE CUENTA POR TERCERO',
       subtitles: [
-        `TERCERO: ${data.third.name || ''} (${data.third.doc_number || ''})`,
+        isProp
+          ? `UNIDAD: [${prop.code || ''}] ${prop.name || ''}`
+          : `TERCERO: ${third.name || ''} (${third.doc_number || ''})`,
         `PERÍODO: DEL ${data.dateFrom} AL ${data.dateTo}`,
       ]
     });
@@ -16345,13 +16431,21 @@ async function exportAccountStatementPDF() {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(13, 33, 55);
-    doc.text(`Tercero: ${data.third.name || 'S.N.'}`, left + 10, currentY + 15);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(80, 80, 80);
-    doc.text(`NIT / Doc: ${data.third.doc_number || 'N/A'}  |  Teléfono: ${data.third.phone || 'N/A'}`, left + 10, currentY + 28);
-    doc.text(`Dirección: ${data.third.address || 'N/A'} ${data.third.city ? `- ${data.third.city}` : ''}  |  Correo: ${data.third.email || 'N/A'}`, left + 10, currentY + 39);
+    if (isProp) {
+      doc.text(`Unidad Habitacional: [${prop.code || 'S/C'}] ${prop.name || 'S.N.'}`, left + 10, currentY + 15);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`Torre: ${prop.tower || 'N/A'}  |  Apto/Local: ${prop.apartment || 'N/A'}  |  Coeficiente: ${prop.coef_participacion ? Number(prop.coef_participacion).toFixed(4) + '%' : 'N/A'}`, left + 10, currentY + 28);
+      doc.text(`Período Consultado: ${data.dateFrom} al ${data.dateTo}`, left + 10, currentY + 39);
+    } else {
+      doc.text(`Tercero: ${third.name || 'S.N.'}`, left + 10, currentY + 15);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`NIT / Doc: ${third.doc_number || 'N/A'}  |  Teléfono: ${third.phone || 'N/A'}`, left + 10, currentY + 28);
+      doc.text(`Dirección: ${third.address || 'N/A'} ${third.city ? `- ${third.city}` : ''}  |  Correo: ${third.email || 'N/A'}`, left + 10, currentY + 39);
+    }
 
     currentY += 55;
 
@@ -16418,7 +16512,8 @@ async function exportAccountStatementPDF() {
       didDrawPage: (pageData: any) => drawPdfFooter(doc, pageData.pageNumber),
     });
 
-    doc.save(`estado_cuenta_${data.third.doc_number || 'tercero'}_${data.dateFrom}_${data.dateTo}.pdf`);
+    const fileSlug = isProp ? (prop.code || 'unidad') : (third.doc_number || 'tercero');
+    doc.save(`estado_cuenta_${fileSlug}_${data.dateFrom}_${data.dateTo}.pdf`);
   } catch (err: any) {
     showToast(`Error al generar PDF: ${err.message}`, 'error');
   }
@@ -16429,9 +16524,23 @@ function exportAccountStatementExcel() {
   if (!data) return showToast('Genera primero el estado de cuenta.', 'warning');
 
   try {
+    const isProp = Boolean(data.isPropertyMode && data.prop);
+    const prop = data.prop || {};
+    const third = data.third || {};
+
+    const headerInfo = typeof (window as any).getActiveCompanyHeaderSync === 'function'
+      ? (window as any).getActiveCompanyHeaderSync()
+      : { companyName: 'EMPRESA', companyNit: '' };
+    const compLine = headerInfo.companyNit
+      ? `${headerInfo.companyName.toUpperCase()} — NIT: ${headerInfo.companyNit}`
+      : headerInfo.companyName.toUpperCase();
+
     const sheetRows = [
-      ['REPORTE: ESTADO DE CUENTA POR TERCERO'],
-      [`Tercero: ${data.third.name || ''} (NIT/Doc: ${data.third.doc_number || ''})`],
+      [compLine],
+      [isProp ? 'REPORTE: ESTADO DE CUENTA POR UNIDAD HABITACIONAL' : 'REPORTE: ESTADO DE CUENTA POR TERCERO'],
+      [isProp
+        ? `Unidad: [${prop.code || ''}] ${prop.name || ''}`
+        : `Tercero: ${third.name || ''} (NIT/Doc: ${third.doc_number || ''})`],
       [`Período: Del ${data.dateFrom} al ${data.dateTo}`],
       [`Fecha de Generación: ${todayStr()}`],
       [],
@@ -16459,7 +16568,8 @@ function exportAccountStatementExcel() {
     const ws = (window as any).XLSX.utils.aoa_to_sheet(sheetRows);
     const wb = (window as any).XLSX.utils.book_new();
     (window as any).XLSX.utils.book_append_sheet(wb, ws, 'Estado de Cuenta');
-    (window as any).XLSX.writeFile(wb, `Estado_Cuenta_${data.third.doc_number || 'tercero'}_${data.dateFrom}_${data.dateTo}.xlsx`);
+    const fileSlug = isProp ? (prop.code || 'unidad') : (third.doc_number || 'tercero');
+    (window as any).XLSX.writeFile(wb, `Estado_Cuenta_${fileSlug}_${data.dateFrom}_${data.dateTo}.xlsx`);
   } catch (err: any) {
     showToast(`Error al exportar Excel: ${err.message}`, 'error');
   }

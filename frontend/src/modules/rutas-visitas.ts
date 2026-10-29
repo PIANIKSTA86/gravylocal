@@ -64,7 +64,7 @@ export const OBJECTIVES: Record<string, { label: string; icon: string }> = {
 export async function renderMiAgendaRutas(container: HTMLElement, _initialDate?: string) {
   // [DEPRECADO EN WEB]: La gestión operativa y ejecución de rutas en terreno corresponde
   // exclusivamente a la Aplicación Móvil nativa. La versión Web ofrece el centro de control y planificación.
-  return renderControlRutasAdmin(container);
+  return renderRutasControl(container);
 }
 
 function _renderVendorAgendaUI(container: HTMLElement, visits: VendorVisit[], activeDate: string, sellerName: string) {
@@ -310,7 +310,7 @@ function _renderSingleVisitCard(v: VendorVisit, seqNum: number): string {
       <!-- Action Buttons Area -->
       <div class="pt-2 border-t border-slate-100">
         ${isProgrammed ? `
-          <button class="btn-do-checkin w-full py-2.5 px-4 rounded-xl bg-[#006876] hover:bg-[#004F5A] text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-xs cursor-pointer" data-id="${v.id}">
+          <button class="btn-do-checkin btn btn-primary w-full py-2.5 px-4 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 shadow-xs cursor-pointer" data-id="${v.id}">
             <i class="fas fa-location-crosshairs text-sm"></i> Iniciar Check-In (Llegada)
           </button>
         ` : ''}
@@ -497,7 +497,7 @@ function _openCheckoutModal(visitId: string, clientName: string, onDone: () => v
 
       <div class="flex gap-2 pt-2">
         <button id="modal-cancel-btn" class="btn btn-secondary text-xs flex-1 py-2.5">Cancelar</button>
-        <button id="modal-save-checkout" class="btn btn-primary text-xs flex-1 py-2.5 bg-[#006876] font-extrabold">Finalizar Visita</button>
+        <button id="modal-save-checkout" class="btn btn-primary text-xs flex-1 py-2.5 font-extrabold">Finalizar Visita</button>
       </div>
     </div>
   `;
@@ -578,7 +578,7 @@ function _openOutcomeEditModal(visitId: string, onDone: () => void) {
 
         <div class="flex gap-2 pt-2">
           <button id="modal-cancel-btn" class="btn btn-secondary text-xs flex-1">Cancelar</button>
-          <button id="modal-save-edit" class="btn btn-primary text-xs flex-1 bg-[#006876]">Guardar</button>
+          <button id="modal-save-edit" class="btn btn-primary text-xs flex-1">Guardar</button>
         </div>
       </div>
     `;
@@ -606,16 +606,24 @@ function _openOutcomeEditModal(visitId: string, onDone: () => void) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-// 2. VISTA ADMINISTRACIÓN: CONTROL Y PLANIFICACIÓN DE RUTAS
+// 2. VISTAS ADMINISTRATIVAS INDEPENDIENTES DE RUTAS
 // ═════════════════════════════════════════════════════════════════════════
 
-export async function renderControlRutasAdmin(container: HTMLElement) {
+/**
+ * OPCIÓN 1: Monitoreo Satelital en Tiempo Real (Telemetría GPS y Mapa Leaflet)
+ */
+export async function renderRutasMonitoreo(container: HTMLElement) {
+  if (typeof (window as any)._activeRutasLiveMapCleanup === 'function') {
+    try { (window as any)._activeRutasLiveMapCleanup(); } catch (_) {}
+    (window as any)._activeRutasLiveMapCleanup = null;
+  }
+
   const esc = (window as any).esc;
   const pb = (window as any).pb;
 
   container.innerHTML = `
     <div class="p-8 text-center" style="color:#9CA3AF">
-      <i class="fas fa-spinner fa-spin mr-2"></i>Cargando Control Gerencial de Rutas...
+      <i class="fas fa-spinner fa-spin mr-2"></i>Cargando Monitoreo Satelital en Tiempo Real...
     </div>
   `;
 
@@ -638,7 +646,44 @@ export async function renderControlRutasAdmin(container: HTMLElement) {
       }).catch(() => []),
     ]);
 
-    _renderAdminRutasUI(container, visits, sellers, clients, today);
+    container.innerHTML = `
+      <div class="w-full space-y-5 anim-fade">
+        <!-- Header estándar Gravy -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <div>
+            <div class="flex items-center gap-2.5">
+              <h3 class="text-lg font-bold" style="color:#0D2137">Monitoreo Satelital en Tiempo Real</h3>
+              <span class="text-xs font-semibold px-2.5 py-0.5 bg-purple-50 text-[#7C3AED] border border-purple-200/70 rounded-full inline-flex items-center gap-1.5">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-[#7C3AED]"></span>
+                </span>
+                Telemetría GPS en Vivo
+              </span>
+            </div>
+            <p class="text-sm" style="color:#6B7280">Supervisión satelital de asesores comerciales en terreno, historial de georutas y última posición reportada.</p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="btn-nueva-visita-monitoreo" class="btn btn-primary">
+              <i class="fas fa-plus"></i> Programar Nueva Visita
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Map Content Area -->
+        <div id="rutas-monitoreo-content" class="w-full"></div>
+      </div>
+    `;
+
+    container.querySelector('#btn-nueva-visita-monitoreo')?.addEventListener('click', () => {
+      _openNewVisitModal(sellers, clients, today, () => {
+        renderRutasMonitoreo(container);
+      });
+    });
+
+    const cleanup = _renderAdminLiveMapTab(container, visits, sellers, clients, today);
+    (window as any)._activeRutasLiveMapCleanup = cleanup;
   } catch (err: any) {
     container.innerHTML = `
       <div class="p-8 text-center text-red-500">
@@ -648,94 +693,159 @@ export async function renderControlRutasAdmin(container: HTMLElement) {
   }
 }
 
-function _renderAdminRutasUI(container: HTMLElement, visits: VendorVisit[], sellers: any[], clients: any[], activeDate: string) {
+/**
+ * OPCIÓN 2: Tablero de Control & Seguimiento (KPIs, Auditoría Geocerca y Registro de Visitas)
+ */
+export async function renderRutasControl(container: HTMLElement) {
+  const esc = (window as any).esc;
+  const pb = (window as any).pb;
+
   container.innerHTML = `
-    <div class="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
-      
-      <!-- Top Banner Header -->
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-xs">
-        <div class="flex items-center space-x-3.5">
-          <div class="w-12 h-12 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-700 font-bold text-xl shadow-xs">
-            <i class="fas fa-calendar-check"></i>
-          </div>
-          <div>
-            <h1 class="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
-              Logística: Control y Planificación de Rutas
-              <span class="text-xs font-semibold px-2.5 py-0.5 bg-teal-100 text-teal-800 rounded-full">Gerencia Comercial</span>
-            </h1>
-            <p class="text-xs text-gray-500 mt-0.5">Asignación masiva de rutas, auditoría de check-in GPS y tablero de efectividad.</p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2.5">
-          <button id="btn-nueva-visita-admin" class="btn btn-primary text-xs flex items-center gap-1.5 bg-[#006876] hover:bg-[#004F5A]">
-            <i class="fas fa-plus"></i> Programar Nueva Visita
-          </button>
-        </div>
-      </div>
-
-      <!-- Main Navigation Tabs -->
-      <div class="flex border-b border-gray-200 gap-6 overflow-x-auto no-scrollbar">
-        <button id="tab-admin-livemap" class="pb-3 text-sm font-bold text-[#006876] border-b-2 border-[#006876] flex items-center gap-2 whitespace-nowrap">
-          <i class="fas fa-satellite-dish text-teal-600"></i> Monitoreo Satelital en Tiempo Real
-          <span class="flex h-2 w-2 relative">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-        </button>
-        <button id="tab-admin-tracker" class="pb-3 text-sm font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-2 whitespace-nowrap">
-          <i class="fas fa-chart-line"></i> Tablero de Control & Seguimiento
-        </button>
-        <button id="tab-admin-planner" class="pb-3 text-sm font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-2 whitespace-nowrap">
-          <i class="fas fa-calendar-plus"></i> Asignador & Planificador Masivo
-        </button>
-      </div>
-
-      <!-- Tab Content Area -->
-      <div id="admin-rutas-content"></div>
+    <div class="p-8 text-center" style="color:#9CA3AF">
+      <i class="fas fa-spinner fa-spin mr-2"></i>Cargando Tablero de Control & Seguimiento...
     </div>
   `;
 
-  let activeMapCleanup: (() => void) | null = null;
+  try {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+    const [visits, sellers, clients] = await Promise.all([
+      pb.listAll('vendor_visits', {
+        expand: 'seller_id,client_id,sales_order_id',
+        sort: 'visit_date,order_seq',
+      }).catch(() => []),
+      pb.listAll('third_parties', {
+        filter: 'type="VENDEDOR" || type="EMPLEADO"',
+        sort: 'name',
+        fields: 'id,name,doc_number'
+      }).catch(() => []),
+      pb.listAll('third_parties', {
+        filter: 'type="CLIENTE" || type="AMBOS"',
+        sort: 'name',
+        fields: 'id,name,doc_number,address,phone,city'
+      }).catch(() => []),
+    ]);
 
-  const livemapTabBtn = container.querySelector('#tab-admin-livemap');
-  const trackerTabBtn = container.querySelector('#tab-admin-tracker');
-  const plannerTabBtn = container.querySelector('#tab-admin-planner');
+    container.innerHTML = `
+      <div class="w-full space-y-5 anim-fade">
+        <!-- Header estándar Gravy -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <div>
+            <div class="flex items-center gap-2.5">
+              <h3 class="text-lg font-bold" style="color:#0D2137">Tablero de Control & Seguimiento</h3>
+              <span class="text-xs font-semibold px-2.5 py-0.5 bg-purple-50 text-[#7C3AED] border border-purple-200/70 rounded-full inline-flex items-center gap-1.5">
+                Auditoría & Efectividad
+              </span>
+            </div>
+            <p class="text-sm" style="color:#6B7280">Indicadores de cumplimiento, geocercas, evidencias fotográficas de entrega y efectividad comercial.</p>
+          </div>
 
-  const setTabActive = (activeBtn: HTMLElement, otherBtns: HTMLElement[]) => {
-    if (activeMapCleanup) {
-      activeMapCleanup();
-      activeMapCleanup = null;
-    }
-    activeBtn.className = 'pb-3 text-sm font-bold text-[#006876] border-b-2 border-[#006876] flex items-center gap-2 whitespace-nowrap';
-    otherBtns.forEach(b => {
-      b.className = 'pb-3 text-sm font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-2 whitespace-nowrap';
+          <div class="flex items-center gap-2">
+            <button id="btn-nueva-visita-control" class="btn btn-primary">
+              <i class="fas fa-plus"></i> Programar Nueva Visita
+            </button>
+          </div>
+        </div>
+
+        <!-- Tracker Content Area -->
+        <div id="rutas-control-content" class="w-full"></div>
+      </div>
+    `;
+
+    container.querySelector('#btn-nueva-visita-control')?.addEventListener('click', () => {
+      _openNewVisitModal(sellers, clients, today, () => {
+        renderRutasControl(container);
+      });
     });
-  };
 
-  livemapTabBtn?.addEventListener('click', () => {
-    setTabActive(livemapTabBtn as HTMLElement, [trackerTabBtn as HTMLElement, plannerTabBtn as HTMLElement]);
-    activeMapCleanup = _renderAdminLiveMapTab(container, visits, sellers, clients, activeDate);
-  });
+    _renderAdminTrackerTab(container, visits, sellers, clients, today, () => renderRutasControl(container));
+  } catch (err: any) {
+    container.innerHTML = `
+      <div class="p-8 text-center text-red-500">
+        <i class="fas fa-circle-exclamation mr-2"></i>Error: ${esc(err.message)}
+      </div>
+    `;
+  }
+}
 
-  trackerTabBtn?.addEventListener('click', () => {
-    setTabActive(trackerTabBtn as HTMLElement, [livemapTabBtn as HTMLElement, plannerTabBtn as HTMLElement]);
-    _renderAdminTrackerTab(container, visits, sellers, clients, activeDate);
-  });
+/**
+ * OPCIÓN 3: Asignador & Planificador Masivo (Generación de Rutas en Lote)
+ */
+export async function renderRutasPlanificador(container: HTMLElement) {
+  const esc = (window as any).esc;
+  const pb = (window as any).pb;
 
-  plannerTabBtn?.addEventListener('click', () => {
-    setTabActive(plannerTabBtn as HTMLElement, [livemapTabBtn as HTMLElement, trackerTabBtn as HTMLElement]);
-    _renderAdminPlannerTab(container, visits, sellers, clients);
-  });
+  container.innerHTML = `
+    <div class="p-8 text-center" style="color:#9CA3AF">
+      <i class="fas fa-spinner fa-spin mr-2"></i>Cargando Asignador & Planificador Masivo...
+    </div>
+  `;
 
-  container.querySelector('#btn-nueva-visita-admin')?.addEventListener('click', () => {
-    _openNewVisitModal(sellers, clients, activeDate, () => {
-      renderControlRutasAdmin(container);
+  try {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+    const [visits, sellers, clients] = await Promise.all([
+      pb.listAll('vendor_visits', {
+        expand: 'seller_id,client_id,sales_order_id',
+        sort: 'visit_date,order_seq',
+      }).catch(() => []),
+      pb.listAll('third_parties', {
+        filter: 'type="VENDEDOR" || type="EMPLEADO"',
+        sort: 'name',
+        fields: 'id,name,doc_number'
+      }).catch(() => []),
+      pb.listAll('third_parties', {
+        filter: 'type="CLIENTE" || type="AMBOS"',
+        sort: 'name',
+        fields: 'id,name,doc_number,address,phone,city'
+      }).catch(() => []),
+    ]);
+
+    container.innerHTML = `
+      <div class="w-full space-y-5 anim-fade">
+        <!-- Header estándar Gravy -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <div>
+            <div class="flex items-center gap-2.5">
+              <h3 class="text-lg font-bold" style="color:#0D2137">Asignador & Planificador Masivo</h3>
+              <span class="text-xs font-semibold px-2.5 py-0.5 bg-purple-50 text-[#7C3AED] border border-purple-200/70 rounded-full inline-flex items-center gap-1.5">
+                Programación y Logística
+              </span>
+            </div>
+            <p class="text-sm" style="color:#6B7280">Generación masiva de rutas, asignación de carteras de clientes por zona y programación de cronograma.</p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="btn-nueva-visita-planificador" class="btn btn-primary">
+              <i class="fas fa-plus"></i> Programar Nueva Visita
+            </button>
+          </div>
+        </div>
+
+        <!-- Planner Content Area -->
+        <div id="rutas-planificador-content" class="w-full"></div>
+      </div>
+    `;
+
+    container.querySelector('#btn-nueva-visita-planificador')?.addEventListener('click', () => {
+      _openNewVisitModal(sellers, clients, today, () => {
+        renderRutasPlanificador(container);
+      });
     });
-  });
 
-  // Cargar por defecto el Monitoreo Satelital en Tiempo Real
-  activeMapCleanup = _renderAdminLiveMapTab(container, visits, sellers, clients, activeDate);
+    _renderAdminPlannerTab(container, visits, sellers, clients, () => renderRutasPlanificador(container));
+  } catch (err: any) {
+    container.innerHTML = `
+      <div class="p-8 text-center text-red-500">
+        <i class="fas fa-circle-exclamation mr-2"></i>Error: ${esc(err.message)}
+      </div>
+    `;
+  }
+}
+
+/**
+ * Delegado de compatibilidad para llamadas históricas a renderControlRutasAdmin
+ */
+export async function renderControlRutasAdmin(container: HTMLElement) {
+  return renderRutasControl(container);
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -749,7 +859,7 @@ function _renderAdminLiveMapTab(
   clients: any[],
   activeDate: string
 ): () => void {
-  const contentEl = container.querySelector('#admin-rutas-content');
+  const contentEl = (container.querySelector('#rutas-monitoreo-content') || container.querySelector('#admin-rutas-content') || container) as HTMLElement;
   if (!contentEl) return () => {};
   const esc = (window as any).esc;
   const pb = (window as any).pb;
@@ -765,16 +875,16 @@ function _renderAdminLiveMapTab(
     <div class="space-y-4">
       
       <!-- Top Live Controls Bar -->
-      <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-3">
           <div>
-            <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Fecha de Monitoreo</label>
-            <input type="date" id="live-filter-date" value="${activeDate}" class="form-input text-xs py-1 px-2.5 rounded-xl border-gray-300 font-bold text-slate-800">
+            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Fecha de Monitoreo</label>
+            <input type="date" id="live-filter-date" value="${activeDate}" class="form-input text-xs py-1.5 px-3 rounded-xl border-slate-200 font-semibold text-slate-800">
           </div>
 
           <div>
-            <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Foco Asesor</label>
-            <select id="live-filter-seller" class="form-input text-xs py-1 px-2.5 rounded-xl border-gray-300 font-bold min-w-44 text-slate-800">
+            <label class="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Foco Asesor</label>
+            <select id="live-filter-seller" class="form-input text-xs py-1.5 px-3 rounded-xl border-slate-200 font-semibold min-w-44 text-slate-800">
               <option value="">Todos los asesores en terreno</option>
               ${sellers.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
             </select>
@@ -782,7 +892,7 @@ function _renderAdminLiveMapTab(
 
           <div class="flex items-center gap-2 pt-3 sm:pt-4">
             <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
-              <input type="checkbox" id="chk-show-clients" checked class="rounded text-teal-600 focus:ring-teal-500">
+              <input type="checkbox" id="chk-show-clients" checked class="rounded text-[#7C3AED] focus:ring-[#7C3AED]">
               <span>Mostrar Clientes de Ruta</span>
             </label>
           </div>
@@ -798,9 +908,9 @@ function _renderAdminLiveMapTab(
           </span>
 
           <button id="btn-center-fleet" class="btn btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3">
-            <i class="fas fa-crosshairs text-teal-700"></i> Centrar Flota
+            <i class="fas fa-crosshairs text-[#7C3AED]"></i> Centrar Flota
           </button>
-          <button id="btn-refresh-live" class="btn btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3">
+          <button id="btn-refresh-live" class="btn btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3" title="Actualizar datos">
             <i class="fas fa-rotate"></i>
           </button>
         </div>
@@ -810,13 +920,13 @@ function _renderAdminLiveMapTab(
       <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
         
         <!-- Live Sellers Telemetry Sidebar -->
-        <div class="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-xs p-4 space-y-3">
-          <div class="flex items-center justify-between border-b pb-2.5 border-gray-100">
+        <div class="lg:col-span-1 bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3">
+          <div class="flex items-center justify-between border-b pb-2.5 border-slate-100">
             <h3 class="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-              <i class="fas fa-users-viewfinder text-teal-700"></i> Asesores en Terreno
+              <i class="fas fa-users-viewfinder text-[#7C3AED]"></i> Asesores en Terreno
             </h3>
-            <span id="live-seller-count" class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-              0 activos
+            <span id="live-seller-count" class="badge badge-purple text-[10px]">
+              0 en línea
             </span>
           </div>
 
@@ -1082,7 +1192,7 @@ function _renderAdminLiveMapTab(
         </div>
 
         <div class="pt-1 flex gap-1.5 border-t border-slate-100">
-          <button class="btn-track-history w-full py-1.5 px-2.5 rounded-lg bg-[#006876] text-white font-extrabold text-[10px] flex items-center justify-center gap-1 hover:bg-[#004F5A]" data-seller="${esc(loc.seller_id)}" data-name="${esc(sellerName)}">
+          <button class="btn-track-history w-full py-1.5 px-2.5 rounded-lg bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-extrabold text-[10px] flex items-center justify-center gap-1 shadow-xs transition-colors" data-seller="${esc(loc.seller_id)}" data-name="${esc(sellerName)}">
             <i class="fas fa-route"></i> Ver Recorrido del Día
           </button>
         </div>
@@ -1215,7 +1325,7 @@ function _renderAdminLiveMapTab(
       }
 
       return `
-        <div class="p-3 bg-white rounded-xl border border-slate-200 hover:border-teal-500 transition-all shadow-2xs space-y-2.5 seller-card" data-seller="${esc(loc.seller_id)}">
+        <div class="p-3 bg-white rounded-xl border border-slate-200 hover:border-purple-300 hover:shadow-xs transition-all space-y-2.5 seller-card" data-seller="${esc(loc.seller_id)}">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full ${dotColor} ${status === 'EN_VISITA' || status === 'EN_TRANSITO' ? 'animate-ping' : ''}"></span>
@@ -1244,10 +1354,10 @@ function _renderAdminLiveMapTab(
 
           <!-- Actions -->
           <div class="flex items-center gap-1.5 pt-1">
-            <button class="btn-locate-seller flex-1 py-1.5 px-2 rounded-lg bg-teal-50 border border-teal-200 text-teal-800 text-[11px] font-extrabold flex items-center justify-center gap-1 hover:bg-teal-100" data-lat="${loc.lat}" data-lng="${loc.lng}" data-seller="${esc(loc.seller_id)}">
-              <i class="fas fa-crosshairs text-teal-600"></i> Ubicar
+            <button class="btn-locate-seller flex-1 py-1.5 px-2 rounded-lg bg-purple-50 border border-purple-200 text-[#7C3AED] text-[11px] font-extrabold flex items-center justify-center gap-1 hover:bg-purple-100 transition-colors" data-lat="${loc.lat}" data-lng="${loc.lng}" data-seller="${esc(loc.seller_id)}">
+              <i class="fas fa-crosshairs text-[#7C3AED]"></i> Ubicar
             </button>
-            <button class="btn-trail-seller flex-1 py-1.5 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center justify-center gap-1" data-seller="${esc(loc.seller_id)}" data-name="${esc(sName)}">
+            <button class="btn-trail-seller flex-1 py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-bold flex items-center justify-center gap-1 transition-colors" data-seller="${esc(loc.seller_id)}" data-name="${esc(sName)}">
               <i class="fas fa-route text-slate-500"></i> Trayecto
             </button>
           </div>
@@ -1323,9 +1433,9 @@ function _renderAdminLiveMapTab(
 
       // Polilínea de trazado
       const polyline = L.polyline(points, {
-        color: '#006876',
+        color: '#7C3AED',
         weight: 5,
-        opacity: 0.85,
+        opacity: 0.9,
         lineJoin: 'round',
         dashArray: '8, 6',
       }).addTo(historyPolylineLayer);
@@ -1404,8 +1514,8 @@ function _renderAdminLiveMapTab(
   };
 }
 
-function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], sellers: any[], clients: any[], defaultDate: string) {
-  const contentEl = container.querySelector('#admin-rutas-content');
+function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], sellers: any[], clients: any[], defaultDate: string, onRefresh?: () => void) {
+  const contentEl = (container.querySelector('#rutas-control-content') || container.querySelector('#admin-rutas-content') || container) as HTMLElement;
   if (!contentEl) return;
   const esc = (window as any).esc;
 
@@ -1452,12 +1562,12 @@ function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], s
       </div>
 
       <!-- Table Section -->
-      <div class="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
-        <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="font-bold text-sm text-gray-800 flex items-center gap-2">
-            <i class="fas fa-list-check text-teal-600"></i> Auditoría de Visitas
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 class="font-bold text-sm text-slate-900 flex items-center gap-2">
+            <i class="fas fa-chart-line text-[#7C3AED]"></i> Auditoría y Trazabilidad de Visitas
           </h3>
-          <span class="text-xs text-gray-500" id="admin-count-label">0 visitas</span>
+          <span class="badge badge-purple text-xs" id="admin-count-label">0 visitas</span>
         </div>
 
         <div class="overflow-x-auto">
@@ -1504,29 +1614,70 @@ function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], s
     const kpiEl = contentEl.querySelector('#admin-kpi-container');
     if (kpiEl) {
       kpiEl.innerHTML = `
-        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
-          <p class="text-[10px] font-bold text-purple-900/75 uppercase tracking-wider">Total</p>
-          <p class="text-xl font-extrabold text-purple-950 mt-1">${total}</p>
+        <div class="stat-card bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total</span>
+            <div class="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-bold">
+              <i class="fas fa-calendar-days"></i>
+            </div>
+          </div>
+          <p class="text-2xl font-black text-slate-900 font-mono">${total}</p>
+          <span class="text-[10px] text-slate-400 font-medium">Programadas</span>
         </div>
-        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
-          <p class="text-[10px] font-bold text-purple-900/75 uppercase tracking-wider">En Curso</p>
-          <p class="text-xl font-extrabold text-purple-700 mt-1">${inProgress}</p>
+
+        <div class="stat-card bg-white p-4 rounded-2xl border border-sky-100 shadow-xs hover:border-sky-200 transition-all flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-bold text-sky-800 uppercase tracking-wider">En Curso</span>
+            <div class="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center text-xs font-bold">
+              <i class="fas fa-location-crosshairs"></i>
+            </div>
+          </div>
+          <p class="text-2xl font-black text-sky-700 font-mono">${inProgress}</p>
+          <span class="text-[10px] text-sky-600 font-medium">Check-in activo</span>
         </div>
-        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
-          <p class="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Ventas</p>
-          <p class="text-xl font-extrabold text-emerald-700 mt-1">${salesOk}</p>
+
+        <div class="stat-card bg-white p-4 rounded-2xl border border-emerald-100 shadow-xs hover:border-emerald-200 transition-all flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Ventas</span>
+            <div class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs font-bold">
+              <i class="fas fa-bag-shopping"></i>
+            </div>
+          </div>
+          <p class="text-2xl font-black text-emerald-700 font-mono">${salesOk}</p>
+          <span class="text-[10px] text-emerald-600 font-medium">Con pedido</span>
         </div>
-        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
-          <p class="text-[10px] font-bold text-purple-900/75 uppercase tracking-wider">Recaudos</p>
-          <p class="text-xl font-extrabold text-purple-900 mt-1">${paymentsOk}</p>
+
+        <div class="stat-card bg-white p-4 rounded-2xl border border-indigo-100 shadow-xs hover:border-indigo-200 transition-all flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-bold text-indigo-800 uppercase tracking-wider">Recaudos</span>
+            <div class="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold">
+              <i class="fas fa-hand-holding-dollar"></i>
+            </div>
+          </div>
+          <p class="text-2xl font-black text-indigo-700 font-mono">${paymentsOk}</p>
+          <span class="text-[10px] text-indigo-600 font-medium">Cobros realizados</span>
         </div>
-        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
-          <p class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">No Efectivas</p>
-          <p class="text-xl font-extrabold text-amber-700 mt-1">${notEff}</p>
+
+        <div class="stat-card bg-white p-4 rounded-2xl border border-amber-100 shadow-xs hover:border-amber-200 transition-all flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider">No Efectivas</span>
+            <div class="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-xs font-bold">
+              <i class="fas fa-triangle-exclamation"></i>
+            </div>
+          </div>
+          <p class="text-2xl font-black text-amber-700 font-mono">${notEff}</p>
+          <span class="text-[10px] text-amber-600 font-medium">Novedad reportada</span>
         </div>
-        <div class="stat-card" style="background:#F5F3FF;border:1.5px solid #7C3AED;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
-          <p class="text-[10px] font-bold text-purple-900 uppercase tracking-wider">% Efectividad</p>
-          <p class="text-xl font-extrabold text-purple-950 mt-1">${effPct}%</p>
+
+        <div class="stat-card bg-gradient-to-br from-purple-50 to-indigo-50/70 p-4 rounded-2xl border-2 border-purple-400 shadow-xs flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[10px] font-extrabold text-purple-900 uppercase tracking-wider">% Efectividad</span>
+            <div class="w-7 h-7 rounded-lg bg-purple-100 text-[#7C3AED] flex items-center justify-center text-xs font-bold">
+              <i class="fas fa-percent"></i>
+            </div>
+          </div>
+          <p class="text-2xl font-black text-[#7C3AED] font-mono">${effPct}%</p>
+          <span class="text-[10px] text-purple-700 font-bold">Tasa de éxito</span>
         </div>
       `;
     }
@@ -1574,8 +1725,8 @@ function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], s
             ${v.no_order_reason ? NO_ORDER_REASONS[v.no_order_reason] || v.no_order_reason : (v.notes || '—')}
           </td>
           <td class="py-3 px-3 text-right">
-            <button class="btn-admin-edit p-1.5 text-gray-400 hover:text-teal-700" data-id="${v.id}" title="Modificar"><i class="fas fa-pen"></i></button>
-            <button class="btn-admin-del p-1.5 text-gray-400 hover:text-red-700" data-id="${v.id}" title="Eliminar"><i class="fas fa-trash"></i></button>
+            <button class="btn-admin-edit p-1.5 text-slate-400 hover:text-[#7C3AED] hover:bg-purple-50 rounded-lg transition-all" data-id="${v.id}" title="Modificar"><i class="fas fa-pen"></i></button>
+            <button class="btn-admin-del p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" data-id="${v.id}" title="Eliminar"><i class="fas fa-trash"></i></button>
           </td>
         </tr>
       `;
@@ -1586,7 +1737,7 @@ function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], s
       b.addEventListener('click', () => {
         const item = visits.find(x => x.id === b.dataset.id);
         if (item) {
-          _openOutcomeEditModal(item.id, () => renderControlRutasAdmin(container));
+          _openOutcomeEditModal(item.id, () => (onRefresh ? onRefresh() : renderRutasControl(container)));
         }
       });
     });
@@ -1596,7 +1747,7 @@ function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], s
         if (confirm('¿Eliminar esta visita programada?')) {
           await (window as any).pb.delete('vendor_visits', b.dataset.id);
           (window as any).showToast('Visita eliminada');
-          renderControlRutasAdmin(container);
+          (onRefresh ? onRefresh() : renderRutasControl(container));
         }
       });
     });
@@ -1605,13 +1756,13 @@ function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], s
   contentEl.querySelector('#filter-admin-date')?.addEventListener('change', repaint);
   contentEl.querySelector('#filter-admin-seller')?.addEventListener('change', repaint);
   contentEl.querySelector('#filter-admin-status')?.addEventListener('change', repaint);
-  contentEl.querySelector('#btn-refresh-admin')?.addEventListener('click', () => renderControlRutasAdmin(container));
+  contentEl.querySelector('#btn-refresh-admin')?.addEventListener('click', () => (onRefresh ? onRefresh() : renderRutasControl(container)));
 
   repaint();
 }
 
-function _renderAdminPlannerTab(container: HTMLElement, visits: VendorVisit[], sellers: any[], clients: any[]) {
-  const contentEl = container.querySelector('#admin-rutas-content');
+function _renderAdminPlannerTab(container: HTMLElement, visits: VendorVisit[], sellers: any[], clients: any[], onRefresh?: () => void) {
+  const contentEl = (container.querySelector('#rutas-planificador-content') || container.querySelector('#admin-rutas-content') || container) as HTMLElement;
   if (!contentEl) return;
   const esc = (window as any).esc;
 
@@ -1619,9 +1770,9 @@ function _renderAdminPlannerTab(container: HTMLElement, visits: VendorVisit[], s
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       
       <!-- Asignador de Rutas Form -->
-      <div class="lg:col-span-1 bg-white p-5 rounded-2xl border border-gray-200 shadow-xs space-y-4">
-        <h3 class="font-bold text-base text-gray-900 flex items-center gap-2 border-b pb-3 border-gray-100">
-          <i class="fas fa-user-plus text-teal-600"></i> Asignación Masiva de Rutas
+      <div class="lg:col-span-1 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <h3 class="font-bold text-base text-slate-900 flex items-center gap-2 border-b pb-3 border-slate-100">
+          <i class="fas fa-calendar-plus text-[#7C3AED]"></i> Asignación Masiva de Rutas
         </h3>
 
         <div>
@@ -1650,50 +1801,64 @@ function _renderAdminPlannerTab(container: HTMLElement, visits: VendorVisit[], s
         </div>
 
         <div>
-          <label class="block text-xs font-bold text-gray-700 mb-1">Seleccionar Clientes para la Ruta</label>
-          <input type="text" id="admin-search-client" class="form-input text-xs w-full mb-2" placeholder="Filtrar por nombre o ciudad...">
+          <label class="block text-xs font-bold text-slate-700 mb-1">Seleccionar Clientes para la Ruta</label>
+          <div class="relative mb-2">
+            <i class="fas fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs pointer-events-none"></i>
+            <input type="text" id="admin-search-client" class="form-input text-xs w-full pl-8" placeholder="Filtrar por nombre o ciudad...">
+          </div>
           
-          <div id="admin-client-list" class="max-h-60 overflow-y-auto space-y-1.5 border border-gray-200 p-2 rounded-xl bg-gray-50/50">
+          <div id="admin-client-list" class="max-h-60 overflow-y-auto space-y-1.5 border border-slate-200 p-2 rounded-xl bg-slate-50/50">
             ${clients.map(c => `
-              <label class="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-200 hover:bg-teal-50/30 cursor-pointer client-row">
-                <input type="checkbox" value="${esc(c.id)}" class="rounded text-teal-600 chk-admin-client">
+              <label class="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-200 hover:border-purple-300 hover:bg-purple-50/20 transition-all cursor-pointer client-row">
+                <input type="checkbox" value="${esc(c.id)}" class="rounded text-[#7C3AED] focus:ring-[#7C3AED] chk-admin-client">
                 <div class="text-xs">
-                  <span class="font-bold text-gray-800 block">${esc(c.name)}</span>
-                  <span class="text-[10px] text-gray-500">${esc(c.address || '')} · ${esc(c.city || '')}</span>
+                  <span class="font-bold text-slate-800 block">${esc(c.name)}</span>
+                  <span class="text-[10px] text-slate-500">${esc(c.address || '')} · ${esc(c.city || '')}</span>
                 </div>
               </label>
             `).join('')}
           </div>
         </div>
 
-        <button id="btn-save-admin-batch" class="btn btn-primary w-full py-2.5 text-xs font-extrabold flex items-center justify-center gap-2 bg-[#006876]">
+        <button id="btn-save-admin-batch" class="btn btn-primary w-full py-2.5 text-xs font-extrabold flex items-center justify-center gap-2 shadow-xs">
           <i class="fas fa-check-double"></i> Asignar y Guardar Ruta
         </button>
       </div>
 
       <!-- Resumen de Rutas Programadas -->
-      <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-gray-200 shadow-xs space-y-4">
-        <h3 class="font-bold text-base text-gray-900 flex items-center gap-2 border-b pb-3 border-gray-100">
-          <i class="fas fa-users-viewfinder text-teal-600"></i> Carga de Visitas por Asesor
+      <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <h3 class="font-bold text-base text-slate-900 flex items-center gap-2 border-b pb-3 border-slate-100">
+          <i class="fas fa-users-viewfinder text-[#7C3AED]"></i> Carga de Visitas por Asesor
         </h3>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           ${sellers.map(s => {
             const sellerVisits = visits.filter(v => v.seller_id === s.id);
+            const pendingCount = sellerVisits.filter(v => v.status === 'PROGRAMADA').length;
+            const completedCount = sellerVisits.filter(v => v.status === 'COMPLETADA_PEDIDO' || v.status === 'COMPLETADA_RECAUDO').length;
+            const pct = sellerVisits.length ? Math.round((completedCount / sellerVisits.length) * 100) : 0;
             return `
-              <div class="p-4 rounded-xl border border-gray-200 bg-gray-50/40 space-y-2">
+              <div class="p-4 rounded-xl border border-slate-200 bg-white hover:border-purple-200 hover:shadow-2xs transition-all space-y-2.5">
                 <div class="flex items-center justify-between">
-                  <h4 class="font-bold text-sm text-gray-900">${esc(s.name)}</h4>
-                  <span class="text-xs font-extrabold px-2.5 py-0.5 bg-teal-100 text-teal-800 rounded-full">${sellerVisits.length} visitas</span>
+                  <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-purple-50 text-[#7C3AED] flex items-center justify-center text-xs font-bold">
+                      <i class="fas fa-user-tie"></i>
+                    </div>
+                    <h4 class="font-bold text-xs text-slate-900">${esc(s.name)}</h4>
+                  </div>
+                  <span class="badge badge-purple text-[10px]">${sellerVisits.length} visitas</span>
                 </div>
-                <div class="text-xs text-gray-600 space-y-1 pt-1 border-t border-gray-200">
+                <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div class="bg-emerald-500 h-full rounded-full transition-all" style="width: ${pct}%"></div>
+                </div>
+                <div class="text-[11px] text-slate-500 space-y-1 pt-1 border-t border-slate-100">
                   <div class="flex justify-between">
                     <span>Programadas pendientes:</span>
-                    <strong class="text-gray-800">${sellerVisits.filter(v => v.status === 'PROGRAMADA').length}</strong>
+                    <strong class="text-slate-800">${pendingCount}</strong>
                   </div>
                   <div class="flex justify-between">
                     <span>Completadas:</span>
-                    <strong class="text-emerald-700">${sellerVisits.filter(v => v.status === 'COMPLETADA_PEDIDO' || v.status === 'COMPLETADA_RECAUDO').length}</strong>
+                    <strong class="text-emerald-600">${completedCount} (${pct}%)</strong>
                   </div>
                 </div>
               </div>
@@ -1746,7 +1911,7 @@ function _renderAdminPlannerTab(container: HTMLElement, visits: VendorVisit[], s
       }
 
       (window as any).showToast(`Ruta de ${checkedClients.length} visitas asignada con éxito!`);
-      renderControlRutasAdmin(container);
+      (onRefresh ? onRefresh() : renderRutasPlanificador(container));
     } catch (err: any) {
       alert('Error: ' + err.message);
     }
@@ -1805,7 +1970,7 @@ function _openNewVisitModal(sellers: any[], clients: any[], defaultDate: string,
 
       <div class="flex gap-2 pt-2">
         <button id="modal-cancel-btn" class="btn btn-secondary text-xs flex-1">Cancelar</button>
-        <button id="modal-save-btn" class="btn btn-primary text-xs flex-1 bg-[#006876]">Guardar Visita</button>
+        <button id="modal-save-btn" class="btn btn-primary text-xs flex-1">Guardar Visita</button>
       </div>
     </div>
   `;
@@ -1842,11 +2007,14 @@ function _openNewVisitModal(sellers: any[], clients: any[], defaultDate: string,
   });
 }
 
-// Router general (Siempre conduce al Centro de Control y Planificación en la Web)
+// Router general (Siempre conduce al Tablero de Control & Seguimiento en la Web)
 export async function renderRutasVisitas(container: HTMLElement) {
-  return renderControlRutasAdmin(container);
+  return renderRutasControl(container);
 }
 
-(window as any).renderRutasVisitas = renderRutasVisitas;
-(window as any).renderMiAgendaRutas = renderMiAgendaRutas;
-(window as any).renderControlRutasAdmin = renderControlRutasAdmin;
+(window as any).renderRutasMonitoreo = renderRutasMonitoreo;
+(window as any).renderRutasControl = renderRutasControl;
+(window as any).renderRutasPlanificador = renderRutasPlanificador;
+(window as any).renderRutasVisitas = renderRutasControl;
+(window as any).renderMiAgendaRutas = renderRutasControl;
+(window as any).renderControlRutasAdmin = renderRutasControl;

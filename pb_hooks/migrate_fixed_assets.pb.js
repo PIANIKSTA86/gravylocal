@@ -120,6 +120,7 @@ onBootstrap((e) => {
     addField("qr_code", "text");
     addField("photo_url", "text");
     addField("is_depreciable", "bool");
+    addField("is_immediate_depreciation", "bool");
     addField("initial_depreciation_niif", "number");
     addField("initial_depreciation_fiscal", "number");
     addField("accumulated_depreciation_niif", "number");

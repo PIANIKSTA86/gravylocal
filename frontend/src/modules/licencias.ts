@@ -124,12 +124,19 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
       description: 'Gestión inmobiliaria: alquileres, inmuebles, contratos y comisiones.',
       pages:       ['Inmuebles', 'Contratos', 'Liquidación'],
     },
+    importaciones: {
+      label:       'Importaciones',
+      icon:        'fa-ship',
+      color:       '#0284C7',
+      description: 'Gestión aduanera, tracking de contenedores, preliquidaciones y reservas de importación.',
+      pages:       ['Importaciones', 'Preliquidación & Viabilidad', 'Reservas de Importación'],
+    },
     logistica: {
       label:       'Logística',
-      icon:        'fa-ship',
+      icon:        'fa-truck-fast',
       color:       '#3B82F6',
-      description: 'Gestión de logística, importaciones y control aduanero.',
-      pages:       ['Importaciones'],
+      description: 'Gestión de despachos, embalaje, monitoreo satelital GPS y planificación de rutas.',
+      pages:       ['Embalaje', 'Despachos y Entregas', 'Monitoreo Satelital', 'Tablero de Control & Seguimiento', 'Asignador & Planificador Masivo'],
     },
     inventarios: {
       label:       'Inventarios',
@@ -224,7 +231,7 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
     if (grid)    grid.style.display    = 'grid';
     if (info)    info.style.display    = 'block';
 
-    const ORDER = ['core', 'contabilidad', 'niif', 'activos_fijos', 'comercial', 'crm', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'spa-belleza', 'conciliacion'];
+    const ORDER = ['core', 'contabilidad', 'niif', 'activos_fijos', 'comercial', 'crm', 'nomina', 'copropiedades', 'inmobiliarias', 'importaciones', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'spa-belleza', 'conciliacion'];
     grid.innerHTML = ORDER.map(key => {
       const meta    = MODULE_META[key];
       if (!meta) return '';

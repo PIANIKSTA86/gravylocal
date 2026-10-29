@@ -3080,11 +3080,16 @@ async function seeTxDetail(id) {
             </div>
             ${dianResponse ? `<p class="text-xs mt-1.5 text-slate-600"><strong>Respuesta DIAN:</strong> ${esc(dianResponse)}</p>` : ''}
           </div>
-          ${(dianStatus !== 'aceptada' && tx.status === 'active') ? `
-            <button class="btn btn-secondary btn-sm" onclick="window.emitTxToDianFromDetail('${esc(tx.id)}', '${esc(tx.number||'')}')">
-              <i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN
+          <div class="flex items-center gap-2">
+            <button class="btn btn-outline btn-sm" style="border-color:#6366F1;color:#4F46E5" onclick="window.showDianLogsModal ? window.showDianLogsModal('${esc(tx.id)}', '${esc(tx.number||'')}') : showToast('Módulo de logs no disponible', 'info')">
+              <i class="fas fa-list-check mr-1"></i> Ver Log DIAN
             </button>
-          ` : ''}
+            ${(dianStatus !== 'aceptada' && tx.status === 'active') ? `
+              <button class="btn btn-secondary btn-sm" onclick="window.emitTxToDianFromDetail('${esc(tx.id)}', '${esc(tx.number||'')}')">
+                <i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN
+              </button>
+            ` : ''}
+          </div>
         </div>
       </div>`;
     }
@@ -3247,8 +3252,8 @@ async function seeTxDetail(id) {
           ${hasCrossDoc ? `<span class="badge" style="background:#EDE9FE;color:#6D28D9;border:1px solid #DDD6FE;font-size:11px" title="Documento Cruce"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>` : '<span class="text-slate-400">—</span>'}
           ${hasImpConcept ? `<div class="mt-1"><span class="badge badge-blue text-[10px]"><i class="fas fa-ship mr-1"></i>${esc(l.import_concept)}</span></div>` : ''}
         </td>
-        <td class="py-2.5 px-3 text-slate-700 min-w-[180px]">
-          <div class="text-[12px] leading-snug break-words">${esc(l.description || '—')}</div>
+        <td class="py-2.5 px-3 text-slate-700 min-w-[180px]" title="${esc(String(l.description || '').trim() || String(tx.description || '').trim())}">
+          <div class="text-[12px] leading-snug break-words">${esc(String(l.description || '').trim() || String(tx.description || '').trim() || '—')}</div>
         </td>
         <td class="py-2.5 px-3 text-right font-mono font-semibold ${debitVal > 0 ? 'text-slate-900 bg-emerald-50/25' : 'text-slate-400'} text-[13px] whitespace-nowrap">
           ${debitVal > 0 ? '$ ' + fmt(debitVal) : '$ 0,00'}
@@ -4572,7 +4577,7 @@ async function printTxNotaContable(id) {
       const ccDisplay = ccObj ? `${ccObj.code ? ccObj.code + ' - ' : ''}${ccObj.name}` : '';
 
       const crossRef  = l.cross_doc_ref || '';
-      const lineDesc = l.description || tx.description || '';
+      const lineDesc = String(l.description || '').trim() || String(tx.description || '').trim();
       const debit  = Number(l.debit  || 0);
       const credit = Number(l.credit || 0);
 

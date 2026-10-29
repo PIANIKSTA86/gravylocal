@@ -31,12 +31,19 @@ const INV_SECTION_META: Record<string, { title: string; subtitle: string; icon: 
   kardex:         { title: 'Kardex Valorizado',            subtitle: 'Seguimiento valorizado de movimientos por producto (PEPS / Promedio Ponderado).',               icon: 'fa-table-list' },
   bodegas:        { title: 'Gestión de Bodegas y Almacenes', subtitle: 'Administración de almacenes, puntos de despacho y configuración de ubicaciones.',            icon: 'fa-warehouse' },
   consignaciones: { title: 'Inventario en Consignación',   subtitle: 'Control de mercancía entregada en consignación a terceros o recibida de proveedores.',          icon: 'fa-handshake' },
+  devoluciones:   { title: 'Devoluciones de Mercancías',   subtitle: 'Gestión centralizada de devoluciones de clientes (ventas) y a proveedores (compras), inspección de mercancías y cruces.', icon: 'fa-arrow-right-arrow-left' },
 };
 
 async function renderInventarioSection(c: any, sectionId = 'stock', ctx: any = {}) {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
   c = getContainer(c, 'inventario-' + (sectionId || 'stock'));
   if (!c) return;
+
+  if (sectionId === 'devoluciones') {
+    if (typeof (window as any).renderDevoluciones === 'function') {
+      return (window as any).renderDevoluciones(c);
+    }
+  }
 
   const meta = INV_SECTION_META[sectionId] || { title: 'Gestión de Inventarios', subtitle: 'Stock actual, lotes, movimientos y bodegas.', icon: 'fa-warehouse' };
 

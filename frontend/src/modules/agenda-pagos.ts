@@ -13,10 +13,31 @@ interface AgendaRecord {
   created?: string;
 }
 
+interface RealCashTransaction {
+  id: string;
+  number: string;
+  date: string;
+  type: 'RC' | 'CE';
+  third_name: string;
+  description: string;
+  amount: number;
+}
+
+interface RealCashflowData {
+  transactions: RealCashTransaction[];
+  dailyRealCxc: Record<string, number>;
+  dailyRealCxp: Record<string, number>;
+  totals: {
+    totalRealCxc: number;
+    totalRealCxp: number;
+    netReal: number;
+  };
+}
+
 (window as any).renderAgendaPagos = async function (c: HTMLElement) {
   c.innerHTML = `
     <div class="p-8 text-center" style="color:#9CA3AF">
-      <i class="fas fa-spinner fa-spin mr-2"></i>Cargando agenda de pagos...
+      <i class="fas fa-spinner fa-spin mr-2"></i>Cargando agenda de pagos y flujo de caja...
     </div>
   `;
 
@@ -52,13 +73,130 @@ interface AgendaRecord {
     const pad = (n: number) => n.toString().padStart(2, '0');
     const fmtDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+    const MONTH_NAMES = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    const DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
     let state = {
+      calendarYear: today.getFullYear(),
+      calendarMonth: today.getMonth(),
       dateFrom: fmtDate(startOfMonth),
       dateTo: fmtDate(endOfMonth),
       type: 'TODOS',
       status: 'TODOS',
       chartInstance: null as any
     };
+
+    let realCashflow: RealCashflowData = {
+      transactions: [],
+      dailyRealCxc: {},
+      dailyRealCxp: {},
+      totals: { totalRealCxc: 0, totalRealCxp: 0, netReal: 0 }
+    };
+
+    async function loadRealCashflow() {
+      try {
+        const res = await fetch(`${pb.baseUrl}/api/gravy/agenda/real-cashflow?startDate=${state.dateFrom}&endDate=${state.dateTo}`, {
+          headers: pb.headers()
+        });
+        if (res.ok) {
+          const data = await res.json();
+          realCashflow = {
+            transactions: data.transactions || [],
+            dailyRealCxc: data.dailyRealCxc || {},
+            dailyRealCxp: data.dailyRealCxp || {},
+            totals: data.totals || { totalRealCxc: 0, totalRealCxp: 0, netReal: 0 }
+          };
+          return;
+        }
+      } catch (e) {
+        console.warn('Endpoint /api/gravy/agenda/real-cashflow no disponible, usando fallback PB...', e);
+      }
+
+      // Fallback directo PB SDK (consultando tx_lines en cuentas 11% Disponible)
+      try {
+        const lines = await pb.listAll('tx_lines', {
+          filter: `account_id.code ~ '11%' && tx_id.status = 'active' && tx_id.date >= '${state.dateFrom}' && tx_id.date <= '${state.dateTo} 23:59:59'`,
+          expand: 'tx_id,third_party_id'
+        });
+
+        const dailyCxc: Record<string, number> = {};
+        const dailyCxp: Record<string, number> = {};
+        let totCxc = 0;
+        let totCxp = 0;
+        const txMap = new Map<string, RealCashTransaction>();
+
+        for (const l of lines) {
+          const t = l.expand?.tx_id;
+          if (!t) continue;
+
+          const num = String(t.number || '');
+          const isRC = num.startsWith('RC');
+          const isCE = num.startsWith('CE') || num.startsWith('CG') || num.startsWith('EF');
+          if (!isRC && !isCE) continue;
+
+          const d = String(t.date).slice(0, 10);
+          const amt = isRC ? Number(l.debit || 0) : Number(l.credit || 0);
+          if (amt <= 0) continue;
+
+          if (isRC) {
+            totCxc += amt;
+            dailyCxc[d] = (dailyCxc[d] || 0) + amt;
+          } else {
+            totCxp += amt;
+            dailyCxp[d] = (dailyCxp[d] || 0) + amt;
+          }
+
+          if (txMap.has(t.id)) {
+            txMap.get(t.id)!.amount += amt;
+          } else {
+            const tpName = l.expand?.third_party_id?.name || t.third_party_name || 'Tercero';
+            txMap.set(t.id, {
+              id: t.id,
+              number: t.number,
+              date: d,
+              type: isRC ? 'RC' : 'CE',
+              third_name: tpName,
+              description: t.description || l.description || '',
+              amount: amt
+            });
+          }
+        }
+
+        realCashflow = {
+          transactions: Array.from(txMap.values()),
+          dailyRealCxc: dailyCxc,
+          dailyRealCxp: dailyCxp,
+          totals: {
+            totalRealCxc: totCxc,
+            totalRealCxp: totCxp,
+            netReal: totCxc - totCxp
+          }
+        };
+      } catch (errFallback) {
+        console.error('Error en fallback de flujo real:', errFallback);
+        realCashflow = {
+          transactions: [],
+          dailyRealCxc: {},
+          dailyRealCxp: {},
+          totals: { totalRealCxc: 0, totalRealCxp: 0, netReal: 0 }
+        };
+      }
+    }
+
+    function formatCompactCOP(val: number): string {
+      const abs = Math.abs(val);
+      const sign = val < 0 ? '-' : '';
+      if (abs >= 1_000_000) {
+        return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+      }
+      if (abs >= 1_000) {
+        return `${sign}$${(abs / 1_000).toFixed(0)}k`;
+      }
+      return `${sign}$${abs.toLocaleString('es-CO')}`;
+    }
 
     // 3. Renderizar Estructura del Módulo
     renderLayout();
@@ -119,22 +257,22 @@ interface AgendaRecord {
             </div>
           </div>
 
-          <!-- Tarjetas KPI -->
+          <!-- Tarjetas KPI: Rolling Cashflow (Real Ejecutado + Proyectado) -->
           <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px">
             <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
-              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Cobros Proyectados (CXC)</div>
+              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Cobros / Recaudos (CXC)</div>
               <div id="kpi-total-cxc" style="font-size:22px; font-weight:800; color:#059669; margin-top:6px">$0</div>
-              <p style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.8">Cartera de clientes por recaudar</p>
+              <p id="kpi-sub-cxc" style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.85">Real RC: $0 | Proy: $0</p>
             </div>
             <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
-              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">CXP Proveedores</div>
+              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Pagos Proveedores (CXP)</div>
               <div id="kpi-total-cxp" style="font-size:22px; font-weight:800; color:#EA580C; margin-top:6px">$0</div>
-              <p style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.8">Locales e Importaciones</p>
+              <p id="kpi-sub-cxp" style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.85">Real CE: $0 | Proy: $0</p>
             </div>
             <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
               <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Impuestos & DIAN</div>
               <div id="kpi-total-dian" style="font-size:22px; font-weight:800; color:#7C3AED; margin-top:6px">$0</div>
-              <p style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.8">Compromisos fiscales</p>
+              <p style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.85">Compromisos fiscales del periodo</p>
             </div>
             <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
               <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Total Vencido</div>
@@ -142,50 +280,102 @@ interface AgendaRecord {
               <p style="color:#DC2626; font-size:11px; margin-top:4px">Obligaciones fuera de plazo</p>
             </div>
             <div class="stat-card" style="background:#F5F3FF;border:1.5px solid #7C3AED;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
-              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Flujo Neto Estimado</div>
+              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Flujo Neto Rolling</div>
               <div id="kpi-total-neto" style="font-size:22px; font-weight:800; color:#1E1B4B; margin-top:6px">$0</div>
-              <p style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.8">Ingresos (CXC) - Egresos (CXP)</p>
+              <p id="kpi-sub-neto" style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.85">Neto Real a Hoy: $0</p>
             </div>
           </div>
 
-          <!-- Grid principal: Gráfico y Lista -->
+          <!-- Grid principal: Gráfico y Calendario -->
           <div style="display:grid; grid-template-columns: 1fr; gap:24px;">
             
-            <!-- Gráfica de proyección -->
+            <!-- Gráfica de proyección / flujo diario -->
             <div class="stat-card" style="padding:24px;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
-                <h3 class="text-sm font-bold" style="color:var(--text-strong); text-transform:uppercase; letter-spacing:.5px">
-                  <i class="fas fa-chart-line mr-2" style="color:var(--accent-violet)"></i>Proyección Flujo de Caja Diario (Cobros vs Pagos)
-                </h3>
+                <div>
+                  <h3 class="text-sm font-bold" style="color:var(--text-strong); text-transform:uppercase; letter-spacing:.5px">
+                    <i class="fas fa-chart-line mr-2" style="color:var(--accent-violet)"></i>Flujo de Caja Diario: Ejecutado Real (RC/CE) vs Proyecciones Futuras
+                  </h3>
+                  <p style="font-size:11px; color:var(--text-muted); margin:2px 0 0 0">
+                    Muestra los ingresos y egresos bancarios contabilizados hasta hoy y la proyección de vencimientos futuros.
+                  </p>
+                </div>
               </div>
               <div style="height: 280px; position: relative;">
                 <canvas id="agenda-projection-chart"></canvas>
               </div>
             </div>
 
-            <!-- Tabla/Lista de Agenda -->
-            <div class="stat-card" style="padding:24px">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
-                <h3 class="text-sm font-bold" style="color:var(--text-strong); text-transform:uppercase; letter-spacing:.5px">
-                  <i class="fas fa-calendar-alt mr-2" style="color:var(--accent-cyan-strong)"></i>Detalle de Vencimientos
-                </h3>
-                <span id="agenda-count-badge" class="badge" style="background:var(--accent-soft); color:var(--accent-cyan-strong); font-size:12px; font-weight:700">0 Items</span>
+            <!-- Calendario Interactivo de Vencimientos -->
+            <div class="stat-card" style="padding:24px; border-radius:18px;">
+              <!-- Toolbar del Calendario -->
+              <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border-soft)">
+                <div style="display:flex; align-items:center; gap:12px">
+                  <div style="width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%); display:flex; align-items:center; justify-content:center; color:#fff; box-shadow:0 4px 10px rgba(109,40,217,0.25)">
+                    <i class="fas fa-calendar-days text-lg"></i>
+                  </div>
+                  <div>
+                    <h3 id="cal-month-title" class="text-lg font-extrabold" style="color:var(--text-strong); margin:0; line-height:1.2">
+                      ${MONTH_NAMES[state.calendarMonth]} ${state.calendarYear}
+                    </h3>
+                    <p style="font-size:12px; color:var(--text-muted); margin:0">Haz clic en cualquier día para inspeccionar cobros reales, pagos efectuados o vencimientos programados</p>
+                  </div>
+                </div>
+
+                <!-- Controles de Navegación del Calendario -->
+                <div style="display:flex; align-items:center; gap:10px">
+                  <div style="display:flex; background:rgba(15,23,42,0.04); padding:3px; border-radius:10px; border:1px solid var(--border-soft)">
+                    <button id="btn-cal-prev" class="btn btn-sm btn-ghost" style="padding:6px 12px; border-radius:8px" title="Mes Anterior">
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button id="btn-cal-today" class="btn btn-sm btn-ghost font-bold" style="padding:6px 14px; border-radius:8px" title="Ir al Mes Actual">
+                      Hoy
+                    </button>
+                    <button id="btn-cal-next" class="btn btn-sm btn-ghost" style="padding:6px 12px; border-radius:8px" title="Mes Siguiente">
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                  </div>
+                  <span id="agenda-count-badge" class="badge" style="background:#EDE9FE; color:#6D28D9; font-size:12px; font-weight:700; padding:6px 14px; border-radius:10px">
+                    0 Vencimientos
+                  </span>
+                </div>
               </div>
+
+              <!-- Leyenda Rápida de Colores -->
+              <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin-bottom:18px; font-size:11px; font-weight:600; color:var(--text-muted); padding:0 4px">
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#059669; display:inline-block"></span>
+                  <span>Recaudo Real Contabilizado (RC)</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#DC2626; display:inline-block"></span>
+                  <span>Pago Real Contabilizado (CE)</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#10B981; display:inline-block"></span>
+                  <span>Cobro Proyectado (CXC)</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#F97316; display:inline-block"></span>
+                  <span>CXP Proveedores</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#0284C7; display:inline-block"></span>
+                  <span>CXP Importación</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#8B5CF6; display:inline-block"></span>
+                  <span>Impuestos DIAN</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#EF4444; display:inline-block"></span>
+                  <span>Vencidos en Mora</span>
+                </div>
+              </div>
+
+              <!-- Grid del Calendario -->
               <div style="overflow-x:auto">
-                <table class="table" style="width:100%; border-collapse:collapse">
-                  <thead>
-                    <tr style="border-bottom: 2px solid var(--border-soft); text-align:left">
-                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Tipo</th>
-                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Vencimiento</th>
-                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Concepto</th>
-                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Monto</th>
-                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Asignado a</th>
-                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Estado</th>
-                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; text-align:right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody id="agenda-items-tbody"></tbody>
-                </table>
+                <div id="agenda-calendar-container" style="min-width:760px"></div>
               </div>
             </div>
 
@@ -196,6 +386,13 @@ interface AgendaRecord {
       // Registrar eventos
       document.getElementById('agenda-filter-from')?.addEventListener('change', (e: any) => {
         state.dateFrom = e.target.value;
+        if (state.dateFrom) {
+          const parts = state.dateFrom.split('-').map(Number);
+          if (parts.length === 3) {
+            state.calendarYear = parts[0];
+            state.calendarMonth = parts[1] - 1;
+          }
+        }
         updateDataView();
       });
       document.getElementById('agenda-filter-to')?.addEventListener('change', (e: any) => {
@@ -210,6 +407,19 @@ interface AgendaRecord {
         state.status = e.target.value;
         updateDataView();
       });
+
+      // Navegación rápida del Calendario
+      document.getElementById('btn-cal-prev')?.addEventListener('click', () => {
+        navigateMonth(-1);
+      });
+      document.getElementById('btn-cal-next')?.addEventListener('click', () => {
+        navigateMonth(1);
+      });
+      document.getElementById('btn-cal-today')?.addEventListener('click', () => {
+        const cur = new Date();
+        setMonthYear(cur.getFullYear(), cur.getMonth());
+      });
+
       document.getElementById('btn-agenda-nuevo')?.addEventListener('click', () => {
         openCreateModal();
       });
@@ -244,7 +454,41 @@ interface AgendaRecord {
       updateDataView();
     }
 
-    function updateDataView() {
+    function navigateMonth(delta: number) {
+      let m = state.calendarMonth + delta;
+      let y = state.calendarYear;
+      if (m < 0) {
+        m = 11;
+        y--;
+      } else if (m > 11) {
+        m = 0;
+        y++;
+      }
+      setMonthYear(y, m);
+    }
+
+    function setMonthYear(y: number, m: number) {
+      state.calendarYear = y;
+      state.calendarMonth = m;
+      const s = new Date(y, m, 1);
+      const e = new Date(y, m + 1, 0);
+      state.dateFrom = fmtDate(s);
+      state.dateTo = fmtDate(e);
+
+      const fromInput = document.getElementById('agenda-filter-from') as HTMLInputElement;
+      const toInput = document.getElementById('agenda-filter-to') as HTMLInputElement;
+      if (fromInput) fromInput.value = state.dateFrom;
+      if (toInput) toInput.value = state.dateTo;
+
+      updateDataView();
+    }
+
+    async function updateDataView() {
+      // 0. Cargar movimientos reales de caja/bancos (RC y CE)
+      await loadRealCashflow();
+
+      const todayStr = fmtDate(new Date());
+
       // 1. Filtrar registros por rango y opciones
       const filtered = records.filter(r => {
         const inDateRange = r.due_date >= state.dateFrom && r.due_date <= state.dateTo;
@@ -253,10 +497,15 @@ interface AgendaRecord {
         return inDateRange && matchesType && matchesStatus;
       });
 
-      // 2. Calcular KPIs
-      let totalCxc = 0;
-      let totalCxp = 0;
-      let totalDian = 0;
+      // 2. Calcular Flujo Real Ejecutado (Recaudos RC y Pagos CE contabilizados en cuentas 11% Disponible)
+      const realCxc = realCashflow.totals.totalRealCxc || 0;
+      const realCxp = realCashflow.totals.totalRealCxp || 0;
+      const realNet = realCashflow.totals.netReal || 0;
+
+      // 3. Calcular Obligaciones Proyectadas (Pendientes)
+      let projCxc = 0;
+      let projCxp = 0;
+      let projDian = 0;
       let totalVencido = 0;
 
       filtered.forEach(r => {
@@ -269,58 +518,391 @@ interface AgendaRecord {
 
         if (r.status !== 'pagado') {
           if (r.type === 'cxc_cliente') {
-            totalCxc += r.amount;
+            projCxc += r.amount;
           } else if (r.type === 'cxp_proveedor' || r.type === 'cxp_importacion') {
-            totalCxp += r.amount;
+            projCxp += r.amount;
           } else if (isTax) {
-            totalDian += r.amount;
+            projDian += r.amount;
           }
         }
       });
 
-      const totalNeto = totalCxc - totalCxp - totalDian;
+      // Rolling Cashflow totals:
+      const totalCobrosRolling = realCxc + projCxc;
+      const totalPagosRolling = realCxp + projCxp;
+      const totalNetoRolling = totalCobrosRolling - totalPagosRolling - projDian;
 
       // Actualizar valores en UI
       const formatCOP = (window as any).fmt || ((n: number) => `$ ${n.toLocaleString('es-CO')}`);
       
       const elCxc = document.getElementById('kpi-total-cxc');
+      const elSubCxc = document.getElementById('kpi-sub-cxc');
       const elCxp = document.getElementById('kpi-total-cxp');
+      const elSubCxp = document.getElementById('kpi-sub-cxp');
       const elDian = document.getElementById('kpi-total-dian');
       const elVencido = document.getElementById('kpi-total-vencido');
       const elNeto = document.getElementById('kpi-total-neto');
+      const elSubNeto = document.getElementById('kpi-sub-neto');
       const elBadge = document.getElementById('agenda-count-badge');
+      const calTitle = document.getElementById('cal-month-title');
 
-      if (elCxc) elCxc.innerText = formatCOP(totalCxc);
-      if (elCxp) elCxp.innerText = formatCOP(totalCxp);
-      if (elDian) elDian.innerText = formatCOP(totalDian);
+      if (elCxc) elCxc.innerText = formatCOP(totalCobrosRolling);
+      if (elSubCxc) elSubCxc.innerText = `Real RC: ${formatCompactCOP(realCxc)} | Proy: ${formatCompactCOP(projCxc)}`;
+      
+      if (elCxp) elCxp.innerText = formatCOP(totalPagosRolling);
+      if (elSubCxp) elSubCxp.innerText = `Real CE: ${formatCompactCOP(realCxp)} | Proy: ${formatCompactCOP(projCxp)}`;
+
+      if (elDian) elDian.innerText = formatCOP(projDian);
       if (elVencido) elVencido.innerText = formatCOP(totalVencido);
       if (elNeto) {
-        elNeto.innerText = formatCOP(totalNeto);
-        elNeto.style.color = totalNeto >= 0 ? '#10B981' : '#EF4444';
+        elNeto.innerText = formatCOP(totalNetoRolling);
+        elNeto.style.color = totalNetoRolling >= 0 ? '#10B981' : '#EF4444';
+      }
+      if (elSubNeto) {
+        elSubNeto.innerText = `Neto Real a Hoy: ${formatCompactCOP(realNet)}`;
       }
       if (elBadge) elBadge.innerText = `${filtered.length} Vencimientos`;
 
-      // 3. Renderizar Tabla
-      renderTable(filtered);
+      if (calTitle) calTitle.innerText = `${MONTH_NAMES[state.calendarMonth]} ${state.calendarYear}`;
 
-      // 4. Renderizar Gráfico
+      // 4. Renderizar Calendario Interactivo con datos reales y proyectados
+      renderCalendar(filtered);
+
+      // 5. Renderizar Gráfico Rolling
       renderChart(filtered);
     }
 
-    function renderTable(items: AgendaRecord[]) {
-      const tbody = document.getElementById('agenda-items-tbody');
-      if (!tbody) return;
+    function renderCalendar(items: AgendaRecord[]) {
+      const container = document.getElementById('agenda-calendar-container');
+      if (!container) return;
 
-      if (!items.length) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="7" class="p-8 text-center text-gray-400" style="font-size:13px">
-              <i class="fas fa-calendar-check mr-2 text-lg"></i>No hay vencimientos programados en este rango.
-            </td>
-          </tr>
+      const y = state.calendarYear;
+      const m = state.calendarMonth;
+
+      // Días del mes y offset (Lunes primer día de la semana)
+      const firstDay = new Date(y, m, 1);
+      const startingDay = firstDay.getDay(); // 0 = Dom, 1 = Lun...
+      const startOffset = (startingDay === 0 ? 6 : startingDay - 1);
+      const daysInMonth = new Date(y, m + 1, 0).getDate();
+      const daysInPrevMonth = new Date(y, m, 0).getDate();
+      const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+
+      const now = new Date();
+      const todayStr = fmtDate(now);
+
+      // Mapear vencimientos por fecha (YYYY-MM-DD)
+      const activeRecords = records.filter(r => {
+        const matchesType = state.type === 'TODOS' || r.type === state.type;
+        const matchesStatus = state.status === 'TODOS' || r.status === state.status;
+        return matchesType && matchesStatus;
+      });
+
+      const itemsByDate = new Map<string, AgendaRecord[]>();
+      activeRecords.forEach(r => {
+        if (!itemsByDate.has(r.due_date)) {
+          itemsByDate.set(r.due_date, []);
+        }
+        itemsByDate.get(r.due_date)!.push(r);
+      });
+
+      // Mapear transacciones reales por fecha
+      const realByDate = new Map<string, RealCashTransaction[]>();
+      realCashflow.transactions.forEach(t => {
+        if (!realByDate.has(t.date)) {
+          realByDate.set(t.date, []);
+        }
+        realByDate.get(t.date)!.push(t);
+      });
+
+      // Cabecera de días de la semana
+      let html = `
+        <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:8px; margin-bottom:8px">
+          ${DAY_NAMES.map(d => `
+            <div style="background:#F1F5F9; color:#475569; font-size:11px; font-weight:800; text-align:center; padding:9px 4px; border-radius:8px; text-transform:uppercase; letter-spacing:.5px">
+              ${d}
+            </div>
+          `).join('')}
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:8px">
+      `;
+
+      for (let i = 0; i < totalCells; i++) {
+        let cellYear = y;
+        let cellMonth = m;
+        let dayNum = 0;
+        let isCurrentMonth = true;
+
+        if (i < startOffset) {
+          // Días del mes anterior
+          dayNum = daysInPrevMonth - startOffset + i + 1;
+          cellMonth = m - 1;
+          if (cellMonth < 0) { cellMonth = 11; cellYear--; }
+          isCurrentMonth = false;
+        } else if (i >= startOffset + daysInMonth) {
+          // Días del mes siguiente
+          dayNum = i - (startOffset + daysInMonth) + 1;
+          cellMonth = m + 1;
+          if (cellMonth > 11) { cellMonth = 0; cellYear++; }
+          isCurrentMonth = false;
+        } else {
+          // Días del mes actual
+          dayNum = i - startOffset + 1;
+        }
+
+        const dateStr = `${cellYear}-${pad(cellMonth + 1)}-${pad(dayNum)}`;
+        const isToday = dateStr === todayStr;
+        const isPastOrToday = dateStr <= todayStr;
+        const dayItems = itemsByDate.get(dateStr) || [];
+        const dayRealTxs = realByDate.get(dateStr) || [];
+
+        // Calcular flujos del día
+        let dayRealCxc = 0;
+        let dayRealCxp = 0;
+        dayRealTxs.forEach(t => {
+          if (t.type === 'RC') dayRealCxc += t.amount;
+          else dayRealCxp += t.amount;
+        });
+
+        let dayProjCxc = 0;
+        let dayProjCxp = 0;
+        let hasOverdue = false;
+
+        dayItems.forEach(item => {
+          if (item.status === 'vencido') hasOverdue = true;
+          if (item.status !== 'pagado') {
+            if (item.type === 'cxc_cliente') {
+              dayProjCxc += item.amount;
+            } else {
+              dayProjCxp += item.amount;
+            }
+          }
+        });
+
+        // Balance neto del día
+        const dayNet = isPastOrToday 
+          ? ((dayRealCxc + dayProjCxc) - (dayRealCxp + dayProjCxp))
+          : (dayProjCxc - dayProjCxp);
+
+        const hasEvents = dayItems.length > 0 || dayRealTxs.length > 0;
+
+        // Estilos de la celda
+        let cellBg = isCurrentMonth ? '#FFFFFF' : '#F8FAFC';
+        let cellBorder = '1px solid #E2E8F0';
+        let textOpacity = isCurrentMonth ? '1' : '0.45';
+
+        if (isToday) {
+          cellBorder = '2px solid #8B5CF6';
+          cellBg = '#FAF5FF';
+        } else if (hasOverdue) {
+          cellBorder = '1px solid #FECACA';
+        }
+
+        html += `
+          <div class="cal-day-cell" data-date="${dateStr}" style="
+            min-height: 118px;
+            background: ${cellBg};
+            border: ${cellBorder};
+            border-radius: 12px;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+          " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 14px rgba(0,0,0,0.06)'; this.style.borderColor='#CBD5E1'"
+             onmouseout="this.style.transform='none'; this.style.boxShadow='0 1px 2px rgba(0,0,0,0.03)'; this.style.borderColor='${cellBorder.split(' ')[2]}'">
+            
+            <!-- Encabezado de la celda: Número de día y Saldo del Día -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+              <div style="display:flex; align-items:center; gap:6px">
+                <span style="font-size:13px; font-weight:800; color:${isToday ? '#7C3AED' : '#1E293B'}; opacity:${textOpacity}">
+                  ${dayNum}
+                </span>
+                ${isToday ? `<span style="background:#7C3AED; color:#fff; font-size:9px; font-weight:800; padding:1px 5px; border-radius:6px">Hoy</span>` : ''}
+                ${dayRealTxs.length > 0 ? `<span style="background:#ECFDF5; color:#047857; font-size:8.5px; font-weight:800; padding:1px 4px; border-radius:4px" title="Movimientos bancarios reales ejecutados">Real</span>` : ''}
+              </div>
+
+              ${hasEvents ? `
+                <div style="font-size:10px; font-weight:800; padding:1px 6px; border-radius:6px; ${
+                  dayNet > 0 
+                    ? 'background:#ECFDF5; color:#059669' 
+                    : (dayNet < 0 ? 'background:#FEF2F2; color:#DC2626' : 'background:#F3F4F6; color:#4B5563')
+                }" title="Flujo neto del día: ${formatCompactCOP(dayNet)}">
+                  ${dayNet > 0 ? '+' : ''}${formatCompactCOP(dayNet)}
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Chips de Movimientos Reales y Vencimientos Programados -->
+            <div style="display:flex; flex-direction:column; gap:4px; flex:1">
+              
+              <!-- Chips de Movimientos Reales Contabilizados (RC / CE) -->
+              ${dayRealTxs.slice(0, 2).map(t => {
+                const isRC = t.type === 'RC';
+                const chipBg = isRC ? '#ECFDF5' : '#FEF2F2';
+                const chipColor = isRC ? '#065F46' : '#991B1B';
+                const chipBorder = isRC ? '#A7F3D0' : '#FECACA';
+                const iconClass = isRC ? 'fa-money-bill-transfer' : 'fa-receipt';
+                const label = isRC ? 'RC' : 'CE';
+                
+                return `
+                  <div style="
+                    display:flex;
+                    align-items:center;
+                    justify-content:space-between;
+                    background: ${chipBg};
+                    color: ${chipColor};
+                    border: 1px solid ${chipBorder};
+                    border-left: 3px solid ${isRC ? '#059669' : '#DC2626'};
+                    border-radius: 6px;
+                    padding: 2px 6px;
+                    font-size: 9.5px;
+                    font-weight: 700;
+                    line-height: 1.3;
+                  " title="${label}: ${t.number} — ${t.third_name} (${formatCompactCOP(t.amount)}) [REAL CONTABILIZADO]">
+                    <div style="display:flex; align-items:center; gap:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:68%">
+                      <i class="fas ${iconClass}" style="font-size:8.5px"></i>
+                      <span style="overflow:hidden; text-overflow:ellipsis">${t.number}</span>
+                    </div>
+                    <span style="font-weight:800; font-size:9px; white-space:nowrap">${isRC ? '+' : '-'}${formatCompactCOP(t.amount)}</span>
+                  </div>
+                `;
+              }).join('')}
+
+              <!-- Chips de Vencimientos Programados de la Agenda -->
+              ${dayItems.slice(0, Math.max(1, 3 - dayRealTxs.length)).map(item => {
+                const isPaid = item.status === 'pagado';
+                const isVencido = item.status === 'vencido';
+
+                let chipBg = '#F3F4F6';
+                let chipColor = '#374151';
+                let chipBorder = '#E5E7EB';
+                let iconClass = 'fa-circle-dot';
+
+                if (item.type === 'cxc_cliente') {
+                  chipBg = '#ECFDF5';
+                  chipColor = '#065F46';
+                  chipBorder = '#A7F3D0';
+                  iconClass = 'fa-hand-holding-dollar';
+                } else if (item.type === 'cxp_proveedor') {
+                  chipBg = '#FFF7ED';
+                  chipColor = '#9A3412';
+                  chipBorder = '#FED7AA';
+                  iconClass = 'fa-truck-field';
+                } else if (item.type === 'cxp_importacion') {
+                  chipBg = '#F0F9FF';
+                  chipColor = '#075985';
+                  chipBorder = '#BAE6FD';
+                  iconClass = 'fa-ship';
+                } else if (item.type.startsWith('impuesto_dian') || item.type === 'exogena_dian') {
+                  chipBg = '#FAF5FF';
+                  chipColor = '#581C87';
+                  chipBorder = '#E9D5FF';
+                  iconClass = 'fa-building-columns';
+                }
+
+                if (isVencido) {
+                  chipBg = '#FEE2E2';
+                  chipColor = '#991B1B';
+                  chipBorder = '#FCA5A5';
+                  iconClass = 'fa-triangle-exclamation';
+                } else if (isPaid) {
+                  chipBg = '#D1FAE5';
+                  chipColor = '#065F46';
+                  chipBorder = '#6EE7B7';
+                  iconClass = 'fa-check';
+                }
+
+                const shortTitle = item.title.length > 20 ? item.title.substring(0, 20) + '...' : item.title;
+
+                return `
+                  <div style="
+                    display:flex;
+                    align-items:center;
+                    justify-content:space-between;
+                    background: ${chipBg};
+                    color: ${chipColor};
+                    border: 1px solid ${chipBorder};
+                    border-radius: 6px;
+                    padding: 2px 6px;
+                    font-size: 9.5px;
+                    font-weight: 700;
+                    line-height: 1.3;
+                    ${isPaid ? 'opacity:0.75; text-decoration:line-through' : ''}
+                  " title="${item.title} — ${formatCompactCOP(item.amount)} (${item.status.toUpperCase()})">
+                    <div style="display:flex; align-items:center; gap:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:68%">
+                      <i class="fas ${iconClass}" style="font-size:8.5px"></i>
+                      <span style="overflow:hidden; text-overflow:ellipsis">${shortTitle}</span>
+                    </div>
+                    <span style="font-weight:800; font-size:9px; white-space:nowrap">${formatCompactCOP(item.amount)}</span>
+                  </div>
+                `;
+              }).join('')}
+
+              ${(dayItems.length + dayRealTxs.length) > 3 ? `
+                <div style="font-size:9.5px; font-weight:800; color:#6D28D9; background:#EDE9FE; border-radius:6px; padding:1px 4px; text-align:center; margin-top:auto">
+                  + ${(dayItems.length + dayRealTxs.length) - 3} más...
+                </div>
+              ` : ''}
+
+              ${!hasEvents ? `
+                <div style="display:flex; align-items:center; justify-content:center; height:100%; opacity:0; transition:opacity 0.15s" class="hover-add-indicator">
+                  <span style="font-size:10px; color:#94A3B8; font-weight:600"><i class="fas fa-plus mr-1"></i>Añadir</span>
+                </div>
+              ` : ''}
+            </div>
+
+          </div>
         `;
-        return;
       }
+
+      html += `</div>`;
+      container.innerHTML = html;
+
+      // Registrar clic en cada día para abrir el modal de detalle del día
+      container.querySelectorAll('.cal-day-cell').forEach(cell => {
+        cell.addEventListener('click', () => {
+          const dateStr = cell.getAttribute('data-date');
+          if (!dateStr) return;
+          const dayItems = itemsByDate.get(dateStr) || [];
+          const dayRealTxs = realByDate.get(dateStr) || [];
+          openDayDetailModal(dateStr, dayItems, dayRealTxs);
+        });
+      });
+    }
+
+    function openDayDetailModal(dateStr: string, dayItems: AgendaRecord[], dayRealTxs: RealCashTransaction[] = []) {
+      const parts = dateStr.split('-').map(Number);
+      const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+      
+      const weekdayName = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][dateObj.getDay()];
+      const monthName = MONTH_NAMES[parts[1] - 1];
+      const formattedTitle = `${weekdayName}, ${parts[2]} de ${monthName} de ${parts[0]}`;
+
+      const formatCOP = (window as any).fmt || ((n: number) => `$ ${n.toLocaleString('es-CO')}`);
+
+      let dayRealCxc = 0;
+      let dayRealCxp = 0;
+      dayRealTxs.forEach(t => {
+        if (t.type === 'RC') dayRealCxc += t.amount;
+        else dayRealCxp += t.amount;
+      });
+
+      let dayProjCxc = 0;
+      let dayProjCxp = 0;
+      dayItems.forEach(i => {
+        if (i.status !== 'pagado') {
+          if (i.type === 'cxc_cliente') dayProjCxc += i.amount;
+          else dayProjCxp += i.amount;
+        }
+      });
+
+      const todayStr = fmtDate(new Date());
+      const isPastOrToday = dateStr <= todayStr;
+      const netTotalDay = isPastOrToday 
+        ? ((dayRealCxc + dayProjCxc) - (dayRealCxp + dayProjCxp))
+        : (dayProjCxc - dayProjCxp);
 
       const typeLabels: Record<string, string> = {
         cxp_proveedor: 'CXP Proveedor',
@@ -332,157 +914,238 @@ interface AgendaRecord {
         otro: 'Otro'
       };
 
-      const typeIcons: Record<string, string> = {
-        cxp_proveedor: 'fa-truck-field',
-        cxp_importacion: 'fa-ship',
-        cxc_cliente: 'fa-hand-holding-dollar',
-        impuesto_dian_iva: 'fa-percent',
-        impuesto_dian_retencion: 'fa-building-columns',
-        exogena_dian: 'fa-file-invoice-dollar',
-        otro: 'fa-info-circle'
-      };
-
       const typeColors: Record<string, string> = {
-        cxp_proveedor: '#F97316', // Orange
-        cxp_importacion: '#0284C7', // Sky Blue
-        cxc_cliente: '#10B981', // Green
-        impuesto_dian_iva: '#A855F7', // Purple
-        impuesto_dian_retencion: '#6366F1', // Indigo
-        exogena_dian: '#EF4444', // Red
-        otro: '#6B7280' // Gray
-      };
-
-      const statusLabels: Record<string, string> = {
-        pendiente: 'Pendiente',
-        programado: 'Programado',
-        pagado: 'Pagado',
-        vencido: 'Vencido'
+        cxp_proveedor: '#F97316',
+        cxp_importacion: '#0284C7',
+        cxc_cliente: '#10B981',
+        impuesto_dian_iva: '#A855F7',
+        impuesto_dian_retencion: '#6366F1',
+        exogena_dian: '#EF4444',
+        otro: '#6B7280'
       };
 
       const statusBadges: Record<string, string> = {
-        pendiente: 'background:#FEF3C7; color:#D97706; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700',
-        programado: 'background:#DBEAFE; color:#2563EB; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700',
-        pagado: 'background:#D1FAE5; color:#059669; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700',
-        vencido: 'background:#FEE2E2; color:#DC2626; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700'
+        pendiente: 'background:#FEF3C7; color:#D97706; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700',
+        programado: 'background:#DBEAFE; color:#2563EB; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700',
+        pagado: 'background:#D1FAE5; color:#059669; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700',
+        vencido: 'background:#FEE2E2; color:#DC2626; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700'
       };
 
-      const formatCOP = (window as any).fmt || ((n: number) => `$ ${n.toLocaleString('es-CO')}`);
+      const bodyHtml = `
+        <div style="display:flex; flex-direction:column; gap:20px">
+          
+          <!-- Balance financiero del día (Real Contabilizado + Proyección) -->
+          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:14px; padding:14px">
+            <div>
+              <div style="font-size:11px; font-weight:700; color:#059669; text-transform:uppercase">
+                Cobros / Recaudos
+              </div>
+              <div style="font-size:16px; font-weight:800; color:#065F46; margin-top:2px">
+                ${formatCOP(dayRealCxc + dayProjCxc)}
+              </div>
+              <div style="font-size:10px; color:#475569; margin-top:2px">
+                Real: <strong>${formatCompactCOP(dayRealCxc)}</strong> | Proy: <strong>${formatCompactCOP(dayProjCxc)}</strong>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:11px; font-weight:700; color:#EA580C; text-transform:uppercase">
+                Pagos / Egresos
+              </div>
+              <div style="font-size:16px; font-weight:800; color:#9A3412; margin-top:2px">
+                ${formatCOP(dayRealCxp + dayProjCxp)}
+              </div>
+              <div style="font-size:10px; color:#475569; margin-top:2px">
+                Real: <strong>${formatCompactCOP(dayRealCxp)}</strong> | Proy: <strong>${formatCompactCOP(dayProjCxp)}</strong>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:11px; font-weight:700; color:#5B21B6; text-transform:uppercase">Flujo Neto</div>
+              <div style="font-size:16px; font-weight:800; color:${netTotalDay >= 0 ? '#10B981' : '#EF4444'}; margin-top:2px">
+                ${netTotalDay >= 0 ? '+' : ''}${formatCOP(netTotalDay)}
+              </div>
+              <div style="font-size:10px; color:#6B7280; margin-top:2px">
+                ${isPastOrToday ? 'Flujo Ejecutado / Neto' : 'Proyección Estimada'}
+              </div>
+            </div>
+          </div>
 
-      tbody.innerHTML = items.map(item => {
-        const rolesString = item.assigned_roles && item.assigned_roles.length > 0 
-          ? item.assigned_roles.map(r => r.toUpperCase()).join(', ') 
-          : 'TODOS';
+          <!-- SECCIÓN 1: Movimientos Reales Contabilizados en Caja y Bancos (si existen) -->
+          ${dayRealTxs.length > 0 ? `
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                <span style="font-size:12px; font-weight:800; color:#047857; text-transform:uppercase; letter-spacing:0.5px">
+                  <i class="fas fa-file-invoice-dollar mr-1"></i> Movimientos Reales Contabilizados en Bancos/Caja (${dayRealTxs.length})
+                </span>
+                <span class="badge" style="background:#D1FAE5; color:#065F46; font-size:10px; font-weight:700">
+                  <i class="fas fa-check-double mr-1"></i>Cuentas 11 (Disponible)
+                </span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px">
+                ${dayRealTxs.map(t => {
+                  const isRC = t.type === 'RC';
+                  return `
+                    <div style="
+                      background: ${isRC ? '#F0FDF4' : '#FEF2F2'};
+                      border: 1px solid ${isRC ? '#BBF7D0' : '#FECACA'};
+                      border-left: 4px solid ${isRC ? '#059669' : '#DC2626'};
+                      border-radius: 10px;
+                      padding: 10px 14px;
+                      display: flex;
+                      justify-content: space-between;
+                      align-items: center;
+                    ">
+                      <div>
+                        <div style="display:flex; align-items:center; gap:8px">
+                          <span class="badge" style="background:${isRC ? '#059669' : '#DC2626'}; color:#fff; font-size:10px; font-weight:800; padding:2px 6px">
+                            ${isRC ? 'RECAUDO RC' : 'COMPROBANTE CE'}
+                          </span>
+                          <span style="font-size:13px; font-weight:800; color:#0F172A">${t.number}</span>
+                          <span style="font-size:12px; color:#475569; font-weight:600">${t.third_name}</span>
+                        </div>
+                        ${t.description ? `<div style="font-size:11px; color:#64748B; margin-top:3px">${t.description}</div>` : ''}
+                      </div>
+                      <div style="text-align:right">
+                        <div style="font-size:15px; font-weight:800; color:${isRC ? '#059669' : '#DC2626'}">
+                          ${isRC ? '+' : '-'}${formatCOP(t.amount)}
+                        </div>
+                        <span style="font-size:10px; font-weight:700; color:#4B5563">
+                          ${isRC ? 'Ingreso Efectivo' : 'Egreso Efectivo'}
+                        </span>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          ` : ''}
 
-        return `
-          <tr style="border-bottom: 1px solid var(--border-soft); transition: background .15s" class="hover:bg-slate-50">
-            <td style="padding:14px 8px; font-size:13px; font-weight:600; color:var(--text-strong)">
-              <div style="display:flex; align-items:center; gap:8px">
-                <div style="width:28px; height:28px; border-radius:8px; background:rgba(15,23,42,0.04); display:flex; align-items:center; justify-content:center; color:${typeColors[item.type]}">
-                  <i class="fas ${typeIcons[item.type]}"></i>
+          <!-- SECCIÓN 2: Listado de Obligaciones y Vencimientos Programados -->
+          <div>
+            <div style="font-size:12px; font-weight:800; color:#4338CA; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px">
+              <i class="fas fa-calendar-check mr-1"></i> Compromisos y Vencimientos Programados (${dayItems.length})
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:10px; max-height:360px; overflow-y:auto; padding-right:4px">
+              ${dayItems.length === 0 ? `
+                <div style="text-align:center; padding:24px 16px; color:#94A3B8; background:#F8FAFC; border:1px dashed #CBD5E1; border-radius:10px">
+                  <i class="fas fa-calendar-plus text-2xl mb-2" style="opacity:0.6"></i>
+                  <p style="margin:0; font-size:12.5px; font-weight:600">No hay compromisos pendientes de agenda registrados para esta fecha.</p>
                 </div>
-                <span>${typeLabels[item.type]}</span>
-              </div>
-            </td>
-            <td style="padding:14px 8px; font-size:13px; font-weight:500; color:var(--text-muted)">
-              <div style="display:flex; flex-direction:column">
-                <strong>${item.due_date}</strong>
-              </div>
-            </td>
-            <td style="padding:14px 8px; font-size:13px; color:var(--text-strong)">
-              <div style="font-weight:600">${item.title}</div>
-              <div style="font-size:11px; color:var(--text-muted)">${item.description || ''}</div>
-            </td>
-            <td style="padding:14px 8px; font-size:13px; font-weight:700; color:var(--text-strong)">
-              ${formatCOP(item.amount)}
-            </td>
-            <td style="padding:14px 8px; font-size:12px; font-weight:600; color:var(--text-muted)">
-              <span class="badge" style="background:#F3F4F6; color:#4B5563; font-size:11px">${rolesString}</span>
-            </td>
-            <td style="padding:14px 8px; font-size:13px">
-              <span style="${statusBadges[item.status]}">${statusLabels[item.status]}</span>
-            </td>
-            <td style="padding:14px 8px; text-align:right">
-              <div style="display:flex; gap:6px; justify-content:flex-end">
-                ${item.status !== 'pagado' ? `
-                  <button class="btn btn-sm btn-outline text-emerald-600 border-emerald-300 btn-mark-paid" data-id="${item.id}" title="Marcar como Pagado">
-                    <i class="fas fa-check"></i>
-                  </button>
-                ` : ''}
-                ${item.status === 'pendiente' || item.status === 'vencido' ? `
-                  <button class="btn btn-sm btn-outline text-blue-600 border-blue-300 btn-mark-sched" data-id="${item.id}" title="Programar Pago">
-                    <i class="fas fa-clock"></i>
-                  </button>
-                ` : ''}
-                <button class="btn btn-sm btn-outline text-red-600 border-red-300 btn-delete-item" data-id="${item.id}" title="Eliminar">
-                  <i class="fas fa-trash"></i>
-                </button>
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join('');
+              ` : dayItems.map(item => {
+                const rolesString = item.assigned_roles && item.assigned_roles.length > 0 
+                  ? item.assigned_roles.map(r => r.toUpperCase()).join(', ') 
+                  : 'TODOS';
 
-      // Asociar eventos de los botones
-      tbody.querySelectorAll('.btn-mark-paid').forEach(btn => {
+                return `
+                  <div style="
+                    background:#FFFFFF;
+                    border:1px solid #E2E8F0;
+                    border-radius:12px;
+                    padding:12px 14px;
+                    display:flex;
+                    flex-direction:column;
+                    gap:8px;
+                    box-shadow:0 1px 3px rgba(0,0,0,0.02);
+                  ">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px">
+                      <div>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px">
+                          <span class="badge" style="background:rgba(15,23,42,0.05); color:${typeColors[item.type]}; font-size:11px; font-weight:700">
+                            ${typeLabels[item.type] || item.type}
+                          </span>
+                          <span style="${statusBadges[item.status]}">
+                            ${item.status.toUpperCase()}
+                          </span>
+                          <span style="font-size:11px; color:#64748B; font-weight:600">
+                            Roles: ${rolesString}
+                          </span>
+                        </div>
+                        <div style="font-size:13px; font-weight:700; color:#1E293B">${item.title}</div>
+                        ${item.description ? `<div style="font-size:11px; color:#64748B; margin-top:2px">${item.description}</div>` : ''}
+                      </div>
+                      <div style="text-align:right">
+                        <div style="font-size:15px; font-weight:800; color:#0F172A">${formatCOP(item.amount)}</div>
+                      </div>
+                    </div>
+
+                    <!-- Botones de Acción -->
+                    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:2px; padding-top:6px; border-top:1px solid #F1F5F9">
+                      ${item.status !== 'pagado' ? `
+                        <button class="btn btn-sm btn-outline text-emerald-600 border-emerald-300 btn-day-mark-paid" data-id="${item.id}" title="Marcar como Pagado">
+                          <i class="fas fa-check mr-1"></i> Pagado
+                        </button>
+                      ` : ''}
+                      <button class="btn btn-sm btn-outline text-blue-600 border-blue-300 btn-day-reprogram" data-id="${item.id}" title="Reprogramar fecha de vencimiento">
+                        <i class="fas fa-clock mr-1"></i> Reprogramar
+                      </button>
+                      <button class="btn btn-sm btn-outline text-red-600 border-red-300 btn-day-delete" data-id="${item.id}" title="Eliminar de la agenda">
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+        </div>
+      `;
+
+      const footerHtml = `
+        <div style="display:flex; justify-content:space-between; width:100%; align-items:center">
+          <button class="btn btn-primary btn-sm" id="btn-modal-add-for-date">
+            <i class="fas fa-plus mr-1"></i> Programar compromiso para esta fecha
+          </button>
+          <button class="btn btn-outline btn-sm" id="btn-modal-day-close">
+            Cerrar
+          </button>
+        </div>
+      `;
+
+      (window as any).openModal(`Detalle Diario: ${formattedTitle}`, bodyHtml, footerHtml);
+
+      // Eventos del modal
+      document.getElementById('btn-modal-day-close')?.addEventListener('click', () => {
+        (window as any).closeModal();
+      });
+
+      document.getElementById('btn-modal-add-for-date')?.addEventListener('click', () => {
+        (window as any).closeModal();
+        openCreateModal(dateStr);
+      });
+
+      document.querySelectorAll('.btn-day-mark-paid').forEach(btn => {
         btn.addEventListener('click', async (e: any) => {
-          const id = e.currentTarget.dataset.id;
-          await updateStatus(id, 'pagado');
+          const id = (e.currentTarget as HTMLElement).dataset.id;
+          if (id) {
+            await updateStatus(id, 'pagado');
+            (window as any).closeModal();
+          }
         });
       });
 
-      tbody.querySelectorAll('.btn-mark-sched').forEach(btn => {
-        btn.addEventListener('click', async (e: any) => {
-          const id = e.currentTarget.dataset.id;
-          await updateStatus(id, 'programado');
+      document.querySelectorAll('.btn-day-reprogram').forEach(btn => {
+        btn.addEventListener('click', (e: any) => {
+          const id = (e.currentTarget as HTMLElement).dataset.id;
+          const targetItem = records.find(r => r.id === id);
+          if (targetItem) {
+            (window as any).closeModal();
+            openReprogramModal(targetItem);
+          }
         });
       });
 
-      tbody.querySelectorAll('.btn-delete-item').forEach(btn => {
+      document.querySelectorAll('.btn-day-delete').forEach(btn => {
         btn.addEventListener('click', async (e: any) => {
-          const id = e.currentTarget.dataset.id;
-          if (confirm('¿Estás seguro de que deseas eliminar este vencimiento de la agenda?')) {
+          const id = (e.currentTarget as HTMLElement).dataset.id;
+          if (id && confirm('¿Estás seguro de que deseas eliminar este vencimiento de la agenda?')) {
             await deleteItem(id);
+            (window as any).closeModal();
           }
         });
       });
     }
 
-    async function updateStatus(id: string, newStatus: string) {
-      try {
-        await pb.update('agenda_vencimientos', id, { status: newStatus });
-        (window as any).showToast(`Pago marcado como ${newStatus}`, 'success');
-        
-        // Actualizar datos locales
-        const index = records.findIndex(r => r.id === id);
-        if (index !== -1) {
-          records[index].status = newStatus as any;
-        }
-        updateDataView();
-        if (typeof (window as any).checkUpcomingVencimientos === 'function') {
-          (window as any).checkUpcomingVencimientos();
-        }
-      } catch (err) {
-        console.error('Error al actualizar estado del vencimiento:', err);
-        (window as any).showToast('Error al actualizar el estado del pago', 'error');
-      }
-    }
-
-    async function deleteItem(id: string) {
-      try {
-        await pb.delete('agenda_vencimientos', id);
-        (window as any).showToast('Vencimiento eliminado de la agenda', 'success');
-        
-        // Remover de datos locales
-        records = records.filter(r => r.id !== id);
-        updateDataView();
-        if (typeof (window as any).checkUpcomingVencimientos === 'function') {
-          (window as any).checkUpcomingVencimientos();
-        }
-      } catch (err) {
-        console.error('Error al eliminar vencimiento:', err);
-        (window as any).showToast('Error al eliminar el vencimiento', 'error');
-      }
-    }
 
     function renderChart(items: AgendaRecord[]) {
       const canvas = document.getElementById('agenda-projection-chart') as HTMLCanvasElement;
@@ -509,46 +1172,66 @@ interface AgendaRecord {
         }
       } catch (_) { }
 
-      const dailyCxc: Record<string, number> = {};
-      const dailyCxp: Record<string, number> = {};
-      const dailyNet: Record<string, number> = {};
+      const todayStr = fmtDate(new Date());
+
+      // Mapear proyecciones de agenda por fecha
+      const dailyProjCxc: Record<string, number> = {};
+      const dailyProjCxp: Record<string, number> = {};
 
       dates.forEach(d => {
-        dailyCxc[d] = 0;
-        dailyCxp[d] = 0;
-        dailyNet[d] = 0;
+        dailyProjCxc[d] = 0;
+        dailyProjCxp[d] = 0;
       });
 
       items.forEach(r => {
         if (r.status !== 'pagado') {
           const d = r.due_date;
-          if (dailyCxc[d] === undefined) {
-            dailyCxc[d] = 0;
-            dailyCxp[d] = 0;
-            dailyNet[d] = 0;
+          if (dailyProjCxc[d] === undefined) {
+            dailyProjCxc[d] = 0;
+            dailyProjCxp[d] = 0;
             if (!dates.includes(d)) dates.push(d);
           }
           if (r.type === 'cxc_cliente') {
-            dailyCxc[d] += r.amount;
+            dailyProjCxc[d] += r.amount;
           } else {
-            dailyCxp[d] += r.amount;
+            dailyProjCxp[d] += r.amount;
           }
         }
       });
 
       dates.sort();
+
+      // Construir series Rolling: Para días <= todayStr se toma el flujo real (RC / CE)
+      // Para días > todayStr se toman las obligaciones proyectadas
+      const dataCxc: number[] = [];
+      const dataCxp: number[] = [];
+      const dataNet: number[] = [];
+
       dates.forEach(d => {
-        dailyNet[d] = (dailyCxc[d] || 0) - (dailyCxp[d] || 0);
+        const isPastOrToday = d <= todayStr;
+        
+        let cxcVal = 0;
+        let cxpVal = 0;
+
+        if (isPastOrToday) {
+          // Real ejecutado + vencimientos no pagados de hoy
+          cxcVal = (realCashflow.dailyRealCxc[d] || 0) + (d === todayStr ? (dailyProjCxc[d] || 0) : 0);
+          cxpVal = (realCashflow.dailyRealCxp[d] || 0) + (d === todayStr ? (dailyProjCxp[d] || 0) : 0);
+        } else {
+          // Proyección futura
+          cxcVal = dailyProjCxc[d] || 0;
+          cxpVal = dailyProjCxp[d] || 0;
+        }
+
+        dataCxc.push(cxcVal);
+        dataCxp.push(cxpVal);
+        dataNet.push(cxcVal - cxpVal);
       });
 
       const labels = dates.map(d => {
         const parts = d.split('-');
         return `${parts[2]}/${parts[1]}`;
       });
-
-      const dataCxc = dates.map(d => dailyCxc[d] || 0);
-      const dataCxp = dates.map(d => dailyCxp[d] || 0);
-      const dataNet = dates.map(d => dailyNet[d] || 0);
 
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
@@ -559,7 +1242,7 @@ interface AgendaRecord {
           datasets: [
             {
               type: 'bar' as const,
-              label: 'Cobros Cartera CXC (+)',
+              label: 'Cobros / Ingresos (+)',
               data: dataCxc,
               backgroundColor: '#10B981',
               hoverBackgroundColor: '#059669',
@@ -570,7 +1253,7 @@ interface AgendaRecord {
             },
             {
               type: 'bar' as const,
-              label: 'Pagos CXP / DIAN (-)',
+              label: 'Pagos / Egresos (-)',
               data: dataCxp,
               backgroundColor: '#F97316',
               hoverBackgroundColor: '#EA580C',
@@ -581,7 +1264,7 @@ interface AgendaRecord {
             },
             {
               type: 'line' as const,
-              label: 'Flujo Neto Diario',
+              label: 'Flujo Neto Rolling',
               data: dataNet,
               borderColor: '#2563EB',
               backgroundColor: 'rgba(37, 99, 235, 0.1)',
@@ -612,6 +1295,13 @@ interface AgendaRecord {
             },
             tooltip: {
               callbacks: {
+                title: function (tooltipItems: any) {
+                  if (!tooltipItems || tooltipItems.length === 0) return '';
+                  const idx = tooltipItems[0].dataIndex;
+                  const dateStr = dates[idx];
+                  const isPastOrToday = dateStr <= todayStr;
+                  return `${tooltipItems[0].label} (${dateStr}) — ${isPastOrToday ? 'Real Ejecutado / Hoy' : 'Proyección Futura'}`;
+                },
                 label: function (tooltipItem: any) {
                   const val = tooltipItem.raw || 0;
                   return ` ${tooltipItem.dataset.label}: $ ${Number(val).toLocaleString('es-CO')}`;
@@ -644,10 +1334,12 @@ interface AgendaRecord {
       });
     }
 
-    function openCreateModal() {
+    function openCreateModal(prefillDate?: string) {
       const thirdOptions = suppliers.map((s: any) => `
         <option value="${s.id}">${s.name} (${s.nit})</option>
       `).join('');
+
+      const defaultDate = prefillDate || fmtDate(new Date());
 
       const bodyHtml = `
         <form id="form-agenda-nuevo" style="display:flex; flex-direction:column; gap:16px">
@@ -687,7 +1379,7 @@ interface AgendaRecord {
             </div>
             <div class="form-group">
               <label class="form-label">Fecha de Vencimiento</label>
-              <input type="date" id="new-agenda-date" class="form-input" required>
+              <input type="date" id="new-agenda-date" class="form-input" value="${defaultDate}" required>
             </div>
           </div>
 

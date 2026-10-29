@@ -2,18 +2,17 @@ import sqlite3, json
 
 conn = sqlite3.connect('pb_data/data.db')
 c = conn.cursor()
-c.execute("SELECT fields FROM _collections WHERE name = 'imports'")
-row = c.fetchone()
-if not row:
-    c.execute("SELECT schema FROM _collections WHERE name = 'imports'")
-    row = c.fetchone()
+row = c.execute("SELECT fields FROM _collections WHERE name='niif_asset_events'").fetchone()
+if row:
+    fields = json.loads(row[0])
+    print("niif_asset_events fields:", [f.get('name') for f in fields])
+else:
+    print("niif_asset_events not found")
 
-fields = json.loads(row[0])
-print(f"Total campos: {len(fields)}")
-names = [f.get('name') for f in fields]
-print("Campos existentes:")
-for n in sorted(names):
-    print(f"  - {n}")
+row2 = c.execute("SELECT fields FROM _collections WHERE name='transactions'").fetchone()
+if row2:
+    fields2 = json.loads(row2[0])
+    print("transactions fields:", [f.get('name') for f in fields2])
 
-for check in ['tx_bank_fees_id', 'bank_fees_supplier_id', 'bank_fees_invoice_num', 'bank_fees_cost', 'bank_fees_trm']:
-    print(f"¿Tiene {check}?: {check in names}")
+row3 = c.execute("SELECT name FROM _collections WHERE name LIKE '%depr%' OR name LIKE '%liquid%'").fetchall()
+print("Collections matching depr or liquid:", row3)

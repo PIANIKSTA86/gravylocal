@@ -1263,15 +1263,31 @@ async function renderConfiguracion(c) {
 
         const newName = getInputVal('cfg-company_name').trim();
         const newNit = getInputVal('cfg-company_nit').trim();
+        const newDv = getInputVal('cfg-company_dv').trim();
+        const newAddr = [
+          getInputVal('cfg-company_address').trim(),
+          getInputVal('cfg-company_city').trim(),
+          getInputVal('cfg-company_country').trim(),
+        ].filter(Boolean).join(' · ');
+        const formattedNit = newNit && newDv && !newNit.includes('-') ? `${newNit}-${newDv}` : newNit;
 
         // 1. Actualizar topbar en pantalla
         $('#topbar-company').textContent = newName;
 
-        // 2. Actualizar localStorage de sesión activa
+        // 2. Actualizar localStorage y caché de sesión activa
         const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
         if (activeCompany) {
           activeCompany.company_name = newName;
+          if (formattedNit) activeCompany.company_nit = formattedNit;
+          if (newAddr) activeCompany.company_address = newAddr;
           localStorage.setItem('gravy_active_company', JSON.stringify(activeCompany));
+        }
+        if (typeof (window as any).syncActiveCompanyCache === 'function') {
+          (window as any).syncActiveCompanyCache({
+            companyName: newName,
+            companyNit: formattedNit,
+            companyAddress: newAddr,
+          });
         }
 
         // 3. Sincronizar cambios de datos de empresa al HUB

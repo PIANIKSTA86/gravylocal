@@ -73,6 +73,27 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
     }
   }
 
+  // Obtener book_type (multilibro)
+  let bookType = "niif";
+  try {
+    bookType = (e.queryParam("book_type") || e.queryParam("bookType") || "").toLowerCase().trim();
+  } catch (_) {
+    try {
+      const q = e.requestInfo().query;
+      if (q && (q.book_type || q.bookType)) {
+        const val = q.book_type || q.bookType;
+        bookType = (Array.isArray(val) ? val[0] : val).toLowerCase().trim();
+      }
+    } catch (_) {}
+  }
+  if (!bookType) bookType = "niif";
+  let bBook = " ";
+  if (bookType === "niif") {
+    bBook = " AND (t.book_type != 'local' OR t.book_type IS NULL OR t.book_type = '') ";
+  } else if (bookType === "local") {
+    bBook = " AND (t.book_type != 'niif' OR t.book_type IS NULL OR t.book_type = '') ";
+  }
+
   try {
     // 2. Generar últimos 6 meses (YYYY-MM) y últimos 12 meses
     const now = new Date();
@@ -96,11 +117,11 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       + String(now.getMonth() + 1).padStart(2, "0") + "-"
       + String(now.getDate()).padStart(2, "0");
 
-    // Rangos de fecha
-    const startDate        = months[0] + "-01 00:00:00";
-    const startDate12      = months12[0] + "-01 00:00:00";
+    // Rangos de fecha normalizados para SQLite (evitan truncar registros sin hora en el día 1)
+    const startDate        = months[0] + "-01";
+    const startDate12      = months12[0] + "-01";
     const endDate          = currentMonthStr + "-31 23:59:59";
-    const currentMonthStart= currentMonthStr + "-01 00:00:00";
+    const currentMonthStart= currentMonthStr + "-01";
     const currentMonthEnd  = currentMonthStr + "-31 23:59:59";
     const prevMonthEnd     = previousMonthStr + "-31 23:59:59";
 
@@ -261,7 +282,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       balanceQuery.bind(bindBalance).one(balanceResult);
     } catch (_) {}
 
-    // 5. Flujos mensuales Ingresos (Clase 4) y Gastos/Costos (Clases 5, 6, 7) — últimos 12 meses
+    // 5. Flujos mensuales: Ingresos (4), Costos de Venta (6, 7), Gastos Operacionales (5) — últimos 12 meses
     const bAdvisorJoin = advisorId ? " LEFT JOIN third_parties tp_adv ON tp_adv.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) " : "";
     const bAdvisorWhere = advisorId ? " AND (tp_adv.advisor = {:advisorId} OR t.third_party_id = {:advisorId} OR l.third_party_id = {:advisorId}) " : "";
 
@@ -269,41 +290,60 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       SELECT
         strftime('%Y-%m', t.date) AS month,
         SUM(CASE WHEN a.code LIKE '4%' THEN (l.credit - l.debit) ELSE 0 END) AS revenue,
+        SUM(CASE WHEN a.code LIKE '6%' OR a.code LIKE '7%' THEN (l.debit - l.credit) ELSE 0 END) AS costs,
+        SUM(CASE WHEN a.code LIKE '5%' THEN (l.debit - l.credit) ELSE 0 END) AS expenses,
         SUM(CASE WHEN a.code LIKE '5%' OR a.code LIKE '6%' OR a.code LIKE '7%'
                  THEN (l.debit - l.credit) ELSE 0 END) AS expense
       FROM tx_lines l
       INNER JOIN accounts a ON a.id = l.account_id
       INNER JOIN transactions t ON t.id = l.tx_id `
       + bAdvisorJoin + `
-      WHERE t.status = 'active' AND t.date >= {:startDate} AND t.date <= {:endDate}` + bBranch + bAdvisorWhere + `
+      WHERE t.status = 'active' AND t.date >= {:startDate} AND t.date <= {:endDate}` + bBranch + bAdvisorWhere + bBook + `
       GROUP BY strftime('%Y-%m', t.date)
     `;
     const monthlyQuery = $app.db().newQuery(monthlySql);
     const bindMonthly = { startDate: startDate12, endDate };
     if (branchId) bindMonthly.branchId = branchId;
     if (advisorId) bindMonthly.advisorId = advisorId;
-    const monthlyData = arrayOf(new DynamicModel({ month: "", revenue: -0, expense: -0 }));
+    const monthlyData = arrayOf(new DynamicModel({ month: "", revenue: -0, costs: -0, expenses: -0, expense: -0 }));
     monthlyQuery.bind(bindMonthly).all(monthlyData);
 
     const monthlyRevenues = new Array(6).fill(0);
+    const monthlyCosts    = new Array(6).fill(0);
+    const monthlyOpExpenses = new Array(6).fill(0);
     const monthlyExpenses = new Array(6).fill(0);
     for (let i = 0; i < 6; i++) {
       const mStr  = months[i];
       const found = monthlyData.find(d => d.month === mStr);
       if (found) {
-        monthlyRevenues[i] = Number(found.revenue) || 0;
-        monthlyExpenses[i] = Number(found.expense) || 0;
+        monthlyRevenues[i]   = Number(found.revenue) || 0;
+        monthlyCosts[i]      = Number(found.costs) || 0;
+        monthlyOpExpenses[i] = Number(found.expenses) || 0;
+        monthlyExpenses[i]   = Number(found.expense) || (monthlyCosts[i] + monthlyOpExpenses[i]);
       }
     }
 
-    const monthlyRevenues12 = new Array(12).fill(0);
-    const monthlyExpenses12 = new Array(12).fill(0);
+    const monthlyRevenues12      = new Array(12).fill(0);
+    const monthlyCosts12         = new Array(12).fill(0);
+    const monthlyOpExpenses12    = new Array(12).fill(0);
+    const monthlyExpenses12      = new Array(12).fill(0);
+    const monthlyProfits12       = new Array(12).fill(0);
+    const monthlyGrossMargins12  = new Array(12).fill(0);
+
     for (let i = 0; i < 12; i++) {
       const mStr  = months12[i];
       const found = monthlyData.find(d => d.month === mStr);
       if (found) {
-        monthlyRevenues12[i] = Number(found.revenue) || 0;
-        monthlyExpenses12[i] = Number(found.expense) || 0;
+        const rev = Number(found.revenue) || 0;
+        const cos = Number(found.costs) || 0;
+        const exp = Number(found.expenses) || 0;
+        const tot = Number(found.expense) || (cos + exp);
+        monthlyRevenues12[i]     = rev;
+        monthlyCosts12[i]        = cos;
+        monthlyOpExpenses12[i]   = exp;
+        monthlyExpenses12[i]     = tot;
+        monthlyProfits12[i]      = rev - tot;
+        monthlyGrossMargins12[i] = rev - cos;
       }
     }
 
@@ -417,8 +457,11 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
     const stockDetailsData = arrayOf(new DynamicModel({ category: "", line: "", itemsCount: 0, totalQty: -0, totalVal: -0 }));
     stockDetailsQuery.all(stockDetailsData);
 
-    // 8. Cartera de Clientes (CxC) — Alineado exactamente con el reporte oficial report-portfolio-aging
+    // 8. Cartera de Clientes (CxC) — Alineado exactamente con PUC cuentas 13% y reglas contables
     let carteraTotal = 0;
+    let carteraBruta = 0;
+    let carteraAnticipos = 0;
+    let carteraCount = 0;
     let carteraVencida = 0;
     let carteraPorVencer = 0, cartera0_30 = 0, cartera31_60 = 0, cartera61_90 = 0, carteraMayor90 = 0;
     const asOfLimit = todayStr + " 23:59:59";
@@ -443,8 +486,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         WHERE t.status = 'active'
           AND t.date <= {:asOfLimit}
           AND a.code LIKE '13%'
-          AND (a.maneja_cruce = 1 OR TRIM(COALESCE(l.cross_doc_ref, '')) != '')
-          AND UPPER(COALESCE(tp.type, '')) = 'CLIENTE'`
+          AND (a.maneja_cruce = 1 OR TRIM(COALESCE(l.cross_doc_ref, '')) != '')`
           + bBranch
           + (advisorId ? " AND tp.advisor = {:advisorId} " : "")
           + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
@@ -472,7 +514,12 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
 
         if (Math.abs(openBal) <= 0.0001) continue;
 
-        carteraTotal += openBal;
+        if (openBal > 0) {
+          carteraBruta += openBal;
+          carteraCount++;
+        } else {
+          carteraAnticipos += Math.abs(openBal);
+        }
 
         const lineDue = String(doc.lineDueDate || '').trim();
         const dateOnly = String(doc.docDate || '').split(" ")[0] || todayStr;
@@ -499,15 +546,20 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
           else                        carteraMayor90 += openBal;
         }
       }
+      carteraTotal = Math.max(0, carteraBruta - carteraAnticipos);
     } catch (_) {}
 
-    // 8b. Cuentas por Pagar (CxP) Proveedores — Exactamente igual a /api/gravy/report-portfolio-aging
+    // 8b. Cuentas por Pagar (CxP) — Alineado exactamente con PUC cuentas 22%, 23%, 25%
     let cxpTotal = 0;
+    let cxpProveedores = 0;
+    let cxpLaborales = 0;
+    let cxpCostos = 0;
     let cxpWeek = 0;
     try {
       let cxpSql = `
         SELECT
           l.account_id,
+          a.code AS accCode,
           l.third_party_id,
           COALESCE(NULLIF(TRIM(l.cross_doc_ref), ''), 'SIN_DOC') AS crossDocRef,
           a.nature AS accNature,
@@ -523,8 +575,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         WHERE t.status = 'active'
           AND t.date <= {:asOfLimit}
           AND (a.code LIKE '22%' OR a.code LIKE '23%' OR a.code LIKE '25%')
-          AND (a.maneja_cruce = 1 OR TRIM(COALESCE(l.cross_doc_ref, '')) != '')
-          AND UPPER(COALESCE(tp.type, '')) = 'PROVEEDOR'`
+          AND (a.maneja_cruce = 1 OR TRIM(COALESCE(l.cross_doc_ref, '')) != '')`
           + bBranch
           + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
         GROUP BY l.account_id, l.third_party_id, crossDocRef
@@ -536,7 +587,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       cxpQuery.bind(cxpBinds);
 
       const cxpData = arrayOf(new DynamicModel({
-        account_id: "", third_party_id: "", crossDocRef: "", accNature: "",
+        account_id: "", accCode: "", third_party_id: "", crossDocRef: "", accNature: "",
         lineDueDate: "", docDate: "", paymentDays: 0, totDebit: -0, totCredit: -0
       }));
       cxpQuery.all(cxpData);
@@ -551,9 +602,17 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         const deb = Number(doc.totDebit) || 0;
         const cred = Number(doc.totCredit) || 0;
         const openBal = nature === 'credit' ? (cred - deb) : (deb - cred);
+        const code = String(doc.accCode || '');
 
         if (Math.abs(openBal) <= 0.0001) continue;
 
+        if (code.startsWith('22')) {
+          cxpProveedores += openBal;
+        } else if (code.startsWith('25')) {
+          cxpLaborales += openBal;
+        } else {
+          cxpCostos += openBal;
+        }
         cxpTotal += openBal;
 
         const lineDue = String(doc.lineDueDate || '').trim();
@@ -573,7 +632,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
           cxpWeekBruto += openBal;
         }
       }
-      // Compensar neto con saldo a favor de proveedores
+      // Compensar neto con saldo a favor de proveedores en 7 días
       cxpWeek = Math.min(cxpTotal, Math.max(0, cxpWeekBruto + saldoAFavorCxp));
     } catch (_) {}
 
@@ -906,9 +965,12 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       } catch (_) {}
     } catch (_) {}
 
-    // Razón corriente y Utilidad del mes
+    // Razón corriente, Costos y Utilidad del mes
     const currentRev = monthlyRevenues[5] || 0;
-    const currentExp = monthlyExpenses[5] || 0;
+    const currentCosts = monthlyCosts[5] || 0;
+    const currentOpExp = monthlyOpExpenses[5] || 0;
+    const currentExp = monthlyExpenses[5] || (currentCosts + currentOpExp);
+    const currentGrossMargin = currentRev - currentCosts;
     const utilidadMes = currentRev - currentExp;
     const prevRev = monthlyRevenues[4] || 0;
     const activosVal = Number(balanceResult.currentActivos) || 0;
@@ -935,11 +997,20 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         // Métricas extendidas para perfiles
         totalLiquidez:       totalLiquidez,
         cxpTotal:            cxpTotal,
+        cxpProveedores:      cxpProveedores,
+        cxpLaborales:        cxpLaborales,
+        cxpCostos:           cxpCostos,
         cxpWeek:             cxpWeek,
-        carteraTotal:        carteraTotal,
+        carteraTotal:        carteraTotal, // Cartera Neta
+        carteraBruta:        carteraBruta,
+        carteraAnticipos:    carteraAnticipos,
+        carteraCount:        carteraCount,
         carteraVencida:      carteraVencida,
         ventasMes:           currentRev,
         ventasMesPrev:       prevRev,
+        costosMes:           currentCosts,
+        gastosMes:           currentOpExp,
+        margenBrutoMes:      currentGrossMargin,
         utilidadMes:         utilidadMes,
         razonCorriente:      razonCorriente,
         ivaGenerado:         ivaGenerado,
@@ -991,8 +1062,12 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       topCriticalProducts: topCriticalProds,
       monthsLabels: months,
       months12Labels: months12,
-      monthlyRevenues12: monthlyRevenues12,
-      monthlyExpenses12: monthlyExpenses12,
+      monthlyRevenues12:     monthlyRevenues12,
+      monthlyCosts12:        monthlyCosts12,
+      monthlyOpExpenses12:   monthlyOpExpenses12,
+      monthlyExpenses12:     monthlyExpenses12,
+      monthlyProfits12:      monthlyProfits12,
+      monthlyGrossMargins12: monthlyGrossMargins12,
       dailyRevenues: dailyRevenues,
       dailyExpenses: dailyExpenses,
       sellers:      sellersData.map(s => ({ id: s.id, name: s.name })),
@@ -1010,6 +1085,8 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       currentMonthPasivos:  pasivosVal,
       prevMonthPasivos:     Number(balanceResult.prevPasivos)    || 0,
       monthlyRevenues:      monthlyRevenues,
+      monthlyCosts:         monthlyCosts,
+      monthlyOpExpenses:    monthlyOpExpenses,
       monthlyExpenses:      monthlyExpenses,
       expensesByCategory:   expensesByCategory,
       invByCategory:        invByCategory,

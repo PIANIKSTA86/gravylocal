@@ -41,6 +41,9 @@ interface DocSoporteItem {
   payment_dian_code?: string;
   bank_account_id?: string;
   warehouse_id?: string;
+  cost_center_id?: string;
+  cost_center_code?: string;
+  cost_center_name?: string;
   expand?: any;
 }
 
@@ -56,10 +59,10 @@ function defaultDocSoporteConfig() {
     },
     accounting: {
       accounts: {
-        payable_code: '220505',
-        expense_fallback_code: '5135',
-        cash_account_code: '110505',
-        bank_account_code: '111005',
+        payable_code: '22050501',
+        expense_fallback_code: '51350501',
+        cash_account_code: '11050501',
+        bank_account_code: '11100501',
         discount_code: '',
       },
       withholding_rules: [
@@ -194,7 +197,7 @@ async function loadDocSoportePage(c: HTMLElement) {
     pb.listAll('purchase_invoices', { 
       filter: purFilter, 
       sort: '-date,-id', 
-      expand: 'supplier_id,tx_type_id' 
+      expand: 'supplier_id,tx_type_id,cost_center_id' 
     }).catch(() => [])
   ]);
 
@@ -227,6 +230,9 @@ async function loadDocSoportePage(c: HTMLElement) {
         xml_content: doc?.xml_content || '',
         dian_response: doc?.dian_response || '',
         doc_type: code === 'NDS' ? 'NDS' : 'DS',
+        cost_center_id: p.cost_center_id || '',
+        cost_center_code: p.expand?.cost_center_id?.code || '',
+        cost_center_name: p.expand?.cost_center_id?.name || '',
         expand: p.expand
       });
     }
@@ -502,7 +508,10 @@ function renderDsRows(list: DocSoporteItem[]): string {
         <td class="p-3 text-slate-600">${fmtDate(d.date)}</td>
         <td class="p-3 text-slate-800 font-medium">
           <div>${esc(d.supplier_name)}</div>
-          <div class="text-xs text-slate-400">NIT: ${esc(d.supplier_nit)}</div>
+          <div class="text-xs text-slate-400 flex items-center gap-2">
+            <span>NIT: ${esc(d.supplier_nit)}</span>
+            ${d.cost_center_code ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" title="${esc(d.cost_center_name || '')}"><i class="fas fa-sitemap mr-0.5"></i>CC: ${esc(d.cost_center_code)}</span>` : ''}
+          </div>
         </td>
         <td class="p-3 text-right font-mono font-bold text-slate-900">${fmt(d.total)}</td>
         <td class="p-3 text-center">
@@ -575,13 +584,26 @@ function renderDsRows(list: DocSoporteItem[]): string {
 
 // ── Modal de Configuración General y Contable Completa ─────────────────────────
 async function openDocSoporteSettingsModal() {
-  const [cfg, accounts] = await Promise.all([
+  const [cfg, allAccounts] = await Promise.all([
     getDocSoporteConfig(),
     pb.listAll('accounts', { filter: 'active=true', sort: 'code' }).catch(() => [])
   ]);
 
+  // Filtrar estrictamente cuentas auxiliares (Nivel 5 como mínimo o longitud >= 8 dígitos)
+  const auxiliaryAccounts = allAccounts.filter((a: any) => {
+    const digits = String(a.code || '').replace(/\D/g, '');
+    return (a.level >= 5 || digits.length >= 8);
+  });
+
   const accountOptions = (selectedCode = '') => {
-    return `<option value="">— Sin definir —</option>` + accounts.map((a: any) => 
+    let extraOpt = '';
+    if (selectedCode && !auxiliaryAccounts.some((a: any) => a.code === selectedCode)) {
+      const legacy = allAccounts.find((a: any) => a.code === selectedCode);
+      if (legacy) {
+        extraOpt = `<option value="${esc(legacy.code)}" selected class="text-rose-600 bg-rose-50 font-bold">⚠️ ${esc(legacy.code)} — ${esc(legacy.name)} (No auxiliar - Actualizar a Nivel 5)</option>`;
+      }
+    }
+    return `<option value="">— Sin definir —</option>` + extraOpt + auxiliaryAccounts.map((a: any) => 
       `<option value="${esc(a.code)}"${a.code === selectedCode ? ' selected' : ''}>${esc(a.code)} — ${esc(a.name)}</option>`
     ).join('');
   };
@@ -694,10 +716,31 @@ async function openDocSoporteSettingsModal() {
     cfg.operational.auto_emit_dian = (document.getElementById('ds-cfg-auto-emit') as HTMLInputElement).checked;
     cfg.operational.default_due_days = parseInt((document.getElementById('ds-cfg-default-due') as HTMLInputElement).value || '30', 10);
     
-    cfg.accounting.accounts.payable_code = (document.getElementById('ds-cfg-payable') as HTMLSelectElement).value;
-    cfg.accounting.accounts.expense_fallback_code = (document.getElementById('ds-cfg-exp-fallback') as HTMLSelectElement).value;
-    cfg.accounting.accounts.cash_account_code = (document.getElementById('ds-cfg-cash-acct') as HTMLSelectElement).value;
-    cfg.accounting.accounts.bank_account_code = (document.getElementById('ds-cfg-bank-acct') as HTMLSelectElement).value;
+    const payableCode = (document.getElementById('ds-cfg-payable') as HTMLSelectElement).value;
+    const expFallbackCode = (document.getElementById('ds-cfg-exp-fallback') as HTMLSelectElement).value;
+    const cashCode = (document.getElementById('ds-cfg-cash-acct') as HTMLSelectElement).value;
+    const bankCode = (document.getElementById('ds-cfg-bank-acct') as HTMLSelectElement).value;
+
+    const checkIsAuxiliary = (code: string, label: string) => {
+      if (!code) return true;
+      const acc = allAccounts.find((a: any) => a.code === code);
+      const digits = code.replace(/\D/g, '');
+      if (acc && (acc.level < 5 && digits.length < 8)) {
+        showToast(`La ${label} "${code}" no es una cuenta auxiliar. Debe ser nivel 5 (mínimo 8 dígitos).`, 'warning');
+        return false;
+      }
+      return true;
+    };
+
+    if (!checkIsAuxiliary(payableCode, 'cuenta de pasivo / cuentas por pagar')) return;
+    if (!checkIsAuxiliary(expFallbackCode, 'cuenta de gasto fallback')) return;
+    if (!checkIsAuxiliary(cashCode, 'cuenta de efectivo / caja')) return;
+    if (!checkIsAuxiliary(bankCode, 'cuenta de banco')) return;
+
+    cfg.accounting.accounts.payable_code = payableCode;
+    cfg.accounting.accounts.expense_fallback_code = expFallbackCode;
+    cfg.accounting.accounts.cash_account_code = cashCode;
+    cfg.accounting.accounts.bank_account_code = bankCode;
 
     const newRules: any[] = [];
     document.querySelectorAll('#ds-cfg-ret-rules-wrap > div').forEach((row: any, idx: number) => {
@@ -717,6 +760,9 @@ async function openDocSoporteSettingsModal() {
         });
       }
     });
+    for (const r of newRules) {
+      if (r.account_code && !checkIsAuxiliary(r.account_code, `cuenta de retención (${r.concept})`)) return;
+    }
     cfg.accounting.withholding_rules = newRules;
 
     await saveDocSoporteConfig(cfg);
@@ -727,7 +773,7 @@ async function openDocSoporteSettingsModal() {
 
 // ── Modal de Creación / Edición de Documento Soporte ──────────────────────────
 async function openNuevoDsModal(editId: string | null = null, preResolutions: any[] = [], preThirds: any[] = []) {
-  const [resolutions, thirdParties, bankAccounts, txTypes, warehouses, products, accounts, cfg] = await Promise.all([
+  const [resolutions, thirdParties, bankAccounts, txTypes, warehouses, products, accounts, cfg, costCenters] = await Promise.all([
     preResolutions.length ? preResolutions : pb.listAll('dian_resolutions', { filter: 'active=true && document_type="DS"' }),
     preThirds.length ? preThirds : pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
     pb.listAll('bank_accounts', { filter: 'active=true', sort: 'name' }).catch(() => []),
@@ -735,7 +781,8 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
     (window as any).API?.getWarehouses ? (window as any).API.getWarehouses(true) : pb.listAll('warehouses', { filter: 'active=true' }).catch(() => []),
     (window as any).API?.getProducts ? (window as any).API.getProducts({ activeOnly: true }) : pb.listAll('products', { filter: 'active=true' }).catch(() => []),
     pb.listAll('accounts', { filter: 'active=true', sort: 'code' }).catch(() => []),
-    getDocSoporteConfig()
+    getDocSoporteConfig(),
+    pb.listAll('cost_centers', { filter: 'active=true', sort: 'code' }).catch(() => [])
   ]);
 
   (window as any).__dsAccountsCache = accounts;
@@ -953,6 +1000,10 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
     `<option value="${esc(w.id)}"${existingPur?.warehouse_id === w.id ? ' selected' : ''}>${esc(w.name)}</option>`
   ).join('');
 
+  const costCenterOptions = (costCenters || []).map((cc: any) =>
+    `<option value="${esc(cc.id)}"${existingPur?.cost_center_id === cc.id ? ' selected' : ''}>${esc(cc.code)} — ${esc(cc.name)}</option>`
+  ).join('');
+
   const retRuleOptions = (rules = withholdingRules, selectedId = '') => 
     `<option value="">— Sin retención —</option>` + rules.map((r: any) => 
       `<option value="${esc(r.id)}"${r.id === selectedId ? ' selected' : ''}>${esc(r.concept)} ${r.rate}% (${esc(r.account_code || '')})</option>`
@@ -1010,7 +1061,7 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
         <div>
           <label class="form-label font-bold">${existingPur ? 'Consecutivo Borrador' : 'Próximo Consecutivo'}</label>
           <input id="ds-consecutivo-preview" class="form-input font-mono font-bold bg-slate-100 text-slate-800" readonly value="${esc(existingPur?.number || 'Cargando...')}">
@@ -1019,6 +1070,14 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
           <label class="form-label font-bold">Resolución DIAN</label>
           <select id="ds-resolution-id" class="form-input w-full" onchange="window.dsUpdateConsecutivoPreview('resolution')">
             ${resOptions || '<option value="">Sin resolución activa</option>'}
+          </select>
+        </div>
+        <!-- Centro de Costos en Cabecera -->
+        <div>
+          <label class="form-label font-bold text-slate-800"><i class="fas fa-sitemap mr-1 text-indigo-600"></i>Centro de Costos</label>
+          <select id="ds-cost-center" class="form-input w-full font-semibold">
+            <option value="">— Sin Centro de Costos —</option>
+            ${costCenterOptions}
           </select>
         </div>
         <!-- Bodega de Inventario -->
@@ -1326,7 +1385,8 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
           ret_rule_id: lineRetRuleId,
           ret_rate: lineRetRate,
           ret_amount: lineRet,
-          ret_account_code: lineRetAccountCode
+          ret_account_code: lineRetAccountCode,
+          cost_center_id: costCenterId
         });
       });
 
@@ -1344,8 +1404,10 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
 
       const payableTotal = Math.max(0, subtotalSum - retSum);
       const warehouseId = (document.getElementById('ds-warehouse') as HTMLSelectElement)?.value || '';
+      const costCenterId = (document.getElementById('ds-cost-center') as HTMLSelectElement)?.value || null;
 
       const headerPayload = {
+        cost_center_id: costCenterId,
         number: validDocNumber,
         tx_number: (existingPur && (existingPur.tx_number || existingPur.number)) ? (existingPur.tx_number || existingPur.number) : validDocNumber,
         supplier_ref: validDocNumber,
@@ -1641,9 +1703,11 @@ function initDsGlobalProductSearch(products: any[], accounts: any[], withholding
     if (filter === 'ACCOUNT' || filter === 'ALL' || filter === 'SERVICIO') {
       matchedAccounts = accounts.filter((a: any) => {
         const code = String(a.code || '');
+        const digits = code.replace(/\D/g, '');
+        const isAuxiliary = (a.level >= 5 || digits.length >= 8);
         const isCostOrExpense = code.startsWith('5') || code.startsWith('6') || code.startsWith('14') || code.startsWith('2') || code.startsWith('1');
         const matchQ = !q || `${a.code} ${a.name}`.toLowerCase().includes(q);
-        return isCostOrExpense && matchQ;
+        return isAuxiliary && isCostOrExpense && matchQ;
       }).slice(0, 15);
     }
 
@@ -1666,13 +1730,23 @@ function initDsGlobalProductSearch(products: any[], accounts: any[], withholding
 
     if (matchedAccounts.length) {
       html += `<div class="px-3 py-1 bg-amber-50 text-[10px] font-bold text-amber-800 uppercase">Cuentas Contables Directas (Gastos / Costos)</div>`;
-      html += matchedAccounts.map((a: any) => `
+      html += matchedAccounts.map((a: any) => {
+        const isAux = String(a.code || '').replace(/\D/g, '').length >= 6;
+        return `
         <button type="button" class="w-full text-left px-3 py-2 text-xs border-b border-slate-100 hover:bg-amber-100/50 cursor-pointer block"
                 onclick="window.selectDsProductItem('${esc(a.id)}', 'account');">
-          <div class="font-bold text-slate-800 font-mono">${esc(a.code)} — ${esc(a.name)}</div>
+          <div class="font-bold text-slate-800 font-mono flex items-center justify-between">
+            <span>${esc(a.code)} — ${esc(a.name)}</span>
+            <span class="flex gap-1">
+              ${a.maneja_cruce ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800">Cruce</span>' : ''}
+              ${a.requires_third_party ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800">Tercero</span>' : ''}
+              ${isAux ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800">Auxiliar</span>' : '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800">Mayor</span>'}
+            </span>
+          </div>
           <div class="text-[10px] text-slate-500">Imputación contable directa a cuenta</div>
         </button>
-      `).join('');
+      `;
+      }).join('');
     }
 
     results.innerHTML = html;
@@ -1697,7 +1771,14 @@ function initDsGlobalProductSearch(products: any[], accounts: any[], withholding
       if (p) addDsLine(p, null, withholdingRules);
     } else {
       const a = accounts.find((x: any) => x.id === id);
-      if (a) addDsLine({ account_id: a.id, code: a.code, name: a.name, cost_price: 0 }, null, withholdingRules);
+      if (a) {
+        const codeDigits = String(a.code || '').replace(/\D/g, '');
+        if (codeDigits.length <= 4) {
+          showToast(`La cuenta ${a.code} - ${a.name} es de nivel mayor. Selecciona una subcuenta auxiliar de al menos 6 u 8 dígitos.`, 'warning');
+          return;
+        }
+        addDsLine({ account_id: a.id, code: a.code, name: a.name, cost_price: 0, maneja_cruce: a.maneja_cruce, requires_third_party: a.requires_third_party }, null, withholdingRules);
+      }
     }
     input.value = '';
     if (results) results.style.display = 'none';
@@ -1778,17 +1859,60 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
         if (found) txTypeId = found.id;
       }
 
-      const ndsTx = await pb.create('transactions', {
-        date: (window as any).todayStr(),
-        third_party_id: origTx?.third_party_id || null,
-        tx_type_id: txTypeId,
-        net_amount: origTx?.net_amount || 0,
-        cross_amount: origTx?.cross_amount || 0,
-        status: 'active',
-        cross_number: origTx?.number || '',
-        cross_doc_ref: origTx?.number || '',
-        notes: `NDS Ajuste a DS ${origTx?.number || ''}: ${(document.getElementById('nds-reason') as HTMLTextAreaElement).value || 'Ajuste documento soporte'}`
+      // Reversión contable simétrica: consultar líneas del comprobante original
+      const origLines = await pb.listAll('tx_lines', {
+        filter: `tx_id="${pb.escapeFilterValue(targetTxId)}"`,
+        sort: 'line_order',
+        expand: 'account_id'
+      }).catch(() => []);
+
+      const ndsReason = (document.getElementById('nds-reason') as HTMLTextAreaElement).value || 'Ajuste documento soporte';
+      const todayStrVal = (window as any).todayStr ? (window as any).todayStr() : new Date().toISOString().slice(0, 10);
+
+      const ndsLines = origLines.map((ol: any, idx: number) => {
+        const isCruce = Boolean(ol.expand?.account_id?.maneja_cruce === true || ol.expand?.account_id?.maneja_cruce === 1);
+        return {
+          account_id: ol.account_id,
+          debit: Number(ol.credit || 0), // Invertir crédito a débito
+          credit: Number(ol.debit || 0), // Invertir débito a crédito
+          description: `Ajuste NDS a ${origTx?.number || ''}: ${ol.description || ''}`.trim(),
+          line_order: idx + 1,
+          third_party_id: ol.third_party_id || origTx?.third_party_id || null,
+          cross_doc_ref: isCruce ? (ol.cross_doc_ref || origTx?.number || '') : '',
+          cross_doc_date: isCruce ? (ol.cross_doc_date || todayStrVal) : null,
+          due_date: isCruce ? (ol.due_date || todayStrVal) : null,
+          cost_center_id: ol.cost_center_id || null,
+          branch_id: ol.branch_id || origTx?.branch_id || null,
+        };
       });
+
+      let ndsTx: any = null;
+      if (typeof (window as any).API?.createTransaction === 'function' && ndsLines.length > 0) {
+        ndsTx = await (window as any).API.createTransaction({
+          tx_type_id: txTypeId,
+          number: 'AUTO',
+          date: todayStrVal,
+          description: `NDS Ajuste a DS ${origTx?.number || ''}: ${ndsReason}`,
+          third_party_id: origTx?.third_party_id || null,
+          cross_enabled: true,
+          cross_type: 'purchase_invoices',
+          cross_number: origTx?.number || '',
+          status: 'active',
+          branch_id: origTx?.branch_id || null,
+        }, ndsLines);
+      } else {
+        ndsTx = await pb.create('transactions', {
+          date: todayStrVal,
+          third_party_id: origTx?.third_party_id || null,
+          tx_type_id: txTypeId,
+          net_amount: origTx?.net_amount || 0,
+          cross_amount: origTx?.cross_amount || 0,
+          status: 'active',
+          cross_number: origTx?.number || '',
+          cross_doc_ref: origTx?.number || '',
+          notes: `NDS Ajuste a DS ${origTx?.number || ''}: ${ndsReason}`
+        });
+      }
 
       closeModal();
       showToast('Nota de Ajuste NDS registrada exitosamente.', 'success');

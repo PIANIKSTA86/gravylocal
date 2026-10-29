@@ -182,23 +182,71 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
       const ref = refRaw || 'SIN_DOC';
       const key = `${r.account_id}|${r.third_party_id}|${ref}`;
       if (!docs[key]) {
-        docs[key] = { debit: 0, credit: 0 };
+        docs[key] = { debit: 0, credit: 0, account_code: String(r.account_code || '') };
       }
       docs[key].debit += Number(r.debit || 0);
       docs[key].credit += Number(r.credit || 0);
     }
 
-    let portfolioTotal = 0;
-    let portfolioCount = 0;
     const EPS = 0.001;
 
-    for (const k in docs) {
-      const open = isRecaudo ? (docs[k].debit - docs[k].credit) : (docs[k].credit - docs[k].debit);
-      if (open > EPS) {
-        portfolioTotal += open;
-        portfolioCount++;
+    // Métricas segregadas de Cartera (Recaudos)
+    let portfolioGross = 0;
+    let portfolioCreditBalances = 0;
+    let portfolioCount = 0;
+    let portfolioCreditCount = 0;
+
+    // Métricas segregadas de Obligaciones (Egresos)
+    let provGross = 0, provCount = 0, provCredit = 0;
+    let labGross = 0, labCount = 0, labCredit = 0;
+    let costosGross = 0, costosCount = 0, costosCredit = 0;
+    let totalObligGross = 0, totalObligCount = 0, totalObligCredit = 0;
+
+    if (isRecaudo) {
+      for (const k in docs) {
+        const open = docs[k].debit - docs[k].credit;
+        if (open > EPS) {
+          portfolioGross += open;
+          portfolioCount++;
+        } else if (open < -EPS) {
+          portfolioCreditBalances += Math.abs(open);
+          portfolioCreditCount++;
+        }
+      }
+    } else {
+      for (const k in docs) {
+        const open = docs[k].credit - docs[k].debit;
+        const code = String(docs[k].account_code || '');
+        if (open > EPS) {
+          totalObligGross += open;
+          totalObligCount++;
+          if (code.startsWith('22')) {
+            provGross += open;
+            provCount++;
+          } else if (code.startsWith('25')) {
+            labGross += open;
+            labCount++;
+          } else {
+            costosGross += open;
+            costosCount++;
+          }
+        } else if (open < -EPS) {
+          const absVal = Math.abs(open);
+          totalObligCredit += absVal;
+          if (code.startsWith('22')) {
+            provCredit += absVal;
+          } else if (code.startsWith('25')) {
+            labCredit += absVal;
+          } else {
+            costosCredit += absVal;
+          }
+        }
       }
     }
+
+    const portfolioNet = isRecaudo 
+      ? Math.max(0, portfolioGross - portfolioCreditBalances)
+      : Math.max(0, provGross - provCredit);
 
     let sqlMonth = isRecaudo ? `
       SELECT 
@@ -247,8 +295,30 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
 
     return c.json(200, {
       mode: isRecaudo ? 'recaudos' : 'egresos',
-      portfolioTotal,
-      portfolioCount,
+      // Recaudos
+      portfolioTotal: portfolioNet,
+      portfolioNet: portfolioNet,
+      portfolioGross: isRecaudo ? portfolioGross : totalObligGross,
+      portfolioCreditBalances: isRecaudo ? portfolioCreditBalances : totalObligCredit,
+      portfolioCount: isRecaudo ? portfolioCount : totalObligCount,
+      portfolioCreditCount: isRecaudo ? portfolioCreditCount : 0,
+
+      // Egresos (desglose por PUC)
+      proveedoresGross: provGross,
+      proveedoresNet: Math.max(0, provGross - provCredit),
+      proveedoresCount: provCount,
+      proveedoresCreditBalances: provCredit,
+
+      obligacionesGross: totalObligGross,
+      obligacionesNet: Math.max(0, totalObligGross - totalObligCredit),
+      obligacionesCount: totalObligCount,
+      obligacionesCreditBalances: totalObligCredit,
+
+      laboralesGross: labGross,
+      laboralesCount: labCount,
+      costosGross: costosGross,
+      costosCount: costosCount,
+
       monthTotal,
       startDate,
       endDate,
@@ -749,7 +819,7 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
       SELECT
         t.date AS fecha,
         t.number AS comprobante,
-        t.description AS descripcion,
+        COALESCE(NULLIF(TRIM(l.description), ''), NULLIF(TRIM(t.description), ''), '') AS descripcion,
         COALESCE(tp.name, 'Sin tercero') AS tercero,
         COALESCE(tp.doc_number, '') AS terceroDoc,
         a.code AS accountCode,
@@ -975,7 +1045,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
         COALESCE(prop.code, '') AS propertyCode,
         COALESCE(prop.name, '') AS propertyName,
         COALESCE(TRIM(l.cross_doc_ref), '') AS doc_cruce,
-        COALESCE(l.description, t.description, '') AS descripcion,
+        COALESCE(NULLIF(TRIM(l.description), ''), NULLIF(TRIM(t.description), ''), '') AS descripcion,
         l.debit AS debito,
         l.credit AS credito
       FROM tx_lines l

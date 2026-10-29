@@ -51,6 +51,7 @@ interface NIIFAsset {
   owner_id?: string;
   active?: boolean;
   is_depreciable?: boolean;
+  is_immediate_depreciation?: boolean;
   initial_depreciation_niif?: number;
   initial_depreciation_fiscal?: number;
   accumulated_depreciation_niif?: number;
@@ -97,6 +98,225 @@ const MAPEO_STATE = {
   perPage: 50,
   search: ''
 };
+
+/* ==========================================
+   MOTOR NORMATIVO DE DEPRECIACIÓN Y UVT (E.T. / DUR 1625 / NIC 16)
+   ========================================== */
+const UVT_BY_YEAR: Record<number, number> = {
+  2022: 38004,
+  2023: 42412,
+  2024: 47065,
+  2025: 49799,
+  2026: 52374,
+  2027: 55000
+};
+
+const ASSET_MAX_IMMEDIATE_UVT = 50; // Art. 1.2.1.18.5 DUR 1625 de 2016 (50 UVT)
+
+function getUvtForDateOrYear(dateOrYear?: string | number | null, customCompanyUvt?: number): { year: number; uvtValue: number; limit50Uvt: number } {
+  let year = new Date().getFullYear();
+  if (typeof dateOrYear === 'number' && dateOrYear > 2000) {
+    year = dateOrYear;
+  } else if (typeof dateOrYear === 'string' && dateOrYear.trim()) {
+    const match = dateOrYear.trim().match(/^(\d{4})/);
+    if (match) year = Number(match[1]);
+  }
+  const uvtValue = (customCompanyUvt && customCompanyUvt > 0 && year === 2026)
+    ? customCompanyUvt
+    : (UVT_BY_YEAR[year] || customCompanyUvt || 52374);
+  return {
+    year,
+    uvtValue,
+    limit50Uvt: uvtValue * ASSET_MAX_IMMEDIATE_UVT
+  };
+}
+
+async function fetchConfiguredCompanyUvt(): Promise<number> {
+  try {
+    const rawNominaCfg = await (window as any).API?.getSetting?.('nomina_accounting_config');
+    if (rawNominaCfg) {
+      const parsed = typeof rawNominaCfg === 'string' ? JSON.parse(rawNominaCfg) : rawNominaCfg;
+      const val = Number(parsed?.company_rules?.uvt_value || 0);
+      if (val > 0) return val;
+    }
+    const rawUvt = await (window as any).API?.getSetting?.('uvt_value');
+    if (Number(rawUvt) > 0) return Number(rawUvt);
+  } catch (_) {}
+  return 52374;
+}
+
+function getNextPeriod(period: string): string {
+  const [yr, mo] = period.split('-').map(Number);
+  if (isNaN(yr) || isNaN(mo)) return period;
+  if (mo >= 12) {
+    return `${yr + 1}-01`;
+  }
+  return `${yr}-${String(mo + 1).padStart(2, '0')}`;
+}
+
+function extractAssetAcquisitionPeriod(a: any): string | null {
+  const rawDate = String(a?.purchase_date || a?.start_service_date || a?.invoice_date || '').trim();
+  if (!rawDate) return null;
+  const m = rawDate.match(/^(\d{4})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}`;
+  const d = new Date(rawDate);
+  if (!isNaN(d.getTime())) {
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+  return null;
+}
+
+/**
+ * Determina el primer periodo (YYYY-MM) en que el activo debe iniciar depreciación:
+ * - Si tiene Depreciación Inmediata (<= 50 UVT): inicia en el MISMO mes de compra (100% en 1 cuota).
+ * - Si tiene Depreciación Estándar: inicia a mes completo en el MES SIGUIENTE al de su compra.
+ */
+function getAssetFirstDepreciationPeriod(a: any): string | null {
+  if (a?.is_depreciable === false) return null;
+  const acqPeriod = extractAssetAcquisitionPeriod(a);
+  if (!acqPeriod) return null;
+  if (a?.is_immediate_depreciation === true) {
+    return acqPeriod;
+  }
+  return getNextPeriod(acqPeriod);
+}
+
+function evaluateAssetDepreciationForPeriod(a: any, targetPeriod: string) {
+  const cost = Number(a?.cost || 0);
+  const isImmediate = a?.is_immediate_depreciation === true;
+  const residual = isImmediate ? 0 : Number(a?.residual_value || 0);
+  const acqDateStr = a?.purchase_date || a?.start_service_date || '';
+  const acqPeriod = extractAssetAcquisitionPeriod(a);
+  const firstEligiblePeriod = getAssetFirstDepreciationPeriod(a);
+
+  const maxNIIF = Math.max(0, cost - residual);
+  const maxFiscal = Math.max(0, cost);
+  const prevAccumNIIF = Math.min(maxNIIF, Math.max(Number(a?.initial_depreciation_niif || 0), Number(a?.accumulated_depreciation_niif || 0)));
+  const prevAccumFiscal = Math.min(maxFiscal, Math.max(Number(a?.initial_depreciation_fiscal || 0), Number(a?.accumulated_depreciation_fiscal || 0)));
+  const remainingNIIF = Math.max(0, maxNIIF - prevAccumNIIF);
+  const remainingFiscal = Math.max(0, maxFiscal - prevAccumFiscal);
+
+  if (a?.is_depreciable === false) {
+    return {
+      eligible: false,
+      reasonCode: 'non_depreciable',
+      reasonLabel: 'Catalogado como No Depreciable (NIC 16)',
+      acqDateStr,
+      acqPeriod,
+      firstEligiblePeriod: null,
+      isImmediate: false,
+      deprNIIF: 0,
+      deprFiscal: 0,
+      prevAccumNIIF,
+      prevAccumFiscal,
+      remainingNIIF: 0,
+      remainingFiscal: 0,
+      maxNIIF,
+      maxFiscal
+    };
+  }
+
+  // 1. Validar fecha de compra / entrada frente al periodo liquidado
+  if (firstEligiblePeriod && targetPeriod < firstEligiblePeriod) {
+    const reasonLabel = isImmediate
+      ? `Comprado en ${acqDateStr || acqPeriod} — Depreciación inmediata aplica en ${firstEligiblePeriod}`
+      : (targetPeriod === acqPeriod
+          ? `Comprado en ${acqDateStr || acqPeriod} (mismo mes) — Inicia depreciación en ${firstEligiblePeriod}`
+          : `Comprado en ${acqDateStr || acqPeriod} (fecha posterior) — Inicia depreciación en ${firstEligiblePeriod}`);
+    return {
+      eligible: false,
+      reasonCode: targetPeriod < (acqPeriod || '') ? 'future_purchase' : 'same_month_purchase',
+      reasonLabel,
+      acqDateStr,
+      acqPeriod,
+      firstEligiblePeriod,
+      isImmediate,
+      deprNIIF: 0,
+      deprFiscal: 0,
+      prevAccumNIIF,
+      prevAccumFiscal,
+      remainingNIIF,
+      remainingFiscal,
+      maxNIIF,
+      maxFiscal
+    };
+  }
+
+  // 2. Validar si el activo ya fue depreciado o tiene corte de saldo inicial igual o posterior al periodo objetivo
+  const lastPeriod = (a?.last_depreciation_period || '').trim();
+  if (lastPeriod && /^\d{4}-\d{2}$/.test(lastPeriod) && targetPeriod <= lastPeriod) {
+    return {
+      eligible: false,
+      reasonCode: 'already_closed_period',
+      reasonLabel: `Ya registra cierre/depreciación hasta el periodo ${lastPeriod}`,
+      acqDateStr,
+      acqPeriod,
+      firstEligiblePeriod,
+      isImmediate,
+      deprNIIF: 0,
+      deprFiscal: 0,
+      prevAccumNIIF,
+      prevAccumFiscal,
+      remainingNIIF,
+      remainingFiscal,
+      maxNIIF,
+      maxFiscal
+    };
+  }
+
+  // 3. Calcular cuotas del periodo (100% si es Depreciación Inmediata <= 50 UVT, o cuota nominal según vida útil)
+  const lifeNIIF = isImmediate ? 1 : (Number(a?.useful_life_niif) || 1);
+  const lifeFiscal = isImmediate ? 1 : (Number(a?.useful_life_fiscal) || 1);
+
+  const nominalNIIF = isImmediate ? maxNIIF : (maxNIIF / lifeNIIF);
+  const nominalFiscal = isImmediate ? maxFiscal : (maxFiscal / lifeFiscal);
+
+  const deprNIIF = Math.min(nominalNIIF, remainingNIIF);
+  const deprFiscal = Math.min(nominalFiscal, remainingFiscal);
+
+  if (deprNIIF <= 0 && deprFiscal <= 0) {
+    return {
+      eligible: false,
+      reasonCode: 'fully_depreciated',
+      reasonLabel: 'Vida útil agotada (100% depreciado en libros)',
+      acqDateStr,
+      acqPeriod,
+      firstEligiblePeriod,
+      isImmediate,
+      deprNIIF: 0,
+      deprFiscal: 0,
+      prevAccumNIIF,
+      prevAccumFiscal,
+      remainingNIIF: 0,
+      remainingFiscal: 0,
+      maxNIIF,
+      maxFiscal
+    };
+  }
+
+  return {
+    eligible: true,
+    reasonCode: 'ok',
+    reasonLabel: isImmediate ? 'Depreciación Inmediata (<= 50 UVT - 100%)' : 'Cuota mensual ordinaria',
+    acqDateStr,
+    acqPeriod,
+    firstEligiblePeriod,
+    isImmediate,
+    deprNIIF,
+    deprFiscal,
+    prevAccumNIIF,
+    prevAccumFiscal,
+    remainingNIIF,
+    remainingFiscal,
+    maxNIIF,
+    maxFiscal
+  };
+}
+
+(window as any).getUvtForDateOrYear = getUvtForDateOrYear;
+(window as any).fetchConfiguredCompanyUvt = fetchConfiguredCompanyUvt;
+(window as any).evaluateAssetDepreciationForPeriod = evaluateAssetDepreciationForPeriod;
+(window as any).getAssetFirstDepreciationPeriod = getAssetFirstDepreciationPeriod;
 
 async function renderNIIF(c: HTMLElement, initialTab?: string) {
   if (initialTab) {
@@ -934,12 +1154,16 @@ async function renderSubTabCatalogo(c: HTMLElement) {
 
     const getAssetDeprInfo = (a: any) => {
       const isDepr = a.is_depreciable !== false;
+      const isImmediate = isDepr && a.is_immediate_depreciation === true;
       const cost = Number(a.cost || 0);
-      const residual = Number(a.residual_value || 0);
+      const residual = isImmediate ? 0 : Number(a.residual_value || 0);
+      const firstEligiblePeriod = getAssetFirstDepreciationPeriod(a);
 
       if (!isDepr) {
         return {
           isDepreciable: false,
+          isImmediate: false,
+          firstEligiblePeriod: null,
           accumNIIF: 0,
           accumFiscal: 0,
           netNIIF: cost,
@@ -962,8 +1186,8 @@ async function renderSubTabCatalogo(c: HTMLElement) {
       const maxNIIF = Math.max(0, cost - residual);
       const maxFiscal = cost;
 
-      const deprNIIFMonthly = (cost - residual) / (a.useful_life_niif || 1);
-      const deprFiscalMonthly = cost / (a.useful_life_fiscal || 1);
+      const deprNIIFMonthly = isImmediate ? maxNIIF : ((cost - residual) / (a.useful_life_niif || 1));
+      const deprFiscalMonthly = isImmediate ? maxFiscal : (cost / (a.useful_life_fiscal || 1));
 
       // Saldo REAL asentado en libros contables (no proyección en caliente)
       const accumNIIF = Math.min(maxNIIF, Math.max(initNIIF, postedNIIF));
@@ -978,29 +1202,35 @@ async function renderSubTabCatalogo(c: HTMLElement) {
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth() + 1; // 1..12
+      const currentPeriod = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
       let monthsPending = 0;
-      if (lastPeriod && /^\d{4}-\d{2}$/.test(lastPeriod)) {
-        const [lYr, lMo] = lastPeriod.split('-').map(Number);
-        monthsPending = Math.max(0, (currentYear - lYr) * 12 + (currentMonth - lMo));
-      } else {
-        const startDateStr = a.start_service_date || a.purchase_date;
-        if (startDateStr) {
-          const start = new Date(startDateStr);
-          if (!isNaN(start.getTime())) {
-            monthsPending = Math.max(0, (currentYear - start.getFullYear()) * 12 + (currentMonth - (start.getMonth() + 1)));
-          }
-        }
-      }
+      let isScheduledFuture = false;
 
       if (accumNIIF >= maxNIIF) {
         monthsPending = 0;
+      } else if (firstEligiblePeriod && currentPeriod < firstEligiblePeriod) {
+        // El activo se compró en el mes actual o en una fecha futura: su depreciación inicia en firstEligiblePeriod
+        monthsPending = 0;
+        isScheduledFuture = true;
+      } else if (lastPeriod && /^\d{4}-\d{2}$/.test(lastPeriod)) {
+        const [lYr, lMo] = lastPeriod.split('-').map(Number);
+        monthsPending = Math.max(0, (currentYear - lYr) * 12 + (currentMonth - lMo));
+      } else if (firstEligiblePeriod && /^\d{4}-\d{2}$/.test(firstEligiblePeriod)) {
+        const [fYr, fMo] = firstEligiblePeriod.split('-').map(Number);
+        monthsPending = Math.max(0, (currentYear - fYr) * 12 + (currentMonth - fMo) + 1);
+      }
+
+      if (isImmediate && monthsPending > 0) {
+        monthsPending = 1;
       }
 
       const pendingNIIFAmount = Math.min(Math.max(0, maxNIIF - accumNIIF), monthsPending * deprNIIFMonthly);
 
       let status = 'up_to_date';
-      if (!lastPeriod && postedNIIF === 0 && initNIIF === 0) {
+      if (isScheduledFuture) {
+        status = 'scheduled';
+      } else if (!lastPeriod && postedNIIF === 0 && initNIIF === 0 && accumNIIF < maxNIIF) {
         status = 'never_run';
       } else if (monthsPending > 0) {
         status = 'pending';
@@ -1008,6 +1238,8 @@ async function renderSubTabCatalogo(c: HTMLElement) {
 
       return {
         isDepreciable: true,
+        isImmediate,
+        firstEligiblePeriod,
         accumNIIF,
         accumFiscal,
         netNIIF,
@@ -1116,6 +1348,7 @@ async function renderSubTabCatalogo(c: HTMLElement) {
           <select id="ast-filter-depreciable" class="form-input text-xs">
             <option value="">Todos (Depreciables y No)</option>
             <option value="depreciable">Solo Depreciables</option>
+            <option value="immediate_50uvt">Solo Menor Cuantía (≤ 50 UVT)</option>
             <option value="no_depreciable">Solo No Depreciables</option>
           </select>
           <select id="ast-filter-depr-status" class="form-input text-xs">
@@ -1123,6 +1356,7 @@ async function renderSubTabCatalogo(c: HTMLElement) {
             <option value="up_to_date">Al Día</option>
             <option value="pending">Con Rezago / Pendiente</option>
             <option value="never_run">Sin Causar</option>
+            <option value="scheduled">Programado (Compra Mes Actual/Futuro)</option>
           </select>
         </div>
       </div>
@@ -1165,7 +1399,15 @@ async function renderSubTabCatalogo(c: HTMLElement) {
 
                 let causacionBadge = '<span class="text-gray-400 text-xxs font-medium">N/A</span>';
                 if (d.isDepreciable) {
-                  if (d.status === 'pending') {
+                  if (d.status === 'scheduled') {
+                    causacionBadge = `
+                      <div class="flex flex-col gap-0.5">
+                        <span class="badge badge-purple text-[9px] font-bold" title="Según fecha de compra (${esc(a.purchase_date || a.start_service_date || '')}), inicia depreciación en ${esc(d.firstEligiblePeriod || '')}">
+                          <i class="fas fa-calendar-day mr-0.5"></i>Inicia ${esc(d.firstEligiblePeriod || '')}
+                        </span>
+                      </div>
+                    `;
+                  } else if (d.status === 'pending') {
                     causacionBadge = `
                       <div class="flex flex-col gap-0.5">
                         <span class="text-xxs font-bold text-gray-700">${esc(d.lastPeriod || 'Sin causar')}</span>
@@ -1194,15 +1436,16 @@ async function renderSubTabCatalogo(c: HTMLElement) {
                 }
 
                 return `
-                  <tr class="hover:bg-gray-50/50" data-cat="${esc(a.category_id || '')}" data-cc="${esc(a.cost_center_id || '')}" data-status="${esc(a.status || 'active')}" data-depreciable="${a.is_depreciable !== false ? '1' : '0'}" data-deprstatus="${d.status}" data-search="${esc(a.code.toLowerCase())} ${esc(a.name.toLowerCase())} ${esc(a.brand?.toLowerCase() || '')}">
+                  <tr class="hover:bg-gray-50/50" data-cat="${esc(a.category_id || '')}" data-cc="${esc(a.cost_center_id || '')}" data-status="${esc(a.status || 'active')}" data-depreciable="${a.is_depreciable !== false ? '1' : '0'}" data-immediate="${a.is_immediate_depreciation ? '1' : '0'}" data-deprstatus="${d.status}" data-search="${esc(a.code.toLowerCase())} ${esc(a.name.toLowerCase())} ${esc(a.brand?.toLowerCase() || '')}">
                     <td><strong class="text-indigo-900">${esc(a.code)}</strong></td>
                     <td>
                       <div class="text-xs font-bold text-gray-800">${esc(a.name)}</div>
                       ${a.brand ? `<div class="text-xxs text-gray-400">${esc(a.brand)} ${esc(a.model || '')}</div>` : ''}
+                      ${(a.purchase_date || a.start_service_date) ? `<div class="text-[10px] text-indigo-600/80 font-medium"><i class="fas fa-calendar-check mr-1"></i>Compra: ${esc(a.purchase_date || a.start_service_date)}</div>` : ''}
                     </td>
                     <td><span class="text-xs text-gray-600 font-semibold">${cat ? esc(cat.name) : '—'}</span></td>
                     <td class="font-semibold text-gray-800">${formatCOP(a.cost)}</td>
-                    <td>${d.isDepreciable ? formatCOP(a.residual_value || 0) : '<span class="text-gray-400 text-xxs font-medium">N/A</span>'}</td>
+                    <td>${d.isDepreciable ? formatCOP(d.isImmediate ? 0 : (a.residual_value || 0)) : '<span class="text-gray-400 text-xxs font-medium">N/A</span>'}</td>
                     <td class="text-gray-700 font-semibold">${formatCOP(d.accumNIIF)}</td>
                     <td class="font-bold text-indigo-950">${formatCOP(d.netNIIF)}</td>
                     <td>${causacionBadge}</td>
@@ -1211,7 +1454,9 @@ async function renderSubTabCatalogo(c: HTMLElement) {
                       <div class="flex flex-col gap-1 items-start">
                         ${statusHtml}
                         ${a.is_depreciable !== false
-                          ? '<span class="badge badge-green text-[10px]" title="Activo sujeto a depreciación contable"><i class="fas fa-calculator mr-1"></i>Depreciable</span>'
+                          ? (a.is_immediate_depreciation
+                              ? '<span class="badge badge-purple text-[10px]" title="Menor cuantía <= 50 UVT (Art. 1.2.1.18.5 DUR 1625): Depreciación inmediata 100%"><i class="fas fa-bolt mr-1"></i>≤ 50 UVT (100%)</span>'
+                              : '<span class="badge badge-green text-[10px]" title="Activo sujeto a depreciación contable"><i class="fas fa-calculator mr-1"></i>Depreciable</span>')
                           : '<span class="badge badge-blue text-[10px]" style="background:#E0E7FF;color:#3730A3;border:1px solid #C7D2FE" title="Activo no depreciable (NIC 16: terrenos, obras, etc.)"><i class="fas fa-ban mr-1"></i>No Depr.</span>'}
                       </div>
                     </td>
@@ -1251,13 +1496,14 @@ async function renderSubTabCatalogo(c: HTMLElement) {
         const trCc = tr.dataset.cc || '';
         const trStatus = tr.dataset.status || 'active';
         const trDepr = tr.dataset.depreciable || '1';
+        const trImm = tr.dataset.immediate || '0';
         const trDeprStatus = tr.dataset.deprstatus || '';
 
         const matchSearch = !q || searchVal.includes(q);
         const matchCat = !cat || trCat === cat;
         const matchCc = !cc || trCc === cc;
         const matchStatus = !status || trStatus === status;
-        const matchDepr = !deprFilter || (deprFilter === 'depreciable' ? trDepr === '1' : trDepr === '0');
+        const matchDepr = !deprFilter || (deprFilter === 'depreciable' ? trDepr === '1' : (deprFilter === 'immediate_50uvt' ? trImm === '1' : trDepr === '0'));
         const matchDeprStatus = !deprStatusFilter || trDeprStatus === deprStatusFilter;
 
         tr.style.display = (matchSearch && matchCat && matchCc && matchStatus && matchDepr && matchDeprStatus) ? '' : 'none';
@@ -1300,15 +1546,16 @@ async function renderSubTabCatalogo(c: HTMLElement) {
           serial: a.serial_number || '',
           categoria: cat ? `${cat.code} - ${cat.name}` : '',
           es_depreciable: a.is_depreciable !== false ? 'Sí' : 'No',
+          depr_inmediata_50uvt: a.is_immediate_depreciation ? 'Sí' : 'No',
           costo: a.cost,
-          v_residual_niif: a.is_depreciable !== false ? (a.residual_value || 0) : 0,
-          v_util_niif: a.is_depreciable !== false ? (a.useful_life_niif || 0) : 0,
-          v_util_fiscal: a.is_depreciable !== false ? (a.useful_life_fiscal || 0) : 0,
+          v_residual_niif: a.is_depreciable !== false ? (a.is_immediate_depreciation ? 0 : (a.residual_value || 0)) : 0,
+          v_util_niif: a.is_depreciable !== false ? (a.is_immediate_depreciation ? 1 : (a.useful_life_niif || 0)) : 0,
+          v_util_fiscal: a.is_depreciable !== false ? (a.is_immediate_depreciation ? 1 : (a.useful_life_fiscal || 0)) : 0,
           depr_acum_niif: d.accumNIIF,
           depr_acum_fiscal: d.accumFiscal,
           v_neto_libros: d.netNIIF,
           dif_temporaria: d.variance,
-          ultimo_periodo: d.lastPeriod || (d.isDepreciable ? 'Sin causar' : 'N/A'),
+          ultimo_periodo: d.lastPeriod || (d.status === 'scheduled' ? `Inicia ${d.firstEligiblePeriod}` : (d.isDepreciable ? 'Sin causar' : 'N/A')),
           meses_pendientes: d.monthsPending,
           depr_pendiente_niif: d.pendingNIIFAmount,
           centro_costo: cc ? `${cc.code} - ${cc.name}` : '',
@@ -1326,6 +1573,7 @@ async function renderSubTabCatalogo(c: HTMLElement) {
         { key: 'serial',              label: 'No. Serial' },
         { key: 'categoria',           label: 'Categoría' },
         { key: 'es_depreciable',      label: 'Depreciable' },
+        { key: 'depr_inmediata_50uvt', label: 'Menor Cuantía <= 50 UVT' },
         { key: 'costo',               label: 'Costo de Adquisición' },
         { key: 'v_residual_niif',     label: 'Valor Residual NIIF' },
         { key: 'v_util_niif',         label: 'Vida Útil NIIF (meses)' },
@@ -1741,26 +1989,31 @@ async function renderSubTabCategorias(c: HTMLElement) {
   let users: any[] = [];
   let thirdParties: any[] = [];
   let parentAssets: any[] = [];
+  let companyUvt = 52374;
 
   try {
-    const [cRes, ccRes, uRes, tpRes, paRes] = await Promise.all([
+    const [cRes, ccRes, uRes, tpRes, paRes, uvtRes] = await Promise.all([
       pb.listAll('niif_asset_categories', { filter: 'active=true', sort: 'code' }),
       pb.listAll('cost_centers', { filter: 'active=true', sort: 'code' }),
       pb.listAll('users', { sort: 'name' }),
       pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
-      pb.listAll('niif_assets', { filter: 'active=true', sort: 'code' })
+      pb.listAll('niif_assets', { filter: 'active=true', sort: 'code' }),
+      fetchConfiguredCompanyUvt()
     ]);
     categories = cRes;
     costCenters = ccRes;
     users = uRes;
     thirdParties = tpRes;
     parentAssets = paRes;
+    companyUvt = uvtRes || 52374;
     if (id) {
       parentAssets = parentAssets.filter(pa => pa.id !== id);
     }
   } catch (err: any) {
     return showToast('Error al cargar dependencias: ' + err.message, 'error');
   }
+
+  const formatCOP = (window as any).fmt || ((n: number) => `$ ${n.toLocaleString('es-CO')}`);
 
   const title = id ? 'Editar Activo Fijo' : 'Nuevo Activo Fijo';
   const body = `
@@ -1821,6 +2074,31 @@ async function renderSubTabCategorias(c: HTMLElement) {
             <option value="saldos_decrecientes" ${a?.depreciation_method === 'saldos_decrecientes' ? 'selected' : ''}>Saldos Decrecientes</option>
             <option value="unidades_produccion" ${a?.depreciation_method === 'unidades_produccion' ? 'selected' : ''}>Unidades Producción</option>
           </select>
+        </div>
+      </div>
+
+      <!-- Opción Depreciación Inmediata Menor Cuantía <= 50 UVT (Art. 1.2.1.18.5 DUR 1625 / E.T.) -->
+      <div id="ast-immediate-depr-card" class="p-3.5 rounded-xl border transition-all depr-param-field" style="background:linear-gradient(135deg, #FAF5FF 0%, #F5F3FF 100%); border-color:#DDD6FE">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-start gap-3 flex-1">
+            <div id="ast-imm-icon" class="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-sm shrink-0">
+              <i class="fas fa-bolt"></i>
+            </div>
+            <div class="space-y-0.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-bold text-gray-900 text-xs">Depreciación Inmediata — Menor Cuantía (≤ 50 UVT)</span>
+                <span id="ast-uvt-badge" class="badge badge-gray text-[10px]">Evaluando tope UVT...</span>
+              </div>
+              <div class="text-gray-600 text-xxs leading-relaxed">
+                Art. 1.2.1.18.5 DUR 1625 de 2016: Si el costo de compra no supera <strong>50 UVT</strong>, puede depreciarse al <strong>100% en el mismo mes de compra</strong> (1 cuota, valor residual $0) en NIIF y Fiscal.
+              </div>
+              <div id="ast-uvt-calc-detail" class="text-[10px] font-semibold text-purple-900 pt-0.5"></div>
+            </div>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer shrink-0" title="Activar/Desactivar depreciación inmediata al 100% (<= 50 UVT)">
+            <input type="checkbox" id="ast-is-immediate-depr" class="sr-only peer" ${a?.is_immediate_depreciation ? 'checked' : ''}>
+            <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-disabled:opacity-40 peer-disabled:cursor-not-allowed peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+          </label>
         </div>
       </div>
 
@@ -1964,7 +2242,127 @@ async function renderSubTabCategorias(c: HTMLElement) {
     <button class="btn btn-primary btn-sm" id="btn-save-asset"><i class="fas fa-check mr-1.5"></i>Guardar Activo</button>
   `, true);
 
-  // Control reactivo del switch de depreciable
+  // Control reactivo del switch de depreciable y del tope de 50 UVT
+  const syncImmediate50UvtState = (triggeredByToggle = false) => {
+    const isDepr = !!(document.getElementById('ast-is-depreciable') as HTMLInputElement)?.checked;
+    const immCheck = document.getElementById('ast-is-immediate-depr') as HTMLInputElement | null;
+    const uvtBadge = document.getElementById('ast-uvt-badge');
+    const uvtDetail = document.getElementById('ast-uvt-calc-detail');
+    const card = document.getElementById('ast-immediate-depr-card');
+    const lifeNiifInput = $('#ast-life-niif') as HTMLInputElement | null;
+    const lifeFiscalInput = $('#ast-life-fiscal') as HTMLInputElement | null;
+    const residualInput = $('#ast-residual') as HTMLInputElement | null;
+
+    if (!immCheck || !isDepr) return;
+
+    const costVal = Number(getInputVal('ast-cost') || 0);
+    const dateVal = getInputVal('ast-purchase-date') || getInputVal('ast-service-date') || todayStr();
+    const { year, uvtValue, limit50Uvt } = getUvtForDateOrYear(dateVal, companyUvt);
+    const costInUvt = costVal > 0 ? (costVal / uvtValue) : 0;
+    const isEligible = costVal > 0 && costVal <= limit50Uvt;
+
+    if (!isEligible) {
+      const wasChecked = immCheck.checked;
+      immCheck.checked = false;
+      immCheck.disabled = true;
+      if (card) {
+        card.style.background = '#F9FAFB';
+        card.style.borderColor = '#E5E7EB';
+      }
+      if (costVal <= 0) {
+        if (uvtBadge) {
+          uvtBadge.className = 'badge badge-gray text-[10px]';
+          uvtBadge.innerHTML = `<i class="fas fa-circle-info mr-1"></i>Tope 50 UVT (${year}): ${formatCOP(limit50Uvt)}`;
+        }
+        if (uvtDetail) {
+          uvtDetail.className = 'text-[10px] font-medium text-gray-500 pt-0.5';
+          uvtDetail.textContent = `1 UVT (${year}) = ${formatCOP(uvtValue)}. Ingrese un costo ≤ ${formatCOP(limit50Uvt)} para habilitar esta opción.`;
+        }
+      } else {
+        if (uvtBadge) {
+          uvtBadge.className = 'badge badge-orange text-[10px]';
+          uvtBadge.innerHTML = `<i class="fas fa-lock mr-1"></i>Supera 50 UVT (${costInUvt.toFixed(1)} UVT) — No elegible`;
+        }
+        if (uvtDetail) {
+          uvtDetail.className = 'text-[10px] font-semibold text-amber-800 pt-0.5';
+          uvtDetail.textContent = `El costo equivale a ${costInUvt.toFixed(2)} UVT y supera el tope fiscal de 50 UVT (${formatCOP(limit50Uvt)} para ${year}). Inicia depreciación el mes siguiente al de compra según su vida útil.`;
+        }
+      }
+      if (wasChecked) {
+        if (lifeNiifInput) {
+          lifeNiifInput.readOnly = false;
+          const cat = categories.find(c => c.id === getSelectVal('ast-cat'));
+          if (lifeNiifInput.value === '1') lifeNiifInput.value = String(cat?.useful_life_niif_default || 60);
+        }
+        if (lifeFiscalInput) {
+          lifeFiscalInput.readOnly = false;
+          const cat = categories.find(c => c.id === getSelectVal('ast-cat'));
+          if (lifeFiscalInput.value === '1') lifeFiscalInput.value = String(cat?.useful_life_fiscal_default || 60);
+        }
+        if (residualInput) residualInput.readOnly = false;
+      }
+      return;
+    }
+
+    // Es elegible (Costo > 0 y Costo <= 50 UVT)
+    immCheck.disabled = false;
+    const isImmActive = immCheck.checked;
+
+    if (card) {
+      card.style.background = isImmActive
+        ? 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)'
+        : 'linear-gradient(135deg, #FAF5FF 0%, #F5F3FF 100%)';
+      card.style.borderColor = isImmActive ? '#6EE7B7' : '#DDD6FE';
+    }
+
+    if (uvtBadge) {
+      uvtBadge.className = isImmActive ? 'badge badge-green text-[10px]' : 'badge badge-purple text-[10px]';
+      uvtBadge.innerHTML = isImmActive
+        ? `<i class="fas fa-bolt mr-1"></i>Activa: 100% en mes de compra (${costInUvt.toFixed(1)} UVT)`
+        : `<i class="fas fa-check-circle mr-1"></i>Elegible: ${costInUvt.toFixed(2)} UVT (≤ 50 UVT)`;
+    }
+
+    if (uvtDetail) {
+      uvtDetail.className = isImmActive ? 'text-[10px] font-bold text-emerald-900 pt-0.5' : 'text-[10px] font-semibold text-purple-900 pt-0.5';
+      uvtDetail.textContent = isImmActive
+        ? `✓ Se depreciará el 100% (${formatCOP(costVal)}) en una sola cuota en el mismo mes de compra tanto en NIIF como en Fiscal (Vida útil = 1 mes, Valor residual = $0).`
+        : `Cumple tope de 50 UVT (${formatCOP(limit50Uvt)} en ${year}). Active el interruptor si desea depreciarlo al 100% en el mes de compra; de lo contrario, iniciará depreciación el mes siguiente.`;
+    }
+
+    if (isImmActive) {
+      if (lifeNiifInput) {
+        if (lifeNiifInput.value && lifeNiifInput.value !== '1') lifeNiifInput.dataset.prevLife = lifeNiifInput.value;
+        lifeNiifInput.value = '1';
+        lifeNiifInput.readOnly = true;
+      }
+      if (lifeFiscalInput) {
+        if (lifeFiscalInput.value && lifeFiscalInput.value !== '1') lifeFiscalInput.dataset.prevLife = lifeFiscalInput.value;
+        lifeFiscalInput.value = '1';
+        lifeFiscalInput.readOnly = true;
+      }
+      if (residualInput) {
+        if (residualInput.value && residualInput.value !== '0') residualInput.dataset.prevResidual = residualInput.value;
+        residualInput.value = '0';
+        residualInput.readOnly = true;
+      }
+    } else if (triggeredByToggle) {
+      const cat = categories.find(c => c.id === getSelectVal('ast-cat'));
+      if (lifeNiifInput) {
+        lifeNiifInput.readOnly = false;
+        lifeNiifInput.value = lifeNiifInput.dataset.prevLife || String(cat?.useful_life_niif_default || 60);
+      }
+      if (lifeFiscalInput) {
+        lifeFiscalInput.readOnly = false;
+        lifeFiscalInput.value = lifeFiscalInput.dataset.prevLife || String(cat?.useful_life_fiscal_default || 60);
+      }
+      if (residualInput) {
+        residualInput.readOnly = false;
+        const factor = (cat?.residual_value_percent_default || 0) / 100;
+        residualInput.value = residualInput.dataset.prevResidual || String(Math.round(costVal * factor));
+      }
+    }
+  };
+
   const syncDepreciableState = () => {
     const isDepr = !!(document.getElementById('ast-is-depreciable') as HTMLInputElement)?.checked;
     $$('.depr-param-field').forEach((el: HTMLElement) => {
@@ -1978,9 +2376,15 @@ async function renderSubTabCategorias(c: HTMLElement) {
     $$('.date-req').forEach((el: HTMLElement) => {
       el.style.display = isDepr ? 'inline' : 'none';
     });
+    if (isDepr) {
+      syncImmediate50UvtState(false);
+    }
   };
 
   document.getElementById('ast-is-depreciable')?.addEventListener('change', syncDepreciableState);
+  document.getElementById('ast-is-immediate-depr')?.addEventListener('change', () => syncImmediate50UvtState(true));
+  document.getElementById('ast-purchase-date')?.addEventListener('change', () => syncImmediate50UvtState(false));
+  document.getElementById('ast-service-date')?.addEventListener('change', () => syncImmediate50UvtState(false));
   syncDepreciableState();
 
   // Escuchar cambios de categoría para auto-completar parámetros
@@ -2007,6 +2411,9 @@ async function renderSubTabCategorias(c: HTMLElement) {
   });
 
   $('#ast-cost')?.addEventListener('input', () => {
+    syncImmediate50UvtState(false);
+    const isImm = !!(document.getElementById('ast-is-immediate-depr') as HTMLInputElement)?.checked;
+    if (isImm) return;
     const costVal = Number(getInputVal('ast-cost') || 0);
     const catId = getSelectVal('ast-cat');
     if (!catId) return;
@@ -2022,8 +2429,9 @@ async function renderSubTabCategorias(c: HTMLElement) {
 
   $('#btn-calc-init-depr')?.addEventListener('click', () => {
     const cost = Number(getInputVal('ast-cost') || 0);
-    const residual = Number(getInputVal('ast-residual') || 0);
-    const lifeNiif = Number(getInputVal('ast-life-niif') || 0);
+    const isImm = !!(document.getElementById('ast-is-immediate-depr') as HTMLInputElement)?.checked;
+    const residual = isImm ? 0 : Number(getInputVal('ast-residual') || 0);
+    const lifeNiif = isImm ? 1 : Number(getInputVal('ast-life-niif') || 0);
     const purchaseDate = getInputVal('ast-purchase-date') || getInputVal('ast-service-date');
     const cutoffPeriod = getInputVal('ast-init-depr-period') || '2025-12';
 
@@ -2031,20 +2439,36 @@ async function renderSubTabCategorias(c: HTMLElement) {
       return showToast('Ingrese costo, vida útil, fecha de compra y periodo de corte para calcular', 'warning');
     }
 
-    const start = new Date(purchaseDate);
+    const firstPeriod = getAssetFirstDepreciationPeriod({
+      is_depreciable: true,
+      is_immediate_depreciation: isImm,
+      purchase_date: purchaseDate
+    });
+
+    if (!firstPeriod || cutoffPeriod < firstPeriod) {
+      const initNiifInput = $('#ast-init-depr-niif') as HTMLInputElement | null;
+      const initFiscalInput = $('#ast-init-depr-fiscal') as HTMLInputElement | null;
+      if (initNiifInput) initNiifInput.value = '0';
+      if (initFiscalInput) initFiscalInput.value = '0';
+      return showToast(`El activo inicia depreciación en ${firstPeriod || purchaseDate}; al corte ${cutoffPeriod} su depreciación acumulada es $ 0.`, 'info');
+    }
+
+    const [startYr, startMo] = firstPeriod.split('-').map(Number);
     const [cutYr, cutMo] = cutoffPeriod.split('-').map(Number);
-    // Meses transcurridos hasta el periodo de corte inclusive
-    const months = Math.max(0, (cutYr - start.getFullYear()) * 12 + (cutMo - (start.getMonth() + 1)) + 1);
+    // Meses transcurridos desde el primer mes elegible hasta el periodo de corte inclusive
+    const months = isImm
+      ? 1
+      : Math.min(lifeNiif, Math.max(0, (cutYr - startYr) * 12 + (cutMo - startMo) + 1));
 
     const monthly = (cost - residual) / lifeNiif;
-    const calcInitial = Math.round(monthly * months);
+    const calcInitial = Math.min(cost - residual, Math.round(monthly * months));
 
     const initNiifInput = $('#ast-init-depr-niif') as HTMLInputElement | null;
     const initFiscalInput = $('#ast-init-depr-fiscal') as HTMLInputElement | null;
     if (initNiifInput) initNiifInput.value = String(calcInitial);
     if (initFiscalInput) initFiscalInput.value = String(calcInitial);
 
-    showToast(`Cuotas calculadas: ${months} meses hasta ${cutoffPeriod} = $ ${calcInitial.toLocaleString('es-CO')}`, 'info');
+    showToast(`Cuotas calculadas: ${months} mes(es) desde ${firstPeriod} hasta ${cutoffPeriod} = $ ${calcInitial.toLocaleString('es-CO')}`, 'info');
   });
 
   $('#btn-save-asset')?.addEventListener('click', async () => {
@@ -2053,19 +2477,28 @@ async function renderSubTabCategorias(c: HTMLElement) {
     const cost = Number(getInputVal('ast-cost'));
     const category_id = getSelectVal('ast-cat');
     const is_depreciable = !!(document.getElementById('ast-is-depreciable') as HTMLInputElement)?.checked;
-    // Si no es depreciable, conservar vida útil numérica previa o predeterminada (>= 1) para satisfacer validación de esquema en PB
-    const useful_life_niif = is_depreciable 
-      ? Number(getInputVal('ast-life-niif')) 
-      : (Number(getInputVal('ast-life-niif')) || a?.useful_life_niif || 120);
-    const useful_life_fiscal = is_depreciable 
-      ? Number(getInputVal('ast-life-fiscal')) 
-      : (Number(getInputVal('ast-life-fiscal')) || a?.useful_life_fiscal || 120);
+    const is_immediate_depreciation = is_depreciable && !!(document.getElementById('ast-is-immediate-depr') as HTMLInputElement)?.checked;
     const purchaseDate = getInputVal('ast-purchase-date');
     const serviceDate = getInputVal('ast-service-date');
 
     if (!code || !name || !cost || !category_id) {
       return showToast('Por favor llene todos los campos obligatorios (*)', 'warning');
     }
+
+    if (is_immediate_depreciation) {
+      const { year, limit50Uvt } = getUvtForDateOrYear(purchaseDate || serviceDate || todayStr(), companyUvt);
+      if (cost > limit50Uvt) {
+        return showToast(`El costo supera el tope de 50 UVT (${formatCOP(limit50Uvt)} para ${year}). No aplica para Depreciación Inmediata.`, 'error');
+      }
+    }
+
+    // Si no es depreciable, conservar vida útil numérica previa o predeterminada (>= 1) para satisfacer validación de esquema en PB
+    const useful_life_niif = is_depreciable 
+      ? (is_immediate_depreciation ? 1 : Number(getInputVal('ast-life-niif'))) 
+      : (Number(getInputVal('ast-life-niif')) || a?.useful_life_niif || 120);
+    const useful_life_fiscal = is_depreciable 
+      ? (is_immediate_depreciation ? 1 : Number(getInputVal('ast-life-fiscal'))) 
+      : (Number(getInputVal('ast-life-fiscal')) || a?.useful_life_fiscal || 120);
 
     if (is_depreciable) {
       if (!useful_life_niif || !useful_life_fiscal) {
@@ -2082,9 +2515,10 @@ async function renderSubTabCategorias(c: HTMLElement) {
       cost,
       category_id,
       is_depreciable,
+      is_immediate_depreciation,
       useful_life_niif,
       useful_life_fiscal,
-      residual_value: is_depreciable ? Number(getInputVal('ast-residual') || 0) : 0,
+      residual_value: (is_depreciable && !is_immediate_depreciation) ? Number(getInputVal('ast-residual') || 0) : 0,
       initial_depreciation_niif: is_depreciable ? Number(getInputVal('ast-init-depr-niif') || 0) : 0,
       initial_depreciation_fiscal: is_depreciable ? Number(getInputVal('ast-init-depr-fiscal') || 0) : 0,
       last_depreciation_period: is_depreciable ? (getInputVal('ast-init-depr-period').trim() || a?.last_depreciation_period || null) : null,
@@ -2185,6 +2619,8 @@ async function renderSubTabCategorias(c: HTMLElement) {
 
   const buildFinancialTab = () => {
     const isDepr = a.is_depreciable !== false;
+    const isImmediate = isDepr && a.is_immediate_depreciation === true;
+    const firstEligiblePeriod = getAssetFirstDepreciationPeriod(a);
     let deprNIIFMonthly = 0;
     let deprFiscalMonthly = 0;
     let accumNIIF = 0;
@@ -2201,12 +2637,13 @@ async function renderSubTabCategorias(c: HTMLElement) {
       const initFiscal = Number(a.initial_depreciation_fiscal || 0);
       const postedNIIF = Number(a.accumulated_depreciation_niif || 0);
       const postedFiscal = Number(a.accumulated_depreciation_fiscal || 0);
+      const residual = isImmediate ? 0 : Number(a.residual_value || 0);
 
-      const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
+      const maxNIIF = Math.max(0, (a.cost || 0) - residual);
       const maxFiscal = a.cost || 0;
 
-      deprNIIFMonthly = ((a.cost || 0) - (a.residual_value || 0)) / (a.useful_life_niif || 1);
-      deprFiscalMonthly = (a.cost || 0) / (a.useful_life_fiscal || 1);
+      deprNIIFMonthly = isImmediate ? maxNIIF : (((a.cost || 0) - residual) / (a.useful_life_niif || 1));
+      deprFiscalMonthly = isImmediate ? maxFiscal : ((a.cost || 0) / (a.useful_life_fiscal || 1));
 
       // Saldo REAL asentado en libros contables (estrictamente lo registrado)
       accumNIIF = Math.min(maxNIIF, Math.max(initNIIF, postedNIIF));
@@ -2219,27 +2656,31 @@ async function renderSubTabCategorias(c: HTMLElement) {
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth() + 1; // 1..12
-
-      if (lastPeriod && /^\d{4}-\d{2}$/.test(lastPeriod)) {
-        const [lYr, lMo] = lastPeriod.split('-').map(Number);
-        monthsPending = Math.max(0, (currentYear - lYr) * 12 + (currentMonth - lMo));
-      } else {
-        const startDateStr = a.start_service_date || a.purchase_date;
-        if (startDateStr) {
-          const start = new Date(startDateStr);
-          if (!isNaN(start.getTime())) {
-            monthsPending = Math.max(0, (currentYear - start.getFullYear()) * 12 + (currentMonth - (start.getMonth() + 1)));
-          }
-        }
-      }
+      const currentPeriod = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+      let isScheduledFuture = false;
 
       if (accumNIIF >= maxNIIF) {
         monthsPending = 0;
+      } else if (firstEligiblePeriod && currentPeriod < firstEligiblePeriod) {
+        monthsPending = 0;
+        isScheduledFuture = true;
+      } else if (lastPeriod && /^\d{4}-\d{2}$/.test(lastPeriod)) {
+        const [lYr, lMo] = lastPeriod.split('-').map(Number);
+        monthsPending = Math.max(0, (currentYear - lYr) * 12 + (currentMonth - lMo));
+      } else if (firstEligiblePeriod && /^\d{4}-\d{2}$/.test(firstEligiblePeriod)) {
+        const [fYr, fMo] = firstEligiblePeriod.split('-').map(Number);
+        monthsPending = Math.max(0, (currentYear - fYr) * 12 + (currentMonth - fMo) + 1);
+      }
+
+      if (isImmediate && monthsPending > 0) {
+        monthsPending = 1;
       }
 
       pendingNIIFAmount = Math.min(Math.max(0, maxNIIF - accumNIIF), monthsPending * deprNIIFMonthly);
 
-      if (!lastPeriod && postedNIIF === 0 && initNIIF === 0) {
+      if (isScheduledFuture) {
+        status = 'scheduled';
+      } else if (!lastPeriod && postedNIIF === 0 && initNIIF === 0 && accumNIIF < maxNIIF) {
         status = 'never_run';
       } else if (monthsPending > 0) {
         status = 'pending';
@@ -2256,9 +2697,13 @@ async function renderSubTabCategorias(c: HTMLElement) {
             <div>
               <div class="flex justify-between items-center border-b pb-1.5 mb-2">
                 <h6 class="font-bold text-gray-700 mb-0"><i class="fas fa-circle-info mr-1 text-indigo-500"></i>Especificaciones Generales</h6>
-                ${isDepr 
-                  ? '<span class="badge badge-green text-[10px]">Depreciable</span>' 
-                  : '<span class="badge badge-blue text-[10px]" style="background:#E0E7FF;color:#3730A3;border:1px solid #C7D2FE">No Depreciable</span>'}
+                <div class="flex gap-1">
+                  ${isDepr 
+                    ? (isImmediate
+                        ? '<span class="badge badge-purple text-[10px]"><i class="fas fa-bolt mr-1"></i>≤ 50 UVT (Inmediata)</span>'
+                        : '<span class="badge badge-green text-[10px]">Depreciable</span>')
+                    : '<span class="badge badge-blue text-[10px]" style="background:#E0E7FF;color:#3730A3;border:1px solid #C7D2FE">No Depreciable</span>'}
+                </div>
               </div>
               <div class="space-y-1.5">
                 <div><strong class="text-gray-500">Nombre:</strong> <span class="text-gray-800 font-semibold">${esc(a.name)}</span></div>
@@ -2269,6 +2714,7 @@ async function renderSubTabCategorias(c: HTMLElement) {
                 <div><strong class="text-gray-500">Responsable Custodia:</strong> <span class="text-gray-800 font-semibold">${owner ? esc(owner.name) : '—'}</span></div>
                 <div><strong class="text-gray-500">Proveedor:</strong> <span class="text-gray-800 font-semibold">${a.expand?.provider_id ? esc(a.expand.provider_id.name) : '—'}</span></div>
                 <div><strong class="text-gray-500">Factura Compra:</strong> <span class="text-gray-800 font-semibold">${esc(a.invoice_number || '—')} (${esc(a.purchase_date || '—')})</span></div>
+                ${firstEligiblePeriod ? `<div><strong class="text-gray-500">Primer periodo de depreciación:</strong> <span class="text-purple-900 font-bold">${esc(firstEligiblePeriod)} ${isImmediate ? '(Mes de compra - 100%)' : '(Mes siguiente a compra)'}</span></div>` : ''}
                 ${a.last_depreciation_period ? `<div><strong class="text-gray-500">Último periodo contabilizado:</strong> <span class="text-indigo-900 font-bold">${esc(a.last_depreciation_period)}</span></div>` : ''}
               </div>
             </div>
@@ -2294,8 +2740,8 @@ async function renderSubTabCategorias(c: HTMLElement) {
                   </thead>
                   <tbody>
                     <tr class="border-b"><td class="py-1">Costo Original</td><td class="text-right font-semibold">${formatCOP(a.cost)}</td><td class="text-right text-gray-600">${formatCOP(a.cost)}</td></tr>
-                    <tr class="border-b"><td class="py-1">Valor Residual</td><td class="text-right font-semibold">${formatCOP(a.residual_value || 0)}</td><td class="text-right text-gray-400">$ 0</td></tr>
-                    <tr class="border-b"><td class="py-1">Vida Útil</td><td class="text-right font-semibold">${a.useful_life_niif} m</td><td class="text-right text-gray-600">${a.useful_life_fiscal} m</td></tr>
+                    <tr class="border-b"><td class="py-1">Valor Residual</td><td class="text-right font-semibold">${formatCOP(isImmediate ? 0 : (a.residual_value || 0))}</td><td class="text-right text-gray-400">$ 0</td></tr>
+                    <tr class="border-b"><td class="py-1">Vida Útil</td><td class="text-right font-semibold">${isImmediate ? '1 m (100%)' : `${a.useful_life_niif} m`}</td><td class="text-right text-gray-600">${isImmediate ? '1 m (100%)' : `${a.useful_life_fiscal} m`}</td></tr>
                     <tr class="border-b"><td class="py-1">Cuota Mensual Nominal</td><td class="text-right font-bold text-indigo-900">${formatCOP(deprNIIFMonthly)}</td><td class="text-right text-gray-600">${formatCOP(deprFiscalMonthly)}</td></tr>
                     <tr class="border-b">
                       <td class="py-1">
@@ -2328,6 +2774,11 @@ async function renderSubTabCategorias(c: HTMLElement) {
                       </button>
                     </div>
                   </div>
+                ` : (status === 'scheduled' ? `
+                  <div class="mt-3 p-2.5 rounded-xl border border-purple-200 bg-purple-50 text-xxs text-purple-900 flex items-center gap-2 font-medium">
+                    <i class="fas fa-calendar-day text-purple-600"></i>
+                    <span>Activo adquirido en <strong>${esc(a.purchase_date || a.start_service_date || '')}</strong>. Su primera cuota de depreciación se causará en el periodo <strong>${esc(firstEligiblePeriod || '')}</strong>.</span>
+                  </div>
                 ` : (status === 'up_to_date' ? `
                   <div class="mt-3 p-2 rounded-xl border border-emerald-200 bg-emerald-50 text-xxs text-emerald-800 flex items-center gap-1.5 font-medium">
                     <i class="fas fa-circle-check text-emerald-600"></i>
@@ -2338,7 +2789,7 @@ async function renderSubTabCategorias(c: HTMLElement) {
                     <i class="fas fa-info-circle text-indigo-600"></i>
                     <span>Activo sin registros de depreciación histórica. Listo para comenzar su ciclo contable.</span>
                   </div>
-                `)}
+                `))}
               ` : `
                 <div class="py-6 text-center text-gray-500 space-y-2">
                   <i class="fas fa-ban text-indigo-400 text-2xl"></i>
@@ -3030,24 +3481,131 @@ async function renderSubTabCategorias(c: HTMLElement) {
   }
 };
 
+function getPreviousPeriod(month: string): string {
+  const [yr, mo] = month.split('-').map(Number);
+  if (mo === 1) {
+    return `${yr - 1}-12`;
+  }
+  return `${yr}-${String(mo - 1).padStart(2, '0')}`;
+}
+
+async function checkDepreciationStatus(month: string) {
+  const [yrStr, moStr] = month.split('-');
+  const yr = Number(yrStr);
+  const mo = Number(moStr);
+  const lastDay = new Date(yr, mo, 0).getDate();
+  const startDate = `${month}-01`;
+  const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
+
+  let checkTxItems: any[] = [];
+  let checkEventItems: any[] = [];
+  let subsequentTxItems: any[] = [];
+
+  try {
+    const [txByCross, txByDesc, evRes, subseqRes] = await Promise.all([
+      pb.listAll('transactions', {
+        filter: `(cross_type = "DEPRECIACION_MENSUAL" || cross_type = "DEPRE_MENSUAL_NIIF" || cross_type = "DEPRE_MENSUAL_FISCAL") && cross_number = "${month}" && status = "active"`
+      }).catch(() => []),
+      pb.listAll('transactions', {
+        filter: `date >= "${startDate}" && date <= "${endDate} 23:59:59" && (description ~ "depreciaci" || description ~ "Depreciaci") && status = "active"`
+      }).catch(() => []),
+      pb.listAll('niif_asset_events', {
+        filter: `description ~ "${month}"`
+      }).catch(() => []),
+      pb.listAll('transactions', {
+        filter: `date > "${endDate} 23:59:59" && (cross_type ~ "DEPRE" || description ~ "depreciaci" || description ~ "Depreciaci") && status = "active"`
+      }).catch(() => [])
+    ]);
+
+    const txMap = new Map<string, any>();
+    [...txByCross, ...txByDesc].forEach((t: any) => txMap.set(t.id, t));
+    checkTxItems = Array.from(txMap.values());
+    checkEventItems = evRes || [];
+    subsequentTxItems = subseqRes || [];
+  } catch (err: any) {
+    console.warn('[Depreciation Check] Query check note:', err);
+  }
+
+  const activeTxList = checkTxItems.filter((t: any) => t.status === 'active');
+  const hasSubsequentPosted = subsequentTxItems.length > 0;
+
+  let state: 'posted' | 'inconsistent' | 'available' = 'available';
+  if (activeTxList.length > 0) {
+    state = 'posted';
+  } else if (checkEventItems.length > 0) {
+    state = 'inconsistent';
+  }
+
+  const txNIIF = activeTxList.find((t: any) => 
+    t.cross_type === 'DEPRE_MENSUAL_NIIF' || 
+    t.book_type === 'niif' || 
+    (t.description && t.description.toUpperCase().includes('NIIF'))
+  );
+
+  const txFiscal = activeTxList.find((t: any) => 
+    t.id !== txNIIF?.id && (
+      t.cross_type === 'DEPRE_MENSUAL_FISCAL' || 
+      t.book_type === 'local' || 
+      (t.description && (t.description.toUpperCase().includes('FISCAL') || t.description.toUpperCase().includes('TRIBUTARIA')))
+    )
+  );
+
+  return {
+    state,
+    activeTxList,
+    txNIIF,
+    txFiscal,
+    checkEventItems,
+    hasSubsequentPosted,
+    subsequentTxCount: subsequentTxItems.length
+  };
+}
+
 async function renderSubTabDepreciacion(c: HTMLElement) {
   const currentMonthDefault = todayStr().slice(0, 7); // YYYY-MM
 
+  // Cargar tipos de comprobantes contables disponibles
+  let txTypes: any[] = [];
+  try {
+    txTypes = await pb.listAll('transaction_types', { filter: 'active=true', sort: 'code' });
+  } catch (_) {
+    try { txTypes = await pb.listAll('transaction_types'); } catch (_) {}
+  }
+  if (!txTypes.length) {
+    txTypes = [{ id: 'na_default', code: 'NA', name: 'Nota contable y de ajuste', prefix: 'AC' }];
+  }
+
+  const txTypeOptions = txTypes.map((t: any) => {
+    const isDefault = t.code === 'NA' || t.prefix === 'AC' || t.name.toLowerCase().includes('ajuste') || t.name.toLowerCase().includes('nota');
+    return `<option value="${t.id}" ${isDefault ? 'selected' : ''}>${esc(t.code)} - ${esc(t.name)} (${esc(t.prefix || t.code)})</option>`;
+  }).join('');
+
   c.innerHTML = `
     <div class="bg-white rounded-2xl border p-6 mb-6" style="border-color:#F0F0F0">
-      <h4 class="text-base font-bold mb-4" style="color:#0D2137"><i class="fas fa-calculator text-indigo-500 mr-1.5"></i>Procesamiento de Depreciación Mensual</h4>
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <div>
+          <h4 class="text-base font-bold" style="color:#0D2137"><i class="fas fa-calculator text-indigo-500 mr-2"></i>Procesamiento de Depreciación Mensual</h4>
+          <p class="text-xs text-gray-400 mt-0.5">Liquidación paralela del libro contable (NIIF) y libro tributario (Fiscal) con control de duplicidad y reversión LIFO.</p>
+        </div>
+      </div>
       
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end text-xs">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end text-xs">
         <div class="form-group">
           <label class="form-label text-xxs font-bold text-gray-500">Periodo a Depreciar</label>
           <input id="depr-month" type="month" class="form-input" value="${currentMonthDefault}">
         </div>
+        <div class="form-group">
+          <label class="form-label text-xxs font-bold text-gray-500">Tipo de Comprobante <span class="text-indigo-600">*</span></label>
+          <select id="depr-tx-type" class="form-input text-xs font-semibold">
+            ${txTypeOptions}
+          </select>
+        </div>
         <div class="form-group flex gap-2">
-          <button class="btn btn-primary w-full" id="btn-depr-proj"><i class="fas fa-search-plus mr-1"></i>Proyectar Cálculo</button>
-          <button class="btn btn-secondary w-full" id="btn-depr-post" disabled><i class="fas fa-floppy-disk mr-1"></i>Procesar y Contabilizar</button>
+          <button class="btn btn-primary w-full" id="btn-depr-proj"><i class="fas fa-search-plus mr-1.5"></i>Proyectar Cálculo</button>
+          <button class="btn btn-secondary w-full" id="btn-depr-post" disabled><i class="fas fa-floppy-disk mr-1.5"></i>Procesar y Contabilizar</button>
         </div>
         <div class="form-group">
-          <span class="text-xxs text-gray-400 leading-normal block">Calcula en paralelo la depreciación del libro contable (NIIF) y libro tributario (Fiscal) para todos los activos en operación.</span>
+          <span class="text-xxs text-gray-400 leading-normal block">Calcula las cuotas mensuales respetando vidas útiles, valores residuales y topes fiscales, y genera los comprobantes bajo el tipo seleccionado.</span>
         </div>
       </div>
     </div>
@@ -3059,124 +3617,257 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
   `;
 
   let activeAssetsForDepr: any[] = [];
+  let currentDeprStatus: any = null;
 
   $('#btn-depr-proj')?.addEventListener('click', async () => {
     const month = getInputVal('depr-month');
     const output = document.getElementById('depr-projection-output');
     if (!output) return;
 
-    output.innerHTML = `<div class="p-12 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Analizando activos depreciables...</div>`;
+    output.innerHTML = `<div class="p-12 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Analizando activos y estado contable del periodo ${month}...</div>`;
 
     try {
-      const [rawAssets, categories] = await Promise.all([
+      const [rawAssets, categories, deprStatus] = await Promise.all([
         pb.listAll('niif_assets', { filter: 'status="active" || status="in_repair"', expand: 'category_id' }),
-        pb.listAll('niif_asset_categories', { filter: 'active=true' })
+        pb.listAll('niif_asset_categories', { filter: 'active=true' }),
+        checkDepreciationStatus(month)
       ]);
 
+      currentDeprStatus = deprStatus;
+
       // Excluir activos que explícitamente no son depreciables (terrenos, obras de arte, etc.)
-      const assets = rawAssets.filter(a => a.is_depreciable !== false);
-      activeAssetsForDepr = assets;
+      const allDepreciableAssets = rawAssets.filter((a: any) => a.is_depreciable !== false);
       const formatCOP = (window as any).fmt || ((n: number) => `$ ${n.toLocaleString('es-CO')}`);
 
-      if (assets.length === 0) {
-        output.innerHTML = `<div class="p-12 text-center text-gray-400"><i class="fas fa-circle-info mr-1"></i>No se encontraron activos fijos en operación para depreciar.</div>`;
+      if (allDepreciableAssets.length === 0) {
+        output.innerHTML = `<div class="p-12 text-center text-gray-400"><i class="fas fa-circle-info mr-1"></i>No se encontraron activos fijos depreciables en operación.</div>`;
         return;
       }
 
-      const [yrStr, moStr] = month.split('-');
-      const yr = Number(yrStr);
-      const mo = Number(moStr);
-      const lastDay = new Date(yr, mo, 0).getDate();
-      const startDate = `${month}-01`;
-      const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
+      // Evaluar elegibilidad cronológica y normativa de cada activo para el periodo seleccionado
+      const evaluatedList = allDepreciableAssets.map((a: any) => ({
+        asset: a,
+        evalRes: evaluateAssetDepreciationForPeriod(a, month)
+      }));
 
-      let checkTxItems: any[] = [];
-      let checkEventItems: any[] = [];
-      try {
-        const checkTx = await pb.list('transactions', {
-          filter: `date >= "${startDate}" && date <= "${endDate} 23:59:59" && (description ~ "depreciaci" || description ~ "Depreciaci") && status = "active"`,
-          perPage: 1
-        });
-        checkTxItems = checkTx.items;
+      // Si el periodo ya está contabilizado, incluir en la vista principal tanto los elegibles como los que ya quedaron marcados con last_depreciation_period === month
+      const eligibleItems = evaluatedList.filter(({ asset, evalRes }) => {
+        if (deprStatus.state === 'posted' && asset.last_depreciation_period === month && evalRes.reasonCode === 'already_depreciated_period') {
+          return true;
+        }
+        return evalRes.eligible;
+      });
 
-        const checkEv = await pb.list('niif_asset_events', {
-          filter: `description ~ "${month}"`,
-          perPage: 1
-        });
-        checkEventItems = checkEv.items;
-      } catch (err: any) {
-        console.warn('[Depreciation Check] Query check note:', err);
-      }
+      const excludedItems = evaluatedList.filter((item) => !eligibleItems.includes(item));
 
-      const alreadyPosted = checkTxItems.length > 0 || checkEventItems.length > 0;
+      // Guardar únicamente los activos elegibles para la contabilización del periodo
+      activeAssetsForDepr = eligibleItems.map(item => item.asset);
 
-      const tableRows = assets.map(a => {
-        const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
-        const maxFiscal = a.cost || 0;
-        const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
-        const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
+      let totalNIIF = 0;
+      let totalFiscal = 0;
 
-        const remainingNIIF = Math.max(0, maxNIIF - prevAccumNIIF);
-        const remainingFiscal = Math.max(0, maxFiscal - prevAccumFiscal);
+      const tableRows = eligibleItems.length > 0 ? eligibleItems.map(({ asset: a, evalRes }) => {
+        // Si ya fue contabilizado en este mes, mostrar la cuota nominal que se le aplicó; si está pendiente, mostrar la cuota proyectada
+        const deprNIIF = (deprStatus.state === 'posted' && a.last_depreciation_period === month && evalRes.deprNIIF === 0)
+          ? Math.round(evalRes.nominalNIIF)
+          : evalRes.deprNIIF;
+        const deprFiscal = (deprStatus.state === 'posted' && a.last_depreciation_period === month && evalRes.deprFiscal === 0)
+          ? Math.round(evalRes.nominalFiscal)
+          : evalRes.deprFiscal;
 
-        const nominalNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
-        const nominalFiscal = a.cost / (a.useful_life_fiscal || 1);
+        totalNIIF += deprNIIF;
+        totalFiscal += deprFiscal;
 
-        const deprNIIF = Math.min(nominalNIIF, remainingNIIF);
-        const deprFiscal = Math.min(nominalFiscal, remainingFiscal);
         const diff = deprNIIF - deprFiscal;
-        const methodStr = a.depreciation_method === 'linea_recta' ? 'Línea Recta' : esc(a.depreciation_method);
+        const isImm = Boolean(a.is_immediate_depreciation);
+        const methodBadge = isImm
+          ? `<span class="badge badge-indigo text-xxs font-bold" title="Depreciación Inmediata ≤ 50 UVT (100% en mes de compra)"><i class="fas fa-bolt mr-1"></i>≤ 50 UVT (100%)</span>`
+          : `<span class="text-gray-600 font-medium">${a.depreciation_method === 'linea_recta' ? 'Línea Recta' : esc(a.depreciation_method)}</span>`;
+        const acqDateStr = a.purchase_date || a.start_service_date || '—';
 
         return `
           <tr>
             <td><strong>${esc(a.code)}</strong></td>
-            <td>${esc(a.name)}</td>
+            <td>
+              <div class="font-semibold text-gray-800">${esc(a.name)}</div>
+              <div class="text-xxs text-gray-400">Compra: ${esc(acqDateStr)} · Inicia: <strong>${esc(evalRes.firstDepreciationPeriod || '—')}</strong></div>
+            </td>
             <td>${formatCOP(a.cost)}</td>
-            <td>${formatCOP(a.residual_value || 0)}</td>
-            <td><span class="text-gray-500">${methodStr}</span></td>
+            <td>${formatCOP(isImm ? 0 : (a.residual_value || 0))}</td>
+            <td>${methodBadge}</td>
             <td class="text-right font-semibold text-indigo-950">${formatCOP(deprNIIF)}</td>
             <td class="text-right text-gray-600">${formatCOP(deprFiscal)}</td>
             <td class="text-right font-bold ${diff !== 0 ? 'text-amber-600' : 'text-gray-400'}">${formatCOP(diff)}</td>
           </tr>
         `;
-      }).join('');
+      }).join('') : `
+        <tr>
+          <td colspan="8" class="py-8 text-center text-gray-400">
+            <i class="fas fa-calendar-xmark text-xl block mb-1.5 text-gray-300"></i>
+            Ningún activo cumple condiciones para depreciar en el periodo <strong>${esc(month)}</strong>. Revise el detalle de activos omitidos más abajo.
+          </td>
+        </tr>
+      `;
 
-      let totalNIIF = 0;
-      let totalFiscal = 0;
-      assets.forEach(a => {
-        const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
-        const maxFiscal = a.cost || 0;
-        const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
-        const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
-        const remainingNIIF = Math.max(0, maxNIIF - prevAccumNIIF);
-        const remainingFiscal = Math.max(0, maxFiscal - prevAccumFiscal);
-        const nominalNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
-        const nominalFiscal = a.cost / (a.useful_life_fiscal || 1);
-        totalNIIF += Math.min(nominalNIIF, remainingNIIF);
-        totalFiscal += Math.min(nominalFiscal, remainingFiscal);
-      });
-
-      const stateBadge = alreadyPosted 
-        ? '<span class="badge badge-orange"><i class="fas fa-triangle-exclamation mr-1"></i>¡Atención! Ya se registraron comprobantes en este periodo</span>' 
-        : '<span class="badge badge-green"><i class="fas fa-check mr-1"></i>Listo para procesar</span>';
-
-      const warningBanner = alreadyPosted ? `
-        <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
-          <div class="flex items-center gap-2">
-            <i class="fas fa-triangle-exclamation text-amber-600 text-base"></i>
-            <div>
-              <strong>Validación de Duplicidad:</strong> La depreciación del periodo <strong>${month}</strong> ya cuenta con registros contables procesados.
+      const excludedSectionHtml = excludedItems.length > 0 ? `
+        <details class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 overflow-hidden">
+          <summary class="px-4 py-3 cursor-pointer select-none flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700 hover:bg-slate-100/80 transition-colors">
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg bg-slate-200/80 text-slate-700 flex items-center justify-center text-xxs">
+                <i class="fas fa-filter"></i>
+              </span>
+              <span>Activos Omitidos en el Periodo ${esc(month)} (${excludedItems.length} de ${allDepreciableAssets.length})</span>
+            </div>
+            <span class="text-xxs font-semibold text-indigo-600 flex items-center gap-1">
+              <i class="fas fa-eye"></i> Ver causal de exclusión por activo
+            </span>
+          </summary>
+          <div class="p-4 pt-2 border-t border-slate-200/80 bg-white">
+            <p class="text-xxs text-gray-500 mb-2.5">
+              Estos activos no generan cuota contable ni fiscal en <strong>${esc(month)}</strong> por control cronológico de fecha de compra/ingreso o estado de depreciación acumulada:
+            </p>
+            <div class="overflow-x-auto">
+              <table class="data-table text-xxs">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Activo</th>
+                    <th>Fecha Compra</th>
+                    <th>1er Periodo Depreciable</th>
+                    <th>Costo</th>
+                    <th>Causal de Exclusión en ${esc(month)}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${excludedItems.map(({ asset: a, evalRes }) => {
+                    const badgeCls = evalRes.reasonCode === 'future_purchase' || evalRes.reasonCode === 'purchase_month_wait_next'
+                      ? 'badge-purple'
+                      : (evalRes.reasonCode === 'fully_depreciated' ? 'badge-blue' : 'badge-gray');
+                    return `
+                      <tr>
+                        <td><strong>${esc(a.code)}</strong></td>
+                        <td>${esc(a.name)}</td>
+                        <td class="font-mono text-gray-600">${esc(a.purchase_date || a.start_service_date || '—')}</td>
+                        <td class="font-mono font-bold text-indigo-900">${esc(evalRes.firstDepreciationPeriod || '—')}</td>
+                        <td>${formatCOP(a.cost)}</td>
+                        <td>
+                          <span class="badge ${badgeCls} text-xxs font-semibold mr-1.5">Omitido</span>
+                          <span class="text-gray-600">${esc(evalRes.reasonLabel)}</span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
             </div>
           </div>
-          <span class="px-2 py-0.5 rounded-full text-xxs font-bold bg-amber-200 text-amber-900">Periodo Contabilizado</span>
-        </div>
+        </details>
       ` : '';
+
+      // Configuración de banners según el estado real
+      let stateBadge = '';
+      let statusCard = '';
+
+      if (deprStatus.state === 'posted') {
+        stateBadge = '<span class="badge badge-orange"><i class="fas fa-lock mr-1"></i>Periodo Contabilizado</span>';
+        
+        const txNIIFDesc = deprStatus.txNIIF 
+          ? esc(deprStatus.txNIIF.number || deprStatus.txNIIF.id) 
+          : '<span class="text-amber-600 font-semibold italic"><i class="fas fa-triangle-exclamation mr-1"></i>No generado</span>';
+
+        const txFiscalDesc = deprStatus.txFiscal 
+          ? esc(deprStatus.txFiscal.number || deprStatus.txFiscal.id) 
+          : '<span class="text-amber-600 font-semibold italic"><i class="fas fa-triangle-exclamation mr-1"></i>No generado</span>';
+
+        statusCard = `
+          <div class="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl space-y-3 text-xs text-amber-950">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-3">
+                <span class="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-800 text-base shadow-sm">
+                  <i class="fas fa-lock"></i>
+                </span>
+                <div>
+                  <h5 class="font-bold text-amber-900 text-sm">Periodo ${month} Liquidado y Contabilizado</h5>
+                  <p class="text-xxs text-amber-700">Existen comprobantes contables activos en el libro diario para este periodo. El procesamiento está bloqueado para proteger la contabilidad.</p>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 rounded-full text-xxs font-bold bg-amber-200/80 text-amber-900 border border-amber-300">
+                <i class="fas fa-circle-check mr-1 text-emerald-600"></i>Contabilidad en Firme
+              </span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-amber-200/60">
+              <div class="p-3 bg-white/90 rounded-xl border border-amber-100 flex items-center justify-between">
+                <div>
+                  <span class="text-xxs text-gray-400 uppercase font-bold block">Comprobante NIIF (Financiero)</span>
+                  <span class="font-bold text-indigo-950 text-xs">${txNIIFDesc}</span>
+                  <span class="text-xxs text-gray-500 block truncate max-w-xs">${deprStatus.txNIIF ? esc(deprStatus.txNIIF.description) : 'Libro NIIF'}</span>
+                </div>
+                <span class="badge badge-indigo text-xxs font-bold">NIIF</span>
+              </div>
+              <div class="p-3 bg-white/90 rounded-xl border border-amber-100 flex items-center justify-between">
+                <div>
+                  <span class="text-xxs text-gray-400 uppercase font-bold block">Comprobante Fiscal (Tributario)</span>
+                  <span class="font-bold text-gray-800 text-xs">${txFiscalDesc}</span>
+                  <span class="text-xxs text-gray-500 block truncate max-w-xs">${deprStatus.txFiscal ? esc(deprStatus.txFiscal.description) : 'Libro Fiscal'}</span>
+                </div>
+                <span class="badge badge-gray text-xxs font-bold">Fiscal</span>
+              </div>
+            </div>
+
+            <div class="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-amber-200/60">
+              <div class="text-xxs text-amber-800 flex items-center gap-1.5">
+                <i class="fas fa-info-circle text-amber-600"></i>
+                ${deprStatus.hasSubsequentPosted 
+                  ? `<span class="text-rose-700 font-semibold">Existen ${deprStatus.subsequentTxCount} periodo(s) posterior(es) contabilizado(s). Por regla cronológica LIFO, debe levantar primero el periodo más reciente.</span>` 
+                  : 'Para corregir o recalcular este periodo, puede levantar la liquidación: anulará los comprobantes contables y restaurará los saldos.'}
+              </div>
+              <div>
+                <button class="btn btn-sm ${deprStatus.hasSubsequentPosted ? 'btn-secondary opacity-50 cursor-not-allowed' : 'btn-danger'}" 
+                        id="btn-depr-revert" 
+                        ${deprStatus.hasSubsequentPosted ? 'disabled' : ''} 
+                        data-month="${month}">
+                  <i class="fas fa-undo-alt mr-1.5"></i>Levantar Liquidación del Periodo
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (deprStatus.state === 'inconsistent') {
+        stateBadge = '<span class="badge badge-rose"><i class="fas fa-triangle-exclamation mr-1"></i>Inconsistencia Detectada</span>';
+
+        statusCard = `
+          <div class="p-4 bg-rose-50/90 border border-rose-200 rounded-2xl space-y-3 text-xs text-rose-950">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-3">
+                <span class="w-9 h-9 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center text-rose-700 text-base shadow-sm">
+                  <i class="fas fa-triangle-exclamation"></i>
+                </span>
+                <div>
+                  <h5 class="font-bold text-rose-900 text-sm">Registros Huérfanos en Periodo ${month}</h5>
+                  <p class="text-xxs text-rose-700">Se encontraron ${deprStatus.checkEventItems.length} registro(s) de intentos previos, pero <strong>no existe comprobante contable activo</strong> en el libro diario. Subsanelos para procesar en limpio.</p>
+                </div>
+              </div>
+              <button class="btn btn-outline btn-sm" id="btn-depr-clean-orphan" data-month="${month}">
+                <i class="fas fa-broom mr-1.5"></i>Subsanar y Limpiar Inconsistencia
+              </button>
+            </div>
+          </div>
+        `;
+      } else if (eligibleItems.length === 0) {
+        stateBadge = '<span class="badge badge-gray"><i class="fas fa-calendar-xmark mr-1"></i>Sin activos elegibles en el periodo</span>';
+      } else {
+        stateBadge = `<span class="badge badge-green"><i class="fas fa-check mr-1"></i>${eligibleItems.length} activo(s) listo(s) para procesar</span>`;
+      }
 
       output.innerHTML = `
         <div class="space-y-4">
-          ${warningBanner}
-          <div class="flex justify-between items-center pb-3 border-b" style="border-color:#EEF0F5">
-            <h5 class="text-xs font-bold text-gray-800">Proyección de Depreciación para el Periodo: ${month}</h5>
+          ${statusCard}
+          <div class="flex flex-wrap justify-between items-center gap-2 pb-3 border-b" style="border-color:#EEF0F5">
+            <div>
+              <h5 class="text-xs font-bold text-gray-800">Proyección de Depreciación para el Periodo: ${month}</h5>
+              <p class="text-xxs text-gray-400">Activos incluidos en el cálculo del mes: <strong>${eligibleItems.length}</strong> · Activos omitidos por fecha o tope: <strong>${excludedItems.length}</strong></p>
+            </div>
             ${stateBadge}
           </div>
 
@@ -3185,10 +3876,10 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
               <thead>
                 <tr>
                   <th>Código</th>
-                  <th>Nombre del Activo</th>
+                  <th>Nombre del Activo / Vigencia</th>
                   <th>Costo Histórico</th>
                   <th>V. Residual NIIF</th>
-                  <th>Método</th>
+                  <th>Modalidad</th>
                   <th class="text-right">Cuota Mensual NIIF</th>
                   <th class="text-right">Cuota Mensual Fiscal</th>
                   <th class="text-right">Diferencia</th>
@@ -3197,7 +3888,7 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
               <tbody>
                 ${tableRows}
                 <tr class="font-bold bg-gray-50 border-t-2" style="border-color:#CBD5E1">
-                  <td colspan="5" class="py-2">TOTALES</td>
+                  <td colspan="5" class="py-2">TOTALES A CONTABILIZAR (${eligibleItems.length} ACTIVOS)</td>
                   <td class="text-right text-indigo-900">${formatCOP(totalNIIF)}</td>
                   <td class="text-right text-gray-800">${formatCOP(totalFiscal)}</td>
                   <td class="text-right text-amber-700">${formatCOP(totalNIIF - totalFiscal)}</td>
@@ -3205,15 +3896,178 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
               </tbody>
             </table>
           </div>
+
+          ${excludedSectionHtml}
         </div>
       `;
 
+      // Actualizar botón de procesamiento según el estado real
       const postBtn = document.getElementById('btn-depr-post') as HTMLButtonElement | null;
       if (postBtn) {
-        postBtn.disabled = false;
         postBtn.dataset.month = month;
-        postBtn.dataset.already = alreadyPosted ? '1' : '0';
+        postBtn.dataset.state = deprStatus.state;
+
+        if (deprStatus.state === 'posted') {
+          postBtn.disabled = true;
+          postBtn.classList.add('opacity-60', 'cursor-not-allowed');
+          postBtn.title = 'Periodo ya contabilizado. Para volver a procesarlo, primero debe levantar la liquidación existente.';
+          postBtn.innerHTML = `<i class="fas fa-lock mr-1.5"></i>Periodo Contabilizado`;
+        } else if (deprStatus.state === 'inconsistent') {
+          postBtn.disabled = true;
+          postBtn.classList.add('opacity-60', 'cursor-not-allowed');
+          postBtn.title = 'Se detectaron registros huérfanos. Presione "Subsanar y Limpiar Inconsistencia" antes de procesar.';
+          postBtn.innerHTML = `<i class="fas fa-triangle-exclamation mr-1.5"></i>Requiere Subsanación`;
+        } else if (eligibleItems.length === 0) {
+          postBtn.disabled = true;
+          postBtn.classList.add('opacity-60', 'cursor-not-allowed');
+          postBtn.title = `No hay activos con cuota depreciable para el periodo ${month}.`;
+          postBtn.innerHTML = `<i class="fas fa-ban mr-1.5"></i>Sin Activos Elegibles`;
+        } else {
+          postBtn.disabled = false;
+          postBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+          postBtn.title = '';
+          postBtn.innerHTML = `<i class="fas fa-floppy-disk mr-1.5"></i>Procesar y Contabilizar`;
+        }
       }
+
+      // Handler para Subsanar Inconsistencias Huérfanas
+      $('#btn-depr-clean-orphan')?.addEventListener('click', () => {
+        confirmDialog(
+          'Subsanar Inconsistencia de Registros Huérfanos',
+          `Se eliminarán los <strong>${deprStatus.checkEventItems.length}</strong> registro(s) de intentos huérfanos que no poseen comprobante contable asociado en el periodo <strong>${month}</strong>.<br><br>¿Desea limpiar estos registros y habilitar el periodo para liquidación?`,
+          async () => {
+            try {
+              for (const ev of deprStatus.checkEventItems) {
+                try { await pb.delete('niif_asset_events', ev.id); } catch (_) {}
+              }
+              showToast(`Inconsistencia del periodo ${month} subsanada con éxito.`, 'success');
+              $('#btn-depr-proj')?.click();
+            } catch (err: any) {
+              showToast('Error al subsanar registros: ' + err.message, 'error');
+            }
+          }
+        );
+      });
+
+      // Handler para Levantar / Reversar Liquidación
+      $('#btn-depr-revert')?.addEventListener('click', () => {
+        if (deprStatus.hasSubsequentPosted) {
+          showToast(`No es posible levantar el periodo ${month}. Por integridad contable LIFO, debe levantar primero los periodos posteriores.`, 'warning', 5000);
+          return;
+        }
+
+        const txNList = deprStatus.activeTxList.map((t: any) => t.number || t.id).join(', ');
+
+        confirmDialog(
+          'Levantar Liquidación Mensual',
+          `¿Está seguro de que desea levantar la liquidación del periodo <strong>${month}</strong>?<br><br>
+           <div class="p-3.5 bg-red-50 border border-red-200 rounded-xl text-left text-xs text-red-900 space-y-2 mt-2">
+             <div class="font-bold flex items-center gap-1.5 text-red-800">
+               <i class="fas fa-triangle-exclamation"></i> Acciones contables de reversión:
+             </div>
+             <ul class="list-disc pl-4 space-y-1 text-red-700">
+               <li>Se anularán formalmente los comprobantes contables (<strong>${txNList || 'Activos'}</strong>) pasándolos a estado <em>anulado (voided)</em>.</li>
+               <li>Se descontarán las cuotas mensuales de la depreciación acumulada (NIIF y Fiscal) únicamente en la ficha de los activos que fueron depreciados en <strong>${month}</strong>.</li>
+               <li>Se restaurará el periodo de última depreciación previo en cada activo afectado.</li>
+               <li>Se reabrirá el periodo <strong>${month}</strong> para permitir una nueva proyección o ajuste.</li>
+             </ul>
+           </div>`,
+          async () => {
+            const revertBtn = $('#btn-depr-revert') as HTMLButtonElement | null;
+            if (revertBtn) {
+              revertBtn.disabled = true;
+              revertBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Levantando...`;
+            }
+
+            try {
+              // 1. Anular comprobantes contables
+              for (const tx of deprStatus.activeTxList) {
+                await API.voidTransaction(tx.id, `Levantamiento de liquidación mensual de depreciación periodo ${month}`);
+              }
+
+              // 2. Mapear eventos del periodo por asset_id para reversar con exactitud solo los activos procesados en este mes
+              const eventByAssetId = new Map<string, any>();
+              for (const ev of deprStatus.checkEventItems) {
+                if (ev.asset_id) {
+                  eventByAssetId.set(ev.asset_id, ev);
+                }
+              }
+
+              const fallbackPrevPeriod = getPreviousPeriod(month);
+              for (const a of allDepreciableAssets) {
+                const ev = eventByAssetId.get(a.id);
+                const wasDepreciatedInMonth = Boolean(ev) || a.last_depreciation_period === month;
+                if (!wasDepreciatedInMonth) continue;
+
+                // Además verificar que el activo no sea de compra futura respecto al mes revertido
+                const firstPeriod = getAssetFirstDepreciationPeriod(a);
+                if (firstPeriod && month < firstPeriod && a.last_depreciation_period !== month && !ev) {
+                  continue;
+                }
+
+                const isImm = Boolean(a.is_immediate_depreciation);
+                const lifeNIIF = isImm ? 1 : (a.useful_life_niif || 1);
+                const lifeFiscal = isImm ? 1 : (a.useful_life_fiscal || 1);
+                const resVal = isImm ? 0 : (a.residual_value || 0);
+
+                let revertNIIF = Math.round(((a.cost || 0) - resVal) / lifeNIIF);
+                let revertFiscal = Math.round((a.cost || 0) / lifeFiscal);
+                let restoredPeriod = fallbackPrevPeriod;
+
+                // Si el evento guardó metadatos exactos [DEPR_META:niif=...;fiscal=...;prevPeriod=...], usarlos
+                if (ev && typeof ev.description === 'string') {
+                  const metaMatch = ev.description.match(/\[DEPR_META:niif=(\d+);fiscal=(\d+);prevPeriod=([^\]]*)\]/);
+                  if (metaMatch) {
+                    revertNIIF = Number(metaMatch[1]);
+                    revertFiscal = Number(metaMatch[2]);
+                    restoredPeriod = metaMatch[3] || '';
+                  } else if (typeof ev.amount === 'number' && ev.amount > 0) {
+                    revertNIIF = Math.round(ev.amount);
+                  }
+                }
+
+                // Si la fecha de primera depreciación del activo es exactamente este mes `month`, al revertirlo queda sin depreciación previa ('')
+                if (firstPeriod && firstPeriod === month && restoredPeriod < firstPeriod) {
+                  restoredPeriod = '';
+                }
+
+                const currentAccumNIIF = Number(a.accumulated_depreciation_niif || 0);
+                const currentAccumFiscal = Number(a.accumulated_depreciation_fiscal || 0);
+                const minInitNIIF = Number(a.initial_depreciation_niif || 0);
+                const minInitFiscal = Number(a.initial_depreciation_fiscal || 0);
+
+                const newAccumNIIF = Math.max(minInitNIIF, currentAccumNIIF - revertNIIF);
+                const newAccumFiscal = Math.max(minInitFiscal, currentAccumFiscal - revertFiscal);
+
+                await pb.update('niif_assets', a.id, {
+                  accumulated_depreciation_niif: newAccumNIIF,
+                  accumulated_depreciation_fiscal: newAccumFiscal,
+                  last_depreciation_period: restoredPeriod
+                });
+              }
+
+              // 3. Eliminar eventos de ese periodo en niif_asset_events
+              for (const ev of deprStatus.checkEventItems) {
+                try { await pb.delete('niif_asset_events', ev.id); } catch (_) {}
+              }
+
+              // 4. Auditoría
+              await API.logAudit('VOID', 'Depreciation Run', month, `Levantó y anuló la liquidación mensual de depreciación del periodo ${month}`);
+              showToast(`Liquidación del periodo ${month} levantada con éxito. El periodo ha sido reabierto.`, 'success');
+
+              // 5. Re-proyectar automáticamente para actualizar interfaz
+              $('#btn-depr-proj')?.click();
+            } catch (err: any) {
+              showToast('Error al levantar liquidación: ' + err.message, 'error');
+              if (revertBtn) {
+                revertBtn.disabled = false;
+                revertBtn.innerHTML = `<i class="fas fa-undo-alt mr-1.5"></i>Levantar Liquidación del Periodo`;
+              }
+            }
+          },
+          true
+        );
+      });
 
     } catch (err: any) {
       output.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-1.5"></i>Error al proyectar: ${esc(err.message)}</div>`;
@@ -3224,200 +4078,206 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
     const postBtn = $('#btn-depr-post') as HTMLButtonElement | null;
     if (!postBtn) return;
     const month = postBtn.dataset.month || getInputVal('depr-month') || todayStr().slice(0, 7);
-    const already = postBtn.dataset.already === '1';
 
-    const action = async () => {
-      postBtn.disabled = true;
-      postBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Procesando...`;
+    // Validación estricta de bloqueo
+    if (currentDeprStatus && currentDeprStatus.state === 'posted') {
+      showToast(`El periodo ${month} ya se encuentra contabilizado en firme. Para volver a procesarlo debe levantar primero dicha liquidación.`, 'error', 6000);
+      return;
+    }
 
-      try {
-        const [categories, rawAssets] = await Promise.all([
-          pb.listAll('niif_asset_categories'),
-          activeAssetsForDepr.length > 0
-            ? Promise.resolve(activeAssetsForDepr)
-            : pb.listAll('niif_assets', { filter: 'status="active" || status="in_repair"', expand: 'category_id' })
-        ]);
-        const assets = rawAssets.filter(a => a.is_depreciable !== false);
-        activeAssetsForDepr = assets;
-        const catMap = new Map(categories.map(c => [c.id, c]));
+    if (currentDeprStatus && currentDeprStatus.state === 'inconsistent') {
+      showToast(`El periodo ${month} posee registros huérfanos. Por favor presione "Subsanar y Limpiar Inconsistencia" antes de continuar.`, 'warning', 6000);
+      return;
+    }
 
-        let txTypes: any[] = [];
-        try { txTypes = await pb.listAll('transaction_types'); } catch(_) {}
-        const naType = txTypes.find(t => t.code === 'NA') || txTypes[0];
+    const selectedTxTypeId = getInputVal('depr-tx-type') || (txTypes.find((t: any) => t.code === 'NA') || txTypes[0])?.id;
+    const selectedTxType = txTypes.find((t: any) => t.id === selectedTxTypeId) || txTypes[0];
 
-        const unmappedCats = new Set<string>();
-        const niifLines: any[] = [];
-        const fiscalLines: any[] = [];
-        const formatCOP = (window as any).fmt || ((n: number) => `$ ${n.toLocaleString('es-CO')}`);
+    confirmDialog(
+      'Contabilizar Depreciación Mensual',
+      `¿Desea procesar y contabilizar la depreciación del periodo <strong>${month}</strong>?<br><br>
+       <div class="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-left text-xs text-indigo-950 space-y-2">
+         <div><strong>Tipo de Comprobante seleccionado:</strong> <span class="font-bold text-indigo-900">${esc(selectedTxType.code)} - ${esc(selectedTxType.name)} (${esc(selectedTxType.prefix || selectedTxType.code)})</span></div>
+         <p class="text-xxs text-indigo-700">Se generarán 2 comprobantes independientes (Comprobante NIIF y Comprobante Fiscal) en el libro diario únicamente para los activos elegibles en el periodo <strong>${month}</strong>.</p>
+       </div>`,
+      async () => {
+        postBtn.disabled = true;
+        postBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Procesando...`;
 
-        activeAssetsForDepr.forEach((a) => {
-          const cat = catMap.get(a.category_id);
-          if (!cat) {
-            unmappedCats.add('Sin categoría asignada');
+        try {
+          const [categories, rawAssets] = await Promise.all([
+            pb.listAll('niif_asset_categories'),
+            pb.listAll('niif_assets', { filter: 'status="active" || status="in_repair"', expand: 'category_id' })
+          ]);
+          const eligibleList = rawAssets
+            .filter((a: any) => a.is_depreciable !== false)
+            .map((a: any) => ({ asset: a, evalRes: evaluateAssetDepreciationForPeriod(a, month) }))
+            .filter(({ evalRes }) => evalRes.eligible);
+
+          activeAssetsForDepr = eligibleList.map(x => x.asset);
+          const catMap = new Map(categories.map((c: any) => [c.id, c]));
+
+          const unmappedCats = new Set<string>();
+          const niifLines: any[] = [];
+          const fiscalLines: any[] = [];
+          const formatCOP = (window as any).fmt || ((n: number) => `$ ${n.toLocaleString('es-CO')}`);
+
+          eligibleList.forEach(({ asset: a, evalRes }) => {
+            const cat = catMap.get(a.category_id);
+            if (!cat) {
+              unmappedCats.add('Sin categoría asignada');
+              return;
+            }
+
+            if (!cat.account_depr_expense_id || !cat.account_depr_accum_id) {
+              unmappedCats.add(`${cat.code} - ${cat.name}`);
+            }
+
+            const deprNIIF = evalRes.deprNIIF;
+            const deprFiscal = evalRes.deprFiscal;
+            const isImm = Boolean(a.is_immediate_depreciation);
+            const modeTag = isImm ? ' [Depr. Inmediata ≤50 UVT]' : '';
+
+            const assetThirdPartyId = a.provider_id || null;
+
+            if (deprNIIF > 0 && cat.account_depr_expense_id && cat.account_depr_accum_id) {
+              niifLines.push({
+                account_id: cat.account_depr_expense_id,
+                debit: Math.round(deprNIIF),
+                credit: 0,
+                description: `Depr. contable NIIF mes ${month} de activo ${a.code}${modeTag}`,
+                cost_center_id: a.cost_center_id || null,
+                third_party_id: assetThirdPartyId,
+                line_order: niifLines.length + 1
+              });
+              niifLines.push({
+                account_id: cat.account_depr_accum_id,
+                debit: 0,
+                credit: Math.round(deprNIIF),
+                description: `Depr. acum. contable NIIF mes ${month} de activo ${a.code}${modeTag}`,
+                cost_center_id: a.cost_center_id || null,
+                third_party_id: assetThirdPartyId,
+                line_order: niifLines.length + 1
+              });
+            }
+
+            if (deprFiscal > 0 && cat.account_depr_expense_id && cat.account_depr_accum_id) {
+              fiscalLines.push({
+                account_id: cat.account_depr_expense_id,
+                debit: Math.round(deprFiscal),
+                credit: 0,
+                description: `Depr. tributaria fiscal mes ${month} de activo ${a.code}${modeTag}`,
+                cost_center_id: a.cost_center_id || null,
+                third_party_id: assetThirdPartyId,
+                line_order: fiscalLines.length + 1
+              });
+              fiscalLines.push({
+                account_id: cat.account_depr_accum_id,
+                debit: 0,
+                credit: Math.round(deprFiscal),
+                description: `Depr. acum. fiscal mes ${month} de activo ${a.code}${modeTag}`,
+                cost_center_id: a.cost_center_id || null,
+                third_party_id: assetThirdPartyId,
+                line_order: fiscalLines.length + 1
+              });
+            }
+          });
+
+          if (unmappedCats.size > 0) {
+            showToast(`Categorías sin cuentas PUC de depreciación: ${[...unmappedCats].join(', ')}. Configure las cuentas en la pestaña Categorías.`, 'warning', 6000);
+          }
+
+          if (niifLines.length === 0 && fiscalLines.length === 0) {
+            showToast(`No hay activos elegibles con saldo por depreciar en ${month} o faltan cuentas PUC parametrizadas.`, 'warning');
+            postBtn.disabled = false;
+            postBtn.innerHTML = `<i class="fas fa-floppy-disk mr-1.5"></i>Procesar y Contabilizar`;
             return;
           }
 
-          if (!cat.account_depr_expense_id || !cat.account_depr_accum_id) {
-            unmappedCats.add(`${cat.code} - ${cat.name}`);
+          const [yrStr, moStr] = month.split('-');
+          const lastDayVal = new Date(Number(yrStr), Number(moStr), 0).getDate();
+          const txPostingDate = `${month}-${String(lastDayVal).padStart(2, '0')}`;
+
+          let txNIIFId = "";
+          if (niifLines.length > 0) {
+            const txDataNIIF = {
+              tx_type_id: selectedTxTypeId,
+              number: 'AUTO',
+              date: txPostingDate,
+              description: `Causación Depreciación Contable NIIF - Periodo ${month}`,
+              book_type: 'niif',
+              cross_enabled: true,
+              cross_type: 'DEPRE_MENSUAL_NIIF',
+              cross_number: month,
+              idempotency_key: `depre_niif_${month}_${Date.now()}`
+            };
+            const createdTxNIIF = await API.createTransaction(txDataNIIF, niifLines);
+            txNIIFId = createdTxNIIF.id;
           }
 
-          const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
-          const maxFiscal = a.cost || 0;
-          const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
-          const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
-
-          const remainingNIIF = Math.max(0, maxNIIF - prevAccumNIIF);
-          const remainingFiscal = Math.max(0, maxFiscal - prevAccumFiscal);
-
-          const nominalNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
-          const nominalFiscal = a.cost / (a.useful_life_fiscal || 1);
-
-          const deprNIIF = Math.min(nominalNIIF, remainingNIIF);
-          const deprFiscal = Math.min(nominalFiscal, remainingFiscal);
-
-          const assetThirdPartyId = a.provider_id || null;
-
-          if (deprNIIF > 0 && cat.account_depr_expense_id && cat.account_depr_accum_id) {
-            niifLines.push({
-              account_id: cat.account_depr_expense_id,
-              debit: Math.round(deprNIIF),
-              credit: 0,
-              description: `Depr. contable NIIF mes ${month} de activo ${a.code}`,
-              cost_center_id: a.cost_center_id || null,
-              third_party_id: assetThirdPartyId,
-              line_order: niifLines.length + 1
-            });
-            niifLines.push({
-              account_id: cat.account_depr_accum_id,
-              debit: 0,
-              credit: Math.round(deprNIIF),
-              description: `Depr. acum. contable NIIF mes ${month} de activo ${a.code}`,
-              cost_center_id: a.cost_center_id || null,
-              third_party_id: assetThirdPartyId,
-              line_order: niifLines.length + 1
-            });
+          let txFiscalId = "";
+          if (fiscalLines.length > 0) {
+            const txDataFiscal = {
+              tx_type_id: selectedTxTypeId,
+              number: 'AUTO',
+              date: txPostingDate,
+              description: `Causación Depreciación Tributaria Fiscal - Periodo ${month}`,
+              book_type: 'local',
+              cross_enabled: true,
+              cross_type: 'DEPRE_MENSUAL_FISCAL',
+              cross_number: month,
+              idempotency_key: `depre_fiscal_${month}_${Date.now()}`
+            };
+            const createdTxFiscal = await API.createTransaction(txDataFiscal, fiscalLines);
+            txFiscalId = createdTxFiscal.id;
           }
 
-          if (deprFiscal > 0 && cat.account_depr_expense_id && cat.account_depr_accum_id) {
-            fiscalLines.push({
-              account_id: cat.account_depr_expense_id,
-              debit: Math.round(deprFiscal),
-              credit: 0,
-              description: `Depr. tributaria fiscal mes ${month} de activo ${a.code}`,
-              cost_center_id: a.cost_center_id || null,
-              third_party_id: assetThirdPartyId,
-              line_order: fiscalLines.length + 1
-            });
-            fiscalLines.push({
-              account_id: cat.account_depr_accum_id,
-              debit: 0,
-              credit: Math.round(deprFiscal),
-              description: `Depr. acum. fiscal mes ${month} de activo ${a.code}`,
-              cost_center_id: a.cost_center_id || null,
-              third_party_id: assetThirdPartyId,
-              line_order: fiscalLines.length + 1
-            });
-          }
-        });
+          for (const { asset: a, evalRes } of eligibleList) {
+            const isImm = Boolean(a.is_immediate_depreciation);
+            const resVal = isImm ? 0 : (a.residual_value || 0);
+            const maxNIIF = Math.max(0, (a.cost || 0) - resVal);
+            const maxFiscal = a.cost || 0;
+            const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
+            const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
 
-        if (unmappedCats.size > 0) {
-          showToast(`Categorías sin cuentas PUC de depreciación: ${[...unmappedCats].join(', ')}. Configure las cuentas en la pestaña Categorías.`, 'warning', 6000);
-        }
+            const deprNIIF = evalRes.deprNIIF;
+            const deprFiscal = evalRes.deprFiscal;
 
-        if (niifLines.length === 0 && fiscalLines.length === 0) {
-          showToast('No hay cuentas PUC de depreciación parametrizadas para contabilizar.', 'warning');
-          const container = document.getElementById('activos-subtab-content');
-          if (container) await renderSubTabDepreciacion(container);
-          return;
-        }
+            // Actualizar acumulados persistentes y último periodo en la ficha del activo
+            const newAccumNIIF = Math.min(maxNIIF, prevAccumNIIF + Math.round(deprNIIF));
+            const newAccumFiscal = Math.min(maxFiscal, prevAccumFiscal + Math.round(deprFiscal));
 
-        const [yrStr, moStr] = month.split('-');
-        const lastDayVal = new Date(Number(yrStr), Number(moStr), 0).getDate();
-        const txPostingDate = `${month}-${String(lastDayVal).padStart(2, '0')}`;
+            if (deprNIIF > 0 || deprFiscal > 0) {
+              const metaStr = `[DEPR_META:niif=${Math.round(deprNIIF)};fiscal=${Math.round(deprFiscal)};prevPeriod=${a.last_depreciation_period || ''}]`;
+              await pb.create('niif_asset_events', {
+                asset_id: a.id,
+                event_type: 'mejora',
+                date: todayStr(),
+                description: `Depreciación mensual procesada para el periodo ${month}${isImm ? ' (Depreciación Inmediata ≤50 UVT)' : ''}. Cuota NIIF: ${formatCOP(deprNIIF)} | Fiscal: ${formatCOP(deprFiscal)}. ${metaStr}`,
+                amount: Math.round(deprNIIF),
+                previous_value: prevAccumNIIF,
+                new_value: newAccumNIIF,
+                transaction_id: txNIIFId || txFiscalId || ''
+              });
+            }
 
-        let txNIIFId = "";
-        if (niifLines.length > 0) {
-          const txDataNIIF = {
-            tx_type_id: naType.id,
-            number: 'AUTO',
-            date: txPostingDate,
-            description: `Causación Depreciación Contable NIIF - Periodo ${month}`,
-            book_type: 'niif'
-          };
-          const createdTxNIIF = await API.createTransaction(txDataNIIF, niifLines);
-          txNIIFId = createdTxNIIF.id;
-        }
-
-        let txFiscalId = "";
-        if (fiscalLines.length > 0) {
-          const txDataFiscal = {
-            tx_type_id: naType.id,
-            number: 'AUTO',
-            date: txPostingDate,
-            description: `Causación Depreciación Tributaria Fiscal - Periodo ${month}`,
-            book_type: 'local'
-          };
-          const createdTxFiscal = await API.createTransaction(txDataFiscal, fiscalLines);
-          txFiscalId = createdTxFiscal.id;
-        }
-
-        for (const a of activeAssetsForDepr) {
-          const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
-          const maxFiscal = a.cost || 0;
-          const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
-          const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
-
-          const remainingNIIF = Math.max(0, maxNIIF - prevAccumNIIF);
-          const remainingFiscal = Math.max(0, maxFiscal - prevAccumFiscal);
-
-          const nominalNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
-          const nominalFiscal = a.cost / (a.useful_life_fiscal || 1);
-
-          const deprNIIF = Math.min(nominalNIIF, remainingNIIF);
-          const deprFiscal = Math.min(nominalFiscal, remainingFiscal);
-
-          if (deprNIIF > 0 || deprFiscal > 0) {
-            await pb.create('niif_asset_events', {
-              asset_id: a.id,
-              event_type: 'mejora',
-              date: todayStr(),
-              description: `Depreciación mensual procesada para el periodo ${month}. Cuota NIIF: ${formatCOP(deprNIIF)}.`,
-              amount: deprNIIF,
-              transaction_id: txNIIFId || null
+            await pb.update('niif_assets', a.id, {
+              accumulated_depreciation_niif: newAccumNIIF,
+              accumulated_depreciation_fiscal: newAccumFiscal,
+              last_depreciation_period: month
             });
           }
 
-          // Actualizar acumulados persistentes y último periodo en la ficha del activo
-          const newAccumNIIF = Math.min(maxNIIF, prevAccumNIIF + Math.round(deprNIIF));
-          const newAccumFiscal = Math.min(maxFiscal, prevAccumFiscal + Math.round(deprFiscal));
-
-          await pb.update('niif_assets', a.id, {
-            accumulated_depreciation_niif: newAccumNIIF,
-            accumulated_depreciation_fiscal: newAccumFiscal,
-            last_depreciation_period: month
-          });
+          await API.logAudit('CREATE', 'Depreciation Run', month, `Corrió depreciación mensual del periodo ${month}`);
+          showToast('Depreciación mensual contabilizada con éxito (comprobantes NIIF y Fiscal generados)', 'success');
+          await renderSubTabDepreciacion(c);
+        } catch (err: any) {
+          showToast('Error al contabilizar depreciación: ' + err.message, 'error');
+          postBtn.disabled = false;
+          postBtn.innerHTML = `<i class="fas fa-floppy-disk mr-1.5"></i>Procesar y Contabilizar`;
         }
-
-        await API.logAudit('CREATE', 'Depreciation Run', month, `Corrió depreciación mensual del periodo ${month}`);
-        showToast('Depreciación mensual contabilizada con éxito', 'success');
-        await renderSubTabDepreciacion(c);
-      } catch (err: any) {
-        showToast('Error al contabilizar depreciación: ' + err.message, 'error');
-        postBtn.disabled = false;
-        postBtn.innerHTML = `<i class="fas fa-floppy-disk mr-1"></i>Procesar y Contabilizar`;
       }
-    };
-
-    if (already) {
-      confirmDialog(
-        'Depreciación Duplicada',
-        'Ya se detectó un comprobante contable de depreciación en este mes. ¿Estás seguro de que deseas procesarlo nuevamente? Esto duplicará los asientos en el libro mayor.',
-        action,
-        true
-      );
-    } else {
-      action();
-    }
+    );
   });
 }
 

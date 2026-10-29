@@ -123,7 +123,7 @@
   /* Topbar toggle + brand swap */
   #btn-menu-toggle { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border-soft); background: transparent; color: var(--text-muted); font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: border-color .2s, color .2s, background .2s, opacity .22s, transform .22s cubic-bezier(.4,0,.2,1); }
   #btn-menu-toggle:hover { border-color: var(--accent-lavender); color: var(--accent-lavender); background: var(--accent-lavender-subtle); }
-  #topbar-brand { display: flex; align-items: center; gap: 10px; opacity: 0; transform: translateX(-12px); pointer-events: none; transition: opacity .22s .06s, transform .22s .06s cubic-bezier(.4,0,.2,1); white-space: nowrap; }
+  #topbar-brand { display: flex; align-items: center; gap: 10px; max-width: 0; overflow: hidden; opacity: 0; transform: translateX(-12px); pointer-events: none; transition: max-width .22s, opacity .22s .06s, transform .22s .06s cubic-bezier(.4,0,.2,1); white-space: nowrap; }
   #topbar-brand strong { font-size: 15px; font-weight: 800; color: var(--text-strong); letter-spacing: -.2px; }
 
   /* ── Estado colapsado ───────────────────────────────────── */
@@ -154,7 +154,7 @@
 
   /* Topbar swap when sidebar collapsed */
   #screen-app.sidebar-collapsed #btn-menu-toggle { opacity: 0; pointer-events: none; transform: translateX(-6px); }
-  #screen-app.sidebar-collapsed #topbar-brand { opacity: 1; transform: translateX(0); pointer-events: auto; }
+  #screen-app.sidebar-collapsed #topbar-brand { max-width: 140px; opacity: 1; transform: translateX(0); pointer-events: auto; }
 
   /* ── Flyout Dropdown Flotante para Sidebar Colapsado ────────── */
   #sidebar-flyout { position: fixed; z-index: 1000; pointer-events: none; opacity: 0; visibility: hidden; transform: translateX(-8px) scale(0.97); transition: opacity 0.16s cubic-bezier(0.16, 1, 0.3, 1), transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.16s; filter: drop-shadow(0 10px 25px rgba(15, 23, 42, 0.12)) drop-shadow(0 4px 6px rgba(124, 58, 237, 0.06)); }

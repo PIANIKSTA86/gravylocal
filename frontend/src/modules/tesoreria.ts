@@ -736,69 +736,126 @@ async function _tesoVerDetalle(txId: string, tipo: string, autoprint = false) {
       s + (isRC ? Number(l.debit || 0) : Number(l.credit || 0)), 0);
 
     const tObj = tx.expand?.third_party_id || {};
-    const uObj = tx.expand?.user_id || {};
+    let uObj = tx.expand?.user_id || {};
+    let creatorName = (uObj.name || uObj.full_name || uObj.username || '').trim();
+    if (!creatorName && txId) {
+      try {
+        const auditRes = await pb.list('audit_log', {
+          filter: `entity="transactions" && entity_id="${txId}"`,
+          sort: 'event_at',
+          perPage: 5,
+          expand: 'user_id'
+        });
+        if (auditRes?.items?.length) {
+          const createLog = auditRes.items.find((l: any) => String(l.action || '').toUpperCase() === 'CREATE') || auditRes.items[0];
+          creatorName = (createLog?.expand?.user_id?.name || createLog?.expand?.user_id?.full_name || createLog?.username || '').trim();
+        }
+      } catch (_) {}
+    }
+    if (!creatorName) {
+      try {
+        const curU = pb?.authStore?.model || pb?.currentUser || (window as any).API?.currentUser;
+        creatorName = (curU?.name || curU?.full_name || curU?.username || '').trim();
+      } catch (_) {}
+    }
+    if (!creatorName) {
+      creatorName = isRC ? 'Cajero / Recaudos' : 'Auxiliar de Tesorería';
+    }
 
-    // 1. Generar HTML para el asiento contable dentro del modal
+    // 1. Generar HTML para el asiento contable dentro del modal (compacto y legible)
     const tableRows = lines.map((l: any) => `
-      <tr style="border-bottom:1px solid #F3F4F6">
-        <td style="padding:8px;font-family:monospace;font-size:11px">
-          <div style="font-weight:700;color:#374151">${_esc(l.expand?.account_id?.code || '')}</div>
-          <div style="color:#9CA3AF;font-size:10px">${_esc(l.expand?.account_id?.name || '')}</div>
+      <tr style="border-bottom:1px solid #F1F5F9">
+        <td style="padding:6px 10px;font-family:monospace;font-size:11px">
+          <span style="font-weight:700;color:#1E293B">${_esc(l.expand?.account_id?.code || '')}</span>
+          <span style="color:#64748B;font-size:10.5px;margin-left:6px">${_esc(l.expand?.account_id?.name || '')}</span>
+          ${l.cross_doc_ref ? `<span style="font-size:9.5px;color:#7C3AED;background:#F5F3FF;padding:1px 5px;border-radius:4px;margin-left:6px;border:1px solid #DDD6FE">Doc: ${_esc(l.cross_doc_ref)}</span>` : ''}
         </td>
-        <td style="padding:8px;text-align:right;font-weight:500;color:#374151">${l.debit > 0 ? _fmt(l.debit) : '—'}</td>
-        <td style="padding:8px;text-align:right;font-weight:500;color:#374151">${l.credit > 0 ? _fmt(l.credit) : '—'}</td>
+        <td style="padding:6px 10px;text-align:right;font-weight:600;font-family:monospace;font-size:11px;color:#0F172A">${l.debit > 0 ? _fmt(l.debit) : '—'}</td>
+        <td style="padding:6px 10px;text-align:right;font-weight:600;font-family:monospace;font-size:11px;color:#0F172A">${l.credit > 0 ? _fmt(l.credit) : '—'}</td>
       </tr>
     `).join('');
 
-    // 2. Construir la interfaz del modal (Dashboard de la transacción)
+    // 2. Construir la interfaz del modal (Dashboard horizontal compacto y elegante)
     const htmlModal = `
       <div style="font-family:'Segoe UI',sans-serif;color:#1F2937">
-        <!-- Encabezado con datos clave -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-          <div style="padding:12px;background:#F9FAFB;border-radius:12px;border:1px solid #F3F4F6">
-            <p style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">Tercero / Beneficiario</p>
-            <p style="font-weight:700;font-size:14px;color:#111;margin:0">${_esc(tObj.name || '—')}</p>
-            <p style="font-size:12px;color:#6B7280;margin:2px 0 0">NIT/CC: ${_esc(tObj.doc_number || '—')}</p>
+        <!-- Grid Superior Horizontal de 3 Columnas -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:10px;margin-bottom:12px">
+          <!-- Tarjeta 1: Tercero -->
+          <div style="padding:9px 12px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0">
+            <span style="font-size:9px;text-transform:uppercase;color:#64748B;font-weight:700;display:block;margin-bottom:2px;letter-spacing:0.5px">
+              <i class="fas fa-user-tag mr-1 text-slate-400"></i>${isRC ? 'Tercero / Pagador' : 'Beneficiario / Proveedor'}
+            </span>
+            <div style="font-weight:700;font-size:13px;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${_esc(tObj.name || '—')}">
+              ${_esc(tObj.name || '—')}
+            </div>
+            <div style="font-size:10.5px;color:#64748B;margin-top:2px;font-family:monospace">
+              NIT/CC: <strong>${_esc(tObj.doc_number || '—')}</strong>
+            </div>
           </div>
-          <div style="padding:12px;background:#F9FAFB;border-radius:12px;border:1px solid #F3F4F6;text-align:right">
-            <p style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">Fecha y Número</p>
-            <p style="font-weight:700;font-size:14px;color:#111;margin:0">${_esc(tx.number || '—')}</p>
-            <p style="font-size:12px;color:#6B7280;margin:2px 0 0">${String(tx.date || '').slice(0, 10)}</p>
-          </div>
-        </div>
 
-        <!-- Valor Destacado -->
-        <div style="background:${acBg};border:1px solid ${acColor}33;border-radius:12px;padding:16px;text-align:center;margin-bottom:16px">
-          <p style="font-size:11px;text-transform:uppercase;color:${acColor};font-weight:800;margin-bottom:4px;letter-spacing:1px">Monto Total</p>
-          <p style="font-size:32px;font-weight:900;color:${acColor};margin:0">${_fmt(montoTotal)}</p>
-          <p style="font-size:11px;color:${acColor};font-style:italic;margin-top:4px">${_numLetras(montoTotal)}</p>
+          <!-- Tarjeta 2: Fecha y Consecutivo -->
+          <div style="padding:9px 12px;background:#F8FAFC;border-radius:10px;border:1px solid #E2E8F0">
+            <span style="font-size:9px;text-transform:uppercase;color:#64748B;font-weight:700;display:block;margin-bottom:2px;letter-spacing:0.5px">
+              <i class="fas fa-file-invoice mr-1 text-slate-400"></i>Comprobante y Fecha
+            </span>
+            <div style="font-weight:800;font-size:13px;color:#0F172A;font-family:monospace">
+              ${_esc(tx.number || '—')}
+            </div>
+            <div style="font-size:10.5px;color:#64748B;margin-top:2px">
+              <i class="fas fa-calendar-day mr-1 text-slate-400"></i>${String(tx.date || '').slice(0, 10)}
+            </div>
+          </div>
+
+          <!-- Tarjeta 3: Monto Total Destacado -->
+          <div style="padding:9px 12px;background:${acBg};border-radius:10px;border:1.5px solid ${acColor}33;text-align:right">
+            <span style="font-size:9px;text-transform:uppercase;color:${acColor};font-weight:800;display:block;margin-bottom:1px;letter-spacing:0.5px">
+              TOTAL ${isRC ? 'RECAUDADO' : 'PAGADO'}
+            </span>
+            <div style="font-size:19px;font-weight:900;color:${acColor};line-height:1.2">
+              ${_fmt(montoTotal)}
+            </div>
+            <div style="font-size:9.5px;color:${acColor};font-style:italic;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${_numLetras(montoTotal)}">
+              ${_numLetras(montoTotal)}
+            </div>
+          </div>
         </div>
 
         ${tx.description ? `
-        <div style="margin-bottom:16px">
-          <p style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:6px">Observaciones</p>
-          <div style="padding:10px;background:#FFF;border:1px solid #F3F4F6;border-radius:8px;font-size:12px;color:#4B5563;line-height:1.5">${_esc(tx.description)}</div>
+        <!-- Observaciones en barra delgada -->
+        <div style="margin-bottom:10px;padding:6px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-left:3px solid ${acColor};border-radius:6px;font-size:11px;color:#334155;display:flex;align-items:flex-start;gap:8px">
+          <i class="fas fa-comment-dots text-slate-400" style="margin-top:2px"></i>
+          <div>
+            <strong style="color:#0F172A;font-size:10px;text-transform:uppercase;letter-spacing:0.4px">Observaciones:</strong>
+            <span style="margin-left:4px">${_esc(tx.description)}</span>
+          </div>
         </div>` : ''}
 
-        <!-- Tabla Contable -->
-        <p style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:8px">Asiento Contable</p>
-        <div style="border:1px solid #F3F4F6;border-radius:10px;overflow:hidden;background:#FFF">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead style="background:#F9FAFB">
-              <tr>
-                <th style="padding:8px;text-align:left;color:#6B7280;font-weight:600">Cuenta</th>
-                <th style="padding:8px;text-align:right;color:#6B7280;font-weight:600">Débito</th>
-                <th style="padding:8px;text-align:right;color:#6B7280;font-weight:600">Crédito</th>
-              </tr>
-            </thead>
-            <tbody>${tableRows}</tbody>
-          </table>
+        <!-- Tabla Asiento Contable con contenedor controlado -->
+        <div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:9.5px;text-transform:uppercase;color:#475569;font-weight:700;letter-spacing:0.5px">
+              <i class="fas fa-table-list mr-1 text-slate-400"></i>Asiento Contable en Partida Doble
+            </span>
+            <span style="font-size:9.5px;color:#64748B">${lines.length} cuenta(s)</span>
+          </div>
+          <div style="border:1px solid #E2E8F0;border-radius:8px;overflow:hidden;background:#FFF;max-height:190px;overflow-y:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead style="background:#F1F5F9;position:sticky;top:0;z-index:2">
+                <tr>
+                  <th style="padding:5px 10px;text-align:left;color:#475569;font-weight:700">Cuenta Contable</th>
+                  <th style="padding:5px 10px;text-align:right;color:#475569;font-weight:700;width:125px">Débito</th>
+                  <th style="padding:5px 10px;text-align:right;color:#475569;font-weight:700;width:125px">Crédito</th>
+                </tr>
+              </thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+          </div>
         </div>
 
-        <!-- Auditoría -->
-        <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;padding:10px;background:#F9FAFB;border-radius:8px;font-size:11px;color:#9CA3AF">
-          <span><i class="fas fa-user-edit mr-1"></i>Registrado por: <strong>${_esc(uObj.name || uObj.username || 'Sistema')}</strong></span>
-          <span><i class="fas fa-clock mr-1"></i>${new Date(tx.created).toLocaleString('es-CO')}</span>
+        <!-- Auditoría Compacta -->
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#F8FAFC;border-radius:6px;font-size:10px;color:#64748B;border:1px solid #E2E8F0">
+          <span><i class="fas fa-user-pen mr-1 text-slate-400"></i>Registrado por: <strong style="color:#1E293B">${_esc(creatorName)}</strong></span>
+          <span><i class="fas fa-clock mr-1 text-slate-400"></i>${new Date(tx.created).toLocaleString('es-CO')}</span>
         </div>
       </div>`;
 
@@ -809,6 +866,7 @@ async function _tesoVerDetalle(txId: string, tipo: string, autoprint = false) {
       fecha: String(tx.date || '').slice(0, 10),
       tercero: tObj.name || '',
       terceroObj: tObj,
+      elaboradoPor: creatorName,
       monto: montoTotal,
       cuenta: '',
       referencia: '',
@@ -822,7 +880,9 @@ async function _tesoVerDetalle(txId: string, tipo: string, autoprint = false) {
       htmlModal,
       `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
        <button class="btn btn-primary" id="btn-print-detalle"><i class="fas fa-print mr-2"></i>Imprimir Carta</button>`,
-      false
+      true, // wide modal dialog
+      null, // tabKey
+      true  // forceDialog: asegura diálogo emergente amplio, no pestaña
     );
 
     setTimeout(() => {
@@ -2220,12 +2280,14 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     const txNum      = `${typeCode}-${Date.now()}`;
     const terceroNombre = _tesoCurrentThirdParty.name || _tesoCurrentThirdParty.doc_number || '';
     const cuentaNombre  = cuentaOpt?.text || '';
+    const currentAuthUser = pb?.authStore?.model || pb?.currentUser || (window as any).API?.currentUser;
 
     const txRecord = await pb.create('transactions', {
       tx_type_id:    selectedTxTypeId,
       number:        docNumber || 'AUTO',
       date:          fecha,
       third_party_id: _tesoCurrentThirdParty.id,
+      user_id:       currentAuthUser?.id || null,
       description:   observaciones || `${isRecaudo ? 'Recaudo' : 'Pago'} vía Módulo Tesorería${referencia ? ' Ref: ' + referencia : ''}`,
       status:        'active',
       teso_mode:     modo,
@@ -2245,7 +2307,7 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
               for (const deal of deals) {
                 await pb.create('crm_interactions', {
                   deal_id: deal.id,
-                  user_id: pb.currentUser?.id || null,
+                  user_id: pb.currentUser?.id || currentAuthUser?.id || null,
                   type: 'WHATSAPP',
                   request_details: `Recaudo registrado para la factura ${dist.cross_doc_ref}`,
                   response_details: `Monto recaudado: ${(window as any).fmt(dist.monto)}. Ref: ${referencia || 'N/A'}.`,
@@ -2269,11 +2331,14 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     _closeModal();
 
     // ── Recibo Imprimible (Opción 2) ──────────────────────────────────────
+    const elaboradorActual = (currentAuthUser?.name || currentAuthUser?.full_name || currentAuthUser?.username || (isRecaudo ? 'Cajero / Recaudos' : 'Auxiliar de Tesorería')).trim();
     _showReciboPrint({
       tipo:        isRecaudo ? 'RECIBO DE CAJA' : 'COMPROBANTE DE EGRESO',
       numero:      txRecordFull.number || txNum,
       fecha,
       tercero:     terceroNombre,
+      terceroObj:  _tesoCurrentThirdParty,
+      elaboradoPor: elaboradorActual,
       monto:       totalAbono,
       cuenta:      _tesoIsPagoMixto ? 'Pago Mixto' : cuentaNombre,
       referencia,
@@ -2349,13 +2414,30 @@ async function _buildReciboHTML(data: any, lineasContables: any[] = []) {
   const tipoLbl  = isRC ? 'RECIBO DE CAJA' : 'COMPROBANTE DE EGRESO';
   const pb = _pb();
   let emp = {name:'',nit:'',address:'',phone:'',email:''};
-  let elaboradoPor = '';
   try {
     const sets = await pb.listAll('settings', {});
     const m: any = Object.fromEntries(sets.map((s:any) => [s.key, s.value||'']));
     emp = {name:m.company_name||'',nit:m.company_nit||'',address:m.company_address||'',phone:m.company_phone||'',email:m.company_email||''};
-    elaboradoPor = m.representante_legal_name || m.legal_representative_name || '';
   } catch(_) {}
+
+  // Determinar quién elaboró el documento contable (Usuario/Cajero, NUNCA representante legal por defecto)
+  let elaboradorNombre = String(data.elaboradoPor || data.usuario || '').trim();
+  let elaboradorCargo = String(data.elaboradorCargo || '').trim();
+  if (!elaboradorNombre) {
+    try {
+      const uModel = pb?.authStore?.model || pb?.currentUser || (window as any).API?.currentUser;
+      if (uModel) {
+        elaboradorNombre = (uModel.name || uModel.full_name || uModel.username || '').trim();
+        elaboradorCargo = (uModel.role || (isRC ? 'Cajero / Recaudos' : 'Auxiliar de Tesorería')).trim();
+      }
+    } catch (_) {}
+  }
+  if (!elaboradorNombre) {
+    elaboradorNombre = isRC ? 'Cajero / Recaudos' : 'Auxiliar de Tesorería';
+  }
+  if (!elaboradorCargo) {
+    elaboradorCargo = isRC ? 'Caja y Cartera' : 'Control de Pagos';
+  }
   const tObj    = data.terceroObj || {};
   let totalPendiente = 0;
   try {
@@ -2556,24 +2638,32 @@ async function _buildReciboHTML(data: any, lineasContables: any[] = []) {
     <span style="color:#374151">${_esc(data.observaciones)}</span>
   </div>`:''}
 
-  <div style="display:flex;gap:40px;justify-content:space-around;margin-top:36px">
+  <div style="display:flex;gap:20px;justify-content:space-between;margin-top:36px">
     <div style="text-align:center;flex:1">
       <div style="border-top:1px solid #374151;padding-top:6px;margin-top:40px">
-        <div style="font-size:11px;font-weight:700;color:#111">${elaboradoPor||'&nbsp;'}</div>
-        <div style="font-size:10px;color:#6B7280">Elaborado por</div>
+        <div style="font-size:11px;font-weight:700;color:#111">${_esc(elaboradorNombre)}</div>
+        <div style="font-size:10px;color:#4B5563;font-weight:600">${_esc(elaboradorCargo)}</div>
+        <div style="font-size:9px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px">Elaborado por</div>
       </div>
     </div>
     <div style="text-align:center;flex:1">
       <div style="border-top:1px solid #374151;padding-top:6px;margin-top:40px">
         <div style="font-size:11px;font-weight:700;color:#111">&nbsp;</div>
-        <div style="font-size:10px;color:#6B7280">Firma Recibido</div>
-        ${tDoc?`<div style="font-size:9px;color:#9CA3AF">C.C./NIT: ${_esc(tDoc)}</div>`:''}
+        <div style="font-size:10px;color:#4B5563;font-weight:600">Revisión y Control Contable</div>
+        <div style="font-size:9px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px">Revisado / Aprobado</div>
+      </div>
+    </div>
+    <div style="text-align:center;flex:1">
+      <div style="border-top:1px solid #374151;padding-top:6px;margin-top:40px">
+        <div style="font-size:11px;font-weight:700;color:#111">${_esc(tNombre || '—')}</div>
+        <div style="font-size:10px;color:#4B5563">${tDoc ? 'C.C./NIT: ' + _esc(tDoc) : 'Firma y Huella'}</div>
+        <div style="font-size:9px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px">${isRC ? 'Firma Quien Entrega (Cliente)' : 'Firma y Sello Beneficiario'}</div>
       </div>
     </div>
   </div>
 
-  <div style="margin-top:16px;padding-top:8px;border-top:1px dashed #D1D5DB;text-align:center;font-size:9px;color:#9CA3AF">
-    GRAVY v2.0 - Generado el ${new Date().toLocaleString('es-CO')} - Documento de control interno
+  <div style="margin-top:18px;padding-top:8px;border-top:1px dashed #D1D5DB;text-align:center;font-size:9px;color:#9CA3AF">
+    GRAVY v2.0 - Soporte Oficial de Tesorería - Digitado por ${_esc(elaboradorNombre)} el ${new Date().toLocaleString('es-CO')} - Documento de control interno
   </div>
 
 </div>
@@ -4074,19 +4164,48 @@ async function showRecaudosScreen(container: HTMLElement) {
     const statsContainer = document.getElementById('recaudos-quick-info');
     if (statsContainer) {
       statsContainer.innerHTML = `
-        <div class="p-6 bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200">
-          <div class="text-sm font-semibold text-green-800 mb-1 flex items-center">
-            <i class="fas fa-hand-holding-dollar mr-2"></i> Total Cuentas por Cobrar (Cartera)
+        <div class="p-6 bg-gradient-to-br from-green-50 to-emerald-100/70 border border-green-200/80 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-emerald-800 tracking-wider uppercase flex items-center gap-1.5">
+                <i class="fas fa-hand-holding-dollar text-emerald-600"></i> Cartera Neta Exigible
+              </span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200/70 text-emerald-800">
+                Cobro Neto
+              </span>
+            </div>
+            <div class="text-3xl lg:text-4xl font-extrabold text-emerald-950 my-1 tracking-tight">
+              ${_fmt(metrics.portfolioNet || metrics.totalCxC)}
+            </div>
           </div>
-          <div class="text-4xl font-bold text-green-900 my-2">${_fmt(metrics.totalCxC)}</div>
-          <div class="text-sm text-green-700">${metrics.countCxC} documentos de cobro pendientes</div>
+          <div class="pt-3 border-t border-emerald-200/60 mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span class="text-emerald-800 font-medium">
+              Facturas Brutas: <b>${_fmt(metrics.portfolioGross || metrics.totalCxC)}</b> <span class="text-emerald-600 font-normal">(${metrics.countCxC} docs)</span>
+            </span>
+            ${(metrics.portfolioCreditBalances || 0) > 0 ? `
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-semibold text-[11px]" title="Anticipos y saldos a favor de clientes para cruzar">
+                <i class="fas fa-arrow-down text-[9px]"></i> Anticipos: -${_fmt(metrics.portfolioCreditBalances)}
+              </span>` : ''}
+          </div>
         </div>
-        <div class="p-6 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200">
-          <div class="text-sm font-semibold text-blue-800 mb-1 flex items-center">
-            <i class="fas fa-cash-register mr-2"></i> Recaudado este Mes
+
+        <div class="p-6 bg-gradient-to-br from-blue-50 to-indigo-100/70 border border-blue-200/80 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-blue-800 tracking-wider uppercase flex items-center gap-1.5">
+                <i class="fas fa-cash-register text-blue-600"></i> Recaudado este Mes
+              </span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-200/70 text-blue-800">
+                Flujo Real
+              </span>
+            </div>
+            <div class="text-3xl lg:text-4xl font-extrabold text-blue-950 my-1 tracking-tight">
+              ${_fmt(metrics.totalRecaudadoMes)}
+            </div>
           </div>
-          <div class="text-4xl font-bold text-blue-900 my-2">${_fmt(metrics.totalRecaudadoMes)}</div>
-          <div class="text-sm text-blue-700">Recaudos totales ingresados en Caja/Bancos</div>
+          <div class="pt-3 border-t border-blue-200/60 mt-3 text-xs text-blue-700 flex items-center justify-between">
+            <span>Ingresos efectivos liquidados en Caja y Bancos (Cuentas 11)</span>
+          </div>
         </div>
       `;
     }
@@ -4099,26 +4218,37 @@ async function loadQuickInfoRecaudos() {
     const today = (window as any).todayStr();
     const startOfMonthStr = (window as any).getColombiaFirstDayOfMonth();
     const endOfMonthStr = (window as any).getColombiaLastDayOfMonth();
+    const branchId = localStorage.getItem('active_branch_id') || pb?.currentUser?.default_branch_id || '';
+    const branchParam = branchId && branchId !== 'TODAS' && branchId !== 'ALL' ? `&branch_id=${encodeURIComponent(branchId)}` : '';
 
     try {
-      const res = await pb.send(`/api/gravy/treasury-metrics?mode=recaudos&asOfDate=${today}&startDate=${startOfMonthStr}&endDate=${endOfMonthStr}`, {});
-      if (res && typeof res.portfolioTotal === 'number' && (res.portfolioTotal > 0 || res.monthTotal > 0)) {
+      const res = await pb.send(`/api/gravy/treasury-metrics?mode=recaudos&asOfDate=${today}&startDate=${startOfMonthStr}&endDate=${endOfMonthStr}${branchParam}`, {});
+      if (res && typeof res.portfolioTotal === 'number' && (res.portfolioTotal > 0 || res.monthTotal > 0 || res.portfolioGross > 0)) {
         return {
-          totalCxC: Number(res.portfolioTotal || 0),
-          countCxC: Number(res.portfolioCount || 0),
-          totalRecaudadoMes: Number(res.monthTotal || 0)
+          totalCxC: Number(res.portfolioNet ?? res.portfolioTotal ?? 0),
+          portfolioNet: Number(res.portfolioNet ?? res.portfolioTotal ?? 0),
+          portfolioGross: Number(res.portfolioGross ?? 0),
+          portfolioCreditBalances: Number(res.portfolioCreditBalances ?? 0),
+          countCxC: Number(res.portfolioCount ?? 0),
+          totalRecaudadoMes: Number(res.monthTotal ?? 0)
         };
       }
     } catch (_) {}
 
     // Fallback si el servidor PocketBase no ha cargado aún el hook
-    const openItems = await pb.send(`/api/gravy/report-portfolio-aging?mode=cxc&asOfDate=${today}`, {}).catch(() => []);
-    let totalCxC = 0;
+    const openItems = await pb.send(`/api/gravy/report-portfolio-aging?mode=cxc&asOfDate=${today}${branchParam}`, {}).catch(() => []);
+    let portfolioGross = 0;
+    let portfolioCreditBalances = 0;
     let countCxC = 0;
     if (Array.isArray(openItems)) {
       for (const item of openItems) {
-        totalCxC += Number(item.open || 0);
-        countCxC++;
+        const op = Number(item.open || 0);
+        if (op > 0.001) {
+          portfolioGross += op;
+          countCxC++;
+        } else if (op < -0.001) {
+          portfolioCreditBalances += Math.abs(op);
+        }
       }
     }
 
@@ -4144,10 +4274,18 @@ async function loadQuickInfoRecaudos() {
       }
     } catch (_) {}
 
-    return { totalCxC, countCxC, totalRecaudadoMes };
+    const portfolioNet = Math.max(0, portfolioGross - portfolioCreditBalances);
+    return {
+      totalCxC: portfolioNet,
+      portfolioNet,
+      portfolioGross,
+      portfolioCreditBalances,
+      countCxC,
+      totalRecaudadoMes
+    };
   } catch (err) {
     console.error("Error cargando estadísticas de Recaudos:", err);
-    return { totalCxC: 0, countCxC: 0, totalRecaudadoMes: 0 };
+    return { totalCxC: 0, portfolioNet: 0, portfolioGross: 0, portfolioCreditBalances: 0, countCxC: 0, totalRecaudadoMes: 0 };
   }
 }
 
@@ -4191,22 +4329,74 @@ async function showEgresosScreen(container: HTMLElement) {
   loadQuickInfoEgresos().then(metrics => {
     const statsContainer = document.getElementById('egresos-quick-info');
     if (statsContainer) {
-      statsContainer.innerHTML = `
-        <div class="p-6 bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200">
-          <div class="text-sm font-semibold text-red-800 mb-1 flex items-center">
-            <i class="fas fa-file-invoice-dollar mr-2"></i> Total Cuentas por Pagar (Obligaciones)
+      let activeView: 'proveedores' | 'todas' = 'proveedores';
+
+      const updateView = () => {
+        const isProv = activeView === 'proveedores';
+        const displayAmount = isProv ? (metrics.proveedoresGross || metrics.totalCxP) : (metrics.obligacionesGross || metrics.totalCxP);
+        const displayCount = isProv ? (metrics.proveedoresCount || metrics.countCxP) : (metrics.obligacionesCount || metrics.countCxP);
+        const subtitle = isProv
+          ? `Obligaciones comerciales a proveedores (Cuentas 22)`
+          : `Proveedores (${_fmt(metrics.proveedoresGross || 0)}) + Nómina/Otros (${_fmt(metrics.laboralesGross || 0)})`;
+
+        statsContainer.innerHTML = `
+          <div class="p-6 bg-gradient-to-br from-rose-50 to-red-100/70 border border-red-200/80 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <span class="text-xs font-bold text-red-800 tracking-wider uppercase flex items-center gap-1.5">
+                  <i class="fas fa-file-invoice-dollar text-red-600"></i> Cuentas por Pagar (Obligaciones)
+                </span>
+                <!-- Selector dual de vista -->
+                <div class="inline-flex rounded-lg p-0.5 bg-red-200/60 text-[11px] font-bold">
+                  <button type="button" id="btn-egresos-view-prov" class="px-2.5 py-1 rounded-md transition-all ${isProv ? 'bg-white text-red-900 shadow-sm' : 'text-red-700 hover:text-red-900'}">
+                    Proveedores (22)
+                  </button>
+                  <button type="button" id="btn-egresos-view-all" class="px-2.5 py-1 rounded-md transition-all ${!isProv ? 'bg-white text-red-900 shadow-sm' : 'text-red-700 hover:text-red-900'}">
+                    Total Obligaciones (22, 23, 25)
+                  </button>
+                </div>
+              </div>
+              <div class="text-3xl lg:text-4xl font-extrabold text-red-950 my-1 tracking-tight">
+                ${_fmt(displayAmount)}
+              </div>
+            </div>
+            <div class="pt-3 border-t border-red-200/60 mt-3 flex items-center justify-between text-xs text-red-800">
+              <span><b>${displayCount}</b> obligaciones pendientes</span>
+              <span class="text-[11px] text-red-700 font-medium">${subtitle}</span>
+            </div>
           </div>
-          <div class="text-4xl font-bold text-red-900 my-2">${_fmt(metrics.totalCxP)}</div>
-          <div class="text-sm text-red-700">${metrics.countCxP} obligaciones de pago pendientes</div>
-        </div>
-        <div class="p-6 bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200">
-          <div class="text-sm font-semibold text-amber-800 mb-1 flex items-center">
-            <i class="fas fa-money-bill-transfer mr-2"></i> Pagado este Mes
+
+          <div class="p-6 bg-gradient-to-br from-amber-50 to-yellow-100/70 border border-amber-200/80 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-amber-800 tracking-wider uppercase flex items-center gap-1.5">
+                  <i class="fas fa-money-bill-transfer text-amber-600"></i> Pagado este Mes
+                </span>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200/70 text-amber-800">
+                  Flujo Salidas
+                </span>
+              </div>
+              <div class="text-3xl lg:text-4xl font-extrabold text-amber-950 my-1 tracking-tight">
+                ${_fmt(metrics.totalPagadoMes)}
+              </div>
+            </div>
+            <div class="pt-3 border-t border-amber-200/60 mt-3 text-xs text-amber-700">
+              Pagos y egresos totales liquidados de Caja y Bancos en el mes
+            </div>
           </div>
-          <div class="text-4xl font-bold text-amber-900 my-2">${_fmt(metrics.totalPagadoMes)}</div>
-          <div class="text-sm text-amber-700">Pagos totales liquidados de Caja/Bancos</div>
-        </div>
-      `;
+        `;
+
+        document.getElementById('btn-egresos-view-prov')?.addEventListener('click', () => {
+          activeView = 'proveedores';
+          updateView();
+        });
+        document.getElementById('btn-egresos-view-all')?.addEventListener('click', () => {
+          activeView = 'todas';
+          updateView();
+        });
+      };
+
+      updateView();
     }
   });
 }
@@ -4217,26 +4407,46 @@ async function loadQuickInfoEgresos() {
     const today = (window as any).todayStr();
     const startOfMonthStr = (window as any).getColombiaFirstDayOfMonth();
     const endOfMonthStr = (window as any).getColombiaLastDayOfMonth();
+    const branchId = localStorage.getItem('active_branch_id') || pb?.currentUser?.default_branch_id || '';
+    const branchParam = branchId && branchId !== 'TODAS' && branchId !== 'ALL' ? `&branch_id=${encodeURIComponent(branchId)}` : '';
 
     try {
-      const res = await pb.send(`/api/gravy/treasury-metrics?mode=egresos&asOfDate=${today}&startDate=${startOfMonthStr}&endDate=${endOfMonthStr}`, {});
-      if (res && typeof res.portfolioTotal === 'number' && (res.portfolioTotal > 0 || res.monthTotal > 0)) {
+      const res = await pb.send(`/api/gravy/treasury-metrics?mode=egresos&asOfDate=${today}&startDate=${startOfMonthStr}&endDate=${endOfMonthStr}${branchParam}`, {});
+      if (res && typeof res.portfolioTotal === 'number' && (res.portfolioTotal > 0 || res.monthTotal > 0 || res.obligacionesGross > 0 || res.proveedoresGross > 0)) {
         return {
-          totalCxP: Number(res.portfolioTotal || 0),
-          countCxP: Number(res.portfolioCount || 0),
-          totalPagadoMes: Number(res.monthTotal || 0)
+          totalCxP: Number(res.proveedoresGross ?? res.portfolioTotal ?? 0),
+          proveedoresGross: Number(res.proveedoresGross ?? 0),
+          proveedoresCount: Number(res.proveedoresCount ?? 0),
+          obligacionesGross: Number(res.obligacionesGross ?? 0),
+          obligacionesCount: Number(res.obligacionesCount ?? 0),
+          laboralesGross: Number(res.laboralesGross ?? 0),
+          laboralesCount: Number(res.laboralesCount ?? 0),
+          costosGross: Number(res.costosGross ?? 0),
+          totalPagadoMes: Number(res.monthTotal ?? 0)
         };
       }
     } catch (_) {}
 
     // Fallback si el servidor PocketBase no ha cargado aún el hook
-    const openItems = await pb.send(`/api/gravy/report-portfolio-aging?mode=cxp&asOfDate=${today}`, {}).catch(() => []);
-    let totalCxP = 0;
-    let countCxP = 0;
+    const openItems = await pb.send(`/api/gravy/report-portfolio-aging?mode=cxp&asOfDate=${today}${branchParam}`, {}).catch(() => []);
+    let provGross = 0, provCount = 0;
+    let obligGross = 0, obligCount = 0;
+    let labGross = 0;
+
     if (Array.isArray(openItems)) {
       for (const item of openItems) {
-        totalCxP += Number(item.open || 0);
-        countCxP++;
+        const op = Number(item.open || 0);
+        const code = String(item.account_code || '');
+        if (op > 0.001) {
+          obligGross += op;
+          obligCount++;
+          if (code.startsWith('22')) {
+            provGross += op;
+            provCount++;
+          } else if (code.startsWith('25')) {
+            labGross += op;
+          }
+        }
       }
     }
 
@@ -4248,7 +4458,7 @@ async function loadQuickInfoEgresos() {
       if (ceTxs.length) {
         const ceIds = ceTxs.map((t: any) => t.id);
         const chunkSize = 40;
-        for (let i = 0; i < ceIds.length; i += chunkSize) {
+        for (let i = 0; i < rcIds?.length || i < ceIds.length; i += chunkSize) {
           const chunk = ceIds.slice(i, i + chunkSize);
           const filterStr = chunk.map(id => `tx_id="${id}"`).join(' || ');
           const lines = await pb.listAll('tx_lines', { filter: filterStr, expand: 'account_id' });
@@ -4262,10 +4472,30 @@ async function loadQuickInfoEgresos() {
       }
     } catch (_) {}
 
-    return { totalCxP, countCxP, totalPagadoMes };
+    return {
+      totalCxP: provGross,
+      proveedoresGross: provGross,
+      proveedoresCount: provCount,
+      obligacionesGross: obligGross,
+      obligacionesCount: obligCount,
+      laboralesGross: labGross,
+      laboralesCount: obligCount - provCount,
+      costosGross: 0,
+      totalPagadoMes
+    };
   } catch (err) {
     console.error("Error cargando estadísticas de Egresos:", err);
-    return { totalCxP: 0, countCxP: 0, totalPagadoMes: 0 };
+    return {
+      totalCxP: 0,
+      proveedoresGross: 0,
+      proveedoresCount: 0,
+      obligacionesGross: 0,
+      obligacionesCount: 0,
+      laboralesGross: 0,
+      laboralesCount: 0,
+      costosGross: 0,
+      totalPagadoMes: 0
+    };
   }
 }
 

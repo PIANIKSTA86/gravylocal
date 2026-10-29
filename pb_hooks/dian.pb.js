@@ -14,6 +14,41 @@ function getSetting(key, defaultValue) {
 }
 globalThis.getSetting = getSetting;
 
+function saveDianLog(logData) {
+  try {
+    const logId = 'dlg_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    $app.db().newQuery(`
+      INSERT INTO dian_logs (
+        id, created, updated, tx_id, document_number, document_type, provider, endpoint,
+        status_code, success, request_payload, response_payload, error_message, cufe, duration_ms
+      ) VALUES (
+        {:id}, {:created}, {:updated}, {:tx_id}, {:document_number}, {:document_type}, {:provider}, {:endpoint},
+        {:status_code}, {:success}, {:request_payload}, {:response_payload}, {:error_message}, {:cufe}, {:duration_ms}
+      )
+    `).bind({
+      id: logId,
+      created: now,
+      updated: now,
+      tx_id: logData.tx_id || '',
+      document_number: logData.document_number || '',
+      document_type: logData.document_type || '',
+      provider: logData.provider || 'MATIAS',
+      endpoint: logData.endpoint || '',
+      status_code: logData.status_code || 0,
+      success: logData.success ? 1 : 0,
+      request_payload: typeof logData.request_payload === 'object' ? JSON.stringify(logData.request_payload) : (logData.request_payload || ''),
+      response_payload: typeof logData.response_payload === 'object' ? JSON.stringify(logData.response_payload) : (logData.response_payload || ''),
+      error_message: logData.error_message || '',
+      cufe: logData.cufe || '',
+      duration_ms: logData.duration_ms || 0
+    }).execute();
+  } catch (err) {
+    console.warn("[GRAVY HOOK] Error guardando dian_logs:", err);
+  }
+}
+globalThis.saveDianLog = saveDianLog;
+
 
 function getAndIncrementDianShipmentConsecutive() {
   const currentYear = new Date().getFullYear();
@@ -136,6 +171,40 @@ routerAdd('POST', '/api/dian/emit', (e) => {
 
   function sanitizeName(val) {
     return String(val || '').replace(/^[\/\s]+|[\/\s]+$/g, '').trim();
+  }
+
+  function saveDianLog(logData) {
+    try {
+      const logId = 'dlg_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      $app.db().newQuery(`
+        INSERT INTO dian_logs (
+          id, created, updated, tx_id, document_number, document_type, provider, endpoint,
+          status_code, success, request_payload, response_payload, error_message, cufe, duration_ms
+        ) VALUES (
+          {:id}, {:created}, {:updated}, {:tx_id}, {:document_number}, {:document_type}, {:provider}, {:endpoint},
+          {:status_code}, {:success}, {:request_payload}, {:response_payload}, {:error_message}, {:cufe}, {:duration_ms}
+        )
+      `).bind({
+        id: logId,
+        created: now,
+        updated: now,
+        tx_id: logData.tx_id || '',
+        document_number: logData.document_number || '',
+        document_type: logData.document_type || '',
+        provider: logData.provider || 'MATIAS',
+        endpoint: logData.endpoint || '',
+        status_code: logData.status_code || 0,
+        success: logData.success ? 1 : 0,
+        request_payload: typeof logData.request_payload === 'object' ? JSON.stringify(logData.request_payload) : (logData.request_payload || ''),
+        response_payload: typeof logData.response_payload === 'object' ? JSON.stringify(logData.response_payload) : (logData.response_payload || ''),
+        error_message: logData.error_message || '',
+        cufe: logData.cufe || '',
+        duration_ms: logData.duration_ms || 0
+      }).execute();
+    } catch (err) {
+      console.warn("[GRAVY HOOK] Error guardando dian_logs:", err);
+    }
   }
 
   function mapDocType(type) {
@@ -3183,6 +3252,11 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     if (einvoiceMethod === "matias") {
       console.log("[GRAVY HOOK] Emitiendo documento electrónico vía MATIAS API...");
 
+      // Determinar si es explícitamente sin referencia a factura previa
+      const txDesc = tx ? tx.getString("description") : "";
+      const invNotes = invoice ? (invoice.getString("notes") || "") : "";
+      const sinReferencia = !!body.sinReferencia || txDesc.includes("[SIN_REFERENCIA]") || invNotes.includes("[SIN_REFERENCIA]");
+
       // Determinar endpoint y tipo de documento MATIAS API
       let matiasEndpoint = "/invoice";
       let matiasTypeDocId = 7; // Factura Electrónica estándar
@@ -3198,11 +3272,11 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       } else if (isNC) {
         matiasEndpoint = "/notes/credit";
         matiasTypeDocId = 5; // Nota Crédito
-        matiasOperationTypeId = 12; // Nota Crédito con referencia a factura electrónica en MATIAS API
+        matiasOperationTypeId = sinReferencia ? 13 : 12; // 12=Con Referencia, 13=Sin Referencia previa en MATIAS API
       } else if (isND) {
         matiasEndpoint = "/notes/debit";
         matiasTypeDocId = 4; // Nota Débito
-        matiasOperationTypeId = 1; // Nota Débito estándar en MATIAS API
+        matiasOperationTypeId = sinReferencia ? 13 : 1; // Nota Débito estándar en MATIAS API
       } else if (isDS) {
         matiasEndpoint = "/ds/document";
         matiasTypeDocId = 11; // Documento Soporte
@@ -3279,11 +3353,19 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         return lineObj;
       });
 
-      const resNum = resolution ? resolution.getString("resolution_number") : getSetting("dian_resolution_number", "18760000001");
+      let resNum = resolution ? resolution.getString("resolution_number") : getSetting("dian_resolution_number", "18760000001");
+      if (isNC || isND || isNDS) {
+        resNum = "18760000001";
+      }
       const cleanDocNum = String(folio || tx.getInt("number") || "1");
+      let cleanPrefix = prefix || "";
+      if (isNC && (!cleanPrefix || cleanPrefix === "NCFE")) {
+        cleanPrefix = "NC";
+      }
 
       // Catálogo oficial DANE a ID interno de municipio en MATIAS API (1.122 municipios)
       const MATIAS_DANE_CITIES = {"11001":149,"13001":150,"13006":151,"13030":152,"13042":153,"13052":154,"13062":155,"13074":156,"13140":157,"13160":158,"13188":159,"13212":160,"13222":161,"13244":162,"13248":163,"13268":164,"13300":165,"13430":166,"13433":167,"13440":168,"13442":169,"13458":170,"13468":171,"13473":172,"13490":173,"13549":174,"13580":175,"13600":176,"13620":177,"13647":178,"13650":179,"13654":180,"13655":181,"13657":182,"13667":183,"13670":184,"13673":185,"13683":186,"13688":187,"13744":188,"13760":189,"13780":190,"13810":191,"13836":192,"13838":193,"13873":194,"13894":195,"15001":196,"15022":197,"15047":198,"15051":199,"15087":200,"15090":201,"15092":202,"15097":203,"15104":204,"15106":205,"15109":206,"15114":207,"15131":208,"15135":209,"15162":210,"15172":211,"15176":212,"15180":213,"15183":214,"15185":215,"15187":216,"15189":217,"15204":218,"15212":219,"15215":220,"15218":221,"15223":222,"15224":223,"15226":224,"15232":225,"15236":226,"15238":227,"15244":228,"15248":229,"15272":230,"15276":231,"15293":232,"15296":233,"15299":234,"15317":235,"15322":236,"15325":237,"15332":238,"15362":239,"15367":240,"15368":241,"15377":242,"15380":243,"15401":244,"15403":245,"15407":246,"15425":247,"15442":248,"15455":249,"15464":250,"15466":251,"15469":252,"15476":253,"15480":254,"15491":255,"15494":256,"15500":257,"15507":258,"15511":259,"15514":260,"15516":261,"15518":262,"15522":263,"15531":264,"15533":265,"15537":266,"15542":267,"15550":268,"15572":269,"15580":270,"15599":271,"15600":272,"15621":273,"15632":274,"15638":275,"15646":276,"15660":277,"15664":278,"15667":279,"15673":280,"15676":281,"15681":282,"15686":283,"15690":284,"15693":285,"15696":286,"15720":287,"15723":288,"15740":289,"15753":290,"15755":291,"15757":292,"15759":293,"15761":294,"15762":295,"15763":296,"15764":297,"15774":298,"15776":299,"15778":300,"15790":301,"15798":302,"15804":303,"15806":304,"15808":305,"15810":306,"15814":307,"15816":308,"15820":309,"15822":310,"15832":311,"15835":312,"15837":313,"15839":314,"15842":315,"15861":316,"15879":317,"15897":318,"17001":319,"17013":320,"17042":321,"17050":322,"17088":323,"17174":324,"17272":325,"17380":326,"17388":327,"17433":328,"17442":329,"17444":330,"17446":331,"17486":332,"17495":333,"17513":334,"17524":335,"17541":336,"17614":337,"17616":338,"17653":339,"17662":340,"17665":341,"17777":342,"17867":343,"17873":344,"17877":345,"18001":346,"18029":347,"18094":348,"18150":349,"18205":350,"18247":351,"18256":352,"18410":353,"18460":354,"18479":355,"18592":356,"18610":357,"18753":358,"18756":359,"18785":360,"18860":361,"19001":362,"19022":363,"19050":364,"19075":365,"19100":366,"19110":367,"19130":368,"19137":369,"19142":370,"19212":371,"19256":372,"19290":373,"19300":374,"19318":375,"19355":376,"19364":377,"19392":378,"19397":379,"19418":380,"19450":381,"19455":382,"19473":383,"19513":384,"19517":385,"19532":386,"19533":387,"19548":388,"19573":389,"19585":390,"19622":391,"19693":392,"19698":393,"19701":394,"19743":395,"19760":396,"19780":397,"19785":398,"19807":399,"19809":400,"19821":401,"19824":402,"19845":403,"20001":404,"20011":405,"20013":406,"20032":407,"20045":408,"20060":409,"20175":410,"20178":411,"20228":412,"20238":413,"20250":414,"20295":415,"20310":416,"20383":417,"20400":418,"20443":419,"20517":420,"20550":421,"20570":422,"20614":423,"20621":424,"20710":425,"20750":426,"20770":427,"20787":428,"23001":429,"23068":430,"23079":431,"23090":432,"23162":433,"23168":434,"23182":435,"23189":436,"23300":437,"23350":438,"23417":439,"23419":440,"23464":441,"23466":442,"23500":443,"23555":444,"23570":445,"23574":446,"23580":447,"23586":448,"23660":449,"23670":450,"23672":451,"23675":452,"23678":453,"23682":454,"23686":455,"23807":456,"23815":457,"23855":458,"25001":459,"25019":460,"25035":461,"25040":462,"25053":463,"25086":464,"25095":465,"25099":466,"25120":467,"25123":468,"25126":469,"25148":470,"25151":471,"25154":472,"25168":473,"25175":474,"25178":475,"25181":476,"25183":477,"25200":478,"25214":479,"25224":480,"25245":481,"25258":482,"25260":483,"25269":484,"25279":485,"25281":486,"25286":487,"25288":488,"25290":489,"25293":490,"25295":491,"25297":492,"25299":493,"25307":494,"25312":495,"25317":496,"25320":497,"25322":498,"25324":499,"25326":500,"25328":501,"25335":502,"25339":503,"25368":504,"25372":505,"25377":506,"25386":507,"25394":508,"25398":509,"25402":510,"25407":511,"25426":512,"25430":513,"25436":514,"25438":515,"25473":516,"25483":517,"25486":518,"25488":519,"25489":520,"25491":521,"25506":522,"25513":523,"25518":524,"25524":525,"25530":526,"25535":527,"25572":528,"25580":529,"25592":530,"25594":531,"25596":532,"25599":533,"25612":534,"25645":535,"25649":536,"25653":537,"25658":538,"25662":539,"25718":540,"25736":541,"25740":542,"25743":543,"25745":544,"25754":545,"25758":546,"25769":547,"25772":548,"25777":549,"25779":550,"25781":551,"25785":552,"25793":553,"25797":554,"25799":555,"25805":556,"25807":557,"25815":558,"25817":559,"25823":560,"25839":561,"25841":562,"25843":563,"25845":564,"25851":565,"25862":566,"25867":567,"25871":568,"25873":569,"25875":570,"25878":571,"25885":572,"25898":573,"25899":574,"27001":575,"27006":576,"27025":577,"27050":578,"27073":579,"27075":580,"27077":581,"27099":582,"27135":583,"27150":584,"27160":585,"27205":586,"27245":587,"27250":588,"27361":589,"27372":590,"27413":591,"27425":592,"27430":593,"27450":594,"27491":595,"27495":596,"27580":597,"27600":598,"27615":599,"27660":600,"27745":601,"27787":602,"27800":603,"27810":604,"41001":605,"41006":606,"41013":607,"41016":608,"41020":609,"41026":610,"41078":611,"41132":612,"41206":613,"41244":614,"41298":615,"41306":616,"41319":617,"41349":618,"41357":619,"41359":620,"41378":621,"41396":622,"41483":623,"41503":624,"41518":625,"41524":626,"41530":627,"41548":628,"41551":629,"41615":630,"41660":631,"41668":632,"41676":633,"41770":634,"41791":635,"41797":636,"41799":637,"41801":638,"41807":639,"41872":640,"41885":641,"44001":642,"44035":643,"44078":644,"44090":645,"44098":646,"44110":647,"44279":648,"44378":649,"44420":650,"44430":651,"44560":652,"44650":653,"44847":654,"44855":655,"44874":656,"47001":657,"47030":658,"47053":659,"47058":660,"47161":661,"47170":662,"47189":663,"47205":664,"47245":665,"47258":666,"47268":667,"47288":668,"47318":669,"47460":670,"47541":671,"47545":672,"47551":673,"47555":674,"47570":675,"47605":676,"47660":677,"47675":678,"47692":679,"47703":680,"47707":681,"47720":682,"47745":683,"47798":684,"47960":685,"47980":686,"50001":687,"50006":688,"50110":689,"50124":690,"50150":691,"50223":692,"50226":693,"50245":694,"50251":695,"50270":696,"50287":697,"50313":698,"50318":699,"50325":700,"50330":701,"50350":702,"50370":703,"50400":704,"50450":705,"50568":706,"50573":707,"50577":708,"50590":709,"50606":710,"50680":711,"50683":712,"50686":713,"50689":714,"50711":715,"52001":716,"52019":717,"52022":718,"52036":719,"52051":720,"52079":721,"52083":722,"52110":723,"52203":724,"52207":725,"52210":726,"52215":727,"52224":728,"52227":729,"52233":730,"52240":731,"52250":732,"52254":733,"52256":734,"52258":735,"52260":736,"52287":737,"52317":738,"52320":739,"52323":740,"52352":741,"52354":742,"52356":743,"52378":744,"52381":745,"52385":746,"52390":747,"52399":748,"52405":749,"52411":750,"52418":751,"52427":752,"52435":753,"52473":754,"52480":755,"52490":756,"52506":757,"52520":758,"52540":759,"52560":760,"52565":761,"52573":762,"52585":763,"52612":764,"52621":765,"52678":766,"52683":767,"52685":768,"52687":769,"52693":770,"52694":771,"52696":772,"52699":773,"52720":774,"52786":775,"52788":776,"52835":777,"52838":778,"52885":779,"54001":780,"54003":781,"54051":782,"54099":783,"54109":784,"54125":785,"54128":786,"54172":787,"54174":788,"54206":789,"54223":790,"54239":791,"54245":792,"54250":793,"54261":794,"54313":795,"54344":796,"54347":797,"54377":798,"54385":799,"54398":800,"54405":801,"54418":802,"54480":803,"54498":804,"54518":805,"54520":806,"54553":807,"54599":808,"54660":809,"54670":810,"54673":811,"54680":812,"54720":813,"54743":814,"54800":815,"54810":816,"54820":817,"54871":818,"54874":819,"63001":820,"63111":821,"63130":822,"63190":823,"63212":824,"63272":825,"63302":826,"63401":827,"63470":828,"63548":829,"63594":830,"63690":831,"66001":832,"66045":833,"66075":834,"66088":835,"66170":836,"66318":837,"66383":838,"66400":839,"66440":840,"66456":841,"66572":842,"66594":843,"66682":844,"66687":845,"68001":846,"68013":847,"68020":848,"68051":849,"68077":850,"68079":851,"68081":852,"68092":853,"68101":854,"68121":855,"68132":856,"68147":857,"68152":858,"68160":859,"68162":860,"68167":861,"68169":862,"68176":863,"68179":864,"68190":865,"68207":866,"68209":867,"68211":868,"68217":869,"68229":870,"68235":871,"68245":872,"68250":873,"68255":874,"68264":875,"68266":876,"68271":877,"68276":878,"68296":879,"68298":880,"68307":881,"68318":882,"68320":883,"68322":884,"68324":885,"68327":886,"68344":887,"68368":888,"68370":889,"68377":890,"68385":891,"68397":892,"68406":893,"68418":894,"68425":895,"68432":896,"68444":897,"68464":898,"68468":899,"68498":900,"68500":901,"68502":902,"68522":903,"68524":904,"68533":905,"68547":906,"68549":907,"68572":908,"68573":909,"68575":910,"68615":911,"68655":912,"68669":913,"68673":914,"68679":915,"68682":916,"68684":917,"68686":918,"68689":919,"68705":920,"68720":921,"68745":922,"68755":923,"68770":924,"68773":925,"68780":926,"68820":927,"68855":928,"68861":929,"68867":930,"68872":931,"68895":932,"70001":933,"70110":934,"70124":935,"70204":936,"70215":937,"70221":938,"70230":939,"70233":940,"70235":941,"70265":942,"70400":943,"70418":944,"70429":945,"70473":946,"70508":947,"70523":948,"70670":949,"70678":950,"70702":951,"70708":952,"70713":953,"70717":954,"70742":955,"70771":956,"70820":957,"70823":958,"73001":959,"73024":960,"73026":961,"73030":962,"73043":963,"73055":964,"73067":965,"73124":966,"73148":967,"73152":968,"73168":969,"73200":970,"73217":971,"73226":972,"73236":973,"73268":974,"73270":975,"73275":976,"73283":977,"73319":978,"73347":979,"73349":980,"73352":981,"73408":982,"73411":983,"73443":984,"73449":985,"73461":986,"73483":987,"73504":988,"73520":989,"73547":990,"73555":991,"73563":992,"73585":993,"73616":994,"73622":995,"73624":996,"73671":997,"73675":998,"73678":999,"73686":1000,"73770":1001,"73854":1002,"73861":1003,"73870":1004,"73873":1005,"76001":1006,"76020":1007,"76036":1008,"76041":1009,"76054":1010,"76100":1011,"76109":1012,"76111":1013,"76113":1014,"76122":1015,"76126":1016,"76130":1017,"76147":1018,"76233":1019,"76243":1020,"76246":1021,"76248":1022,"76250":1023,"76275":1024,"76306":1025,"76318":1026,"76364":1027,"76377":1028,"76400":1029,"76403":1030,"76497":1031,"76520":1032,"76563":1033,"76606":1034,"76616":1035,"76622":1036,"76670":1037,"76736":1038,"76823":1039,"76828":1040,"76834":1041,"76845":1042,"76863":1043,"76869":1044,"76890":1045,"76892":1046,"76895":1047,"81001":1048,"81065":1049,"81220":1050,"81300":1051,"81591":1052,"81736":1053,"81794":1054,"85001":1055,"85010":1056,"85015":1057,"85125":1058,"85136":1059,"85139":1060,"85162":1061,"85225":1062,"85230":1063,"85250":1064,"85263":1065,"85279":1066,"85300":1067,"85315":1068,"85325":1069,"85400":1070,"85410":1071,"85430":1072,"85440":1073,"86001":1074,"86219":1075,"86320":1076,"86568":1077,"86569":1078,"86571":1079,"86573":1080,"86749":1081,"86755":1082,"86757":1083,"86760":1084,"86865":1085,"86885":1086,"88001":1087,"88564":1088,"91001":1089,"91263":1090,"91405":1091,"91407":1092,"91430":1093,"91460":1094,"91530":1095,"91536":1096,"91540":1097,"91669":1098,"91798":1099,"94001":1100,"94343":1101,"94663":1102,"94883":1103,"94884":1104,"94885":1105,"94886":1106,"94887":1107,"94888":1108,"95001":1109,"95015":1110,"95025":1111,"95200":1112,"97001":1113,"97161":1114,"97511":1115,"97666":1116,"97777":1117,"97889":1118,"99001":1119,"99524":1120,"99624":1121,"99773":1122,"05001":1,"05002":2,"05004":3,"05021":4,"05030":5,"05031":6,"05034":7,"05036":8,"05038":9,"05040":10,"05042":11,"05044":12,"05045":13,"05051":14,"05055":15,"05059":16,"05079":17,"05086":18,"05088":19,"05091":20,"05093":21,"05101":22,"05107":23,"05113":24,"05120":25,"05125":26,"05129":27,"05134":28,"05138":29,"05142":30,"05145":31,"05147":32,"05148":33,"05150":34,"05154":35,"05172":36,"05190":37,"05197":38,"05206":39,"05209":40,"05212":41,"05234":42,"05237":43,"05240":44,"05250":45,"05264":46,"05266":47,"05282":48,"05284":49,"05306":50,"05308":51,"05310":52,"05313":53,"05315":54,"05318":55,"05321":56,"05347":57,"05353":58,"05360":59,"05361":60,"05364":61,"05368":62,"05376":63,"05380":64,"05390":65,"05400":66,"05411":67,"05425":68,"05440":69,"05467":70,"05475":71,"05480":72,"05483":73,"05490":74,"05495":75,"05501":76,"05541":77,"05543":78,"05576":79,"05579":80,"05585":81,"05591":82,"05604":83,"05607":84,"05615":85,"05628":86,"05631":87,"05642":88,"05647":89,"05649":90,"05652":91,"05656":92,"05658":93,"05659":94,"05660":95,"05664":96,"05665":97,"05667":98,"05670":99,"05674":100,"05679":101,"05686":102,"05690":103,"05697":104,"05736":105,"05756":106,"05761":107,"05789":108,"05790":109,"05792":110,"05809":111,"05819":112,"05837":113,"05842":114,"05847":115,"05854":116,"05856":117,"05858":118,"05861":119,"05873":120,"05885":121,"05887":122,"05890":123,"05893":124,"05895":125,"08001":126,"08078":127,"08137":128,"08141":129,"08296":130,"08372":131,"08421":132,"08433":133,"08436":134,"08520":135,"08549":136,"08558":137,"08560":138,"08573":139,"08606":140,"08634":141,"08638":142,"08675":143,"08685":144,"08758":145,"08770":146,"08832":147,"08849":148};
+      globalThis.MATIAS_DANE_CITIES = MATIAS_DANE_CITIES;
 
       function resolveMatiasCityId(cust, defaultCityId) {
         if (!cust) return defaultCityId || 1006;
@@ -3326,13 +3408,21 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 
       const matiasPayload = {
         resolution_number: String(resNum || "18760000001"),
-        prefix: prefix || "",
+        prefix: cleanPrefix,
         document_number: cleanDocNum,
         operation_type_id: matiasOperationTypeId,
         type_document_id: matiasTypeDocId,
         date: issueDate,
         time: issueTime ? issueTime.slice(0, 8) : "12:00:00",
-        notes: tx.getString("description") || "Generado por GRAVY ERP",
+        notes: (function() {
+          let n = tx.getString("description") || "Generado por GRAVY ERP";
+          if (isDS || isNDS) {
+            if (purchaseInv && purchaseInv.getFloat("ret_total") > 0) {
+              n += " | Base: $" + parseFloat(subtotal).toFixed(2) + " | Retenciones Contables: $" + purchaseInv.getFloat("ret_total").toFixed(2) + " | Neto a Pagar: $" + purchaseInv.getFloat("payable_total").toFixed(2) + " (ReteICA causado localmente en PUC 2368 conforme a Res. DIAN 000167/2021)";
+            }
+          }
+          return n;
+        })(),
         send_email: (isDS || isNDS) ? ((custEmail && custEmail.includes('@') && !custEmail.includes('cliente.com') && !custEmail.includes('noobligado.com') && !custEmail.includes('dian.com')) ? 1 : 0) : 0,
         customer: {
           identification_number: String(custDocNum || "222222222222").replace(/[^0-9A-Za-z]/g, ""),
@@ -3424,52 +3514,35 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 
       // Referencia a documento previo en Notas Crédito, Débito o Notas de Ajuste
       if (isNC || isND || isNDS) {
-        let refNum = "";
-        let refUuid = "";
-        let refDate = issueDate;
+        if (isNC && sinReferencia) {
+          // NC Sin Referencia a Factura (Código UBL DIAN 13)
+          delete matiasPayload.billing_reference;
+          const discrepancyCode = "5"; // 5 = Otros (Obligatorio DIAN para Notas sin referencia)
+          const discrepancyDesc = (invoice ? invoice.getString("notes") : "") || "Nota Crédito sin referencia a facturas";
+          matiasPayload.discrepancy_response = {
+            reference_id: cleanDocNum ? (cleanPrefix + cleanDocNum) : "NC1",
+            response_id: discrepancyCode,
+            description: discrepancyDesc.replace(/\[.*?\]\s*/g, '').trim() || "Otros"
+          };
+        } else {
+          let refNum = "";
+          let refUuid = "";
+          let refDate = issueDate;
 
-        const bodyData = e.requestInfo()?.body || {};
-        if (bodyData.billing_reference) {
-          refNum = bodyData.billing_reference.number || "";
-          refUuid = bodyData.billing_reference.uuid || bodyData.billing_reference.cufe || bodyData.billing_reference.cude || "";
-          refDate = bodyData.billing_reference.date || bodyData.billing_reference.issue_date || issueDate;
-        }
+          const bodyData = e.requestInfo()?.body || {};
+          if (bodyData.billing_reference) {
+            refNum = bodyData.billing_reference.number || "";
+            refUuid = bodyData.billing_reference.uuid || bodyData.billing_reference.cufe || bodyData.billing_reference.cude || "";
+            refDate = bodyData.billing_reference.date || bodyData.billing_reference.issue_date || issueDate;
+          }
 
-        const crossDocRef = (invoice ? (invoice.getString("cross_doc_ref") || invoice.getString("parent_invoice_id")) : "") || (tx ? (tx.getString("cross_number") || tx.getString("cross_doc_ref")) : "") || "";
+          const crossDocRef = (invoice ? (invoice.getString("cross_doc_ref") || invoice.getString("parent_invoice_id")) : "") || (tx ? (tx.getString("cross_number") || tx.getString("cross_doc_ref")) : "") || "";
 
-        // 1. Si el invoice tiene parent_invoice_id
-        if (!refUuid && invoice && invoice.getString("parent_invoice_id")) {
-          try {
-            const parentColName = isNDS ? "purchase_invoices" : "invoices";
-            const pInv = $app.findRecordById(parentColName, invoice.getString("parent_invoice_id"));
-            if (pInv) {
-              if (!refNum) refNum = pInv.getString("number") || pInv.getString("tx_number") || "";
-              if (pInv.getString("date")) refDate = pInv.getString("date").slice(0, 10);
-              if (isNDS && pInv.getString("cuds")) refUuid = pInv.getString("cuds");
-              const pDoc = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + pInv.getString("tx_id") + "'");
-              if (pDoc && !refUuid) {
-                refUuid = pDoc.getString("cufe") || pDoc.getString("uuid") || "";
-              }
-            }
-          } catch (_) {}
-        }
-
-        // 2. Si hay crossDocRef
-        if (!refUuid && crossDocRef) {
-          refNum = refNum || crossDocRef;
-          try {
-            const parentDoc = $app.findFirstRecordByFilter("einvoice_docs", "doc_number = '" + crossDocRef.replace(/'/g, "''") + "' || prefix || '-' || folio = '" + crossDocRef.replace(/'/g, "''") + "' || folio = '" + crossDocRef.replace(/'/g, "''") + "'");
-            if (parentDoc) {
-              refUuid = parentDoc.getString("cufe") || parentDoc.getString("uuid") || "";
-              refDate = parentDoc.getString("issue_date") || refDate;
-              refNum = parentDoc.getString("doc_number") || refNum;
-            }
-          } catch (_) {}
-
-          if (!refUuid) {
+          // 1. Si el invoice tiene parent_invoice_id
+          if (!refUuid && invoice && invoice.getString("parent_invoice_id")) {
             try {
               const parentColName = isNDS ? "purchase_invoices" : "invoices";
-              const pInv = $app.findFirstRecordByFilter(parentColName, "number = '" + crossDocRef.replace(/'/g, "''") + "' || tx_number = '" + crossDocRef.replace(/'/g, "''") + "'");
+              const pInv = $app.findRecordById(parentColName, invoice.getString("parent_invoice_id"));
               if (pInv) {
                 if (!refNum) refNum = pInv.getString("number") || pInv.getString("tx_number") || "";
                 if (pInv.getString("date")) refDate = pInv.getString("date").slice(0, 10);
@@ -3481,48 +3554,77 @@ function sendInvoiceEmailHelper(txId, customEmail) {
               }
             } catch (_) {}
           }
-        }
 
-        // 3. Buscar CUFE directamente en las notas si fue guardado allí
-        if (!refUuid && invoice && invoice.getString("notes")) {
-          const cufeMatch = invoice.getString("notes").match(/CUFE:\s*([0-9a-fA-F]{64,128})/i);
-          if (cufeMatch) {
-            refUuid = cufeMatch[1];
+          // 2. Si hay crossDocRef
+          if (!refUuid && crossDocRef) {
+            refNum = refNum || crossDocRef;
+            try {
+              const parentDoc = $app.findFirstRecordByFilter("einvoice_docs", "doc_number = '" + crossDocRef.replace(/'/g, "''") + "' || prefix || '-' || folio = '" + crossDocRef.replace(/'/g, "''") + "' || folio = '" + crossDocRef.replace(/'/g, "''") + "'");
+              if (parentDoc) {
+                refUuid = parentDoc.getString("cufe") || parentDoc.getString("uuid") || "";
+                refDate = parentDoc.getString("issue_date") || refDate;
+                refNum = parentDoc.getString("doc_number") || refNum;
+              }
+            } catch (_) {}
+
+            if (!refUuid) {
+              try {
+                const parentColName = isNDS ? "purchase_invoices" : "invoices";
+                const pInv = $app.findFirstRecordByFilter(parentColName, "number = '" + crossDocRef.replace(/'/g, "''") + "' || tx_number = '" + crossDocRef.replace(/'/g, "''") + "'");
+                if (pInv) {
+                  if (!refNum) refNum = pInv.getString("number") || pInv.getString("tx_number") || "";
+                  if (pInv.getString("date")) refDate = pInv.getString("date").slice(0, 10);
+                  if (isNDS && pInv.getString("cuds")) refUuid = pInv.getString("cuds");
+                  const pDoc = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + pInv.getString("tx_id") + "'");
+                  if (pDoc && !refUuid) {
+                    refUuid = pDoc.getString("cufe") || pDoc.getString("uuid") || "";
+                  }
+                }
+              } catch (_) {}
+            }
           }
-        }
 
-        // Limpiar refNum para MATIAS API (ej: FE-00000006 -> FE6 si el prefix es FE)
-        let cleanRefNum = refNum || "REF-001";
-        if (cleanRefNum.includes('-')) {
-          const parts = cleanRefNum.split('-');
-          if (parts.length === 2 && /^\d+$/.test(parts[1])) {
-            cleanRefNum = parts[0] + parseInt(parts[1], 10);
+          // 3. Buscar CUFE directamente en las notas si fue guardado allí
+          if (!refUuid && invoice && invoice.getString("notes")) {
+            const cufeMatch = invoice.getString("notes").match(/CUFE:\s*([0-9a-fA-F]{64,128})/i);
+            if (cufeMatch) {
+              refUuid = cufeMatch[1];
+            }
           }
+
+          // Limpiar refNum para MATIAS API (ej: FE-00000006 -> FE6 si el prefix es FE)
+          let cleanRefNum = refNum || "REF-001";
+          if (cleanRefNum.includes('-')) {
+            const parts = cleanRefNum.split('-');
+            if (parts.length === 2 && /^\d+$/.test(parts[1])) {
+              cleanRefNum = parts[0] + parseInt(parts[1], 10);
+            }
+          }
+
+          matiasPayload.billing_reference = {
+            number: cleanRefNum,
+            date: refDate || issueDate,
+            uuid: refUuid || "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            scheme_name: isNDS ? "CUDS-SHA384" : "CUFE-SHA384"
+          };
+
+          const discrepancyCode = bodyData.discrepancy_code || (invoice ? invoice.getString("dian_concept") : "") || (isNC ? "2" : (isND ? "1" : "11"));
+          let discrepancyDesc = bodyData.discrepancy_description || "";
+          if (!discrepancyDesc) {
+            if (discrepancyCode === "1") discrepancyDesc = "Devolución parcial de los bienes y/o no aceptación parcial del servicio";
+            else if (discrepancyCode === "2") discrepancyDesc = "Anulación de factura electrónica";
+            else if (discrepancyCode === "3") discrepancyDesc = "Rebaja o descuento parcial o total";
+            else if (discrepancyCode === "4") discrepancyDesc = "Ajuste de precio";
+            else if (discrepancyCode === "6") discrepancyDesc = "Devolución total de bienes";
+            else discrepancyDesc = isNC ? "Anulación de factura electrónica" : (isND ? "Ajuste de precio" : "Anulación de documento soporte");
+          }
+
+          matiasPayload.discrepancy_response = {
+            reference_id: cleanRefNum,
+            response_id: String(discrepancyCode),
+            description: discrepancyDesc
+          };
         }
-
-        matiasPayload.billing_reference = {
-          number: cleanRefNum,
-          date: refDate || issueDate,
-          uuid: refUuid || "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-          scheme_name: isNDS ? "CUDS-SHA384" : "CUFE-SHA384"
-        };
-
-        const discrepancyCode = bodyData.discrepancy_code || (invoice ? invoice.getString("dian_concept") : "") || (isNC ? "2" : (isND ? "1" : "11"));
-        let discrepancyDesc = bodyData.discrepancy_description || "";
-        if (!discrepancyDesc) {
-          if (discrepancyCode === "1") discrepancyDesc = "Devolución parcial de los bienes y/o no aceptación parcial del servicio";
-          else if (discrepancyCode === "2") discrepancyDesc = "Anulación de factura electrónica";
-          else if (discrepancyCode === "3") discrepancyDesc = "Rebaja o descuento parcial o total";
-          else if (discrepancyCode === "4") discrepancyDesc = "Ajuste de precio";
-          else if (discrepancyCode === "6") discrepancyDesc = "Devolución total de bienes";
-          else discrepancyDesc = isNC ? "Anulación de factura electrónica" : (isND ? "Ajuste de precio" : "Anulación de documento soporte");
-        }
-
-        matiasPayload.discrepancy_response = {
-          reference_id: cleanRefNum,
-          response_id: String(discrepancyCode),
-          description: discrepancyDesc
-        };
       }
 
       // Extraer datos de Operación DIAN Especial si están presentes en notas
@@ -3607,8 +3709,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 
       // Enviar a MATIAS API
       const matiasCaller = getMatiasCaller();
+      const startTime = Date.now();
 
       const matiasRes = matiasCaller(matiasEndpoint, "POST", matiasPayload);
+      const durationMs = Date.now() - startTime;
       let matiasData = matiasRes.data || {};
       const isAlreadyValidated = !!((matiasData.message && matiasData.message.includes("ya se encuentra validado")) || (matiasData.data && (matiasData.data.is_valid === 1 || matiasData.data.status === 1) && matiasData.data.XmlDocumentKey));
 
@@ -3618,6 +3722,25 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         docRecord.set("status", "rechazada");
         docRecord.set("dian_response", fullErr);
         $app.save(docRecord);
+
+        // Guardar log del error de forma segura sin interrumpir
+        try {
+          saveDianLog({
+            tx_id: realTxId,
+            document_number: cleanDocNum ? (cleanPrefix + cleanDocNum) : (fullDocNum || realTxId),
+            document_type: isNC ? "NC" : (isND ? "ND" : (isDS ? "DS" : (isNDS ? "NDS" : "FE"))),
+            provider: "MATIAS",
+            endpoint: matiasEndpoint,
+            status_code: matiasRes.statusCode || 400,
+            success: false,
+            request_payload: matiasPayload,
+            response_payload: matiasRes.data || {},
+            error_message: fullErr,
+            duration_ms: durationMs
+          });
+        } catch (eLog) {
+          console.warn("[GRAVY HOOK] No se pudo registrar log de error en dian_logs:", eLog);
+        }
 
         // Sincronizar purchase_invoices si es compra o documento soporte
         if (isPurchase || isDS || isNDS) {
@@ -3664,6 +3787,26 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       docRecord.set("cufe", xmlDocKey);
       docRecord.set("dian_response", statusMsg);
 
+      // Guardar log de la respuesta de forma segura sin interrumpir
+      try {
+        saveDianLog({
+          tx_id: realTxId,
+          document_number: cleanDocNum ? (cleanPrefix + cleanDocNum) : (fullDocNum || realTxId),
+          document_type: isNC ? "NC" : (isND ? "ND" : (isDS ? "DS" : (isNDS ? "NDS" : "FE"))),
+          provider: "MATIAS",
+          endpoint: matiasEndpoint,
+          status_code: matiasRes.statusCode || 200,
+          success: isDianValid,
+          request_payload: matiasPayload,
+          response_payload: matiasData,
+          error_message: isDianValid ? "" : statusMsg,
+          cufe: xmlDocKey,
+          duration_ms: durationMs
+        });
+      } catch (eLog) {
+        console.warn("[GRAVY HOOK] No se pudo registrar log de éxito en dian_logs:", eLog);
+      }
+
       const decodeBase64Xml = (raw) => {
         if (!raw) return "";
         let input = String(raw).trim();
@@ -3696,7 +3839,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         try {
           const attachedRes = matiasCaller(`/documents/attached/${encodeURIComponent(xmlDocKey)}`, "POST");
           if (attachedRes && attachedRes.ok && attachedRes.data) {
-            const attB64 = attachedRes.data.content?.XmlBytesBase64 || attachedRes.data.XmlBytesBase64 || attachedRes.data.xml;
+            const attB64 = attachedRes.data.content?.XmlBytesBase64 || attachedRes.data.XmlBytesBase64 || attachedRes.data.xml || attachedRes.data.attachedDocument?.data;
             if (attB64) {
               savedXml = decodeBase64Xml(attB64);
             } else if (attachedRes.data.attachedDocument && attachedRes.data.attachedDocument.url) {
@@ -4497,19 +4640,39 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       let cufeKey = docRecord.getString("cufe") || "";
       let respMsg = docRecord.getString("dian_response") || "Procesado por MATIAS API";
 
-      if (cufeKey && (!docRecord.getString("xml_content") || !docRecord.getString("xml_content").includes("<"))) {
+      const currentXml = docRecord.getString("xml_content") || "";
+      if (cufeKey && (!currentXml || !currentXml.includes("<") || currentXml.length < 200)) {
         try {
           const matiasCaller = getMatiasCaller();
-          const xmlRes = matiasCaller("/documents/xml/" + encodeURIComponent(cufeKey), "GET");
-          if (xmlRes && xmlRes.ok && xmlRes.data) {
-            const rawB64 = xmlRes.data.content?.XmlBytesBase64 || xmlRes.data.XmlBytesBase64;
-            if (rawB64) {
-              const decodedXml = decodeBase64Xml(rawB64);
-              if (decodedXml && decodedXml.includes("<")) {
-                docRecord.set("xml_content", decodedXml);
-                $app.save(docRecord);
+          let fetchedXml = "";
+
+          // 1. Intentar obtener AttachedDocument oficial
+          try {
+            const attachedRes = matiasCaller("/documents/attached/" + encodeURIComponent(cufeKey), "POST");
+            if (attachedRes && attachedRes.ok && attachedRes.data) {
+              const attB64 = attachedRes.data.content?.XmlBytesBase64 || attachedRes.data.XmlBytesBase64 || attachedRes.data.xml || attachedRes.data.attachedDocument?.data;
+              if (attB64) {
+                fetchedXml = decodeBase64Xml(attB64);
               }
             }
+          } catch (_) {}
+
+          // 2. Si no hay AttachedDocument, intentar XML firmado
+          if (!fetchedXml || !fetchedXml.includes("<") || fetchedXml.length < 200) {
+            try {
+              const xmlRes = matiasCaller("/documents/xml/" + encodeURIComponent(cufeKey), "GET");
+              if (xmlRes && xmlRes.ok && xmlRes.data) {
+                const rawB64 = xmlRes.data.content?.XmlBytesBase64 || xmlRes.data.XmlBytesBase64;
+                if (rawB64) {
+                  fetchedXml = decodeBase64Xml(rawB64);
+                }
+              }
+            } catch (_) {}
+          }
+
+          if (fetchedXml && fetchedXml.includes("<") && fetchedXml.length > 200) {
+            docRecord.set("xml_content", fetchedXml);
+            $app.save(docRecord);
           }
         } catch (_) {}
       }
@@ -5606,29 +5769,120 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
       const resNum = neResolution ? neResolution.getString("resolution_number") : getNominaSetting("dian_resolution_number", "18760000001");
       const pfx = (neResolution ? neResolution.getString("prefix") : prefijo) || "SNEL";
 
-      // Obtener empleado vinculado si existe
+      // 1. Obtener registro de empleado vinculado (desde third_parties o employees)
       let empRec = null;
       const empId = rec.getString("employee_id");
       if (empId) {
         try {
-          empRec = $app.findRecordById("employees", empId);
-        } catch (_) {}
+          empRec = $app.findRecordById("third_parties", empId);
+        } catch (_) {
+          try {
+            empRec = $app.findRecordById("employees", empId);
+          } catch (_2) {}
+        }
       }
 
-      // Extraer datos desde xmlContent si está disponible para máxima fidelidad
-      let docNumStr = String(empRec?.getString("document_number") || empRec?.getString("dni") || "1063279307");
-      let empName = empRec?.getString("name") || empRec?.getString("first_name") || "Empleado";
-      let empSurname = empRec?.getString("last_name") || empRec?.getString("first_surname") || "General";
+      // 2. Obtener liquidación granular de nómina (payroll_lines) y metadatos
+      let pLine = null;
+      let pMeta = {};
+      if (empId) {
+        const periodId = rec.getString("periodo_id");
+        try {
+          if (periodId) {
+            pLine = $app.findFirstRecordByFilter("payroll_lines", "employee_id = '" + empId + "' && period_id = '" + periodId + "'");
+          }
+          if (!pLine) {
+            pLine = $app.findFirstRecordByFilter("payroll_lines", "employee_id = '" + empId + "'");
+          }
+          if (pLine && pLine.getString("notes")) {
+            const rawNotes = pLine.getString("notes");
+            if (rawNotes.startsWith("{") && rawNotes.includes("payroll_meta")) {
+              const parsedNotes = JSON.parse(rawNotes);
+              pMeta = parsedNotes.payroll_meta || {};
+            }
+          }
+        } catch (eLine) {
+          console.warn("[GRAVY HOOK] Error al cargar payroll_lines:", eLine);
+        }
+      }
+
+      // 3. Normalizar nombres y apellidos del trabajador
+      let fName = "Empleado";
+      let sName = "";
+      let fSurname = "General";
+      let sSurname = "";
+
+      if (empRec) {
+        const rawFirst = String(empRec.getString("first_name") || "").trim();
+        const rawLast = String(empRec.getString("last_name") || "").trim();
+        if (rawFirst && rawLast) {
+          const fParts = rawFirst.split(/\s+/);
+          fName = fParts[0] || "Empleado";
+          sName = fParts.slice(1).join(" ");
+          const lParts = rawLast.split(/\s+/);
+          fSurname = lParts[0] || "General";
+          sSurname = lParts.slice(1).join(" ");
+        } else {
+          const fullParts = String(empRec.getString("name") || "Empleado General").trim().split(/\s+/);
+          if (fullParts.length >= 4) {
+            fName = fullParts[0];
+            sName = fullParts[1];
+            fSurname = fullParts[2];
+            sSurname = fullParts.slice(3).join(" ");
+          } else if (fullParts.length === 3) {
+            fName = fullParts[0];
+            fSurname = fullParts[1];
+            sSurname = fullParts[2];
+          } else if (fullParts.length === 2) {
+            fName = fullParts[0];
+            fSurname = fullParts[1];
+          } else {
+            fName = fullParts[0] || "Empleado";
+          }
+        }
+      }
+
+      // 4. Tipo de documento de identidad
+      let idDocType = "3"; // Cédula de Ciudadanía
+      const rawDocType = empRec ? String(empRec.getString("doc_type") || "").toUpperCase() : "13";
+      if (rawDocType === "22" || rawDocType === "CE") idDocType = "4";
+      else if (rawDocType === "31" || rawDocType === "NIT") idDocType = "6";
+      else if (rawDocType === "41" || rawDocType === "PAS") idDocType = "5";
+      else if (rawDocType === "12" || rawDocType === "TI") idDocType = "2";
+      else if (rawDocType === "11" || rawDocType === "RC") idDocType = "1";
+      else if (rawDocType === "42" || rawDocType === "PEP") idDocType = "7";
+
+      // 5. Tipo de contrato: 1=Término Fijo, 2=Término Indefinido, 3=Obra o Labor, 4=Aprendizaje, 5=Prácticas
+      let contractTypeId = 2;
+      const rawContract = empRec ? String(empRec.getString("contract_type") || "").toUpperCase() : "";
+      if (rawContract.includes("FIJO")) contractTypeId = 1;
+      else if (rawContract.includes("OBRA")) contractTypeId = 3;
+      else if (rawContract.includes("APRENDIZ")) contractTypeId = 4;
+      else if (rawContract.includes("PRACTIC")) contractTypeId = 5;
+
+      // 6. Municipios DANE
+      let empCityId = 1006;
+      const citiesMap = (typeof globalThis.MATIAS_DANE_CITIES === "object" && globalThis.MATIAS_DANE_CITIES) ? globalThis.MATIAS_DANE_CITIES : null;
+      if (empRec) {
+        const cCode = String(empRec.getString("city_code") || "").trim();
+        if (citiesMap && citiesMap[cCode]) {
+          empCityId = citiesMap[cCode];
+        } else {
+          const cName = String(empRec.getString("city") || "").toLowerCase();
+          if (cName.includes("bogot")) empCityId = 149;
+          else if (cName.includes("medell")) empCityId = 1;
+          else if (cName.includes("barranqu")) empCityId = 126;
+          else empCityId = 1006;
+        }
+      }
+
+      let docNumStr = String(empRec?.getString("doc_number") || empRec?.getString("dni") || "1063279307").replace(/[^0-9A-Za-z]/g, "");
       let empAddress = empRec?.getString("address") || "Dirección";
-      let workedDays = "30";
+      let workedDays = pLine ? String(pLine.getInt("days_worked") || 30) : "30";
 
       if (xmlContent) {
         const mDoc = xmlContent.match(/NumeroDocumento="([^"]+)"/);
         if (mDoc) docNumStr = mDoc[1];
-        const mNom = xmlContent.match(/PrimerNombre="([^"]+)"/);
-        if (mNom) empName = mNom[1];
-        const mApe = xmlContent.match(/PrimerApellido="([^"]+)"/);
-        if (mApe) empSurname = mApe[1];
         const mDias = xmlContent.match(/DiasTrabajados="([^"]+)"/);
         if (mDias) workedDays = mDias[1];
       }
@@ -5645,11 +5899,201 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
       const nowStr = new Date().toISOString().slice(0, 10);
       const nowTimeStr = new Date().toTimeString().slice(0, 8);
 
+      // Sueldo contractual vs Sueldo trabajado proporcional
+      const contractSalary = pLine ? pLine.getFloat("salary_base") : (empRec ? empRec.getFloat("salary_base") : parseFloat(totalDev));
+      const wDaysInt = parseInt(workedDays, 10) || 30;
+      const proportionalSalary = pLine ? ((contractSalary / 30) * wDaysInt).toFixed(2) : totalDev;
+
+      // Estructura de Devengados (earn) enriquecida
+      const earnObj = {
+        basic: {
+          worked_days: String(wDaysInt),
+          salary_worked: parseFloat(proportionalSalary).toFixed(2)
+        }
+      };
+
+      const transAllowance = pLine ? pLine.getFloat("transport_allowance") : 0;
+      if (transAllowance > 0) {
+        earnObj.transport = {
+          transportation_assistance: transAllowance.toFixed(2),
+          viatic_maintenance: "0.0",
+          viatic_non_salary_maintenance: "0.0"
+        };
+      }
+
+      // Horas extras y recargos
+      const otMap = pMeta.overtime_breakdown || {};
+      if (otMap.hed && otMap.hed.amount > 0) {
+        earnObj.HEDs = [{
+          start_time: `${startDateStr} 00:00:00`,
+          final_hour: `${endDateStr} 23:59:59`,
+          amount: String(otMap.hed.hours || 1),
+          percentage: "0.2500",
+          payment: parseFloat(otMap.hed.amount).toFixed(2)
+        }];
+      }
+      if (otMap.hen && otMap.hen.amount > 0) {
+        earnObj.HENs = [{
+          start_time: `${startDateStr} 00:00:00`,
+          final_hour: `${endDateStr} 23:59:59`,
+          amount: String(otMap.hen.hours || 1),
+          percentage: "0.7500",
+          payment: parseFloat(otMap.hen.amount).toFixed(2)
+        }];
+      }
+      if (otMap.rno && otMap.rno.amount > 0) {
+        earnObj.HRNs = [{
+          start_time: `${startDateStr} 00:00:00`,
+          final_hour: `${endDateStr} 23:59:59`,
+          amount: String(otMap.rno.hours || 1),
+          percentage: "0.3500",
+          payment: parseFloat(otMap.rno.amount).toFixed(2)
+        }];
+      }
+      if (otMap.heddf && otMap.heddf.amount > 0) {
+        earnObj.HEDDFs = [{
+          start_time: `${startDateStr} 00:00:00`,
+          final_hour: `${endDateStr} 23:59:59`,
+          amount: String(otMap.heddf.hours || 1),
+          percentage: "1.0000",
+          payment: parseFloat(otMap.heddf.amount).toFixed(2)
+        }];
+      }
+      if (otMap.rdfd && otMap.rdfd.amount > 0) {
+        earnObj.HRDDFs = [{
+          start_time: `${startDateStr} 00:00:00`,
+          final_hour: `${endDateStr} 23:59:59`,
+          amount: String(otMap.rdfd.hours || 1),
+          percentage: "0.7500",
+          payment: parseFloat(otMap.rdfd.amount).toFixed(2)
+        }];
+      }
+      if (otMap.hendf && otMap.hendf.amount > 0) {
+        earnObj.HENDFs = [{
+          start_time: `${startDateStr} 00:00:00`,
+          final_hour: `${endDateStr} 23:59:59`,
+          amount: String(otMap.hendf.hours || 1),
+          percentage: "1.5000",
+          payment: parseFloat(otMap.hendf.amount).toFixed(2)
+        }];
+      }
+
+      // Novedades y conceptos adicionales
+      const ca = pMeta.concept_amounts || {};
+      if (ca.comisiones && ca.comisiones > 0) {
+        earnObj.commissions = [{ commission: parseFloat(ca.comisiones).toFixed(2) }];
+      }
+      if (ca.bonificacion && ca.bonificacion > 0) {
+        earnObj.bonuses = [{ bonusS: parseFloat(ca.bonificacion).toFixed(2), bonusNS: "0.00" }];
+      }
+      if (ca.vacaciones_disfrutadas && ca.vacaciones_disfrutadas > 0) {
+        earnObj.vacations = {
+          common: {
+            start_date: startDateStr,
+            final_date: endDateStr,
+            amount: String(pMeta.dias_vacaciones || 1),
+            payment: parseFloat(ca.vacaciones_disfrutadas).toFixed(2)
+          }
+        };
+      }
+      if (ca.prima_pagada && ca.prima_pagada > 0) {
+        earnObj.bonus = {
+          amount: "180",
+          payment: parseFloat(ca.prima_pagada).toFixed(2),
+          non_salary_payment: "0.00"
+        };
+      }
+      if (ca.cesantias_pagadas && ca.cesantias_pagadas > 0) {
+        const intCes = parseFloat(ca.intereses_cesantias_pagados || 0);
+        earnObj.cesantias = {
+          payment: parseFloat(ca.cesantias_pagadas).toFixed(2),
+          percentage: "12.00",
+          interest_payment: intCes.toFixed(2)
+        };
+      }
+      if (ca.incapacidades && ca.incapacidades > 0) {
+        earnObj.incapacity = [{
+          start_date: startDateStr,
+          final_date: endDateStr,
+          amount: "1",
+          type_id: 1,
+          payment: parseFloat(ca.incapacidades).toFixed(2)
+        }];
+      }
+      if (ca.aux_no_salariales && ca.aux_no_salariales > 0) {
+        earnObj.assistances = [{
+          assistanceS: "0.00",
+          assistanceNS: parseFloat(ca.aux_no_salariales).toFixed(2)
+        }];
+      }
+      if (ca.rodamiento && ca.rodamiento > 0) {
+        earnObj.other_concepts = [{
+          descripcion: "Auxilio de Rodamiento",
+          conceptS: "0.00",
+          conceptNS: parseFloat(ca.rodamiento).toFixed(2)
+        }];
+      }
+
+      // Estructura de Deducciones (deductions) enriquecida
+      const dedHealth = pLine ? pLine.getFloat("deduction_health") : (parseFloat(totalDed) / 2);
+      const dedPension = pLine ? pLine.getFloat("deduction_pension") : (parseFloat(totalDed) / 2);
+
+      const deductionsObj = {
+        health: {
+          percentage: "4",
+          deduction: dedHealth.toFixed(2)
+        },
+        pension_fund: {
+          percentage: "4",
+          deduction: dedPension.toFixed(2)
+        }
+      };
+
+      const solFund = pLine ? (pLine.getFloat("solidarity_fund") || pMeta.solidarity_fund || 0) : 0;
+      if (solFund > 0) {
+        deductionsObj.fundSP = {
+          percentage: "1.00",
+          deduction: solFund.toFixed(2),
+          percentageSub: "0.00",
+          deductionSub: "0.00"
+        };
+      }
+      const withTax = pLine ? (pLine.getFloat("withholding_tax") || pMeta.withholding_tax || 0) : 0;
+      if (withTax > 0) {
+        deductionsObj.retefuente = withTax.toFixed(2);
+      }
+      if (ca.libranza && ca.libranza > 0) {
+        deductionsObj.libranzas = [{
+          descripcion: "Libranza",
+          deduction: parseFloat(ca.libranza).toFixed(2)
+        }];
+      }
+      if (ca.embargo && ca.embargo > 0) {
+        deductionsObj.tax_embargo = parseFloat(ca.embargo).toFixed(2);
+      }
+      if (ca.prestamos && ca.prestamos > 0) {
+        deductionsObj.advances = [{
+          advance: parseFloat(ca.prestamos).toFixed(2)
+        }];
+      }
+      const dedOther = pLine ? pLine.getFloat("deduction_other") : 0;
+      if (dedOther > 0) {
+        deductionsObj.other_deductions = [{
+          other_deduction: dedOther.toFixed(2)
+        }];
+      }
+
+      // Datos bancarios y medios de pago reales
+      const empBank = empRec?.getString("bank_name") || "BANCOLOMBIA";
+      const empAccNum = empRec?.getString("bank_account") || "0";
+      const empAccType = (empRec?.getString("bank_account_type") || "AHORROS").toUpperCase();
+      const empMeansPay = empRec?.getString("payment_method") || (empAccNum && empAccNum !== "0" ? "30" : "10");
+
       const matiasNominaPayload = {
         resolution_number: String(resNum || "18760000001"),
         prefix: pfx,
         document_number: String(consecutivo),
-        generation_city_id: "1006",
+        generation_city_id: String(empCityId || 1006),
         worker_code: docNumStr,
         novelty: false,
         pay_day: endDateStr,
@@ -5658,7 +6102,7 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
           departure_date: null,
           settlement_start_date: startDateStr,
           settlement_end_date: endDateStr,
-          time_worked: String(workedDays),
+          time_worked: String(wDaysInt),
           generation_date: nowStr
         },
         general_information: {
@@ -5674,52 +6118,34 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
           worker_type_id: 1,
           worker_subtype_id: 1,
           high_risk_pension: "false",
-          identity_document_id: "3",
+          identity_document_id: idDocType,
           document_number: docNumStr,
-          first_surname: empSurname,
-          second_surname: "",
-          first_name: empName,
-          other_names: "",
+          first_surname: fSurname,
+          second_surname: sSurname,
+          first_name: fName,
+          other_names: sName,
           email: empRec?.getString("email") || "",
           working_country_id: 45,
-          work_city_id: 1006,
+          work_city_id: empCityId,
           work_address: empAddress,
           integral_salary: "false",
-          contract_type_id: 1,
-          salary: String(totalDev),
+          contract_type_id: contractTypeId,
+          salary: parseFloat(contractSalary).toFixed(2),
           worker_code: docNumStr
         },
         payment: {
           payment_method_id: "1",
-          means_payment_id: "10",
-          bank: "BANCOLOMBIA",
-          account_type: "AHORROS",
-          account_number: "0"
+          means_payment_id: String(empMeansPay),
+          bank: empBank,
+          account_type: empAccType,
+          account_number: empAccNum
         },
-        earn: {
-          basic: {
-            worked_days: String(workedDays),
-            salary_worked: String(totalDev)
-          },
-          transport: {
-            transportation_assistance: "0.00",
-            viatic_maintenance: "0.0",
-            viatic_non_salary_maintenance: "0.0"
-          }
-        },
-        deductions: {
-          health: {
-            percentage: "4",
-            deduction: String((parseFloat(totalDed) / 2).toFixed(2))
-          },
-          pension_fund: {
-            percentage: "4",
-            deduction: String((parseFloat(totalDed) / 2).toFixed(2))
-          }
-        },
+        earn: earnObj,
+        deductions: deductionsObj,
         rounding: "0",
         total_earned: String(totalDev),
         deductions_total: String(totalDed),
+        deductiones_total: String(totalDed),
         total_voucher: String(totalNet)
       };
 
@@ -6352,6 +6778,75 @@ routerAdd("POST", "/api/dian/sync-matias-resolutions", (e) => {
     return e.json(500, { success: false, message: "Error al sincronizar resoluciones: " + err.message });
   }
 });
+
+routerAdd("GET", "/api/dian/logs", (e) => {
+  const adminOrAuth = e.auth;
+  if (!adminOrAuth) {
+    return e.json(401, { error: "No autorizado" });
+  }
+  const txId = e.requestInfo().query["tx_id"] || "";
+  const docNum = e.requestInfo().query["document_number"] || "";
+  const limit = Math.min(parseInt(e.requestInfo().query["limit"] || "20", 10), 100);
+
+  try {
+    let sql = "SELECT * FROM dian_logs WHERE 1=1";
+    const binds = {};
+    if (txId) {
+      sql += " AND tx_id = {:txId}";
+      binds.txId = txId;
+    }
+    if (docNum) {
+      sql += " AND document_number = {:docNum}";
+      binds.docNum = docNum;
+    }
+    sql += " ORDER BY created DESC LIMIT " + limit;
+
+    const query = $app.db().newQuery(sql);
+    query.bind(binds);
+
+    const rows = arrayOf(new DynamicModel({
+      id: "",
+      created: "",
+      tx_id: "",
+      document_number: "",
+      document_type: "",
+      provider: "",
+      endpoint: "",
+      status_code: 0,
+      success: 0,
+      error_message: "",
+      cufe: "",
+      duration_ms: 0,
+      response_payload: "",
+      request_payload: ""
+    }));
+    query.all(rows);
+
+    return e.json(200, {
+      success: true,
+      data: rows.map(r => ({
+        id: r.id,
+        created: r.created,
+        tx_id: r.tx_id,
+        document_number: r.document_number,
+        document_type: r.document_type,
+        provider: r.provider || "MATIAS",
+        endpoint: r.endpoint,
+        status_code: r.status_code,
+        success: r.success == 1 || r.success === true,
+        error_message: r.error_message,
+        cufe: r.cufe,
+        duration_ms: r.duration_ms,
+        response_payload: r.response_payload,
+        request_payload: r.request_payload
+      }))
+    });
+  } catch (err) {
+    return e.json(500, { success: false, error: String(err) });
+  }
+});
+
+
 
 
 

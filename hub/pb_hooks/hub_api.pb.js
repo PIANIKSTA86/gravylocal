@@ -74,6 +74,7 @@ routerAdd("GET", "/api/hub/my-companies", (e) => {
             access_id:     acc.id,
             company_id:    company.id,
             company_name:  company.getString("name"),
+            company_nit:   company.getString("nit"),
             company_url:   company.getString("url"),
             company_color: company.getString("color_theme") || "#2446B8",
             role:          acc.getString("role"),
@@ -223,18 +224,59 @@ routerAdd("POST", "/api/hub/toggle-license", (e) => {
     
     const records = $app.findRecordsByFilter("licenses", `company_id = "${safeComp}" && module_key = "${safeMod}"`, "", 1, 0);
 
-    if (records && records.length > 0) {
-      const rec = records[0];
-      rec.set("enabled", enabled);
-      $app.save(rec);
-    } else {
-      const licCol = $app.findCollectionByNameOrId("licenses");
-      const rec = new Record(licCol);
-      rec.set("company_id", companyId);
-      rec.set("module_key", moduleKey);
-      rec.set("enabled", enabled);
-      rec.set("plan", "perpetua");
-      $app.save(rec);
+    const licCol = $app.findCollectionByNameOrId("licenses");
+    const modField = licCol.fields.getByName("module_key");
+    if (modField && modField.values) {
+      let found = false;
+      const vals = [];
+      for (let i = 0; i < modField.values.length; i++) {
+        vals.push(modField.values[i]);
+        if (modField.values[i] === moduleKey) found = true;
+      }
+      if (!found) {
+        vals.push(moduleKey);
+        modField.values = vals;
+        $app.save(licCol);
+      }
+    }
+
+    let saved = false;
+    try {
+      if (records && records.length > 0) {
+        const rec = records[0];
+        rec.set("enabled", enabled);
+        $app.save(rec);
+        saved = true;
+      } else {
+        const rec = new Record(licCol);
+        rec.set("company_id", companyId);
+        rec.set("module_key", moduleKey);
+        rec.set("enabled", enabled);
+        rec.set("plan", "perpetua");
+        $app.save(rec);
+        saved = true;
+      }
+    } catch (saveErr) {
+      // Fallback a actualización directa en base de datos si el validador en memoria rechaza el nuevo valor
+      try {
+        const existing = $app.db().newQuery("SELECT id FROM licenses WHERE company_id = {:comp} AND module_key = {:mod}")
+          .bind({ comp: safeComp, mod: safeMod })
+          .one();
+
+        if (existing && existing.id) {
+          $app.db().newQuery("UPDATE licenses SET enabled = {:enabled}, updated = datetime('now') WHERE id = {:id}")
+            .bind({ enabled: enabled ? 1 : 0, id: existing.id })
+            .execute();
+        } else {
+          const newId = $security.randomString(15);
+          $app.db().newQuery("INSERT INTO licenses (id, company_id, module_key, enabled, plan, created, updated) VALUES ({:id}, {:comp}, {:mod}, {:enabled}, 'perpetua', datetime('now'), datetime('now'))")
+            .bind({ id: newId, comp: safeComp, mod: safeMod, enabled: enabled ? 1 : 0 })
+            .execute();
+        }
+        saved = true;
+      } catch (dbErr) {
+        throw new Error("Error guardando licencia: " + dbErr.message);
+      }
     }
     e.json(200, { ok: true, message: "Licencia actualizada exitosamente" });
   } catch (err) {

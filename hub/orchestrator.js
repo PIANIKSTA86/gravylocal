@@ -310,6 +310,24 @@ onBootstrap((e) => {
 
       setVal("company_name", companyName);
       setVal("company_nit", companyNit);
+      setVal("company_dv", "");
+      setVal("company_address", "");
+      setVal("company_phone", "");
+      setVal("company_email", "${email}");
+      setVal("company_logo", "");
+      setVal("representante_legal_name", "");
+      setVal("contador_name", "");
+      setVal("contador_license", "");
+      setVal("revisor_fiscal_name", "");
+      setVal("revisor_fiscal_license", "");
+      setVal("smtp_sender_name", companyName);
+      setVal("smtp_sender_address", "");
+      setVal("smtp_username", "");
+      setVal("smtp_password", "");
+      setVal("invoice_header_text", "");
+      setVal("invoice_footer_text", "");
+      setVal("ftech_username", "");
+      setVal("ftech_password", "");
       setVal("tenant_initialized", "1");
 
       console.log("[GRAVY TENANT INIT] Configuración básica establecida.");

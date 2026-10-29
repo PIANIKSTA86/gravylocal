@@ -367,10 +367,12 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      max-width: 0;
+      overflow: hidden;
       opacity: 0;
       transform: translateX(-12px);
       pointer-events: none;
-      transition: opacity .22s .06s, transform .22s .06s cubic-bezier(.4, 0, .2, 1);
+      transition: max-width .22s, opacity .22s .06s, transform .22s .06s cubic-bezier(.4, 0, .2, 1);
       white-space: nowrap;
     }
 
@@ -509,6 +511,7 @@
     }
 
     #screen-app.sidebar-collapsed #topbar-brand {
+      max-width: 140px;
       opacity: 1;
       transform: translateX(0);
       pointer-events: auto;
@@ -2052,6 +2055,9 @@
           data-module="inventarios">
           <i class="fas fa-handshake"></i><span class="nav-label">Consignaciones</span>
         </div>
+        <div class="nav-item" data-page="inventario-devoluciones" data-label="Devoluciones" data-module="inventarios">
+          <i class="fas fa-arrow-right-arrow-left"></i><span class="nav-label">Devoluciones</span>
+        </div>
 
         <div class="nav-section" data-section="compras" data-label="Gestión de Compras" data-icon="fas fa-cart-shopping">
           <div class="nav-section-title">
@@ -2183,22 +2189,30 @@
           <i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Liquidación</span>
         </div>
 
-        <div class="nav-section" data-section="logistica" data-label="Logística e Importaciones" data-icon="fas fa-truck-fast">
+        <div class="nav-section" data-section="importaciones" data-label="Importaciones" data-icon="fas fa-ship">
           <div class="nav-section-title">
-            <i class="fas fa-truck-fast nav-section-icon"></i>
-            <span>Logística e Importaciones</span>
+            <i class="fas fa-ship nav-section-icon"></i>
+            <span>Importaciones</span>
           </div>
           <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
         </div>
-        <div class="nav-item" data-page="importaciones" data-label="Importaciones" data-module="logistica">
+        <div class="nav-item" data-page="importaciones" data-label="Importaciones" data-module="importaciones">
           <i class="fas fa-ship"></i><span class="nav-label">Importaciones</span>
         </div>
         <div class="nav-item" data-page="preliquidaciones" data-label="Preliquidación & Viabilidad"
-          data-module="logistica">
+          data-module="importaciones">
           <i class="fas fa-calculator"></i><span class="nav-label">Preliquidación & Viabilidad</span>
         </div>
-        <div class="nav-item" data-page="reservas-logistica" data-label="Reservas Importación" data-module="logistica">
+        <div class="nav-item" data-page="reservas-logistica" data-label="Reservas Importación" data-module="importaciones">
           <i class="fas fa-clipboard-check"></i><span class="nav-label">Reservas Importación</span>
+        </div>
+
+        <div class="nav-section" data-section="logistica" data-label="Logística" data-icon="fas fa-truck-fast">
+          <div class="nav-section-title">
+            <i class="fas fa-truck-fast nav-section-icon"></i>
+            <span>Logística</span>
+          </div>
+          <i class="fas fa-chevron-down text-[10px] section-chevron"></i>
         </div>
         <div class="nav-item" data-page="inventario-pallets" data-label="Embalaje" data-module="logistica">
           <i class="fas fa-pallet"></i><span class="nav-label">Embalaje</span>
@@ -2206,9 +2220,17 @@
         <div class="nav-item" data-page="despachos" data-label="Despachos" data-module="logistica">
           <i class="fas fa-truck"></i><span class="nav-label">Despachos y Entregas</span>
         </div>
-        <div class="nav-item" data-page="rutas-gestion" data-label="Control de Rutas" data-module="logistica"
-          id="nav-rutas-gestion">
-          <i class="fas fa-route"></i><span class="nav-label">Control de Rutas</span>
+        <div class="nav-item" data-page="rutas-monitoreo" data-label="Monitoreo Satelital" data-module="logistica"
+          id="nav-rutas-monitoreo">
+          <i class="fas fa-satellite-dish"></i><span class="nav-label">Monitoreo Satelital</span>
+        </div>
+        <div class="nav-item" data-page="rutas-control" data-label="Tablero de Control & Seguimiento" data-module="logistica"
+          id="nav-rutas-control">
+          <i class="fas fa-chart-line"></i><span class="nav-label">Tablero de Control & Seguimiento</span>
+        </div>
+        <div class="nav-item" data-page="rutas-planificador" data-label="Asignador & Planificador Masivo" data-module="logistica"
+          id="nav-rutas-planificador">
+          <i class="fas fa-calendar-plus"></i><span class="nav-label">Asignador & Planificador Masivo</span>
         </div>
 
         <div class="nav-section" data-section="nomina" data-label="Nómina y Talento" data-icon="fas fa-users-gear">
@@ -2324,14 +2346,14 @@
 
     <div class="flex-1 flex flex-col min-w-0">
       <header class="topbar">
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
           <button id="btn-menu-toggle" aria-label="Alternar menú"><i class="fas fa-bars"></i></button>
           <!-- Logo en topbar — visible solo cuando el sidebar está colapsado -->
           <div id="topbar-brand">
             <div class="brand-shell sm flex-shrink-0"><img src="/assets/gravy-logo.png" alt="GRAVY"></div>
             <strong>GRAVY</strong>
           </div>
-          <h2 class="text-lg font-bold" style="color:var(--text-strong)" id="page-title">Dashboard</h2>
+          <h2 class="text-base sm:text-lg font-bold truncate whitespace-nowrap" style="color:var(--text-strong)" id="page-title">Dashboard</h2>
 
           <!-- Buscador omnidireccional: Solo icono de Lupa (Ctrl + K) -->
           <button id="btn-omni-search"

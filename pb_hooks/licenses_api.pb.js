@@ -6,7 +6,7 @@ onBootstrap((e) => {
     if (modField) {
       const allNeeded = [
         "core", "contabilidad", "comercial", "crm", "nomina",
-        "copropiedades", "inmobiliarias", "logistica", "inventarios",
+        "copropiedades", "inmobiliarias", "importaciones", "logistica", "inventarios",
         "tesoreria", "tienda-virtual", "spa", "spa-belleza",
         "conciliacion", "niif", "activos_fijos", "full"
       ];
@@ -99,16 +99,37 @@ routerAdd("POST", "/api/gravy/toggle-license", (e) => {
       }
     } catch (_) {}
 
-    if (record) {
-      record.set("enabled", enabled);
-      $app.save(record);
-    } else {
-      record = new Record(licensesCol, {
-        module_key: moduleKey,
-        enabled: enabled,
-        plan: "perpetua"
-      });
-      $app.save(record);
+    try {
+      if (record) {
+        record.set("enabled", enabled);
+        $app.save(record);
+      } else {
+        record = new Record(licensesCol, {
+          module_key: moduleKey,
+          enabled: enabled,
+          plan: "perpetua"
+        });
+        $app.save(record);
+      }
+    } catch (saveErr) {
+      try {
+        const existing = $app.db().newQuery("SELECT id FROM licenses WHERE module_key = {:mod}")
+          .bind({ mod: moduleKey })
+          .one();
+
+        if (existing && existing.id) {
+          $app.db().newQuery("UPDATE licenses SET enabled = {:enabled}, updated = datetime('now') WHERE id = {:id}")
+            .bind({ enabled: enabled ? 1 : 0, id: existing.id })
+            .execute();
+        } else {
+          const newId = $security.randomString(15);
+          $app.db().newQuery("INSERT INTO licenses (id, module_key, enabled, plan, created, updated) VALUES ({:id}, {:mod}, {:enabled}, 'perpetua', datetime('now'), datetime('now'))")
+            .bind({ id: newId, mod: moduleKey, enabled: enabled ? 1 : 0 })
+            .execute();
+        }
+      } catch (dbErr) {
+        throw new Error("Error guardando licencia local: " + dbErr.message);
+      }
     }
 
     return e.json(200, { ok: true, message: `Módulo "${moduleKey}" ${enabled ? 'habilitado' : 'deshabilitado'} exitosamente.` });

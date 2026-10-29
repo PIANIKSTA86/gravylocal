@@ -1291,10 +1291,14 @@ async function renderPhCartera(c) {
         const unitSel = document.getElementById('ph-cartera-unit-filter') as HTMLSelectElement;
         const unitLabel = unitSel?.selectedOptions?.[0]?.textContent?.trim() || 'Todas las unidades';
         const toDate = (document.getElementById('ph-cartera-to') as HTMLInputElement)?.value || new Date().toISOString().slice(0, 10);
-        const companyName = String(sessionStorage.getItem('company_name') || 'COPROPIEDAD').trim();
+        const headerInfo = typeof getPdfHeaderContext === 'function'
+          ? await getPdfHeaderContext()
+          : (typeof (window as any).getActiveCompanyHeaderSync === 'function' ? (window as any).getActiveCompanyHeaderSync() : {});
+        const companyName = String(headerInfo?.companyName || sessionStorage.getItem('company_name') || 'COPROPIEDAD').trim();
+        const companyNit = String(headerInfo?.companyNit || '').trim();
 
         const aoa: any[][] = [];
-        aoa.push([companyName.toUpperCase()]);
+        aoa.push([companyName.toUpperCase(), companyNit ? `NIT: ${companyNit}` : '']);
         aoa.push(['SALDOS CUENTAS POR COBRAR PH POR CONCEPTO']);
         aoa.push([`Fecha de Corte: ${toDate}`, `Unidad: ${unitLabel}`, `Generado: ${new Date().toLocaleString('es-CO')}`]);
         aoa.push([]);
@@ -1508,13 +1512,17 @@ async function renderPhCartera(c) {
         const unitSel = document.getElementById('ph-cartera-unit-filter') as HTMLSelectElement;
         const unitLabel = unitSel?.selectedOptions?.[0]?.textContent?.trim() || 'Todas las unidades';
         const toDate = (document.getElementById('ph-cartera-to') as HTMLInputElement)?.value || new Date().toISOString().slice(0, 10);
-        const companyName = String(sessionStorage.getItem('company_name') || 'COPROPIEDAD').trim();
+        const headerInfo = typeof getPdfHeaderContext === 'function'
+          ? await getPdfHeaderContext()
+          : (typeof (window as any).getActiveCompanyHeaderSync === 'function' ? (window as any).getActiveCompanyHeaderSync() : {});
+        const companyName = String(headerInfo?.companyName || sessionStorage.getItem('company_name') || 'COPROPIEDAD').trim();
+        const companyNit = String(headerInfo?.companyNit || '').trim();
 
         const rows = lastAgingPdf.rows;
         const aoa: any[][] = [];
 
         // Encabezado institucional
-        aoa.push([companyName.toUpperCase()]);
+        aoa.push([companyName.toUpperCase(), companyNit ? `NIT: ${companyNit}` : '']);
         aoa.push(['CARTERA POR EDADES PH POR CONCEPTO Y UNIDAD HABITACIONAL']);
         aoa.push([`Fecha de Corte: ${toDate}`, `Filtro Unidad: ${unitLabel}`, `Generado: ${new Date().toLocaleString('es-CO')}`]);
         aoa.push([]);

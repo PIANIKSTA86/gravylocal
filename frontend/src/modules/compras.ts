@@ -463,6 +463,7 @@ async function _loadComprasPage(c: HTMLElement) {
       </div>
       ${(window as any).can('canWrite') ? `
         <div class="flex gap-2">
+          <button class="btn btn-outline border-blue-300 text-blue-700 bg-blue-50/50 hover:bg-blue-100" onclick="window.navigate('devoluciones')" title="Módulo Centralizado de Devoluciones"><i class="fas fa-arrow-right-arrow-left mr-1.5"></i> Devoluciones</button>
           <button class="btn btn-outline" id="btn-po-config" title="Configuración de compras"><i class="fas fa-gear"></i></button>
           <button class="btn btn-primary" id="btn-new-purchase"><i class="fas fa-plus"></i> Nueva Factura de Compra</button>
         </div>` : ''}

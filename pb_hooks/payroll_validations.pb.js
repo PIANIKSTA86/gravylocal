@@ -157,12 +157,14 @@ onRecordCreateRequest((e) => {
   }
 
   // 2. Validar que el empleado exista y esté ACTIVO
+  const colName = e.collection ? e.collection.name : (e.record.collection ? e.record.collection().name : "");
   if (employeeId) {
     try {
       const employee = $app.findRecordById("third_parties", employeeId);
       employeeName = (employee.getString ? employee.getString("name") : employee.get("name")) || "";
       const isActive = employee.getBool ? employee.getBool("active") : employee.get("active");
-      if (isActive === false) {
+      const novType = e.record.getString ? e.record.getString("type") : e.record.get("type");
+      if (isActive === false && !(colName === "payroll_novelties" && novType === "RETIRO")) {
         throw new BadRequestError(`El empleado ${employeeName} está inactivo y no puede recibir liquidaciones ni novedades de nómina.`);
       }
     } catch (err) {
@@ -177,7 +179,6 @@ onRecordCreateRequest((e) => {
   }
 
   // 4. Para payroll_lines: Validar unicidad (un solo registro por empleado por período)
-  const colName = e.collection ? e.collection.name : (e.record.collection ? e.record.collection().name : "");
   if (colName === "payroll_lines" && periodId && employeeId) {
     try {
       const existing = $app.findFirstRecordByFilter(
@@ -347,7 +348,8 @@ onRecordUpdateRequest((e) => {
   }
 
   // 2. Validar que el empleado esté activo
-  if (employeeId) {
+  const colName = e.collection ? e.collection.name : (e.record.collection ? e.record.collection().name : "");
+  if (employeeId && colName === "payroll_lines") {
     try {
       const employee = $app.findRecordById("third_parties", employeeId);
       employeeName = (employee.getString ? employee.getString("name") : employee.get("name")) || "";

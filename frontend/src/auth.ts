@@ -131,8 +131,9 @@ function applyModuleVisibility(): void {
     'copro-unidades':   'copropiedades',
     'copro-reservas':   'copropiedades',
     'copro-pqrs':       'copropiedades',
-    'importaciones':    'logistica',
-    'reservas-logistica':'logistica',
+    'importaciones':      'importaciones',
+    'preliquidaciones':   'importaciones',
+    'reservas-logistica': 'importaciones',
     'inmobiliarias':    'inmobiliarias',
     'inmo-contratos':   'inmobiliarias',
     'inmo-mantenimientos': 'inmobiliarias',
@@ -141,6 +142,9 @@ function applyModuleVisibility(): void {
     'tienda-virtual':   'tienda-virtual',
     'crm':              'crm',
     'despachos':        'logistica',
+    'rutas-monitoreo':  'logistica',
+    'rutas-control':    'logistica',
+    'rutas-planificador':'logistica',
     'mis-rutas':        'logistica',
     'rutas-gestion':    'logistica',
     'rutas-vendedores': 'logistica',
@@ -168,7 +172,7 @@ function applyModuleVisibility(): void {
 
   // Páginas permitidas por rol restringido
   const CAJERO_PAGES = new Set(['pos', 'dashboard']);
-  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'comisiones', 'crm', 'tienda-virtual', 'spa', 'spa-belleza', 'mis-reservas', 'productos', 'rutas-gestion', 'dashboard']);
+  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'comisiones', 'crm', 'tienda-virtual', 'spa', 'spa-belleza', 'mis-reservas', 'productos', 'dashboard']);
   const PROPIETARIO_PAGES = new Set(['copro-reservas', 'copro-pqrs', 'dashboard']);
 
   $$('#nav-menu .nav-item').forEach((item: any) => {
@@ -751,6 +755,14 @@ async function selectCompany(co: CompanyAccess) {
     ENABLED_MODULES = new Set(['core', ...(co.modules || [])]);
     (window as any).ENABLED_MODULES = ENABLED_MODULES;
     localStorage.setItem('gravy_active_company', JSON.stringify(co));
+    if (typeof (window as any).syncActiveCompanyCache === 'function') {
+      (window as any).syncActiveCompanyCache({
+        clear: true,
+        companyName: co.company_name || '',
+        companyNit: (co as any).company_nit || (co as any).nit || '',
+        companyAddress: (co as any).company_address || ''
+      });
+    }
     
     // Registrar evento de LOGIN en la auditoría
     try {
@@ -786,6 +798,9 @@ async function doHubLogout() {
     } catch (_) {}
   }
   pb.logout();
+  if (typeof (window as any).syncActiveCompanyCache === 'function') {
+    (window as any).syncActiveCompanyCache({ clear: true });
+  }
   localStorage.removeItem('gravy_hub_token');
   localStorage.removeItem('gravy_active_company');
   localStorage.removeItem('gravy_last_activity');
@@ -828,6 +843,9 @@ async function doLogout(reason: string | Event = 'Cierre de sesión manual') {
     } catch (_) {}
   }
   pb.logout();
+  if (typeof (window as any).syncActiveCompanyCache === 'function') {
+    (window as any).syncActiveCompanyCache({ clear: true });
+  }
   localStorage.removeItem('active_branch_id');
   localStorage.removeItem('gravy_last_activity');
   if (typeof (window as any).clearTabsState === 'function') {
@@ -1150,6 +1168,51 @@ async function showApp() {
   $('#topbar-date').textContent    = new Date().toLocaleDateString('es-CO', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
+
+  if (typeof (window as any).syncActiveCompanyCache === 'function') {
+    (window as any).syncActiveCompanyCache({
+      clear: true,
+      companyName: activeCompany.company_name || '',
+      companyNit: activeCompany.company_nit || activeCompany.nit || '',
+      companyAddress: activeCompany.company_address || ''
+    });
+  }
+
+  // Hidratar en segundo plano los datos reales de la empresa desde settings del tenant activo
+  (async () => {
+    try {
+      const apiObj = (window as any).API;
+      if (!apiObj || typeof apiObj.getSetting !== 'function') return;
+      const [cName, cNit, cDv, cAddr, cCity, cCountry] = await Promise.all([
+        apiObj.getSetting('company_name').catch(() => ''),
+        apiObj.getSetting('company_nit').catch(() => ''),
+        apiObj.getSetting('company_dv').catch(() => ''),
+        apiObj.getSetting('company_address').catch(() => ''),
+        apiObj.getSetting('company_city').catch(() => ''),
+        apiObj.getSetting('company_country').catch(() => ''),
+      ]);
+      const finalName = String(cName || activeCompany.company_name || '').trim();
+      let finalNit = String(cNit || activeCompany.company_nit || activeCompany.nit || '').trim();
+      const dvStr = String(cDv || '').trim();
+      if (finalNit && dvStr && !finalNit.includes('-')) {
+        finalNit = `${finalNit}-${dvStr}`;
+      }
+      const finalAddress = [cAddr, cCity, cCountry]
+        .map((v: any) => String(v || '').trim())
+        .filter(Boolean)
+        .join(' · ');
+      if (typeof (window as any).syncActiveCompanyCache === 'function') {
+        (window as any).syncActiveCompanyCache({
+          companyName: finalName,
+          companyNit: finalNit,
+          companyAddress: finalAddress,
+        });
+      }
+      if (finalName && $('#topbar-company')) {
+        $('#topbar-company').textContent = finalName;
+      }
+    } catch (_) {}
+  })();
 
   // Apply user topbar color
   const topbarEl = document.querySelector('.topbar') as HTMLElement;

@@ -333,7 +333,7 @@ function getIconForDocumentTitle(title: string): string {
 // tabKey opcional: fija la pestaña destino cuando el título cambia entre llamadas
 // sucesivas del mismo flujo (ej: "Verificando..." -> "Modificar — N°123"), evitando
 // que cada título genere un slug distinto y quede la pestaña de carga huérfana.
-function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide = false, tabKey: string | null = null) {
+function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide: any = false, tabKey: string | null = null, forceDialog = false) {
   const titleClean = String(title || '').replace(/<[^>]*>/g, '').trim();
 
   let compiledFooterHtml = '';
@@ -366,7 +366,7 @@ function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide =
   }
 
   const titleLower = titleClean.toLowerCase();
-  const isDocumentForm = wide || 
+  const isDocumentForm = !forceDialog && (wide || 
     titleLower.includes('factura') || 
     titleLower.includes('tercero') || 
     titleLower.includes('producto') || 
@@ -384,7 +384,7 @@ function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide =
     titleLower.includes('cotización') || 
     titleLower.includes('crear') || 
     titleLower.includes('nuevo') || 
-    titleLower.includes('nueva');
+    titleLower.includes('nueva'));
 
   if (isDocumentForm && typeof (window as any).openDocumentTab === 'function') {
     const slug = titleClean.toLowerCase()
@@ -422,21 +422,22 @@ function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide =
     overlay.style.alignItems = 'center';
     overlay.style.justifyContent = 'center';
     overlay.style.padding = '16px';
+    overlay.style.overflowY = 'auto';
     activePane.appendChild(overlay);
   }
 
   overlay.innerHTML = `
-    <div class="modal-box bg-white rounded-2xl p-6 shadow-2xl ${wide ? 'wide max-w-4xl' : 'max-w-xl'} w-full border border-gray-200 anim-fade" style="border-color:#E2E8F0">
-      <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+    <div class="modal-box bg-white rounded-2xl p-4 sm:p-5 shadow-2xl ${wide ? 'wide max-w-4xl' : 'max-w-xl'} w-full border border-gray-200 anim-fade my-auto" style="border-color:#E2E8F0; max-height: calc(100vh - 36px); display: flex; flex-direction: column;">
+      <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-gray-200 flex-shrink-0">
         <h4 class="text-base font-bold text-gray-900">${esc(titleClean)}</h4>
         <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">
           <i class="fas fa-xmark"></i>
         </button>
       </div>
-      <div class="modal-body max-h-[70vh] overflow-y-auto py-2">
+      <div class="modal-body flex-1 overflow-y-auto py-1 pr-1" style="max-height: calc(100vh - 150px);">
         ${bodyHtml}
       </div>
-      <div class="modal-footer pt-4 mt-4 border-t border-gray-200 flex items-center justify-end gap-2">
+      <div class="modal-footer pt-3 mt-2.5 border-t border-gray-200 flex items-center justify-end gap-2 flex-shrink-0">
         ${compiledFooterHtml}
       </div>
     </div>
@@ -1396,6 +1397,120 @@ function parseSubtitlesFromFilename(filename: string): string[] {
   return subs;
 }
 
+function syncActiveCompanyCache(info?: {
+  companyName?: string;
+  companyNit?: string;
+  companyAddress?: string;
+  clear?: boolean;
+}) {
+  if (!info || info.clear) {
+    delete (window as any).COMPANY_NAME_CACHE;
+    delete (window as any).COMPANY_NIT_CACHE;
+    delete (window as any).COMPANY_ADDRESS_CACHE;
+    try {
+      localStorage.removeItem('active_company_name');
+      localStorage.removeItem('active_company_nit');
+      localStorage.removeItem('active_company_address');
+      localStorage.removeItem('company_name');
+      localStorage.removeItem('company_nit');
+      localStorage.removeItem('company_address');
+      sessionStorage.removeItem('company_name');
+      sessionStorage.removeItem('company_nit');
+      sessionStorage.removeItem('company_address');
+    } catch (_) {}
+    if (!info || Object.keys(info).length === 1) return;
+  }
+
+  const name = String(info.companyName ?? '').trim();
+  const nit = String(info.companyNit ?? '').trim();
+  const addr = String(info.companyAddress ?? '').trim();
+
+  if (name) {
+    (window as any).COMPANY_NAME_CACHE = name;
+    try {
+      localStorage.setItem('active_company_name', name);
+      localStorage.setItem('company_name', name);
+      sessionStorage.setItem('company_name', name);
+    } catch (_) {}
+  }
+  if (info.companyNit !== undefined) {
+    (window as any).COMPANY_NIT_CACHE = nit;
+    try {
+      localStorage.setItem('active_company_nit', nit);
+      localStorage.setItem('company_nit', nit);
+      sessionStorage.setItem('company_nit', nit);
+    } catch (_) {}
+  }
+  if (info.companyAddress !== undefined) {
+    (window as any).COMPANY_ADDRESS_CACHE = addr;
+    try {
+      localStorage.setItem('active_company_address', addr);
+      localStorage.setItem('company_address', addr);
+      sessionStorage.setItem('company_address', addr);
+    } catch (_) {}
+  }
+
+  try {
+    const rawComp = localStorage.getItem('gravy_active_company');
+    if (rawComp) {
+      const parsed = JSON.parse(rawComp);
+      if (parsed && typeof parsed === 'object') {
+        if (name) parsed.company_name = name;
+        if (info.companyNit !== undefined) parsed.company_nit = nit;
+        if (info.companyAddress !== undefined) parsed.company_address = addr;
+        localStorage.setItem('gravy_active_company', JSON.stringify(parsed));
+      }
+    }
+  } catch (_) {}
+}
+
+function getActiveCompanyHeaderSync(optObj: any = {}) {
+  let activeComp: any = null;
+  try {
+    const rawComp = localStorage.getItem('gravy_active_company');
+    if (rawComp) activeComp = JSON.parse(rawComp);
+  } catch (_) {}
+
+  const topbarName = String(document.getElementById('topbar-company')?.textContent || '').trim();
+  const validTopbarName = topbarName && topbarName.toLowerCase() !== 'cargando...' ? topbarName : '';
+
+  const companyName = String(
+    optObj.companyName ||
+    (window as any).COMPANY_NAME_CACHE ||
+    localStorage.getItem('active_company_name') ||
+    sessionStorage.getItem('company_name') ||
+    activeComp?.company_name ||
+    activeComp?.name ||
+    validTopbarName ||
+    localStorage.getItem('company_name') ||
+    'EMPRESA'
+  ).trim();
+
+  const companyNit = String(
+    optObj.companyNit ||
+    (window as any).COMPANY_NIT_CACHE ||
+    localStorage.getItem('active_company_nit') ||
+    sessionStorage.getItem('company_nit') ||
+    activeComp?.company_nit ||
+    activeComp?.nit ||
+    localStorage.getItem('company_nit') ||
+    ''
+  ).trim();
+
+  const companyAddress = String(
+    optObj.companyAddress ||
+    (window as any).COMPANY_ADDRESS_CACHE ||
+    localStorage.getItem('active_company_address') ||
+    sessionStorage.getItem('company_address') ||
+    activeComp?.company_address ||
+    activeComp?.address ||
+    localStorage.getItem('company_address') ||
+    ''
+  ).trim();
+
+  return { companyName, companyNit, companyAddress };
+}
+
 /* ── Exportar a Excel ────────────────────────────────────── */
 function exportToExcel(data, headers, filename, options?: any) {
   let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`;
@@ -1435,9 +1550,7 @@ function exportToExcel(data, headers, filename, options?: any) {
   const branchName = optObj.branchName || (typeof (window as any).getScopeBranchNameSync === 'function' ? (window as any).getScopeBranchNameSync(optObj.branchId) : null) || (localStorage.getItem('active_branch_id') === 'TODAS' || !localStorage.getItem('active_branch_id') ? 'Todas las sucursales' : localStorage.getItem('active_branch_id'));
   const costCenterName = optObj.costCenterName || (typeof (window as any).getScopeCostCenterNameSync === 'function' ? (window as any).getScopeCostCenterNameSync(optObj.costCenterId) : null) || (localStorage.getItem('active_cost_center_id') === 'TODOS' || !localStorage.getItem('active_cost_center_id') ? 'Todos los centros de costo' : localStorage.getItem('active_cost_center_id'));
 
-  const companyName = optObj.companyName || (window as any).COMPANY_NAME_CACHE || localStorage.getItem('active_company_name') || localStorage.getItem('company_name') || 'DOMESTIKO SAS';
-  const companyNit = optObj.companyNit || (window as any).COMPANY_NIT_CACHE || localStorage.getItem('active_company_nit') || localStorage.getItem('company_nit') || '';
-  const companyAddress = optObj.companyAddress || (window as any).COMPANY_ADDRESS_CACHE || localStorage.getItem('active_company_address') || localStorage.getItem('company_address') || '';
+  const { companyName, companyNit, companyAddress } = getActiveCompanyHeaderSync(optObj);
 
   const title = optObj.title || parseTitleFromFilename(fnameStr);
   const parsedSubtitles = parseSubtitlesFromFilename(fnameStr);
@@ -1568,6 +1681,8 @@ function setInputVal(id, v){ const el = $(`#${id}`); if (el) el.value = v ?? '';
 (window as any)._lineCommentState = _lineCommentState;
 (window as any).fmt = fmt;
 (window as any).exportToExcel = exportToExcel;
+(window as any).syncActiveCompanyCache = syncActiveCompanyCache;
+(window as any).getActiveCompanyHeaderSync = getActiveCompanyHeaderSync;
 (window as any).getSelectVal = getSelectVal;
 (window as any)._fmtCOP = _fmtCOP;
 (window as any).esc = esc;

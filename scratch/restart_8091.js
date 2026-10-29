@@ -1,12 +1,22 @@
 const { execSync } = require('child_process');
-const http = require('http');
 
-console.log('Killing old PocketBase process 6388...');
+console.log('Finding and killing process on port 8091...');
 try {
-  execSync('taskkill /PID 6388 /F');
-  console.log('Process 6388 killed.');
+  const netstat = execSync('netstat -ano | findstr :8091', { encoding: 'utf8' });
+  const lines = netstat.trim().split('\n');
+  const pids = new Set();
+  lines.forEach(line => {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 5 && parts[1].includes(':8091') && parts[3] === 'LISTENING') {
+      pids.add(parts[4]);
+    }
+  });
+  pids.forEach(pid => {
+    console.log('Killing PID:', pid);
+    try { execSync(`taskkill /PID ${pid} /F`); } catch (_) {}
+  });
 } catch (e) {
-  console.log('Error or process already dead:', e.message);
+  console.log('Notice finding PID on 8091:', e.message);
 }
 
 setTimeout(async () => {
@@ -19,7 +29,6 @@ setTimeout(async () => {
     console.error('Orchestrator ensure failed:', err.message);
   }
   
-  // Wait 3 seconds for startup
   setTimeout(async () => {
     try {
       const h = await fetch('http://127.0.0.1:8091/api/health');
@@ -28,4 +37,4 @@ setTimeout(async () => {
       console.error('8091 not up yet:', err.message);
     }
   }, 3000);
-}, 2000);
+}, 1500);

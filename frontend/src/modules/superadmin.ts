@@ -200,13 +200,23 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
                 </div>
               </div>
 
+              <!-- Card Importaciones -->
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="importaciones" style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(2,132,199,0.1);display:flex;align-items:center;justify-content:center;color:#0284C7;flex-shrink:0"><i class="fas fa-ship"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Importaciones</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Comercio exterior y contenedores</p>
+                </div>
+              </div>
+
               <!-- Card Logística -->
               <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
                 <input type="checkbox" class="new-comp-mod" value="logistica" style="display:none">
-                <div style="width:30px;height:30px;border-radius:8px;background:rgba(59,130,246,0.1);display:flex;align-items:center;justify-content:center;color:#3B82F6;flex-shrink:0"><i class="fas fa-ship"></i></div>
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(59,130,246,0.1);display:flex;align-items:center;justify-content:center;color:#3B82F6;flex-shrink:0"><i class="fas fa-truck-fast"></i></div>
                 <div>
                   <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Logística</p>
-                  <p style="font-size:10px;color:#6B7280;margin:0">Importaciones, despachos</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Embalaje, despachos y rutas</p>
                 </div>
               </div>
 
@@ -562,7 +572,8 @@ async function _loadSALicenses(targetCompanyId?: string) {
     tesoreria:     { label: 'Tesorería',     icon: 'fa-landmark',   color: '#F59E0B', desc: 'Cajas y bancos' },
     conciliacion:  { label: 'Conciliación Bancaria', icon: 'fa-scale-balanced', color: '#6366F1', desc: 'Cotejo de extractos' },
     nomina:        { label: 'Nómina',        icon: 'fa-id-card',    color: '#7C3AED', desc: 'Empleados y liquidaciones' },
-    logistica:     { label: 'Logística',     icon: 'fa-ship',       color: '#3B82F6', desc: 'Importaciones y despachos' },
+    importaciones: { label: 'Importaciones', icon: 'fa-ship',       color: '#0284C7', desc: 'Comercio exterior y contenedores' },
+    logistica:     { label: 'Logística',     icon: 'fa-truck-fast', color: '#3B82F6', desc: 'Despachos, flota y telemetría de rutas' },
     copropiedades: { label: 'Copropiedades', icon: 'fa-city',       color: '#F59E0B', desc: 'Propiedad horizontal' },
     inmobiliarias: { label: 'Inmobiliaria',  icon: 'fa-house-chimney-window', color: '#EC4899', desc: 'Contratos y arriendos' },
     niif:          { label: 'Normas NIIF',   icon: 'fa-scale-balanced', color: '#2446B8', desc: 'Políticas y NIIF 16' },
@@ -613,7 +624,7 @@ async function _loadSALicenses(targetCompanyId?: string) {
     (data.items || []).forEach((m: any) => licMap[m.module_key] = m);
 
     const ORDER = [
-      'core', 'contabilidad', 'comercial', 'inventarios', 'tesoreria', 'conciliacion', 'nomina', 'logistica',
+      'core', 'contabilidad', 'comercial', 'inventarios', 'tesoreria', 'conciliacion', 'nomina', 'importaciones', 'logistica',
       'activos_fijos', 'niif', 'copropiedades', 'inmobiliarias',
       'crm', 'tienda-virtual', 'spa', 'spa-belleza'
     ];

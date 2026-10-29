@@ -6,15 +6,24 @@
  * Corrige y normaliza la atribución de vendedor (seller_id) y estado (status).
  */
 
-function getAuthUser(e) {
+// Helpers globales y exportados
+function _gravyGetAuthUser(e) {
   try {
-    return e.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(e).authRecord : null);
-  } catch (_) {
-    return null;
-  }
+    if (!e) return null;
+    if (e.auth) return e.auth;
+    if (typeof e.requestInfo === "function") {
+      const info = e.requestInfo();
+      if (info && info.auth) return info.auth;
+    }
+    if (typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+      const info = $apis.requestInfo(e);
+      if (info && (info.authRecord || info.auth)) return info.authRecord || info.auth;
+    }
+  } catch (_) {}
+  return null;
 }
 
-function resolveSellerForUser(userRecord) {
+function _gravyResolveSellerForUser(userRecord) {
   if (!userRecord) return null;
   const userEmail = userRecord.getString("email") || "";
   const userName = userRecord.getString("name") || "";
@@ -29,10 +38,12 @@ function resolveSellerForUser(userRecord) {
   }
 
   // 2. Buscar por advisor = user.id en third_parties
-  try {
-    const tp = $app.findFirstRecordByFilter("third_parties", "advisor = {:uid}", { uid: userId });
-    if (tp) return tp;
-  } catch (_) {}
+  if (userId) {
+    try {
+      const tp = $app.findFirstRecordByFilter("third_parties", "advisor = {:uid}", { uid: userId });
+      if (tp) return tp;
+    } catch (_) {}
+  }
 
   // 3. Buscar por nombre aproximado
   if (userName) {
@@ -42,13 +53,45 @@ function resolveSellerForUser(userRecord) {
     } catch (_) {}
   }
 
+  // 4. Buscar por coincidencia de apellido / username en email
+  try {
+    const handle = (userEmail.split("@")[0] || "").toLowerCase();
+    if (handle.length >= 3) {
+      const candidates = $app.findRecordsByFilter("third_parties", "type = 'EMPLEADO' || type = 'VENDEDOR'", "", 50, 0);
+      for (let c of candidates) {
+        if (!c) continue;
+        const cName = (c.getString("name") || "").toLowerCase();
+        if (cName.includes(handle.slice(1)) || cName.includes(handle)) {
+          return c;
+        }
+      }
+    }
+  } catch (_) {}
+
   return null;
 }
 
-// Interceptar creación de logs de telemetría (seller_tracking_logs)
+// 1. Interceptar creación de logs de telemetría (seller_tracking_logs)
 onRecordCreateRequest((e) => {
   const log = e.record;
-  const authUser = getAuthUser(e);
+  if (!log) return e.next();
+
+  const authUser = (typeof _gravyGetAuthUser === "function" ? _gravyGetAuthUser(e) : null) || (function(ev) {
+    try {
+      if (!ev) return null;
+      if (ev.auth) return ev.auth;
+      if (typeof ev.requestInfo === "function") {
+        const info = ev.requestInfo();
+        if (info && info.auth) return info.auth;
+      }
+      if (typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+        const info = $apis.requestInfo(ev);
+        if (info && (info.authRecord || info.auth)) return info.authRecord || info.auth;
+      }
+    } catch (_) {}
+    return null;
+  })(e);
+
   const nowStr = new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19);
 
   // Normalizar status
@@ -60,12 +103,29 @@ onRecordCreateRequest((e) => {
   if (authUser) {
     // Mantener la sesión activa en tiempo real mientras el móvil reporte
     try {
-      authUser.set("last_activity_at", nowStr);
-      $app.save(authUser);
+      $app.db().newQuery("UPDATE users SET last_activity_at = {:now} WHERE id = {:id}").bind({ now: nowStr, id: authUser.id }).execute();
     } catch (_) {}
 
     // Validar y corregir seller_id si no coincide con el usuario autenticado
-    const sellerTp = resolveSellerForUser(authUser);
+    const sellerTp = (typeof _gravyResolveSellerForUser === "function" ? _gravyResolveSellerForUser(authUser) : null) || (function(u) {
+      if (!u) return null;
+      const em = u.getString("email") || "";
+      const uid = u.id;
+      if (em) {
+        try {
+          const tp = $app.findFirstRecordByFilter("third_parties", "email = {:email} || email2 = {:email}", { email: em });
+          if (tp) return tp;
+        } catch (_) {}
+      }
+      if (uid) {
+        try {
+          const tp = $app.findFirstRecordByFilter("third_parties", "advisor = {:uid}", { uid: uid });
+          if (tp) return tp;
+        } catch (_) {}
+      }
+      return null;
+    })(authUser);
+
     if (sellerTp) {
       const currentSellerId = log.getString("seller_id");
       if (!currentSellerId || currentSellerId !== sellerTp.id) {
@@ -74,12 +134,14 @@ onRecordCreateRequest((e) => {
     }
   }
 
-  e.next();
+  return e.next();
 }, "seller_tracking_logs");
 
-// Sincronizar hacia seller_live_locations tras crear log en seller_tracking_logs
+// 2. Sincronizar hacia seller_live_locations tras crear log en seller_tracking_logs
 onRecordAfterCreateSuccess((e) => {
   const log = e.record;
+  if (!log) return;
+
   const sellerId = log.getString("seller_id");
   if (!sellerId) return;
 
@@ -103,7 +165,22 @@ onRecordAfterCreateSuccess((e) => {
       sellerName = seller.getString("name") || "";
     } catch (_) {}
 
-    const authUser = getAuthUser(e);
+    const authUser = (typeof _gravyGetAuthUser === "function" ? _gravyGetAuthUser(e) : null) || (function(ev) {
+      try {
+        if (!ev) return null;
+        if (ev.auth) return ev.auth;
+        if (typeof ev.requestInfo === "function") {
+          const info = ev.requestInfo();
+          if (info && info.auth) return info.auth;
+        }
+        if (typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+          const info = $apis.requestInfo(ev);
+          if (info && (info.authRecord || info.auth)) return info.authRecord || info.auth;
+        }
+      } catch (_) {}
+      return null;
+    })(e);
+
     const userId = authUser ? authUser.id : "";
 
     if (liveRec) {
@@ -132,10 +209,27 @@ onRecordAfterCreateSuccess((e) => {
   }
 }, "seller_tracking_logs");
 
-// Interceptar escrituras directas a seller_live_locations (móvil)
+// 3. Interceptar escrituras directas a seller_live_locations (móvil)
 onRecordCreateRequest((e) => {
   const rec = e.record;
-  const authUser = getAuthUser(e);
+  if (!rec) return e.next();
+
+  const authUser = (typeof _gravyGetAuthUser === "function" ? _gravyGetAuthUser(e) : null) || (function(ev) {
+    try {
+      if (!ev) return null;
+      if (ev.auth) return ev.auth;
+      if (typeof ev.requestInfo === "function") {
+        const info = ev.requestInfo();
+        if (info && info.auth) return info.auth;
+      }
+      if (typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+        const info = $apis.requestInfo(ev);
+        if (info && (info.authRecord || info.auth)) return info.authRecord || info.auth;
+      }
+    } catch (_) {}
+    return null;
+  })(e);
+
   const nowStr = new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19);
 
   let rawStatus = (rec.getString("status") || "EN_TRANSITO").toUpperCase();
@@ -146,23 +240,58 @@ onRecordCreateRequest((e) => {
   if (authUser) {
     rec.set("user_id", authUser.id);
     try {
-      authUser.set("last_activity_at", nowStr);
-      $app.save(authUser);
+      $app.db().newQuery("UPDATE users SET last_activity_at = {:now} WHERE id = {:id}").bind({ now: nowStr, id: authUser.id }).execute();
     } catch (_) {}
 
-    const sellerTp = resolveSellerForUser(authUser);
+    const sellerTp = (typeof _gravyResolveSellerForUser === "function" ? _gravyResolveSellerForUser(authUser) : null) || (function(u) {
+      if (!u) return null;
+      const em = u.getString("email") || "";
+      const uid = u.id;
+      if (em) {
+        try {
+          const tp = $app.findFirstRecordByFilter("third_parties", "email = {:email} || email2 = {:email}", { email: em });
+          if (tp) return tp;
+        } catch (_) {}
+      }
+      if (uid) {
+        try {
+          const tp = $app.findFirstRecordByFilter("third_parties", "advisor = {:uid}", { uid: uid });
+          if (tp) return tp;
+        } catch (_) {}
+      }
+      return null;
+    })(authUser);
+
     if (sellerTp) {
       rec.set("seller_id", sellerTp.id);
       rec.set("seller_name", sellerTp.getString("name"));
     }
   }
 
-  e.next();
+  return e.next();
 }, "seller_live_locations");
 
+// 4. Interceptar actualizaciones de seller_live_locations (móvil PATCH)
 onRecordUpdateRequest((e) => {
   const rec = e.record;
-  const authUser = getAuthUser(e);
+  if (!rec) return e.next();
+
+  const authUser = (typeof _gravyGetAuthUser === "function" ? _gravyGetAuthUser(e) : null) || (function(ev) {
+    try {
+      if (!ev) return null;
+      if (ev.auth) return ev.auth;
+      if (typeof ev.requestInfo === "function") {
+        const info = ev.requestInfo();
+        if (info && info.auth) return info.auth;
+      }
+      if (typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+        const info = $apis.requestInfo(ev);
+        if (info && (info.authRecord || info.auth)) return info.authRecord || info.auth;
+      }
+    } catch (_) {}
+    return null;
+  })(e);
+
   const nowStr = new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19);
 
   let rawStatus = (rec.getString("status") || "EN_TRANSITO").toUpperCase();
@@ -170,12 +299,11 @@ onRecordUpdateRequest((e) => {
     rec.set("status", "EN_TRANSITO");
   }
 
-  if (authUser) {
+  if (authUser && authUser.id) {
     try {
-      authUser.set("last_activity_at", nowStr);
-      $app.save(authUser);
+      $app.db().newQuery("UPDATE users SET last_activity_at = {:now} WHERE id = {:id}").bind({ now: nowStr, id: authUser.id }).execute();
     } catch (_) {}
   }
 
-  e.next();
+  return e.next();
 }, "seller_live_locations");

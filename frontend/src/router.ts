@@ -52,6 +52,7 @@ declare var renderDespachos: any;
 declare var renderRutasVisitas: any;
 declare var renderMisReservasVendedor: any;
 declare var renderOrdenesCompra: any;
+declare var renderDevoluciones: any;
 
 const MAX_TABS = 8;
 
@@ -98,10 +99,12 @@ const PAGE_TITLES: Record<string, string> = {
   'inventario-kardex': 'Kardex Valorizado',
   'inventario-bodegas': 'Gestión de Bodegas',
   'inventario-consignaciones': 'Inventario en Consignación',
+  'inventario-devoluciones': 'Devoluciones de Mercancías',
   inventario:        'Stock de Inventario',
   compras:           'Compras de Bienes y Servicios',
   'ordenes-compra':  'Órdenes de Compra',
   'compra-sugerida':  'Compra Sugerida',
+  devoluciones:      'Devoluciones de Mercancías',
   ventas:            'Ventas y Facturación Comercial',
   pedidos:           'Pedidos y Cotizaciones',
   'mis-reservas':    'Mis Reservas de Preventa',
@@ -127,9 +130,12 @@ const PAGE_TITLES: Record<string, string> = {
   'inmo-liquidacion': 'Liquidación de Arrendamiento',
   crm:               'Seguimiento de Ventas (CRM)',
   despachos:         'Gestión de Despachos y Entregas',
-  'mis-rutas':       'Control y Planificación de Rutas',
-  'rutas-gestion':   'Control y Planificación de Rutas',
-  'rutas-vendedores':'Control y Planificación de Rutas',
+  'rutas-monitoreo':   'Monitoreo Satelital en Tiempo Real',
+  'rutas-control':     'Tablero de Control & Seguimiento',
+  'rutas-planificador':'Asignador & Planificador Masivo',
+  'mis-rutas':         'Tablero de Control & Seguimiento',
+  'rutas-gestion':     'Tablero de Control & Seguimiento',
+  'rutas-vendedores':  'Tablero de Control & Seguimiento',
   niif:              'Gestión NIIF (IFRS)',
   'niif-diagnostico': 'Diagnóstico NIIF',
   'niif-politicas':   'Políticas Contables NIIF',
@@ -165,10 +171,12 @@ const PAGE_ICONS: Record<string, string> = {
   'inventario-kardex': 'fa-table-list',
   'inventario-bodegas': 'fa-warehouse',
   'inventario-consignaciones': 'fa-handshake',
+  'inventario-devoluciones': 'fa-arrow-right-arrow-left',
   inventario: 'fa-warehouse',
   compras: 'fa-cart-flatbed',
   'ordenes-compra': 'fa-clipboard-list',
   'compra-sugerida': 'fa-wand-magic-sparkles',
+  devoluciones: 'fa-arrow-right-arrow-left',
   crm: 'fa-funnel-dollar',
   pedidos: 'fa-file-signature',
   ventas: 'fa-receipt',
@@ -197,9 +205,12 @@ const PAGE_ICONS: Record<string, string> = {
   'mis-reservas': 'fa-boxes-packing',
   'reservas-logistica': 'fa-clipboard-check',
   despachos: 'fa-truck',
-  'mis-rutas': 'fa-route',
-  'rutas-gestion': 'fa-calendar-check',
-  'rutas-vendedores': 'fa-route',
+  'rutas-monitoreo': 'fa-satellite-dish',
+  'rutas-control': 'fa-chart-line',
+  'rutas-planificador': 'fa-calendar-plus',
+  'mis-rutas': 'fa-chart-line',
+  'rutas-gestion': 'fa-chart-line',
+  'rutas-vendedores': 'fa-chart-line',
   'nomina-empleados': 'fa-users-gear',
   'nomina-contratos': 'fa-file-contract',
   'nomina-periodos': 'fa-calendar-days',
@@ -239,7 +250,7 @@ const MODULE_LICENSE: Record<string, string> = {
   'ventas':           'comercial',
   'pedidos':          'comercial',
   'mis-reservas':     'comercial',
-  'reservas-logistica':'logistica',
+  'reservas-logistica':'importaciones',
   'tienda-virtual':   'tienda-virtual',
   'compras':          'inventarios',
   'productos':        'inventarios',
@@ -278,8 +289,8 @@ const MODULE_LICENSE: Record<string, string> = {
   'copro-unidades':    'copropiedades',
   'copro-reservas':    'copropiedades',
   'copro-pqrs':        'copropiedades',
-  'importaciones':     'logistica',
-  'preliquidaciones':  'logistica',
+  'importaciones':     'importaciones',
+  'preliquidaciones':  'importaciones',
   'inmobiliarias':     'inmobiliarias',
   'inmo-contratos':    'inmobiliarias',
   'inmo-mantenimientos':'inmobiliarias',
@@ -287,6 +298,9 @@ const MODULE_LICENSE: Record<string, string> = {
   'inmo-liquidacion':  'inmobiliarias',
   'crm':               'crm',
   'despachos':         'logistica',
+  'rutas-monitoreo':   'logistica',
+  'rutas-control':     'logistica',
+  'rutas-planificador':'logistica',
   'mis-rutas':         'logistica',
   'rutas-gestion':     'logistica',
   'rutas-vendedores':  'logistica',
@@ -310,7 +324,8 @@ const MODULE_LABELS: Record<string, string> = {
   nomina:        'Nómina',
   copropiedades: 'Copropiedades',
   inmobiliarias: 'Gestión Inmobiliaria',
-  logistica:     'Logística e Importaciones',
+  importaciones: 'Importaciones',
+  logistica:     'Logística',
   inventarios:   'Inventarios y Catálogo',
   tesoreria:     'Tesorería y Bancos',
   'tienda-virtual': 'Tienda Virtual',
@@ -359,10 +374,12 @@ const PAGE_RENDERERS: Record<string, (container: HTMLElement) => void> = {
   'inventario-kardex':         (c) => typeof (window as any).renderInventarioSection === 'function' ? (window as any).renderInventarioSection(c, 'kardex') : (typeof renderInventario === 'function' && renderInventario(c, 'kardex')),
   'inventario-bodegas':        (c) => typeof (window as any).renderInventarioSection === 'function' ? (window as any).renderInventarioSection(c, 'bodegas') : (typeof renderInventario === 'function' && renderInventario(c, 'bodegas')),
   'inventario-consignaciones': (c) => typeof (window as any).renderInventarioSection === 'function' ? (window as any).renderInventarioSection(c, 'consignaciones') : (typeof renderInventario === 'function' && renderInventario(c, 'consignaciones')),
+  'inventario-devoluciones':   (c) => typeof (window as any).renderInventarioSection === 'function' ? (window as any).renderInventarioSection(c, 'devoluciones') : (typeof (window as any).renderDevoluciones === 'function' && (window as any).renderDevoluciones(c)),
   inventario:                  () => navigate('inventario-stock'),
   compras:            (c) => typeof renderCompras           === 'function' && renderCompras(c),
   'ordenes-compra':   (c) => typeof (window as any).renderOrdenesCompra === 'function' ? (window as any).renderOrdenesCompra(c) : (typeof renderOrdenesCompra === 'function' && renderOrdenesCompra(c)),
   'compra-sugerida':  (c) => typeof (window as any).renderCompraSugerida === 'function' && (window as any).renderCompraSugerida(c),
+  devoluciones:       () => navigate('inventario-devoluciones'),
   ventas:             (c) => typeof renderVentas            === 'function' && renderVentas(c),
   pedidos:            (c) => typeof renderPedidos           === 'function' && renderPedidos(c),
   'mis-reservas':     (c) => typeof renderMisReservasVendedor === 'function' ? renderMisReservasVendedor(c) : (typeof (window as any).renderReservasImportacion === 'function' && (window as any).renderReservasImportacion(c)),
@@ -396,9 +413,12 @@ const PAGE_RENDERERS: Record<string, (container: HTMLElement) => void> = {
   'inmo-liquidacion': (c) => typeof (window as any).renderInmoLiquidacionPage === 'function' && (window as any).renderInmoLiquidacionPage(c),
   crm:                (c) => typeof renderCRM              === 'function' && renderCRM(c),
   despachos:          (c) => typeof renderDespachos        === 'function' && renderDespachos(c),
-  'mis-rutas':        (c) => typeof (window as any).renderControlRutasAdmin === 'function' ? (window as any).renderControlRutasAdmin(c) : (typeof (window as any).renderRutasVisitas === 'function' && (window as any).renderRutasVisitas(c)),
-  'rutas-gestion':    (c) => typeof (window as any).renderControlRutasAdmin === 'function' ? (window as any).renderControlRutasAdmin(c) : (typeof (window as any).renderRutasVisitas === 'function' && (window as any).renderRutasVisitas(c)),
-  'rutas-vendedores': (c) => typeof (window as any).renderControlRutasAdmin === 'function' ? (window as any).renderControlRutasAdmin(c) : (typeof (window as any).renderRutasVisitas === 'function' && (window as any).renderRutasVisitas(c)),
+  'rutas-monitoreo':   (c) => typeof (window as any).renderRutasMonitoreo === 'function' ? (window as any).renderRutasMonitoreo(c) : null,
+  'rutas-control':     (c) => typeof (window as any).renderRutasControl === 'function' ? (window as any).renderRutasControl(c) : (typeof (window as any).renderControlRutasAdmin === 'function' && (window as any).renderControlRutasAdmin(c)),
+  'rutas-planificador':(c) => typeof (window as any).renderRutasPlanificador === 'function' ? (window as any).renderRutasPlanificador(c) : null,
+  'mis-rutas':        (c) => typeof (window as any).renderRutasControl === 'function' ? (window as any).renderRutasControl(c) : (typeof (window as any).renderControlRutasAdmin === 'function' && (window as any).renderControlRutasAdmin(c)),
+  'rutas-gestion':    (c) => typeof (window as any).renderRutasControl === 'function' ? (window as any).renderRutasControl(c) : (typeof (window as any).renderControlRutasAdmin === 'function' && (window as any).renderControlRutasAdmin(c)),
+  'rutas-vendedores': (c) => typeof (window as any).renderRutasControl === 'function' ? (window as any).renderRutasControl(c) : (typeof (window as any).renderControlRutasAdmin === 'function' && (window as any).renderControlRutasAdmin(c)),
   niif:               () => navigate('niif-diagnostico'),
   'niif-diagnostico': (c) => typeof (window as any).renderNIIF === 'function' && (window as any).renderNIIF(c, 'diagnostico'),
   'niif-politicas':   (c) => typeof (window as any).renderNIIF === 'function' && (window as any).renderNIIF(c, 'politicas'),
@@ -587,6 +607,13 @@ function closeTab(page: string, event?: Event): void {
 
   openTabs.splice(tabIndex, 1);
 
+  if (page === 'rutas-monitoreo') {
+    if (typeof (window as any)._activeRutasLiveMapCleanup === 'function') {
+      try { (window as any)._activeRutasLiveMapCleanup(); } catch (_) {}
+      (window as any)._activeRutasLiveMapCleanup = null;
+    }
+  }
+
   if (page.startsWith('doc-')) {
     delete PAGE_RENDERERS[page];
     delete PAGE_TITLES[page];
@@ -702,7 +729,7 @@ function navigate(page: string, forceReload: boolean = false): void {
   if (page === 'niif') page = 'niif-diagnostico';
   if (page === 'inventario') page = 'inventario-stock';
   if (page === 'embalaje') page = 'inventario-pallets';
-  if (page === 'mis-rutas' || page === 'rutas-vendedores') page = 'rutas-gestion';
+  if (page === 'mis-rutas' || page === 'rutas-vendedores' || page === 'rutas-gestion') page = 'rutas-control';
 
   if (!PAGE_RENDERERS[page]) { page = 'dashboard'; }
 

@@ -39,6 +39,22 @@ onBootstrap((e) => {
       }
     }
 
+    const existingCc = col.fields.getByName("cost_center_id");
+    if (!existingCc) {
+      let costCentersColId = "";
+      try { costCentersColId = $app.findCollectionByNameOrId("cost_centers").id; } catch (_) {}
+      col.fields.add(new Field({
+        id: "rel_cost_center_pur",
+        name: "cost_center_id",
+        type: "relation",
+        required: false,
+        collectionId: costCentersColId,
+        maxSelect: 1,
+        cascadeDelete: false
+      }));
+      colChanged = true;
+    }
+
     if (colChanged) {
       $app.save(col);
       console.log("[GRAVY-DS] Colección purchase_invoices actualizada exitosamente con campos de Documento Soporte.");

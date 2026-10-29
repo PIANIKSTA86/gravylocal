@@ -672,6 +672,7 @@ async function _loadVentasPage(c: HTMLElement) {
         <p class="text-sm" style="color:#6B7280">Facturas de venta con contabilización automática, cálculo de costo de ventas (COGS) e integración de Kardex.</p>
       </div>
       <div class="flex gap-2">
+        <button class="btn btn-outline border-purple-300 text-purple-700 bg-purple-50/50 hover:bg-purple-100" onclick="window.navigate('devoluciones')" title="Módulo Centralizado de Devoluciones"><i class="fas fa-arrow-right-arrow-left mr-1.5"></i> Devoluciones</button>
         <button class="btn btn-outline" id="btn-so-config" title="Configuración comercial"><i class="fas fa-gear"></i></button>
         <button class="btn btn-primary" id="btn-new-sales"><i class="fas fa-plus"></i> Nueva Factura de Venta (FV)</button>
       </div>
@@ -1040,7 +1041,11 @@ function filterSoTable() {
     const isLossCheck = (document.getElementById('pre-note-is-loss') as HTMLInputElement)?.checked;
     (window as any).closeModal();
 
-    window.openSalesForm(null, () => _loadVentasPage(document.getElementById('content-area') as HTMLElement), null, {
+    window.openSalesForm(null, () => {
+      const getTarget = (window as any).getPageContainer || ((c: any, k: string) => c || document.getElementById('tab-pane-' + k));
+      const target = getTarget(null, 'ventas') || document.getElementById('content-area');
+      if (target) _loadVentasPage(target);
+    }, null, {
       originalInvoiceId: invoiceId,
       type,
       resolutionId: resId,
@@ -5728,16 +5733,26 @@ window.viewSalesInvoiceDetail = async function(id: string) {
       txLines = await (window as any).API.getTxLines(inv.tx_id).catch(() => []);
     }
 
+    const isNC = (inv.number && String(inv.number).startsWith('NC')) || inv.type === 'NC' || inv.expand?.tx_type_id?.code === 'NC';
+
     const auditHtml = history.length ? `
       <div class="mt-5 rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
         <h4 class="font-bold text-gray-800 mb-2"><i class="fas fa-clock-rotate-left mr-2"></i>Historial de Auditoría</h4>
         <div class="space-y-2">
-          ${history.map((h: any) => `
+          ${history.map((h: any) => {
+            const actionLabel = (window as any).translateAuditAction ? (window as any).translateAuditAction(h.action) : (h.action === 'CREATE' ? 'Creación' : (h.action === 'POST' ? 'Contabilización' : (h.action === 'UPDATE' ? 'Actualización' : (h.action || 'Evento'))));
+            const detailText = h.details || h.description || `Registro procesado por ${h.username || 'Sistema'}`;
+            const userText = h.username ? ` por <span class="font-semibold">${(window as any).esc(h.username)}</span>` : '';
+            const dtText = (h.created || h.event_at || '').slice(0, 19).replace('T', ' ');
+            return `
             <div class="rounded-lg border px-3 py-2 text-xs" style="border-color:#E5E7EB;background:#fff">
-              <div class="flex justify-between font-semibold text-blue-700"><span>${h.action}</span><span>${(h.created || h.event_at || '').slice(0, 19).replace('T', ' ')}</span></div>
-              <p class="text-gray-700 mt-1">${h.description}</p>
+              <div class="flex justify-between font-semibold text-blue-700">
+                <span><i class="fas fa-caret-right mr-1.5 text-blue-500"></i>${actionLabel}${userText}</span>
+                <span class="text-gray-500 font-mono">${dtText}</span>
+              </div>
+              <p class="text-gray-700 mt-1">${(window as any).esc(detailText)}</p>
             </div>
-          `).join('')}
+          `;}).join('')}
         </div>
       </div>` : '';
 
@@ -5842,14 +5857,19 @@ window.viewSalesInvoiceDetail = async function(id: string) {
       ` : ''}
       ${inv.status === 'posted' ? `
         <button class="btn btn-secondary" onclick="window.emitInvoiceToDian('${inv.tx_id}', '${inv.number}')"><i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN</button>
-        ${(window as any).can('canWrite') ? `
+        ${inv.tx_id ? `
+          <button class="btn btn-outline" style="border-color:#6366F1;color:#4F46E5" onclick="window.showDianLogsModal('${inv.tx_id}', '${inv.number}')"><i class="fas fa-list-check mr-1"></i> Ver Log DIAN</button>
+        ` : ''}
+        ${((window as any).can('canWrite') && !isNC) ? `
           <button class="btn btn-outline" style="border-color:#10B981;color:#10B981" onclick="window.openChangePaymentMethodModal('${inv.id}', '${inv.number}')"><i class="fas fa-credit-card mr-1"></i> Cambiar Pago</button>
         ` : ''}
-        <button class="btn btn-danger" onclick="closeModal(); window.voidSalesInvoiceDirect('${inv.id}', '${inv.number}')"><i class="fas fa-ban"></i> Anular Factura</button>
+        ${!isNC ? `
+          <button class="btn btn-danger" onclick="closeModal(); window.voidSalesInvoiceDirect('${inv.id}', '${inv.number}')"><i class="fas fa-ban"></i> Anular Factura</button>
+        ` : ''}
       ` : ''}
     `;
 
-    (window as any).openModal(`Detalle de Factura Comercial`, bodyHtml, footer, true);
+    (window as any).openModal(`Detalle de Documento Comercial`, bodyHtml, footer, true);
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al cargar detalle', 'error');
   }
@@ -5890,6 +5910,88 @@ window.emitInvoiceToDian = async function(txId: string, docNumber: string) {
       }
     }
   );
+};
+
+window.showDianLogsModal = async function(txId: string, docNumber: string) {
+  (window as any).openModal(
+    `<i class="fas fa-satellite-dish mr-2 text-indigo-600"></i>Logs DIAN / MATIAS — ${(window as any).esc(docNumber || txId)}`,
+    `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando historial de transmisión...</div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+    true
+  );
+
+  try {
+    const res: any = await (window as any).pb.send(`/api/dian/logs?tx_id=${encodeURIComponent(txId)}&limit=10`, { method: 'GET' });
+    const logs = (res && res.data) ? res.data : [];
+
+    if (!logs.length) {
+      const emptyHtml = `
+        <div class="p-6 text-center text-gray-500">
+          <i class="fas fa-inbox text-3xl mb-2 text-gray-400 block"></i>
+          <p>No se registran eventos de transmisión para el documento <strong>${(window as any).esc(docNumber || txId)}</strong>.</p>
+          <p class="text-xs text-gray-400 mt-1">Usa el botón "Emitir a DIAN" para enviar este comprobante.</p>
+        </div>
+      `;
+      (window as any).openModal(`<i class="fas fa-satellite-dish mr-2 text-indigo-600"></i>Logs DIAN / MATIAS — ${(window as any).esc(docNumber || txId)}`, emptyHtml, `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`, true);
+      return;
+    }
+
+    const bodyHtml = `
+      <div class="space-y-4 text-xs">
+        ${logs.map((l: any, i: number) => {
+          const isOk = l.success;
+          const statusBadge = isOk
+            ? `<span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Aceptada / OK (${l.status_code})</span>`
+            : `<span class="badge badge-red"><i class="fas fa-circle-xmark mr-1"></i>Rechazada / Error (${l.status_code})</span>`;
+
+          return `
+            <div class="border rounded-xl p-3.5 ${isOk ? 'border-emerald-200 bg-emerald-50/20' : 'border-rose-200 bg-rose-50/20'}">
+              <div class="flex items-center justify-between mb-2 pb-2 border-b border-gray-200">
+                <div class="flex items-center gap-2">
+                  <span class="font-bold text-gray-800 text-sm font-mono">Intento #${logs.length - i}</span>
+                  ${statusBadge}
+                  <span class="badge badge-gray text-[10px] font-mono">${(window as any).esc(l.provider || 'MATIAS')} · ${l.duration_ms || 0}ms</span>
+                </div>
+                <span class="text-gray-500 font-mono">${l.created ? l.created.slice(0, 19).replace('T', ' ') : ''}</span>
+              </div>
+
+              ${l.cufe ? `
+                <div class="mb-2">
+                  <span class="font-bold text-gray-700 block text-[11px]">CUFE / CUDE:</span>
+                  <p class="font-mono text-[10px] bg-white p-1.5 rounded border border-gray-200 break-all select-all text-slate-700">${(window as any).esc(l.cufe)}</p>
+                </div>
+              ` : ''}
+
+              ${l.error_message ? `
+                <div class="mb-2">
+                  <span class="font-bold text-rose-700 block text-[11px]">Mensaje / Detalle de Respuesta:</span>
+                  <div class="text-rose-800 bg-white p-2 rounded border border-rose-200 font-mono text-[11px] leading-relaxed break-words">${(window as any).esc(l.error_message)}</div>
+                </div>
+              ` : ''}
+
+              <div class="flex gap-2 mt-2 pt-2 border-t border-gray-200">
+                <details class="w-full text-[10px]">
+                  <summary class="cursor-pointer text-indigo-600 font-semibold select-none hover:underline">
+                    <i class="fas fa-code mr-1"></i>Ver Respuesta JSON Completa
+                  </summary>
+                  <pre class="mt-2 bg-slate-900 text-emerald-400 p-2.5 rounded-lg overflow-x-auto max-h-48 text-[10px]">${(window as any).esc(l.response_payload || '{}')}</pre>
+                </details>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+    (window as any).openModal(
+      `<i class="fas fa-satellite-dish mr-2 text-indigo-600"></i>Logs DIAN / MATIAS — ${(window as any).esc(docNumber || txId)}`,
+      bodyHtml,
+      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      true
+    );
+  } catch (err: any) {
+    (window as any).showToast('Error cargando logs DIAN: ' + err.message, 'error');
+  }
 };
 
 window.editSalesInvoice = async function(id: string) {

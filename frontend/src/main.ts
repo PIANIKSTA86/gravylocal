@@ -50,5 +50,6 @@ import './modules/crm.ts';
 import './modules/despachos.ts';
 import './modules/rutas-visitas.ts';
 import './modules/niif.ts';
+import './modules/devoluciones.ts';
 
 import './app.ts';

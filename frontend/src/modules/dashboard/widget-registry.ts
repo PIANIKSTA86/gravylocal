@@ -189,10 +189,10 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
             <div id="val-${c.id}" style="font-size:26px;font-weight:900;color:#78350F;letter-spacing:-1px;line-height:1;margin-bottom:6px">
               ${h.fmt(tot)}
             </div>
-            <p style="font-size:12px;font-weight:700;color:#B45309;margin:0 0 2px">Cartera por Cobrar</p>
+            <p style="font-size:12px;font-weight:700;color:#B45309;margin:0 0 2px">Cartera Neta por Cobrar</p>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
-            <span style="font-size:11px;color:#94A3B8">Mora: <b>${h.fmt(venc)}</b></span>
+            <span style="font-size:11px;color:#94A3B8">Mora: <b>${h.fmt(venc)}</b>${(kpis.carteraAnticipos || 0) > 0 ? ` · <span style="color:#059669" title="Anticipos cruzables">Ant: -${h.fmt(kpis.carteraAnticipos)}</span>` : ''}</span>
             <button onclick="navigate('reportes')" style="font-size:11px;font-weight:700;color:#D97706;background:none;border:none;cursor:pointer;padding:0">
               Ver Saldos →
             </button>
@@ -245,100 +245,422 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
 
   chart_admin_ventas_gastos: {
     id: 'chart_admin_ventas_gastos',
-    title: 'Evolución de Ventas vs Gastos',
+    title: 'Evolución Integral: Ventas, Costos y Gastos',
     category: 'admin',
     categoryLabel: 'Administración',
-    description: 'Ingresos operacionales contra costos y gastos del año',
+    description: 'Análisis multi-serie de Ingresos (4), Costos de Venta (6/7), Gastos Operacionales (5) y Margen',
     icon: 'fa-chart-line',
     defaultColSpan: 2,
-    roles: ['superadmin', 'admin', 'contador'],
+    roles: ['superadmin', 'admin', 'contador', 'auditor'],
     render: (c, data, h) => {
-      const canvasId = `chart-vg-${Math.random().toString(36).substring(2, 7)}`;
+      const uid = Math.random().toString(36).substring(2, 7);
+      const canvasId = `chart-vg-${uid}`;
       const sellers: any[] = data.sellers || [];
       const currentAdvisorId: string = data.advisorId || '';
 
+      const m12 = data.months12Labels || [];
+      const rev12 = data.monthlyRevenues12 || [];
+      const costs12 = data.monthlyCosts12 || [];
+      const opExp12 = data.monthlyOpExpenses12 || [];
+      const totExp12 = data.monthlyExpenses12 || [];
+      const profits12 = data.monthlyProfits12 || [];
+
+      // Si por alguna razón histórica el backend solo tiene monthlyExpenses12, estimar proporcionalmente
+      const resolvedCosts12 = costs12.length ? costs12 : totExp12.map((x: number) => x * 0.65);
+      const resolvedOpExp12 = opExp12.length ? opExp12 : totExp12.map((x: number, idx: number) => x - (resolvedCosts12[idx] || 0));
+      const resolvedProfits12 = profits12.length ? profits12 : rev12.map((r: number, idx: number) => r - (totExp12[idx] || 0));
+
+      const monShort = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+      // Mes más reciente con actividad para precargar en Estado de Resultados
+      let latestActiveMonth = m12[m12.length - 1] || '';
+      for (let i = m12.length - 1; i >= 0; i--) {
+        if ((rev12[i] || 0) > 0 || (resolvedCosts12[i] || 0) > 0) {
+          latestActiveMonth = m12[i];
+          break;
+        }
+      }
+
+      // KPIs rápidos promedio de los últimos 6 meses
+      const last6Rev = rev12.slice(-6).reduce((a: number, b: number) => a + b, 0);
+      const last6Costs = resolvedCosts12.slice(-6).reduce((a: number, b: number) => a + b, 0);
+      const last6Net = resolvedProfits12.slice(-6).reduce((a: number, b: number) => a + b, 0);
+      const grossMarginAvgPct = last6Rev > 0 ? (((last6Rev - last6Costs) / last6Rev) * 100) : 0;
+      const netMarginAvgPct = last6Rev > 0 ? ((last6Net / last6Rev) * 100) : 0;
+
       c.innerHTML = `
-        <div class="dash-chart-panel anim-slide-up" style="min-height:300px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="dash-chart-panel anim-slide-up" style="min-height:360px;position:relative;display:flex;flex-direction:column">
+          <!-- Header con Título, Badges y Enlace al Estado de Resultados -->
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
             <div>
-              <h3 style="font-size:14px;font-weight:800;color:#0F172A;margin:0 0 3px;display:flex;align-items:center;gap:8px">
-                <span style="width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,#10B981,#EF4444);display:inline-block"></span>
-                Ventas vs. Gastos y Costos
-              </h3>
-              <p style="font-size:12px;color:#94A3B8;margin:0">Comparativa mensual de ingresos contra egresos</p>
-            </div>
-            ${sellers.length > 0 ? `
-              <div style="display:flex;align-items:center;gap:6px">
-                <i class="fas fa-user-tie" style="font-size:11px;color:#64748B" title="Filtrar por asesor"></i>
-                <select class="dash-kpi-seller-select" title="Filtrar ventas por asesor comercial" style="
-                  font-size:11px;font-weight:600;color:#334155;background:#F8FAFC;
-                  border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;cursor:pointer;outline:none;
-                  font-family:inherit;transition:all .15s;max-width:170px;text-overflow:ellipsis
-                " onfocus="this.style.borderColor='#10B981'" onblur="this.style.borderColor='#CBD5E1'">
-                  <option value="">Todos los Asesores</option>
-                  ${sellers.map((s: any) => `
-                    <option value="${h.esc(s.id)}" ${s.id === currentAdvisorId ? 'selected' : ''}>
-                      ${h.esc(s.name)}
-                    </option>`).join('')}
-                </select>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,#10B981,#6366F1);display:inline-block;box-shadow:0 0 8px rgba(16,185,129,.4)"></span>
+                <h3 style="font-size:15px;font-weight:800;color:#0F172A;margin:0;letter-spacing:-.2px">
+                  Evolución Integral de Ventas, Costos y Gastos
+                </h3>
               </div>
-            ` : ''}
+              <p style="font-size:11.5px;color:#64748B;margin:0">
+                Comparativa contable mensual según PUC & NIIF: Ingresos (4), Costos (6/7) y Gastos (5)
+              </p>
+            </div>
+
+            <!-- Botón de Navegación Directa al Estado de Resultados -->
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <button id="btn-goto-er-${uid}" title="Abrir Estado de Resultados mensual en el módulo de reportes" style="
+                display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:10px;
+                background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(99,102,241,.08));
+                border:1px solid rgba(16,185,129,.25);color:#065F46;font-size:11px;font-weight:700;
+                cursor:pointer;transition:all .18s;font-family:inherit;box-shadow:0 1px 3px rgba(0,0,0,.03)
+              " onmouseover="this.style.background='linear-gradient(135deg,rgba(16,185,129,.16),rgba(99,102,241,.14))';this.style.transform='translateY(-1px)'"
+                 onmouseout="this.style.background='linear-gradient(135deg,rgba(16,185,129,.08),rgba(99,102,241,.08))';this.style.transform='none'">
+                <i class="fas fa-file-invoice-dollar" style="color:#059669;font-size:12px"></i>
+                <span>Ver Estado de Resultados Completo →</span>
+              </button>
+
+              ${sellers.length > 0 ? `
+                <div style="display:flex;align-items:center;gap:4px">
+                  <i class="fas fa-user-tie" style="font-size:11px;color:#64748B" title="Filtrar ventas por asesor"></i>
+                  <select class="dash-kpi-seller-select" title="Filtrar transacciones por asesor" style="
+                    font-size:11px;font-weight:600;color:#334155;background:#F8FAFC;
+                    border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;cursor:pointer;outline:none;
+                    font-family:inherit;transition:all .15s;max-width:145px;text-overflow:ellipsis
+                  " onfocus="this.style.borderColor='#10B981'" onblur="this.style.borderColor='#CBD5E1'">
+                    <option value="">Todos los Asesores</option>
+                    ${sellers.map((s: any) => `
+                      <option value="${h.esc(s.id)}" ${s.id === currentAdvisorId ? 'selected' : ''}>
+                        ${h.esc(s.name)}
+                      </option>`).join('')}
+                  </select>
+                </div>
+              ` : ''}
+            </div>
           </div>
-          <div style="flex:1;min-height:220px;position:relative">
+
+          <!-- Micro-Barra de Métricas y Controles de Filtro -->
+          <div style="
+            display:flex;align-items:center;justify-content:space-between;
+            background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;
+            padding:7px 12px;margin-bottom:12px;flex-wrap:wrap;gap:8px
+          ">
+            <!-- Badges de Salud Financiera -->
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:5px">
+                <span style="font-size:11px;color:#64748B;font-weight:500">Margen Bruto Prom:</span>
+                <span style="font-size:11.5px;font-weight:800;color:${grossMarginAvgPct >= 20 ? '#059669' : '#D97706'}">
+                  ${grossMarginAvgPct.toFixed(1)}%
+                </span>
+              </div>
+              <div style="width:1px;height:14px;background:#CBD5E1"></div>
+              <div style="display:flex;align-items:center;gap:5px">
+                <span style="font-size:11px;color:#64748B;font-weight:500">Margen Neto Prom:</span>
+                <span style="font-size:11.5px;font-weight:800;color:${netMarginAvgPct >= 0 ? '#059669' : '#DC2626'}">
+                  ${netMarginAvgPct >= 0 ? '+' : ''}${netMarginAvgPct.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+
+            <!-- Controles Interactivos: Selector de Serie y Temporalidad -->
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <!-- Selector de Serie / Vista -->
+              <div id="filter-pills-${uid}" style="display:flex;background:#E2E8F0;padding:2px;border-radius:8px;gap:2px">
+                <button data-view="all" class="dash-vg-pill active" style="
+                  padding:3px 9px;border:none;border-radius:6px;font-size:10.5px;font-weight:700;
+                  cursor:pointer;background:#fff;color:#0F172A;box-shadow:0 1px 2px rgba(0,0,0,.08);
+                  transition:all .15s;font-family:inherit
+                ">Integral</button>
+                <button data-view="gross" class="dash-vg-pill" style="
+                  padding:3px 9px;border:none;border-radius:6px;font-size:10.5px;font-weight:600;
+                  cursor:pointer;background:transparent;color:#64748B;transition:all .15s;font-family:inherit
+                ">Ventas vs Costos</button>
+                <button data-view="opex" class="dash-vg-pill" style="
+                  padding:3px 9px;border:none;border-radius:6px;font-size:10.5px;font-weight:600;
+                  cursor:pointer;background:transparent;color:#64748B;transition:all .15s;font-family:inherit
+                ">Ventas vs Gastos</button>
+                <button data-view="profit" class="dash-vg-pill" style="
+                  padding:3px 9px;border:none;border-radius:6px;font-size:10.5px;font-weight:600;
+                  cursor:pointer;background:transparent;color:#64748B;transition:all .15s;font-family:inherit
+                ">Utilidad</button>
+              </div>
+
+              <!-- Selector de Rango Temporal -->
+              <div id="range-pills-${uid}" style="display:flex;background:#E2E8F0;padding:2px;border-radius:8px;gap:2px">
+                <button data-range="6" class="dash-rg-pill active" style="
+                  padding:3px 7px;border:none;border-radius:6px;font-size:10.5px;font-weight:700;
+                  cursor:pointer;background:#fff;color:#0F172A;box-shadow:0 1px 2px rgba(0,0,0,.08);
+                  transition:all .15s;font-family:inherit
+                ">6M</button>
+                <button data-range="12" class="dash-rg-pill" style="
+                  padding:3px 7px;border:none;border-radius:6px;font-size:10.5px;font-weight:600;
+                  cursor:pointer;background:transparent;color:#64748B;transition:all .15s;font-family:inherit
+                ">12M</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Canvas del Gráfico -->
+          <div style="flex:1;min-height:230px;position:relative">
             <canvas id="${canvasId}"></canvas>
           </div>
         </div>`;
+
+      // Event listener: Redirección inteligente al Estado de Resultados
+      const btnGoToEr = document.getElementById(`btn-goto-er-${uid}`);
+      if (btnGoToEr) {
+        btnGoToEr.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          try {
+            sessionStorage.setItem('gravy_open_report', 'income');
+            sessionStorage.setItem('gravy_income_period_type', 'month');
+            if (latestActiveMonth) {
+              sessionStorage.setItem('gravy_income_month', latestActiveMonth);
+            }
+          } catch (_) {}
+          h.navigate('reportes');
+        });
+      }
+
+      // Lógica de Renderizado Dinámico de Chart.js
       setTimeout(() => {
-        const ctx = (document.getElementById(canvasId) as HTMLCanvasElement)?.getContext('2d');
-        if (ctx) {
-          const m12 = data.months12Labels || [];
-          const rev12 = data.monthlyRevenues12 || [];
-          const exp12 = data.monthlyExpenses12 || [];
-          const monShort = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-          const labels = m12.slice(-6).map((m: string) => {
+        const canvasEl = document.getElementById(canvasId) as HTMLCanvasElement;
+        if (!canvasEl) return;
+        const ctx = canvasEl.getContext('2d');
+        if (!ctx) return;
+
+        let currentRange = 6;
+        let currentView = 'all'; // 'all' | 'gross' | 'opex' | 'profit'
+        let chartInstance: any = null;
+
+        const buildDatasets = (rangeCount: number, viewMode: string) => {
+          const sliceRev = rev12.slice(-rangeCount);
+          const sliceCosts = resolvedCosts12.slice(-rangeCount);
+          const sliceOpExp = resolvedOpExp12.slice(-rangeCount);
+          const sliceProfit = resolvedProfits12.slice(-rangeCount);
+
+          const ds: any[] = [];
+
+          // 1. Serie: Ventas (Siempre visible en todas las vistas)
+          ds.push({
+            label: 'Ventas (Clase 4)',
+            data: sliceRev,
+            borderColor: '#10B981',
+            backgroundColor: 'rgba(16,185,129,0.06)',
+            borderWidth: 2.8,
+            fill: viewMode === 'gross' || viewMode === 'all',
+            tension: 0.35,
+            pointRadius: 3.5,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#10B981',
+            order: 1
+          });
+
+          // 2. Serie: Costos de Venta (Clase 6 y 7)
+          if (viewMode === 'all' || viewMode === 'gross') {
+            ds.push({
+              label: 'Costos de Venta (Clase 6/7)',
+              data: sliceCosts,
+              borderColor: '#F59E0B',
+              backgroundColor: 'rgba(245,158,11,0.05)',
+              borderWidth: 2.4,
+              borderDash: viewMode === 'all' ? [4, 4] : [],
+              fill: false,
+              tension: 0.35,
+              pointRadius: 3.5,
+              pointHoverRadius: 6,
+              pointBackgroundColor: '#F59E0B',
+              order: 2
+            });
+          }
+
+          // 3. Serie: Gastos Operacionales (Clase 5)
+          if (viewMode === 'all' || viewMode === 'opex') {
+            ds.push({
+              label: 'Gastos Operacionales (Clase 5)',
+              data: sliceOpExp,
+              borderColor: '#EF4444',
+              backgroundColor: 'rgba(239,68,68,0.04)',
+              borderWidth: 2.2,
+              borderDash: [3, 3],
+              fill: false,
+              tension: 0.35,
+              pointRadius: 3.5,
+              pointHoverRadius: 6,
+              pointBackgroundColor: '#EF4444',
+              order: 3
+            });
+          }
+
+          // 4. Serie: Utilidad Neta (Resultado del Periodo)
+          if (viewMode === 'all' || viewMode === 'profit') {
+            ds.push({
+              label: 'Utilidad Neta (Resultado)',
+              data: sliceProfit,
+              borderColor: '#6366F1',
+              backgroundColor: 'rgba(99,102,241,0.08)',
+              borderWidth: 2.2,
+              fill: viewMode === 'profit',
+              tension: 0.35,
+              pointRadius: 3.5,
+              pointHoverRadius: 6,
+              pointBackgroundColor: '#6366F1',
+              order: 4
+            });
+          }
+
+          return ds;
+        };
+
+        const renderChart = () => {
+          if (chartInstance) {
+            chartInstance.destroy();
+          }
+
+          const rawLabels = m12.slice(-currentRange);
+          const labels = rawLabels.map((m: string) => {
             const [, mStr] = m.split('-');
             return monShort[parseInt(mStr, 10) - 1];
           });
-          new Chart(ctx, {
+
+          chartInstance = new Chart(ctx, {
             type: 'line',
             data: {
-              labels: labels,
-              datasets: [
-                {
-                  label: 'Ventas',
-                  data: rev12.slice(-6),
-                  borderColor: '#10B981',
-                  backgroundColor: 'rgba(16,185,129,.06)',
-                  borderWidth: 2.5,
-                  fill: true,
-                  tension: 0.35,
-                },
-                {
-                  label: 'Gastos y Costos',
-                  data: exp12.slice(-6),
-                  borderColor: '#EF4444',
-                  backgroundColor: 'rgba(239,68,68,.06)',
-                  borderWidth: 2.5,
-                  fill: true,
-                  tension: 0.35,
-                }
-              ]
+              labels,
+              datasets: buildDatasets(currentRange, currentView)
             },
             options: {
               responsive: true,
               maintainAspectRatio: false,
+              interaction: {
+                mode: 'index',
+                intersect: false,
+              },
               plugins: {
-                legend: { position: 'top', labels: { boxWidth: 8, font: { size: 10 } } },
-                tooltip: { callbacks: { label: (ctx: any) => ` ${ctx.dataset.label}: ${h.fmt(ctx.parsed.y)}` } }
+                legend: {
+                  position: 'top',
+                  align: 'end',
+                  labels: {
+                    boxWidth: 8,
+                    boxHeight: 8,
+                    usePointStyle: true,
+                    pointStyle: 'circle',
+                    font: { size: 10.5, family: 'inherit', weight: 600 },
+                    color: '#475569',
+                    padding: 12
+                  }
+                },
+                tooltip: {
+                  backgroundColor: 'rgba(15, 23, 42, 0.94)',
+                  titleColor: '#F8FAFC',
+                  titleFont: { size: 12, weight: 800 },
+                  bodyColor: '#E2E8F0',
+                  bodyFont: { size: 11, weight: 500 },
+                  padding: 12,
+                  cornerRadius: 10,
+                  boxPadding: 4,
+                  callbacks: {
+                    title: (items: any[]) => {
+                      if (!items.length) return '';
+                      const idx = items[0].dataIndex;
+                      const monthKey = rawLabels[idx] || '';
+                      return `Período: ${monthKey} (${items[0].label})`;
+                    },
+                    afterBody: (items: any[]) => {
+                      if (!items.length) return [];
+                      const idx = items[0].dataIndex;
+                      const revVal = rev12.slice(-currentRange)[idx] || 0;
+                      const costVal = resolvedCosts12.slice(-currentRange)[idx] || 0;
+                      const opExpVal = resolvedOpExp12.slice(-currentRange)[idx] || 0;
+                      const netVal = revVal - (costVal + opExpVal);
+                      const grossPct = revVal > 0 ? (((revVal - costVal) / revVal) * 100).toFixed(1) : '0.0';
+                      const netPct = revVal > 0 ? ((netVal / revVal) * 100).toFixed(1) : '0.0';
+
+                      return [
+                        '─────────────────────────',
+                        `• Margen Bruto: ${h.fmt(revVal - costVal)} (${grossPct}%)`,
+                        `• Margen Neto:  ${h.fmt(netVal)} (${netPct}%)`
+                      ];
+                    },
+                    label: (context: any) => {
+                      const val = context.parsed.y;
+                      return ` ${context.dataset.label}: ${h.fmt(val)}`;
+                    }
+                  }
+                }
               },
               scales: {
-                x: { grid: { display: false } },
-                y: { grid: { color: 'rgba(226,232,240,.6)' }, ticks: { callback: (v: any) => h.fmt(v) } }
+                x: {
+                  grid: { display: false },
+                  ticks: { font: { size: 11, weight: 600 }, color: '#64748B' }
+                },
+                y: {
+                  grid: { color: 'rgba(226,232,240,.6)' },
+                  ticks: {
+                    font: { size: 10.5 },
+                    color: '#64748B',
+                    callback: (v: any) => h.fmt(v)
+                  }
+                }
               }
             }
           });
+        };
+
+        // Renderizado inicial
+        renderChart();
+
+        // Control de Pills de Vista
+        const filterContainer = document.getElementById(`filter-pills-${uid}`);
+        if (filterContainer) {
+          filterContainer.addEventListener('click', (e) => {
+            const btn = (e.target as HTMLElement).closest('button');
+            if (!btn) return;
+            const view = btn.getAttribute('data-view');
+            if (!view || view === currentView) return;
+
+            filterContainer.querySelectorAll('.dash-vg-pill').forEach((b: any) => {
+              b.classList.remove('active');
+              b.style.background = 'transparent';
+              b.style.color = '#64748B';
+              b.style.fontWeight = '600';
+              b.style.boxShadow = 'none';
+            });
+            btn.classList.add('active');
+            btn.style.background = '#fff';
+            btn.style.color = '#0F172A';
+            btn.style.fontWeight = '700';
+            btn.style.boxShadow = '0 1px 2px rgba(0,0,0,.08)';
+
+            currentView = view;
+            renderChart();
+          });
         }
-      }, 50);
+
+        // Control de Pills de Rango
+        const rangeContainer = document.getElementById(`range-pills-${uid}`);
+        if (rangeContainer) {
+          rangeContainer.addEventListener('click', (e) => {
+            const btn = (e.target as HTMLElement).closest('button');
+            if (!btn) return;
+            const r = parseInt(btn.getAttribute('data-range') || '6', 10);
+            if (isNaN(r) || r === currentRange) return;
+
+            rangeContainer.querySelectorAll('.dash-rg-pill').forEach((b: any) => {
+              b.classList.remove('active');
+              b.style.background = 'transparent';
+              b.style.color = '#64748B';
+              b.style.fontWeight = '600';
+              b.style.boxShadow = 'none';
+            });
+            btn.classList.add('active');
+            btn.style.background = '#fff';
+            btn.style.color = '#0F172A';
+            btn.style.fontWeight = '700';
+            btn.style.boxShadow = '0 1px 2px rgba(0,0,0,.08)';
+
+            currentRange = r;
+            renderChart();
+          });
+        }
+      }, 60);
     }
   },
 

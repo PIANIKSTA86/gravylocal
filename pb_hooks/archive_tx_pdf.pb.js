@@ -90,9 +90,9 @@ function buildTransactionPdfBytes(data) {
 
   // Encabezado
   stream += drawRect(36, 715, 540, 48, [0.95, 0.96, 0.98], [0.8, 0.85, 0.9]);
-  stream += drawText(company.name || 'DOMESTIKO SAS', 46, 748, '/F2', 12, [0.05, 0.15, 0.3]);
-  stream += drawText('NIT: ' + (company.nit || '901428834-2') + ' | Tel: ' + (company.phone || '3004205403'), 46, 734, '/F1', 8, [0.3, 0.3, 0.3]);
-  stream += drawText('Direccion: ' + (company.address || 'CL 29 5 50'), 46, 723, '/F1', 8, [0.3, 0.3, 0.3]);
+  stream += drawText(company.name || 'EMPRESA', 46, 748, '/F2', 12, [0.05, 0.15, 0.3]);
+  stream += drawText('NIT: ' + (company.nit || 'N/A') + (company.phone ? ' | Tel: ' + company.phone : ''), 46, 734, '/F1', 8, [0.3, 0.3, 0.3]);
+  stream += drawText('Direccion: ' + (company.address || 'N/A'), 46, 723, '/F1', 8, [0.3, 0.3, 0.3]);
 
   // Transacción
   const prefixStr = txType.prefix || txType.code || '';
@@ -251,9 +251,9 @@ function buildDianRepresentationPdfBytes(data) {
 
   // Encabezado Representación Gráfica DIAN
   stream += drawRect(36, 695, 540, 68, [0.93, 0.95, 0.98], [0.1, 0.25, 0.5]);
-  stream += drawText(company.name || 'DOMESTIKO SAS', 46, 748, '/F2', 13, [0.05, 0.15, 0.35]);
-  stream += drawText('NIT: ' + (company.nit || '901428834-2') + ' - Regimen Comun / Responsables de IVA', 46, 734, '/F1', 8, [0.3, 0.3, 0.3]);
-  stream += drawText('Direccion: ' + (company.address || 'CL 29 5 50') + ' | Tel: ' + (company.phone || '3004205403'), 46, 723, '/F1', 8, [0.3, 0.3, 0.3]);
+  stream += drawText(company.name || 'EMPRESA', 46, 748, '/F2', 13, [0.05, 0.15, 0.35]);
+  stream += drawText('NIT: ' + (company.nit || 'N/A') + ' - Regimen Comun / Responsables de IVA', 46, 734, '/F1', 8, [0.3, 0.3, 0.3]);
+  stream += drawText('Direccion: ' + (company.address || 'N/A') + (company.phone ? ' | Tel: ' + company.phone : ''), 46, 723, '/F1', 8, [0.3, 0.3, 0.3]);
 
   // Texto de Resolución DIAN
   const resNum = res.resolutionNumber || res.number || '';
@@ -485,10 +485,10 @@ var executeTransactionPdfArchiving = function(txRecord) {
   };
 
   const company = {
-    name: getSetting("company_name", "DOMESTIKO SAS"),
-    nit: getSetting("company_nit", "901428834-2"),
-    phone: getSetting("company_phone", "3004205403"),
-    address: getSetting("company_address", "CL 29 5 50")
+    name: getSetting("company_name", "EMPRESA"),
+    nit: getSetting("company_nit", "N/A"),
+    phone: getSetting("company_phone", ""),
+    address: getSetting("company_address", "")
   };
 
   // 5. Verificar si es un Documento Electrónico DIAN en einvoice_docs
@@ -599,6 +599,7 @@ var executeTransactionPdfArchiving = function(txRecord) {
 // ─── HOOKS DE EVENTOS EN POCKETBASE ──────────────────────────────────────────
 
 onRecordAfterCreateSuccess((e) => {
+  if (globalThis.__skipArchivePdfHook) return;
   try {
     executeTransactionPdfArchiving(e.record);
   } catch (err) {
@@ -607,6 +608,7 @@ onRecordAfterCreateSuccess((e) => {
 }, "transactions");
 
 onRecordAfterUpdateSuccess((e) => {
+  if (globalThis.__skipArchivePdfHook) return;
   try {
     executeTransactionPdfArchiving(e.record);
   } catch (err) {

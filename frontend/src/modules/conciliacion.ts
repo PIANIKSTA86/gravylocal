@@ -3964,21 +3964,29 @@ async function openReconciliationCertificateModal(reconIdOrRecord: any) {
   if (!recon) return;
 
   // Cargar datos institucionales de la empresa
-  let companyName = 'EMPRESA PRINCIPAL';
-  let companyNit = '';
-  let companyAddress = '';
+  const fallbackHdr = typeof (window as any).getActiveCompanyHeaderSync === 'function'
+    ? (window as any).getActiveCompanyHeaderSync()
+    : { companyName: 'EMPRESA', companyNit: '', companyAddress: '' };
+  let companyName = fallbackHdr.companyName || 'EMPRESA';
+  let companyNit = fallbackHdr.companyNit || '';
+  let companyDv = '';
+  let companyAddress = fallbackHdr.companyAddress || '';
   let companyPhone = '';
 
   try {
     const sets = await pb.listAll('settings', {
-      filter: 'key="company" || key="company_name" || key="company_nit" || key="company_address" || key="company_phone"'
+      filter: 'key="company" || key="company_name" || key="company_nit" || key="company_dv" || key="company_address" || key="company_phone"'
     });
     sets.forEach(s => {
       if (s.key === 'company_name' || s.key === 'company') companyName = s.value || companyName;
-      if (s.key === 'company_nit') companyNit = s.value || '';
-      if (s.key === 'company_address') companyAddress = s.value || '';
+      if (s.key === 'company_nit') companyNit = s.value || companyNit;
+      if (s.key === 'company_dv') companyDv = s.value || '';
+      if (s.key === 'company_address') companyAddress = s.value || companyAddress;
       if (s.key === 'company_phone') companyPhone = s.value || '';
     });
+    if (companyNit && companyDv && !String(companyNit).includes('-')) {
+      companyNit = `${companyNit}-${companyDv}`;
+    }
   } catch (_) {}
 
   const snap = recon.snapshot_data || {};
@@ -4545,16 +4553,24 @@ async function exportReconciliationToExcel(
     }
 
     // Cargar datos de la empresa para la carátula
-    let companyName = 'EMPRESA PRINCIPAL';
-    let companyNit = '';
+    const fallbackHdr = typeof (window as any).getActiveCompanyHeaderSync === 'function'
+      ? (window as any).getActiveCompanyHeaderSync()
+      : { companyName: 'EMPRESA', companyNit: '' };
+    let companyName = fallbackHdr.companyName || 'EMPRESA';
+    let companyNit = fallbackHdr.companyNit || '';
+    let companyDv = '';
     try {
       const sets = await pb.listAll('settings', {
-        filter: 'key="company" || key="company_name" || key="company_nit"'
+        filter: 'key="company" || key="company_name" || key="company_nit" || key="company_dv"'
       });
       sets.forEach(s => {
         if (s.key === 'company_name' || s.key === 'company') companyName = s.value || companyName;
-        if (s.key === 'company_nit') companyNit = s.value || '';
+        if (s.key === 'company_nit') companyNit = s.value || companyNit;
+        if (s.key === 'company_dv') companyDv = s.value || '';
       });
+      if (companyNit && companyDv && !String(companyNit).includes('-')) {
+        companyNit = `${companyNit}-${companyDv}`;
+      }
     } catch (_) {}
 
     const snap = activeRecon?.snapshot_data || {};

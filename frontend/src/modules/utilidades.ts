@@ -365,7 +365,7 @@ async function _openMassProductsImportModal() {
     const file = fileInput.files?.[0];
     if (file) processFile(file);
   });
-  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   clearBtn?.addEventListener('click', resetPreview);
   runBtn?.addEventListener('click', () => _executeMassProductsImport(parsedRows));
@@ -621,7 +621,7 @@ async function _executeMassProductsImport(rows) {
 ══════════════════════════════════════════════════════════ */
 function _downloadMassFixedAssetsTemplate() {
   const headers = [
-    'codigo', 'nombre', 'categoria', 'costo', 'es_depreciable', 'vida_util_niif', 'vida_util_fiscal',
+    'codigo', 'nombre', 'categoria', 'costo', 'es_depreciable', 'depreciacion_inmediata_50uvt', 'vida_util_niif', 'vida_util_fiscal',
     'valor_residual', 'metodo_depreciacion', 'depr_acum_inicial_niif', 'depr_acum_inicial_fiscal',
     'periodo_corte_depreciacion', 'centro_costos', 'responsable',
     'proveedor', 'ubicacion', 'fecha_compra', 'fecha_puesta_servicio', 'factura_numero',
@@ -635,6 +635,7 @@ function _downloadMassFixedAssetsTemplate() {
       categoria: 'COMP',
       costo: 4850000,
       es_depreciable: 'SI',
+      depreciacion_inmediata_50uvt: 'NO',
       vida_util_niif: 60,
       vida_util_fiscal: 60,
       valor_residual: 485000,
@@ -662,6 +663,7 @@ function _downloadMassFixedAssetsTemplate() {
       categoria: 'VEH',
       costo: 133990000,
       es_depreciable: 'SI',
+      depreciacion_inmediata_50uvt: 'NO',
       vida_util_niif: 60,
       vida_util_fiscal: 60,
       valor_residual: 1000000,
@@ -688,6 +690,8 @@ function _downloadMassFixedAssetsTemplate() {
       nombre: 'Compresor Industrial de Tornillo 15 HP con Tanque 500L',
       categoria: 'MAQ',
       costo: 32000000,
+      es_depreciable: 'SI',
+      depreciacion_inmediata_50uvt: 'NO',
       vida_util_niif: 120,
       vida_util_fiscal: 120,
       valor_residual: 0,
@@ -714,6 +718,7 @@ function _downloadMassFixedAssetsTemplate() {
     ['categoria', 'SÍ', 'Código o Nombre', 'Código (ej: COMP, VEH, MAQ) o nombre de la Categoría de Activos Fijos existente en el módulo NIIF.', 'COMP'],
     ['costo', 'SÍ', 'Número Positivo (> 0)', 'Costo histórico de adquisición del activo en pesos colombianos ($ COP).', '4850000'],
     ['es_depreciable', 'NO (Default: SI)', 'Texto (SI/NO)', 'Indica si el activo es depreciable. Si es NO (terrenos, lotes, obras de arte), no genera cuota contable.', 'SI'],
+    ['depreciacion_inmediata_50uvt', 'NO (Default: NO)', 'Texto (SI/NO)', 'Depreciación acelerada al 100% en el mismo mes de compra para activos de menor cuantía (Costo <= 50 UVT, Art. 1.2.1.18.5 DUR 1625/2016). Si es SI y supera 50 UVT, se rechazará la fila.', 'NO'],
     ['vida_util_niif', 'NO (Auto)', 'Número Entero (Meses)', 'Vida útil contable bajo NIIF en meses. Si se omite, toma la vida útil por defecto de la categoría.', '60'],
     ['vida_util_fiscal', 'NO (Auto)', 'Número Entero (Meses)', 'Vida útil tributaria fiscal en meses (Estatuto Tributario Art. 137). Si se omite, toma la de la categoría o la vida útil NIIF.', '60'],
     ['valor_residual', 'NO (Auto)', 'Número (>= 0)', 'Valor de salvamento o residual NIIF ($ COP). Si se omite, se calcula con el % por defecto de la categoría o 0.', '485000'],
@@ -750,7 +755,7 @@ async function _openMassFixedAssetsImportModal(options?: { onComplete?: () => Pr
   if ((window as any)._massFixedAssetsImportInProgress) return showToast('Importación de activos en curso, por favor espera...', 'warning');
 
   const reqCols = ['codigo', 'nombre', 'categoria', 'costo'];
-  const optColsFin = ['es_depreciable', 'vida_util_niif', 'vida_util_fiscal', 'valor_residual', 'metodo_depreciacion', 'depr_acum_inicial_niif', 'depr_acum_inicial_fiscal', 'periodo_corte_depreciacion', 'centro_costos'];
+  const optColsFin = ['es_depreciable', 'depreciacion_inmediata_50uvt', 'vida_util_niif', 'vida_util_fiscal', 'valor_residual', 'metodo_depreciacion', 'depr_acum_inicial_niif', 'depr_acum_inicial_fiscal', 'periodo_corte_depreciacion', 'centro_costos'];
   const optColsAdmin = ['responsable', 'proveedor', 'ubicacion', 'fecha_compra', 'fecha_puesta_servicio', 'factura_numero', 'marca', 'modelo', 'serie', 'placa_qr', 'estado', 'activo_padre'];
 
   openModal(
@@ -861,7 +866,7 @@ async function _openMassFixedAssetsImportModal(options?: { onComplete?: () => Pr
     const file = fileInput.files?.[0];
     if (file) processFile(file);
   });
-  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   clearBtn?.addEventListener('click', resetPreview);
   runBtn?.addEventListener('click', () => _executeMassFixedAssetsImport(parsedRows, options?.onComplete));
@@ -1128,6 +1133,32 @@ async function _massFixedAssetsBuildDraft(rawRows: any[]) {
     const purchase_date = parseDateString(get('fecha_compra', 'purchase_date', 'fecha_factura', 'fecha_adquisicion'));
     const start_service_date = parseDateString(get('fecha_puesta_servicio', 'start_service_date', 'puesta_en_servicio', 'fecha_servicio')) || purchase_date;
 
+    // Determinar Depreciación Inmediata <= 50 UVT (Art. 1.2.1.18.5 DUR 1625/2016)
+    const immRaw = get('depreciacion_inmediata_50uvt', 'depreciacion_inmediata', 'is_immediate_depreciation', 'menor_cuantia_50uvt').toLowerCase().trim();
+    let is_immediate_depreciation = false;
+    if (is_depreciable) {
+      if (immRaw === 'si' || immRaw === 'sí' || immRaw === 'true' || immRaw === '1') {
+        is_immediate_depreciation = true;
+      } else if (immRaw === '' && existing?.is_immediate_depreciation) {
+        is_immediate_depreciation = true;
+      }
+      if (is_immediate_depreciation) {
+        const uvtFn = (window as any).getUvtForDateOrYear;
+        const uvtVal = typeof uvtFn === 'function' ? uvtFn(purchase_date || start_service_date) : 52374;
+        const max50Uvt = uvtVal * 50;
+        if (cost > max50Uvt) {
+          return {
+            ok: false,
+            rowNo,
+            error: `Fila ${rowNo}: El activo "${code}" tiene deprec. inmediata <= 50 UVT en SI, pero su costo ($ ${cost.toLocaleString('es-CO')}) supera el tope normativo de 50 UVT ($ ${max50Uvt.toLocaleString('es-CO')}).`
+          };
+        }
+        useful_life_niif = 1;
+        useful_life_fiscal = 1;
+        residual_value = 0;
+      }
+    }
+
     // Estado Operativo
     const statusRaw = get('estado', 'status').toLowerCase().trim();
     let status = 'active';
@@ -1144,6 +1175,7 @@ async function _massFixedAssetsBuildDraft(rawRows: any[]) {
       category_id: resolvedCat.id,
       cost,
       is_depreciable,
+      is_immediate_depreciation,
       useful_life_niif,
       useful_life_fiscal,
       residual_value,
@@ -1176,6 +1208,7 @@ async function _massFixedAssetsBuildDraft(rawRows: any[]) {
       category: resolvedCat.name,
       cost,
       is_depreciable,
+      is_immediate_depreciation,
       useful_life_niif,
       initial_depreciation_niif,
       last_depreciation_period,
@@ -1214,7 +1247,7 @@ function _massFixedAssetsRenderPreview(rows: any[]) {
         <td><div class="font-medium text-gray-800 text-xs">${esc(r.name)}</div></td>
         <td><span class="text-xs text-gray-600">${esc(r.category)}</span></td>
         <td class="font-semibold">${fmt(r.cost)}</td>
-        <td>${r.is_depreciable === false ? '<span class="text-gray-400">No depr.</span>' : `${r.useful_life_niif} m`}</td>
+        <td>${r.is_depreciable === false ? '<span class="text-gray-400">No depr.</span>' : (r.is_immediate_depreciation ? '<span class="badge badge-indigo font-bold">1m (≤50 UVT)</span>' : `${r.useful_life_niif} m`)}</td>
         <td>${r.is_depreciable === false ? '<span class="text-gray-400">—</span>' : (r.initial_depreciation_niif ? `<strong class="text-emerald-700">${fmt(r.initial_depreciation_niif)}</strong>` : '$ 0')}</td>
         <td>${r.is_depreciable === false ? '<span class="text-gray-400">—</span>' : (r.last_depreciation_period ? `<span class="badge badge-purple font-mono">${esc(r.last_depreciation_period)}</span>` : '<span class="text-gray-400">Sin corte</span>')}</td>
         <td><span class="text-xxs text-gray-500">${esc(r.costCenterDisplay)}</span></td>
@@ -1544,8 +1577,7 @@ async function renderUtilidades(container) {
           </div>
 
           <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
-            Registra comprobantes en lote usando una plantilla estandar. El sistema valida período,
-            cuentas de movimiento, tercero obligatorio y balance débito/crédito antes de grabar.
+            Registra o actualiza comprobantes en lote usando una plantilla estándar. Si el comprobante ya existe, actualiza sus líneas; si no existe, lo crea automáticamente.
           </p>
 
           <div class="flex gap-3 flex-wrap">
@@ -2672,8 +2704,8 @@ async function _openMassTxImportModal() {
     `
     <div class="mb-2">
       <p class="text-sm mb-3" style="color:#374151">
-        Carga un archivo <strong>CSV</strong> o <strong>Excel (.xlsx/.xls)</strong> con líneas contables agrupadas por comprobante.
-        Cada <strong>grupo</strong> representa un comprobante y debe quedar cuadrado (débito = crédito).
+        Carga un archivo <strong>CSV</strong> o <strong>Excel (.xlsx/.xls)</strong> con líneas contables agrupadas por comprobante.<br>
+        Si el <strong>comprobante</strong> ya existe en el sistema, sus líneas serán <strong>actualizadas automáticamente</strong>; si no existe, será <strong>creado</strong>.
       </p>
 
       ${branchSelector}
@@ -2690,30 +2722,36 @@ async function _openMassTxImportModal() {
       <div id="mass-tx-drop-zone" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#D1D5DB;background:#FAFAFA">
         <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
         <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#7C3AED;text-decoration:underline">haz clic para seleccionar</span></p>
-        <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 8 MB</p>
+        <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 8 MB · Soporta lotes de 1,000+ comprobantes</p>
         <input type="file" id="mass-tx-file-input" accept=".csv,.xlsx,.xls" class="hidden">
       </div>
 
       <div id="mass-tx-progress-wrap" class="hidden mt-4">
-        <div class="w-full rounded-full h-2" style="background:#E5E7EB">
-          <div id="mass-tx-progress-bar" class="h-2 rounded-full transition-all" style="background:linear-gradient(90deg,#059669,#7C3AED);width:0%"></div>
+        <div class="w-full rounded-full h-2.5" style="background:#E5E7EB">
+          <div id="mass-tx-progress-bar" class="h-2.5 rounded-full transition-all" style="background:linear-gradient(90deg,#059669,#7C3AED);width:0%"></div>
         </div>
-        <p id="mass-tx-progress-text" class="text-xs mt-2" style="color:#6B7280">Preparando...</p>
+        <p id="mass-tx-progress-text" class="text-xs mt-2 font-medium" style="color:#4B5563">Preparando...</p>
       </div>
 
+      <div id="mass-tx-result-panel" class="hidden mt-4"></div>
+
       <div id="mass-tx-preview" class="mt-4 hidden">
-        <div class="flex items-center justify-between mb-2">
-          <p class="text-sm font-semibold" style="color:#0D2137">Vista previa de comprobantes</p>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div>
+            <p class="text-sm font-semibold" style="color:#0D2137">Vista previa de comprobantes</p>
+            <div id="mass-tx-filter-bar" class="flex flex-wrap items-center gap-1.5 mt-1.5"></div>
+          </div>
           <button class="btn btn-outline btn-sm" id="btn-mass-tx-clear"><i class="fas fa-xmark mr-1"></i>Limpiar</button>
         </div>
-        <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:320px;overflow-y:auto">
+        <div class="rounded-xl border overflow-hidden" style="border-color:#E5E7EB;max-height:360px;overflow-y:auto">
           <table class="data-table text-xs" id="mass-tx-preview-table">
             <thead><tr>
-              <th>Comprobante / Grupo</th><th>Fecha</th><th>Tipo</th><th>Sucursal</th><th>Líneas</th><th>Débito</th><th>Crédito</th><th>Estado</th><th>Detalle</th>
+              <th>Comprobante / Grupo</th><th>Fecha</th><th>Tipo</th><th>Sucursal</th><th>Líneas</th><th>Débito</th><th>Crédito</th><th>Acción</th><th>Detalle</th>
             </tr></thead>
             <tbody id="mass-tx-preview-body"></tbody>
           </table>
         </div>
+        <div id="mass-tx-pagination-wrap" class="hidden mt-2 text-center"></div>
         <div id="mass-tx-summary" class="mt-2 text-xs" style="color:#6B7280"></div>
       </div>
     </div>`,
@@ -2741,11 +2779,24 @@ async function _openMassTxImportModal() {
     sheetWrap?.classList.add('hidden');
     if (sheetSelect) sheetSelect.innerHTML = '';
     $('#mass-tx-preview')?.classList.add('hidden');
+    $('#mass-tx-progress-wrap')?.classList.add('hidden');
+    const resPanel = $('#mass-tx-result-panel');
+    if (resPanel) {
+      resPanel.classList.add('hidden');
+      resPanel.innerHTML = '';
+    }
     runBtn?.classList.add('hidden');
     const body = $('#mass-tx-preview-body');
     if (body) body.innerHTML = '';
     const summary = $('#mass-tx-summary');
     if (summary) summary.innerHTML = '';
+    const filterBar = $('#mass-tx-filter-bar');
+    if (filterBar) filterBar.innerHTML = '';
+    const pagWrap = $('#mass-tx-pagination-wrap');
+    if (pagWrap) {
+      pagWrap.classList.add('hidden');
+      pagWrap.innerHTML = '';
+    }
     if (fileInput) fileInput.value = '';
   };
 
@@ -2790,7 +2841,7 @@ async function _openMassTxImportModal() {
     if (file) processFile(file);
   });
 
-  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   clearBtn?.addEventListener('click', resetPreview);
   runBtn?.addEventListener('click', () => _executeMassTxImport(parsedGroups));
@@ -3352,6 +3403,8 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
       ? ((knownBranches as any[]).find(b => b.id === resolvedBranchId)?.name || resolvedBranchId)
       : '—';
 
+    const hasExplicitPaymentDays = g.paymentDays !== undefined && g.paymentDays !== null && String(g.paymentDays).trim() !== '';
+
     result.push({
       group: g.group,
       resolvedNumber,
@@ -3361,6 +3414,10 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
       linesCount: validLines.length,
       debit: totals.debit,
       credit: totals.credit,
+      mode: 'create',
+      existingId: null,
+      existingStatus: null,
+      hasExplicitPaymentDays,
       ok: groupErrors.length === 0,
       errors: groupErrors,
       payload: groupErrors.length ? null : {
@@ -3392,16 +3449,72 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
     });
   }
 
+  // ── Pre-chequeo masivo en 1 sola petición para detectar comprobantes existentes (Upsert) ──
+  const allResolvedNumbers = result.map(r => r.resolvedNumber).filter(Boolean);
+  const existingMap = await API.checkExistingTransactionsBulk(allResolvedNumbers);
+
+  for (const r of result) {
+    const ex = r.resolvedNumber ? existingMap[r.resolvedNumber] : null;
+    if (!ex) continue;
+
+    r.mode = 'update';
+    r.existingId = ex.id;
+    r.existingStatus = ex.status;
+
+    if (String(ex.status || '').toLowerCase() === 'voided') {
+      r.errors.push(`El comprobante ${r.resolvedNumber} se encuentra ANULADO en el sistema y no puede modificarse`);
+      r.ok = false;
+      r.payload = null;
+      continue;
+    }
+
+    if (ex.date) {
+      const exDateStr = String(ex.date).slice(0, 10);
+      const exPeriodKey = exDateStr.slice(0, 7);
+      if (exPeriodKey && !periodCache.has(exPeriodKey)) {
+        let isClosed = false;
+        if (typeof isPeriodClosed === 'function') {
+          isClosed = await isPeriodClosed(exDateStr);
+        }
+        periodCache.set(exPeriodKey, isClosed);
+      }
+      if (exPeriodKey && periodCache.get(exPeriodKey)) {
+        r.errors.push(`El comprobante existente ${r.resolvedNumber} pertenece a un período contable cerrado (${exPeriodKey})`);
+        r.ok = false;
+        r.payload = null;
+        continue;
+      }
+    }
+
+    if (r.ok && r.payload) {
+      r.payload.txData.id = ex.id;
+      r.payload.txData.allow_update = true;
+      if (!r.hasExplicitPaymentDays) {
+        delete r.payload.txData.payment_days;
+      }
+    }
+  }
+
   // Orden estable para facilitar revisión visual
   return result.sort((a, b) => String(a.group).localeCompare(String(b.group)));
 }
 
-function _massTxRenderPreview(groups) {
+let _massTxActiveFilter: 'all' | 'create' | 'update' | 'error' = 'all';
+let _massTxRenderLimit = 150;
+
+function _massTxRenderPreview(groups, resetFilter = true) {
   const preview = $('#mass-tx-preview');
   const tbody = $('#mass-tx-preview-body');
   const summary = $('#mass-tx-summary');
   const runBtn = $('#btn-mass-tx-run');
+  const filterBar = $('#mass-tx-filter-bar');
+  const pagWrap = $('#mass-tx-pagination-wrap');
   if (!preview || !tbody || !summary || !runBtn) return;
+
+  if (resetFilter) {
+    _massTxActiveFilter = 'all';
+    _massTxRenderLimit = 150;
+  }
 
   // Etiqueta de sucursal actualmente seleccionada en el selector del modal
   const branchSel = $('#mass-tx-branch') as HTMLSelectElement;
@@ -3410,19 +3523,77 @@ function _massTxRenderPreview(groups) {
     : '—';
 
   const okGroups = groups.filter(g => g.ok);
+  const createGroups = okGroups.filter(g => g.mode !== 'update');
+  const updateGroups = okGroups.filter(g => g.mode === 'update');
   const badGroups = groups.filter(g => !g.ok);
   const totalLines = groups.reduce((s, g) => s + (g.linesCount || 0), 0);
   const bigVoucher = okGroups.some(g => (g.linesCount || 0) > 50);
 
-  tbody.innerHTML = groups.map(g => {
-    const detail = g.ok ? 'Validado' : (g.errors[0] || 'Error de validación');
+  // Renderizar barra de filtros rápidos (/web-design-system)
+  if (filterBar) {
+    const makeFilterBtn = (key: 'all' | 'create' | 'update' | 'error', label: string, count: number, activeBg: string, activeColor: string, activeBorder: string) => {
+      const isAct = _massTxActiveFilter === key;
+      const style = isAct
+        ? `background:${activeBg};color:${activeColor};border:1px solid ${activeBorder};font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.05)`
+        : `background:#F9FAFB;color:#6B7280;border:1px solid #E5E7EB;font-weight:500`;
+      return `<button type="button" data-tx-filter="${key}" class="px-2.5 py-1 rounded-full text-[11px] transition-all cursor-pointer" style="${style}">
+        ${label} <span class="ml-1 font-mono">${count}</span>
+      </button>`;
+    };
+
+    filterBar.innerHTML = [
+      makeFilterBtn('all', 'Todos', groups.length, '#EEF2FF', '#4338CA', '#C7D2FE'),
+      makeFilterBtn('create', 'Nuevos (Crear)', createGroups.length, '#EFF6FF', '#1D4ED8', '#BFDBFE'),
+      makeFilterBtn('update', 'Existentes (Actualizar)', updateGroups.length, '#FEF3C7', '#B45309', '#FDE68A'),
+      badGroups.length ? makeFilterBtn('error', 'Con Error', badGroups.length, '#FEF2F2', '#B91C1C', '#FECACA') : '',
+    ].join('');
+
+    filterBar.querySelectorAll('[data-tx-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const f = (btn as HTMLElement).getAttribute('data-tx-filter') as any;
+        if (f) {
+          _massTxActiveFilter = f;
+          _massTxRenderLimit = 150;
+          _massTxRenderPreview(groups, false);
+        }
+      });
+    });
+  }
+
+  const filteredGroups = groups.filter(g => {
+    if (_massTxActiveFilter === 'create') return g.ok && g.mode !== 'update';
+    if (_massTxActiveFilter === 'update') return g.ok && g.mode === 'update';
+    if (_massTxActiveFilter === 'error') return !g.ok;
+    return true;
+  });
+
+  const visibleGroups = filteredGroups.slice(0, _massTxRenderLimit);
+
+  tbody.innerHTML = visibleGroups.map(g => {
+    const isUpdate = g.mode === 'update';
+    const detail = g.ok
+      ? (isUpdate ? 'Existente en BD · Se actualizarán sus líneas contables' : 'Nuevo comprobante · Listo para crear')
+      : (g.errors[0] || 'Error de validación');
     const branchDisplay = g.branchLabel || selectedBranchLabel;
-    // Badge extra para comprobantes con muchas líneas
     const linesBadge = g.ok && g.linesCount > 50
       ? `<span title="Comprobante con muchas líneas — se procesará con modo atómico" style="margin-left:4px;background:#FEF3C7;color:#92400E;border-radius:4px;padding:1px 5px;font-size:.65rem;font-weight:600">⚡ ${g.linesCount} lín.</span>`
       : '';
+
+    let statusBadgeHtml = '';
+    if (!g.ok) {
+      statusBadgeHtml = '<span class="badge badge-red"><i class="fas fa-circle-xmark mr-1"></i>Error</span>';
+    } else if (isUpdate) {
+      statusBadgeHtml = '<span class="badge badge-orange" style="background:#FEF3C7;color:#B45309;border:1px solid #FDE68A"><i class="fas fa-arrows-rotate mr-1"></i>Actualizar</span>';
+    } else {
+      statusBadgeHtml = '<span class="badge badge-blue" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE"><i class="fas fa-plus-circle mr-1"></i>Crear</span>';
+    }
+
+    const rowBg = !g.ok
+      ? 'style="background:#FFF7F7"'
+      : (isUpdate ? 'style="background:#FFFDF5"' : '');
+
     return `
-      <tr ${g.ok ? '' : 'style="background:#FFF7F7"'}>
+      <tr ${rowBg}>
         <td><strong class="font-mono" style="color:#0D2137">${esc(g.resolvedNumber)}</strong><br><span class="text-gray-400" style="font-size:10px">${esc(g.group)}</span></td>
         <td>${esc(g.txDate || '—')}</td>
         <td>${esc(g.txTypeLabel || '—')}</td>
@@ -3430,32 +3601,61 @@ function _massTxRenderPreview(groups) {
         <td>${g.linesCount}${linesBadge}</td>
         <td>${fmt(g.debit)}</td>
         <td>${fmt(g.credit)}</td>
-        <td>${g.ok
-        ? '<span class="badge badge-green">OK</span>'
-        : '<span class="badge badge-red">Error</span>'}</td>
-        <td class="text-xs" style="max-width:360px;white-space:normal">${esc(detail)}</td>
+        <td>${statusBadgeHtml}</td>
+        <td class="text-xs" style="max-width:360px;white-space:normal;color:${!g.ok ? '#DC2626' : (isUpdate ? '#92400E' : '#374151')}">${esc(detail)}</td>
       </tr>`;
   }).join('');
 
-  // Aviso de comprobante grande (saldos iniciales)
-  const bigWarning = bigVoucher
-    ? `<div class="rounded-lg px-3 py-2 mt-2 text-xs flex items-center gap-2" style="background:#FFFBEB;border:1px solid #FDE68A;color:#92400E">
-        <i class="fas fa-bolt" style="color:#D97706"></i>
-        <span>Uno o más comprobantes tienen <strong>más de 50 líneas</strong>. Se usará el modo de importación atómico (1 sola petición al servidor) para garantizar la integridad.</span>
+  if (pagWrap) {
+    if (filteredGroups.length > _massTxRenderLimit) {
+      const remaining = filteredGroups.length - _massTxRenderLimit;
+      pagWrap.classList.remove('hidden');
+      pagWrap.innerHTML = `
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs" style="background:#F8FAFC;border:1px solid #E2E8F0;color:#475569">
+          <span>Mostrando <strong>${visibleGroups.length}</strong> de <strong>${filteredGroups.length}</strong> comprobantes en vista previa</span>
+          <button type="button" id="btn-mass-tx-show-more" class="font-semibold underline cursor-pointer" style="color:#7C3AED">Mostrar +250</button>
+          <button type="button" id="btn-mass-tx-show-all" class="font-semibold underline cursor-pointer" style="color:#059669">Mostrar todos (${remaining} restantes)</button>
+        </div>`;
+      $('#btn-mass-tx-show-more')?.addEventListener('click', () => {
+        _massTxRenderLimit += 250;
+        _massTxRenderPreview(groups, false);
+      });
+      $('#btn-mass-tx-show-all')?.addEventListener('click', () => {
+        _massTxRenderLimit = filteredGroups.length;
+        _massTxRenderPreview(groups, false);
+      });
+    } else {
+      pagWrap.classList.add('hidden');
+      pagWrap.innerHTML = '';
+    }
+  }
+
+  // Aviso de procesamiento por macro-lotes o comprobante grande
+  const batchInfo = okGroups.length > 20 || bigVoucher
+    ? `<div class="rounded-lg px-3 py-2 mt-2 text-xs flex items-center gap-2" style="background:#F0FDF4;border:1px solid #BBF7D0;color:#166534">
+        <i class="fas fa-bolt" style="color:#059669"></i>
+        <span>Modo de <strong>Alto Rendimiento por Macro-Lotes</strong> activo: ${okGroups.length} comprobantes (${totalLines} líneas) se procesarán en bloques transaccionales optimizados.</span>
        </div>`
     : '';
 
   summary.innerHTML = `
-    <div style="color:${badGroups.length ? '#B91C1C' : '#166534'}">
-      ${groups.length} comprobante(s) · ${totalLines} líneas contables totales:<br>
-      <strong>${okGroups.length}</strong> válido(s)${badGroups.length ? `, <strong>${badGroups.length}</strong> con error (serán omitidos)` : ''}.
-      ${!badGroups.length ? '<strong>Listo para ejecutar.</strong>' : ''}
+    <div class="rounded-xl p-3 mt-1" style="background:#F8FAFC;border:1px solid #E2E8F0;color:#334155">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span>Total archivo: <strong>${groups.length}</strong> comprobante(s) (${totalLines} líneas)</span>
+        <span style="color:#1D4ED8"><i class="fas fa-plus-circle mr-1"></i>Por crear: <strong>${createGroups.length}</strong></span>
+        <span style="color:#B45309"><i class="fas fa-arrows-rotate mr-1"></i>Por actualizar: <strong>${updateGroups.length}</strong></span>
+        ${badGroups.length ? `<span style="color:#B91C1C"><i class="fas fa-circle-xmark mr-1"></i>Con error (se omitirán): <strong>${badGroups.length}</strong></span>` : '<span style="color:#166534"><i class="fas fa-circle-check mr-1"></i><strong>Sin errores · Listo para ejecutar</strong></span>'}
+      </div>
     </div>
-    ${bigWarning}`;
+    ${batchInfo}`;
 
   preview.classList.remove('hidden');
-  if (okGroups.length) runBtn.classList.remove('hidden');
-  else runBtn.classList.add('hidden');
+  if (okGroups.length) {
+    runBtn.classList.remove('hidden');
+    runBtn.innerHTML = `<i class="fas fa-bolt mr-1"></i>Ejecutar (${createGroups.length} crear, ${updateGroups.length} actualizar)`;
+  } else {
+    runBtn.classList.add('hidden');
+  }
 }
 
 async function _executeMassTxImport(groups) {
@@ -3463,48 +3663,118 @@ async function _executeMassTxImport(groups) {
   if (!Array.isArray(groups) || !groups.length) return;
 
   const valids = groups.filter(g => g.ok && g.payload);
-  if (!valids.length) return showToast('No hay comprobantes válidos para importar', 'warning');
+  if (!valids.length) return showToast('No hay comprobantes válidos para importar o actualizar', 'warning');
 
   _massTxImportInProgress = true;
 
-  const runBtn = $('#btn-mass-tx-run');
+  const runBtn = $('#btn-mass-tx-run') as HTMLButtonElement | null;
   const progressWrap = $('#mass-tx-progress-wrap');
   const progressBar = $('#mass-tx-progress-bar');
   const progressText = $('#mass-tx-progress-text');
+  const resPanel = $('#mass-tx-result-panel');
+
+  if (resPanel) {
+    resPanel.classList.add('hidden');
+    resPanel.innerHTML = '';
+  }
   if (runBtn) {
     runBtn.disabled = true;
-    runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Importando...';
+    runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Procesando lote...';
   }
   progressWrap?.classList.remove('hidden');
 
   let created = 0;
+  let updated = 0;
   let failed = 0;
-  const failedGroups = [];
+  const failedGroups: string[] = [];
+
+  // Tamaño de macro-lote adaptativo (100 comprobantes por petición HTTP/transacción SQLite)
+  const BATCH_SIZE = 100;
+  const totalBatches = Math.ceil(valids.length / BATCH_SIZE);
 
   try {
-    for (let i = 0; i < valids.length; i++) {
-      const draft = valids[i];
-      const pct = ((i / valids.length) * 100);
+    for (let b = 0; b < totalBatches; b++) {
+      const startIdx = b * BATCH_SIZE;
+      const slice = valids.slice(startIdx, startIdx + BATCH_SIZE);
+      const pct = Math.round((startIdx / valids.length) * 100);
       if (progressBar) progressBar.style.width = `${pct}%`;
-      if (progressText) progressText.textContent = `Procesando ${i + 1} de ${valids.length}: ${draft.group}`;
+      if (progressText) {
+        progressText.textContent = totalBatches > 1
+          ? `Procesando lote ${b + 1} de ${totalBatches} (comprobantes ${startIdx + 1} a ${startIdx + slice.length} de ${valids.length})...`
+          : `Procesando ${valids.length} comprobante(s) en modo atómico...`;
+      }
+
+      const batchPayload = slice.map(draft => ({
+        group: draft.resolvedNumber || draft.group,
+        txData: {
+          ...draft.payload.txData,
+          allow_update: true,
+        },
+        lines: draft.payload.lines,
+      }));
 
       try {
-        await API.createTransaction(draft.payload.txData, draft.payload.lines);
-        created++;
-      } catch (err) {
-        failed++;
-        failedGroups.push(`${draft.group}: ${err.message}`);
+        const batchRes = await API.bulkUpsertTransactionsBatch(batchPayload);
+        created += Number(batchRes.created || 0);
+        updated += Number(batchRes.updated || 0);
+        failed += Number(batchRes.failed || 0);
+        if (Array.isArray(batchRes.errors) && batchRes.errors.length) {
+          failedGroups.push(...batchRes.errors);
+        }
+      } catch (batchErr: any) {
+        failed += slice.length;
+        failedGroups.push(`Lote ${b + 1}: ${batchErr?.message || String(batchErr)}`);
       }
     }
 
     if (progressBar) progressBar.style.width = '100%';
-    if (progressText) progressText.textContent = 'Proceso finalizado';
+    if (progressText) {
+      progressText.textContent = `Proceso finalizado: ${created} creados, ${updated} actualizados${failed ? `, ${failed} con error` : ''}`;
+    }
+
+    // Mostrar panel visual de resultados y errores directamente en la UI (/web-design-system)
+    if (resPanel) {
+      const hasErrors = failed > 0;
+      const panelBg = hasErrors ? '#FFFBEB' : '#F0FDF4';
+      const panelBorder = hasErrors ? '#FDE68A' : '#BBF7D0';
+      const titleColor = hasErrors ? '#92400E' : '#166534';
+      const iconClass = hasErrors ? 'fa-triangle-exclamation text-amber-600' : 'fa-circle-check text-emerald-600';
+
+      const errorsListHtml = failedGroups.length
+        ? `<div class="mt-3 rounded-lg p-2.5 text-xs font-mono overflow-y-auto" style="max-height:160px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B">
+            <p class="font-sans font-semibold mb-1" style="color:#7F1D1D">Detalle de errores (${failedGroups.length}):</p>
+            <ul class="space-y-1 list-disc pl-4">
+              ${failedGroups.map(e => `<li>${esc(e)}</li>`).join('')}
+            </ul>
+           </div>`
+        : '';
+
+      resPanel.innerHTML = `
+        <div class="rounded-xl p-4 transition-all" style="background:${panelBg};border:1px solid ${panelBorder}">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center gap-2.5">
+              <i class="fas ${iconClass} text-lg"></i>
+              <div>
+                <h4 class="text-sm font-bold" style="color:${titleColor}">Resultado de la Carga Masiva</h4>
+                <p class="text-xs" style="color:#4B5563">Se procesaron <strong>${valids.length}</strong> comprobantes válidos del archivo.</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 text-xs font-semibold">
+              <span class="px-2.5 py-1 rounded-lg" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE">Creados: ${created}</span>
+              <span class="px-2.5 py-1 rounded-lg" style="background:#FEF3C7;color:#B45309;border:1px solid #FDE68A">Actualizados: ${updated}</span>
+              ${failed ? `<span class="px-2.5 py-1 rounded-lg" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">Con Error: ${failed}</span>` : ''}
+            </div>
+          </div>
+          ${errorsListHtml}
+        </div>`;
+      resPanel.classList.remove('hidden');
+    }
 
     await API.logAudit(
       'IMPORT',
       'transactions',
       'bulk',
-      `Carga masiva: ${created} creadas, ${failed} con error de ${valids.length} comprobantes válidos`
+      `Carga masiva: ${created} creadas, ${updated} actualizadas, ${failed} con error de ${valids.length} comprobantes válidos`
     );
 
     if (failedGroups.length) {
@@ -3512,9 +3782,9 @@ async function _executeMassTxImport(groups) {
     }
 
     showToast(
-      `Carga masiva finalizada: ${created} comprobante(s) creados${failed ? `, ${failed} con error` : ''}`,
+      `Carga masiva finalizada: ${created} creados, ${updated} actualizados${failed ? `, ${failed} con error` : ''}`,
       failed ? 'warning' : 'success',
-      5500
+      6000
     );
 
     _loadSysInfo();
@@ -3713,7 +3983,7 @@ async function _openMassTpImportModal() {
     const file = fileInput.files?.[0];
     if (file) processFile(file);
   });
-  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   clearBtn?.addEventListener('click', resetPreview);
   runBtn?.addEventListener('click', () => _executeMassTpImport(parsedRows));
@@ -5847,21 +6117,24 @@ async function _executeMassPhBalancesImport({
 
 function _openBulkReplaceModal() {
   openModal(
-    'Reemplazo Masivo de Cuenta Contable',
+    '<i class="fas fa-shuffle mr-2" style="color:#2563EB"></i>Reemplazo Masivo de Cuenta Contable',
     `
       <div class="space-y-4">
         <p class="text-sm" style="color:#4B5563;line-height:1.5">
-          Esta herramienta buscará todas las líneas de asientos contables que utilicen la <strong>cuenta origen</strong> dentro del período seleccionado y las asociará a la <strong>cuenta destino</strong>.
+          Reemplaza una cuenta contable por otra en las líneas de asientos del período indicado.
+          Puedes aplicarlo a <strong>todos los terceros</strong> de la cuenta (modo masivo) o filtrar
+          y seleccionar <strong>terceros específicos</strong> para mover solo sus movimientos.
         </p>
-        
+
+        <!-- Campos base -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="form-group">
             <label class="form-label font-semibold">Cuenta Origen (Código)</label>
-            <input id="bulk-old-account" class="form-input" placeholder="Ej: 11050501">
+            <input id="bulk-old-account" class="form-input" placeholder="Ej: 13050501" autocomplete="off">
           </div>
           <div class="form-group">
             <label class="form-label font-semibold">Cuenta Destino (Código)</label>
-            <input id="bulk-new-account" class="form-input" placeholder="Ej: 11100502">
+            <input id="bulk-new-account" class="form-input" placeholder="Ej: 13050502" autocomplete="off">
           </div>
           <div class="form-group">
             <label class="form-label font-semibold">Fecha Desde</label>
@@ -5872,11 +6145,52 @@ function _openBulkReplaceModal() {
             <input id="bulk-date-to" type="date" class="form-input">
           </div>
         </div>
-        
+
+        <!-- Toggle: Filtrar por tercero -->
+        <div class="flex items-start gap-3 p-3 rounded-xl" style="background:#EFF6FF;border:1px solid #BFDBFE">
+          <label class="flex items-center gap-2 cursor-pointer select-none mt-0.5" style="flex-shrink:0">
+            <input type="checkbox" id="bulk-filter-by-tp" class="rounded" style="accent-color:#2563EB;width:16px;height:16px">
+            <i class="fas fa-user-tag text-sm" style="color:#2563EB"></i>
+            <span class="text-sm font-semibold" style="color:#1D4ED8">Filtrar por tercero(s)</span>
+          </label>
+          <span class="text-xs" style="color:#3B82F6;line-height:1.5">
+            Al activar esta opción, solo se reasignarán los movimientos de los terceros que selecciones.
+            Los demás terceros de la cuenta <strong>permanecerán intactos</strong>.
+          </span>
+        </div>
+
+        <!-- Sección de terceros (oculta por defecto) -->
+        <div id="bulk-tp-section" class="hidden space-y-3">
+          <div class="flex items-center gap-3 flex-wrap">
+            <button id="btn-bulk-preview-tp" class="btn btn-outline btn-sm" style="border-color:#2563EB;color:#2563EB">
+              <i class="fas fa-magnifying-glass mr-1"></i> Previsualizar terceros
+            </button>
+            <span id="bulk-tp-status" class="text-xs" style="color:#6B7280"></span>
+          </div>
+          <div id="bulk-tp-table-wrap" class="hidden rounded-xl border overflow-hidden" style="max-height:270px;overflow-y:auto;border-color:#E5E7EB">
+            <table class="data-table text-xs w-full">
+              <thead>
+                <tr>
+                  <th style="width:36px;text-align:center">
+                    <input type="checkbox" id="bulk-tp-select-all" title="Seleccionar / Deseleccionar todos" style="cursor:pointer;accent-color:#2563EB">
+                  </th>
+                  <th>NIT / Documento</th>
+                  <th>Nombre del Tercero</th>
+                  <th style="text-align:right"># Líneas</th>
+                </tr>
+              </thead>
+              <tbody id="bulk-tp-tbody"></tbody>
+            </table>
+          </div>
+          <p id="bulk-tp-selection-count" class="text-xs hidden" style="color:#2563EB"></p>
+        </div>
+
+        <!-- Advertencia -->
         <div class="p-3 rounded-lg text-xs flex gap-2 items-start" style="background:#FFFBEB; border:1px solid #FDE68A; color:#B45309">
           <i class="fas fa-triangle-exclamation mt-0.5 text-sm"></i>
           <div>
-            <strong>Atención:</strong> Esta acción modificará permanentemente los registros contables históricos en el rango indicado. Se recomienda descargar una copia de respaldo antes de continuar.
+            <strong>Atención:</strong> Esta acción modificará permanentemente los registros contables históricos en el rango indicado.
+            Se recomienda descargar una copia de respaldo antes de continuar.
           </div>
         </div>
       </div>
@@ -5890,39 +6204,197 @@ function _openBulkReplaceModal() {
     false
   );
 
+  /* Referencias a elementos del modal */
+  const filterToggle    = $('#bulk-filter-by-tp')      as HTMLInputElement | null;
+  const tpSection       = $('#bulk-tp-section');
+  const previewBtn      = $('#btn-bulk-preview-tp');
+  const tpStatus        = $('#bulk-tp-status');
+  const tpTableWrap     = $('#bulk-tp-table-wrap');
+  const tpTbody         = $('#bulk-tp-tbody');
+  const selectAllCb     = $('#bulk-tp-select-all')     as HTMLInputElement | null;
+  const selectionCount  = $('#bulk-tp-selection-count');
+
+  /* Helper: actualiza el contador de selección */
+  const _updateSelCount = () => {
+    const total   = document.querySelectorAll<HTMLInputElement>('.bulk-tp-check').length;
+    const checked = document.querySelectorAll<HTMLInputElement>('.bulk-tp-check:checked').length;
+    if (selectionCount) {
+      selectionCount.textContent = `${checked} de ${total} tercero(s) seleccionado(s)`;
+      selectionCount.classList.toggle('hidden', total === 0);
+    }
+    if (selectAllCb) selectAllCb.indeterminate = checked > 0 && checked < total;
+  };
+
+  /* Toggle ON/OFF */
+  filterToggle?.addEventListener('change', () => {
+    const on = filterToggle.checked;
+    tpSection?.classList.toggle('hidden', !on);
+    if (!on) {
+      tpTableWrap?.classList.add('hidden');
+      if (tpTbody)  tpTbody.innerHTML = '';
+      if (tpStatus) tpStatus.textContent = '';
+      selectionCount?.classList.add('hidden');
+    }
+  });
+
+  /* Previsualizar terceros */
+  previewBtn?.addEventListener('click', async () => {
+    const oldCode   = getInputVal('bulk-old-account').trim();
+    const startDate = getInputVal('bulk-date-from');
+    const endDate   = getInputVal('bulk-date-to');
+
+    if (!oldCode || !startDate || !endDate) {
+      return showToast('Completa la cuenta origen y el rango de fechas antes de previsualizar', 'warning');
+    }
+
+    if (tpStatus) tpStatus.textContent = 'Cargando terceros…';
+    tpTableWrap?.classList.add('hidden');
+    selectionCount?.classList.add('hidden');
+    if (tpTbody) tpTbody.innerHTML = '';
+
+    try {
+      const res = await pb.send(
+        `/api/gravy/bulk-replace-account/preview?oldCode=${encodeURIComponent(oldCode)}&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`,
+        { method: 'GET' }
+      );
+
+      if (!res?.success) {
+        if (tpStatus) tpStatus.textContent = res?.message || 'Error al cargar terceros.';
+        return;
+      }
+      if (!res.terceros?.length) {
+        if (tpStatus) tpStatus.textContent = 'No se encontraron terceros con movimientos en ese período para la cuenta indicada.';
+        return;
+      }
+
+      if (tpTbody) {
+        tpTbody.innerHTML = (res.terceros as any[]).map(tp => `
+          <tr>
+            <td style="text-align:center">
+              <input type="checkbox" class="bulk-tp-check" value="${esc(tp.id)}" checked style="cursor:pointer;accent-color:#2563EB">
+            </td>
+            <td><span class="font-mono text-xs" style="color:#1E40AF">${esc(tp.doc_number || '—')}</span></td>
+            <td>${esc(tp.name || 'Sin nombre')}</td>
+            <td style="text-align:right"><span class="badge badge-blue">${tp.line_count}</span></td>
+          </tr>
+        `).join('');
+
+        tpTbody.querySelectorAll<HTMLInputElement>('.bulk-tp-check').forEach(cb => {
+          cb.addEventListener('change', () => {
+            const all     = tpTbody!.querySelectorAll<HTMLInputElement>('.bulk-tp-check');
+            const checked = tpTbody!.querySelectorAll<HTMLInputElement>('.bulk-tp-check:checked');
+            if (selectAllCb) {
+              selectAllCb.checked       = checked.length === all.length;
+              selectAllCb.indeterminate = checked.length > 0 && checked.length < all.length;
+            }
+            _updateSelCount();
+          });
+        });
+      }
+
+      if (tpStatus) tpStatus.textContent = `${res.total} tercero(s) encontrado(s) con movimientos.`;
+      if (selectAllCb) { selectAllCb.checked = true; selectAllCb.indeterminate = false; }
+      tpTableWrap?.classList.remove('hidden');
+      _updateSelCount();
+
+    } catch (err: any) {
+      if (tpStatus) tpStatus.textContent = `Error: ${err.message}`;
+      showToast('No se pudo cargar la lista de terceros', 'error');
+    }
+  });
+
+  /* Seleccionar / deseleccionar todos */
+  selectAllCb?.addEventListener('change', () => {
+    const shouldCheck = selectAllCb.checked;
+    document.querySelectorAll<HTMLInputElement>('.bulk-tp-check')
+      .forEach(cb => { cb.checked = shouldCheck; });
+    _updateSelCount();
+  });
+
+  /* Ejecutar reemplazo — bifurca según modo */
   $('#btn-bulk-replace-execute')?.addEventListener('click', async () => {
     const oldAccountCode = getInputVal('bulk-old-account').trim();
     const newAccountCode = getInputVal('bulk-new-account').trim();
-    const startDate = getInputVal('bulk-date-from');
-    const endDate = getInputVal('bulk-date-to');
+    const startDate      = getInputVal('bulk-date-from');
+    const endDate        = getInputVal('bulk-date-to');
+    const isByTp         = (filterToggle as HTMLInputElement | null)?.checked ?? false;
 
     if (!oldAccountCode || !newAccountCode || !startDate || !endDate) {
       return showToast('Por favor completa todos los campos', 'warning');
     }
 
-    confirmDialog(
-      'Confirmar Reemplazo Masivo',
-      `¿Estás seguro de que deseas reemplazar la cuenta <strong>${esc(oldAccountCode)}</strong> por la cuenta <strong>${esc(newAccountCode)}</strong> en el lapso del <strong>${startDate}</strong> al <strong>${endDate}</strong>?<br><br>Esta acción modificará los asientos existentes de manera directa y no se puede deshacer de forma automática.`,
-      async () => {
-        try {
-          showToast('Procesando reemplazo en lote...', 'info');
-          const res = await pb.send('/api/gravy/bulk-replace-account', {
-            method: 'POST',
-            body: JSON.stringify({ oldAccountCode, newAccountCode, startDate, endDate }),
-            headers: { 'Content-Type': 'application/json' }
-          });
+    if (isByTp) {
+      /* MODO FILTRADO POR TERCERO(S) */
+      const selectedIds = Array.from(
+        document.querySelectorAll<HTMLInputElement>('.bulk-tp-check:checked')
+      ).map(cb => cb.value).filter(v => v);
 
-          if (res && res.success) {
-            closeModal();
-            showToast(res.message, 'success');
-          } else {
-            showToast(res.message || 'Ocurrió un error inesperado', 'error');
-          }
-        } catch (err: any) {
-          showToast(err.message || 'Error al ejecutar el reemplazo', 'error');
-        }
+      if (!selectedIds.length) {
+        return showToast('Selecciona al menos un tercero de la lista antes de ejecutar', 'warning');
       }
-    );
+
+      const totalChecked = selectedIds.length;
+      const totalInTable = document.querySelectorAll('.bulk-tp-check').length;
+      const selLabel     = totalChecked === totalInTable
+        ? `<strong>todos los ${totalChecked}</strong> tercero(s)`
+        : `<strong>${totalChecked}</strong> de ${totalInTable} tercero(s)`;
+
+      confirmDialog(
+        'Confirmar Reemplazo por Tercero(s)',
+        `¿Reasignar ${selLabel} de la cuenta <strong>${esc(oldAccountCode)}</strong>
+         a la cuenta <strong>${esc(newAccountCode)}</strong>
+         en el período del <strong>${startDate}</strong> al <strong>${endDate}</strong>?
+         <br><br>Los demás terceros de la cuenta <strong>permanecerán intactos</strong>.
+         <br>Esta acción no se puede deshacer automáticamente.`,
+        async () => {
+          try {
+            showToast('Procesando reemplazo filtrado por tercero(s)…', 'info');
+            const res = await pb.send('/api/gravy/bulk-replace-account-by-third-party', {
+              method:  'POST',
+              body:    JSON.stringify({ oldAccountCode, newAccountCode, startDate, endDate, thirdPartyIds: selectedIds }),
+              headers: { 'Content-Type': 'application/json' }
+            });
+            if (res?.success) {
+              closeModal();
+              showToast(res.message, 'success');
+            } else {
+              showToast(res.message || 'Ocurrió un error inesperado', 'error');
+            }
+          } catch (err: any) {
+            showToast(err.message || 'Error al ejecutar el reemplazo por tercero', 'error');
+          }
+        }
+      );
+
+    } else {
+      /* MODO MASIVO (todos los terceros — comportamiento original) */
+      confirmDialog(
+        'Confirmar Reemplazo Masivo',
+        `¿Reemplazar la cuenta <strong>${esc(oldAccountCode)}</strong> por la cuenta
+         <strong>${esc(newAccountCode)}</strong> en el lapso del
+         <strong>${startDate}</strong> al <strong>${endDate}</strong>?
+         <br><br>Esta acción moverá los movimientos de <strong>todos los terceros</strong> de la cuenta.
+         No se puede deshacer de forma automática.`,
+        async () => {
+          try {
+            showToast('Procesando reemplazo en lote…', 'info');
+            const res = await pb.send('/api/gravy/bulk-replace-account', {
+              method:  'POST',
+              body:    JSON.stringify({ oldAccountCode, newAccountCode, startDate, endDate }),
+              headers: { 'Content-Type': 'application/json' }
+            });
+            if (res && res.success) {
+              closeModal();
+              showToast(res.message, 'success');
+            } else {
+              showToast(res.message || 'Ocurrió un error inesperado', 'error');
+            }
+          } catch (err: any) {
+            showToast(err.message || 'Error al ejecutar el reemplazo', 'error');
+          }
+        }
+      );
+    }
   });
 }
 

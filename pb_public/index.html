@@ -1770,9 +1770,9 @@
       flex-shrink: 0;
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-jxLBx4Yd.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/style-qTKYrgoS.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-BSIrav2P.css">
+  <script type="module" crossorigin src="/assets/main-S5gNHbVZ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/style-CA-GSrS-.js">
+  <link rel="stylesheet" crossorigin href="/assets/style-BjvTTJqR.css">
   <link rel="stylesheet" crossorigin href="/assets/main-Dgihpmma.css">
 </head>
 
@@ -1791,18 +1791,8 @@
 
   <!-- ─── Login Oficial Opción 1: Orgánico & Fluido con Triada (Azul, Violeta, Verde) ────────────────── -->
   <div id="screen-login" class="screen" style="height:100vh;background-color:#F8FAFC">
-    <!-- Fondo Ambiental Triada -->
-    <div class="triad-ambient-bg">
-      <div class="ambient-blob blob-blue"></div>
-      <div class="ambient-blob blob-violet"></div>
-      <div class="ambient-blob blob-green"></div>
-      <div class="ambient-blob blob-left-soft"></div>
-
-      <div class="shape-accent-pill-blue"></div>
-      <div class="shape-accent-arc-violet"></div>
-      <div class="shape-accent-pill-green"></div>
-      <div class="dots-grid-triad"></div>
-    </div>
+    <!-- Fondo Ambiental Sobrio y Cálido (Key Light 120°) -->
+    <div class="login-calm-ambient" aria-hidden="true"></div>
 
     <div class="login-screen-wrap">
       <div class="login-master-container">
@@ -1817,10 +1807,10 @@
               </div>
               <div class="flex flex-col">
                 <span class="text-2xl font-black tracking-tight text-slate-900" style="letter-spacing:-0.5px">GRAVY</span>
-                <div class="brand-triad-pills">
-                  <span class="triad-badge badge-blue">Confianza</span>
-                  <span class="triad-badge badge-violet">Innovación</span>
-                  <span class="triad-badge badge-green">DIAN 2026</span>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                    Ecosistema Contable & Tributario
+                  </span>
                 </div>
               </div>
             </div>
@@ -1828,7 +1818,7 @@
             <!-- Títulos y Saludo Dinámico -->
             <div class="mb-5">
               <h2 id="login-greeting-title" class="text-2xl font-extrabold text-slate-900 tracking-tight">Acceso al Sistema</h2>
-              <p id="login-greeting-subtitle" class="text-xs text-slate-500 mt-1">Ingresa a tu ecosistema contable, tributario y financiero</p>
+              <p id="login-greeting-subtitle" class="text-xs text-slate-600 mt-1">Ingresa tus credenciales para acceder a tus módulos contables</p>
             </div>
 
             <!-- Botón Google SSO Institucional -->
@@ -1850,12 +1840,13 @@
               <div class="flex-1 h-px bg-slate-200"></div>
             </div>
 
-            <!-- Alerta de Error -->
-            <div id="login-error" role="alert" aria-live="assertive"
-              class="hidden mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2.5"
-              style="background:#FDEAEA;color:#EC2D30;border:1px solid #F6BECB">
-              <i class="fas fa-circle-exclamation text-sm flex-shrink-0"></i>
-              <span id="login-error-text"></span>
+            <!-- Alerta de Error Compacta (Sin descolocar campos / CLS = 0) -->
+            <div class="login-error-slot mb-3 min-h-[38px] flex items-center">
+              <div id="login-error" role="alert" aria-live="assertive"
+                class="hidden w-full p-2.5 rounded-lg text-xs font-semibold flex items-center gap-2 border bg-rose-50 text-rose-700 border-rose-200 anim-fade">
+                <i class="fas fa-circle-exclamation text-xs flex-shrink-0 text-rose-600"></i>
+                <span id="login-error-text" class="leading-tight"></span>
+              </div>
             </div>
 
             <!-- Formulario Principal -->
@@ -1921,54 +1912,134 @@
           </div>
         </div>
 
-        <!-- Columna Derecha: Hero Editorial con Triada de Marca -->
-        <div class="hero-side-triad hidden md:flex">
-          <div class="flex items-center justify-end gap-2.5">
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100 shadow-sm">
-              <i class="fas fa-shield-halved text-[11px] text-blue-600"></i> Cifrado Bancario AES-256
+        <!-- Columna Derecha: Hero Editorial Inspirado en Diseño Gráfico Orgánico & Minimalista -->
+        <div class="hero-side-editorial hidden md:flex flex-col justify-between p-12 relative overflow-hidden"
+             style="background: #FFFFFF; color: #0F172A; min-height: 640px;">
+
+          <!-- Composición Gráfica de Formas Orgánicas y Texturas (Inspirada en Referencia Oficial) -->
+          <svg class="absolute inset-0 w-full h-full pointer-events-none z-0" viewBox="0 0 660 680" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <defs>
+              <!-- Filtro de textura de grano / stippling suave -->
+              <filter id="soft-grain" x="0%" y="0%" width="100%" height="100%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" result="noise" />
+                <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.14 0" result="colorNoise" />
+                <feComposite operator="in" in2="SourceGraphic" result="textured" />
+                <feBlend mode="multiply" in="SourceGraphic" in2="textured" />
+              </filter>
+
+              <!-- Gradientes para las formas geométricas -->
+              <linearGradient id="splitLavender" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#DDD6FE" />
+                <stop offset="100%" stop-color="#C4B5FD" />
+              </linearGradient>
+
+              <linearGradient id="splitSky" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#F0F9FF" />
+                <stop offset="100%" stop-color="#E0F2FE" />
+              </linearGradient>
+
+              <linearGradient id="peachSemicircle" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#FED7AA" />
+                <stop offset="100%" stop-color="#FB923C" />
+              </linearGradient>
+
+              <linearGradient id="coralPebble" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#FB7185" />
+                <stop offset="100%" stop-color="#E11D48" />
+              </linearGradient>
+
+              <linearGradient id="tealSemicircle" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38BDF8" />
+                <stop offset="100%" stop-color="#2DD4BF" />
+              </linearGradient>
+
+              <linearGradient id="periwinkleTri" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#C4B5FD" />
+                <stop offset="100%" stop-color="#A78BFA" />
+              </linearGradient>
+
+              <!-- Patrón de matriz de puntos (Dot Grid) -->
+              <pattern id="dot-matrix-ref" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="1.5" fill="#CBD5E1" />
+              </pattern>
+
+              <!-- Halo ambiental rosa bajo la cápsula inferior -->
+              <filter id="pinkGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="-10" dy="5" stdDeviation="22" flood-color="#F43F5E" flood-opacity="0.32" />
+              </filter>
+
+              <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="6" stdDeviation="14" flood-color="#0F172A" flood-opacity="0.05" />
+              </filter>
+            </defs>
+
+            <!-- 1. Círculo Bipartito Superior (Izquierda Azul Hielo, Derecha Lavanda con Grano) -->
+            <g transform="translate(195, -35)" filter="url(#softShadow)">
+              <path d="M 125, 125 A 72,72 0 0,1 125, -19 Z" transform="rotate(180 125 53)" fill="url(#splitSky)" opacity="0.9" />
+              <path d="M 125, 125 A 72,72 0 0,1 125, -19 Z" fill="url(#splitLavender)" filter="url(#softGrain)" opacity="0.92" />
+            </g>
+
+            <!-- 2. Semicírculo Durazno / Naranja Superior Derecho -->
+            <g transform="translate(420, -50)" filter="url(#softShadow)">
+              <path d="M 0,115 A 115,115 0 0,1 230,115 Z" fill="url(#peachSemicircle)" filter="url(#softGrain)" />
+            </g>
+
+            <!-- 3. Cuarto de Círculo Violeta en la Esquina Superior Derecha -->
+            <g transform="translate(595, 35)" filter="url(#softShadow)">
+              <path d="M 0,0 A 90,90 0 0,1 90,90 L 0,90 Z" fill="#DDD6FE" filter="url(#softGrain)" opacity="0.95" />
+            </g>
+
+            <!-- 4. Matriz de Puntos Detrás del Texto Principal -->
+            <g transform="translate(490, 155)">
+              <rect width="112" height="96" fill="url(#dot-matrix-ref)" />
+            </g>
+
+            <!-- 5. Pequeño Creciente Coral a la Izquierda del Titular -->
+            <g transform="translate(20, 260)">
+              <path d="M 0,34 A 34,34 0 0,0 68,34 Z" fill="#FB7185" transform="rotate(-30 34 34)" opacity="0.9" />
+            </g>
+
+            <!-- 6. Cápsula / Guijarro Coral Inferior con Resplandor Rosa (Foco Táctil) -->
+            <g transform="translate(46, 435)" filter="url(#pinkGlow)">
+              <rect x="0" y="0" width="78" height="138" rx="39" fill="url(#coralPebble)" filter="url(#softGrain)" />
+            </g>
+
+            <!-- 7. Semicírculo Turquesa / Cian Inferior Central -->
+            <g transform="translate(235, 475)" filter="url(#softShadow)">
+              <path d="M 0,0 A 78,78 0 0,0 156,0 Z" fill="url(#tealSemicircle)" filter="url(#softGrain)" transform="rotate(-15 78 0)" />
+            </g>
+
+            <!-- 8. Triángulo Lavanda Suave Inferior Derecho -->
+            <g transform="translate(495, 420)" filter="url(#softShadow)">
+              <path d="M 38 16 C 45 3, 62 3, 69 16 L 100 68 C 107 82, 97 99, 82 99 L 25 99 C 10 99, 0 82, 7 68 Z" fill="url(#periwinkleTri)" filter="url(#softGrain)" transform="rotate(35 53 53)" />
+            </g>
+          </svg>
+
+          <!-- Sellos de Cumplimiento Normativo (Sutiles y Elegantes en Cristal Blanco) -->
+          <div class="flex items-center justify-end gap-2.5 z-10">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-white/80 text-slate-700 border border-slate-200/90 shadow-xs backdrop-blur-sm">
+              <i class="fas fa-shield-halved text-[10px] text-blue-600"></i> Cifrado Local AES-256
             </span>
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-sm">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> DIAN Resolución 000165
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-50/90 text-emerald-800 border border-emerald-200 shadow-xs backdrop-blur-sm">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> DIAN Res. 000165 / Anexo 1.9
             </span>
           </div>
 
-          <!-- Titular y Descripción Central -->
-          <div class="my-auto py-6 max-w-lg">
-            <h2 class="text-3xl lg:text-4xl font-extrabold text-slate-900 leading-tight tracking-tight mb-3.5">
-              La velocidad de tus ideas, <br>
-              <span class="text-gradient-triad">con el rigor contable que necesitas.</span>
+          <!-- Titular Humano y Directo (Aprobado y Elogiado por el Líder) -->
+          <div class="my-auto py-6 z-10 max-w-lg">
+            <h2 class="text-3xl lg:text-[34px] font-extrabold text-slate-900 leading-[1.25] tracking-tight mb-4">
+              Rigor contable y velocidad operativa,<br>
+              <span class="text-violet-700">diseñado para la realidad fiscal colombiana.</span>
             </h2>
-            <p class="text-sm font-normal leading-relaxed text-slate-500">
-              Unifica contabilidad automatizada, facturación electrónica DIAN, conciliación bancaria y control
-              multi-empresa con la arquitectura híbrida más rápida y segura de Colombia.
+            <p class="text-[13.5px] text-slate-500 leading-relaxed font-normal max-w-md">
+              Emisión de comprobantes con validación previa en tiempo real, causación automática con partida doble estricta y gestión multi-empresa con base de datos local-first.
             </p>
           </div>
 
-          <!-- Tres Pilares Alineados con Azul, Violeta y Verde -->
-          <div class="triad-cards-grid">
-            <div class="triad-card card-blue">
-              <div class="card-icon">⚡</div>
-              <h4 class="card-title">Motor Local</h4>
-              <p class="card-desc">Opera a ultra-baja latencia sin cortes de internet</p>
-            </div>
-
-            <div class="triad-card card-violet">
-              <div class="card-icon">🧠</div>
-              <h4 class="card-title">Automatización</h4>
-              <p class="card-desc">Cierres y causaciones contables en un clic</p>
-            </div>
-
-            <div class="triad-card card-green">
-              <div class="card-icon">📑</div>
-              <h4 class="card-title">Ecosistema DIAN</h4>
-              <p class="card-desc">Facturación, nómina, doc. soporte y exógena</p>
-            </div>
-          </div>
-
-          <!-- Pie Institucional -->
-          <div class="w-full pt-4 mt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+          <!-- Pie Institucional Sobrio y Limpio -->
+          <div class="w-full pt-4 mt-auto border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 z-10">
             <span>© 2026 GRAVY Softworks S.A.S.</span>
-            <span>Normativa NIIF Pymes & Habeas Data Ley 1581</span>
+            <span>Estándares NIIF para PYMES & Habeas Data Ley 1581</span>
           </div>
         </div>
       </div>

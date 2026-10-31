@@ -535,25 +535,26 @@
 
   /* Botón Principal con Gradiente de la Triada */
   .login-pill-btn {
-    background: var(--gradient-btn) !important;
+    background: #6D28D9 !important;
     color: #FFFFFF !important;
-    border-radius: 14px !important;
-    height: 50px !important;
-    font-size: 14.5px !important;
+    border-radius: 12px !important;
+    height: 48px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
-    letter-spacing: 0.2px !important;
-    border: none !important;
-    box-shadow: 0 10px 24px -6px rgba(124, 58, 237, 0.45) !important;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    letter-spacing: 0.1px !important;
+    border: 1px solid #5B21B6 !important;
+    box-shadow: 0 4px 12px -2px rgba(109, 40, 217, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background-color 120ms ease, box-shadow 120ms ease !important;
     cursor: pointer !important;
   }
   .login-pill-btn:hover {
-    background: var(--gradient-btn-hover) !important;
-    box-shadow: 0 14px 28px -6px rgba(37, 99, 235, 0.5) !important;
-    transform: translateY(-1.5px) !important;
+    background: #5B21B6 !important;
+    box-shadow: 0 6px 16px -2px rgba(109, 40, 217, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+    transform: translateY(-1px) !important;
   }
   .login-pill-btn:active {
-    transform: translateY(0.5px) scale(0.99) !important;
+    transform: scale(0.97) !important;
+    box-shadow: 0 2px 6px -1px rgba(109, 40, 217, 0.3) !important;
   }
   .login-pill-btn:disabled {
     opacity: 0.75 !important;
@@ -1337,3 +1338,21 @@
   }
 }
 
+
+
+  /* Key Light 120deg Ambient Background */
+  .login-calm-ambient {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: radial-gradient(1000px circle at 15% 15%, rgba(109, 40, 217, 0.05), transparent 70%),
+                radial-gradient(800px circle at 85% 85%, rgba(37, 99, 235, 0.04), transparent 60%);
+  }
+
+  .login-error-slot {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+  }
+  

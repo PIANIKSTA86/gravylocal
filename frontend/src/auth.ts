@@ -429,7 +429,10 @@ interface CompanyAccess {
   modules:       string[];
 }
 
+let _isLoggingIn = false;
+
 async function doLogin() {
+  if (_isLoggingIn) return;
   const email = (getInputVal('login-email') || '').trim();
   const rawPass = $('#login-pass')?.value ?? '';
   const errEl = $('#login-error');
@@ -456,8 +459,9 @@ async function doLogin() {
     localStorage.removeItem('gravy_remembered_email');
   }
 
+  _isLoggingIn = true;
   const btn = $('#btn-login');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   btn.innerHTML = `
     <span class="flex items-center justify-center w-full gap-2">
       <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
@@ -510,7 +514,8 @@ async function doLogin() {
   } catch (err: any) {
     showError(err.message || 'Error inesperado durante la autenticación');
   } finally {
-    btn.disabled = false;
+    _isLoggingIn = false;
+    if (btn) btn.disabled = false;
     btn.innerHTML = `<i class="fas fa-arrow-right-to-bracket text-xs"></i> <span id="btn-login-label">Iniciar Sesión</span>`;
   }
 }
@@ -918,8 +923,8 @@ function showLogin() {
   if (savedEmail) {
     setInputVal('login-email', savedEmail);
     if (remCheck) remCheck.checked = true;
-    if (greetingTitle) greetingTitle.textContent = '¡Hola de nuevo! 👋';
-    if (greetingSubtitle) greetingSubtitle.textContent = 'Ingresa tu contraseña para acceder a tus módulos contables';
+    if (greetingTitle) greetingTitle.textContent = 'Bienvenido de nuevo';
+    if (greetingSubtitle) greetingSubtitle.textContent = 'Ingresa tu contraseña para continuar con tu sesión contable';
     setTimeout(() => $('#login-pass')?.focus(), 80);
   } else {
     setInputVal('login-email', '');

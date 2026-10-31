@@ -1,0 +1,101 @@
+--- a/scripts/audit_copy.py
++++ b/scripts/audit_copy.py
+@@ -187,7 +187,7 @@
+     {
+         "name": "In Today's Fast-Paced World",
+         "lang": "en",
+-        "pattern": r"(?<![\w\-])in\s+today'?s\s+fast[\-\s]paced\s+world|in\s+an\s+ever[\-\s]changing\s+world(?![\w\-])",
++        "pattern": r"(?<![\w\-\#])(?:in\s+today'?s\s+fast[\-\s]paced\s+world|in\s+an\s+ever[\-\s]changing\s+world)(?![\w\-\#])",
+         "replacement": "Delete filler preamble. Begin directly with the factual subject matter."
+     },
+     {
+@@ -193,7 +193,7 @@
+         "name": "En El Mundo Acelerado De Hoy",
+         "lang": "es",
+-        "pattern": r"(?<![\w\-])en\s+el\s+mundo\s+acelerado\s+de\s+hoy|en\s+un\s+mundo\s+cada\s+vez\s+m[aá]s(?![\w\-])",
++        "pattern": r"(?<![\w\-\#])(?:en\s+el\s+mundo\s+acelerado\s+de\s+hoy|en\s+un\s+mundo\s+cada\s+vez\s+m[aá]s)(?![\w\-\#])",
+         "replacement": "Elimina el preámbulo vacío. Inicia directamente con el tema concreto."
+     }
+ ]
+@@ -224,7 +224,7 @@
+     compiled: List[Tuple[re.Pattern, str, str]] = []
+     for item in raw_entries:
+-        regex_str = r"(?<![\w\-])" + item["pattern"] + r"(?![\w\-])"
++        regex_str = r"(?<![\w\-\#])(?:" + item["pattern"] + r")(?![\w\-\#])"
+         try:
+             pattern = re.compile(regex_str, re.IGNORECASE)
+             compiled.append((pattern, item["category"], item["replacement"]))
+@@ -314,9 +314,18 @@
+ def audit_file_content(
+     content: str,
+     compiled_lexicon: List[Tuple[re.Pattern, str, str]],
+-    compiled_formulas: List[Tuple[re.Pattern, str, str]]
++    compiled_formulas: List[Tuple[re.Pattern, str, str]],
++    file_path: Optional[str] = None
+ ) -> Tuple[int, List[Dict[str, Any]]]:
+     """
+     Audit text content for buzzwords, formulas, and triads.
+     Returns (word_count, list of findings).
+     """
+     lines = content.splitlines()
+     findings: List[Dict[str, Any]] = []
++
++    # Determine if file is markdown
++    is_markdown = False
++    if file_path:
++        is_markdown = Path(file_path).suffix.lower() in (".md", ".markdown")
++    else:
++        # Fallback heuristic: check if content contains markdown ATX headings
++        is_markdown = bool(re.search(r"^#{1,6}\s+\S", content, re.MULTILINE))
+ 
+     # Calculate total words in text
+@@ -346,19 +355,34 @@
+         # Handle basic block comment boundaries (CSS / JS / HTML)
+-        if "/*" in stripped:
+-            in_block_comment = True
+-        if in_block_comment:
+-            if "*/" in stripped:
+-                in_block_comment = False
+-            continue
+-        if stripped.startswith("<!--") and stripped.endswith("-->"):
+-            continue
+-        if stripped.startswith("//") or stripped.startswith("#"):
+-            continue
++        # Strip single-line /* ... */ block comments first
++        working_line = re.sub(r"/\*.*?\*/", lambda m: " " * len(m.group(0)), line)
++        working_stripped = working_line.strip()
++
++        if "/*" in working_stripped:
++            in_block_comment = True
++        if in_block_comment:
++            if "*/" in working_stripped:
++                in_block_comment = False
++            continue
++
++        # Strip single-line HTML comments
++        working_line = re.sub(r"<!--.*?-->", lambda m: " " * len(m.group(0)), working_line)
++        working_stripped = working_line.strip()
++        if not working_stripped:
++            continue
++
++        # Skip single-line comments
++        if working_stripped.startswith("//"):
++            continue
++        # Skip '#' comments in non-markdown files
++        if working_stripped.startswith("#") and not is_markdown:
++            continue
++
++        # For markdown headings, mask leading '#+' with spaces to preserve column alignment
++        if is_markdown and working_stripped.startswith("#"):
++            working_line = re.sub(r"^\s*#{1,6}\s*", lambda m: " " * len(m.group(0)), working_line)
++            working_line = re.sub(r"\s*#{1,6}\s*$", lambda m: " " * len(m.group(0)), working_line)
++
++        # Mask HTML tags with spaces to avoid false positives on HTML attribute values (href, data-*, class)
++        working_line = re.sub(r"</?[a-zA-Z0-9_\-]+(?:\s+[^>]*)?>", lambda m: " " * len(m.group(0)), working_line)
+ 
+         for pattern, category, replacement in compiled_lexicon:
+-            for match in pattern.finditer(line):
++            for match in pattern.finditer(working_line):
+@@ -577,1 +601,1 @@
+-        f_words, f_findings = audit_file_content(content, compiled_lexicon, compiled_formulas)
++        f_words, f_findings = audit_file_content(content, compiled_lexicon, compiled_formulas, file_path=str(file_p))

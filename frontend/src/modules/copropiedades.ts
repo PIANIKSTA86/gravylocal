@@ -1627,42 +1627,86 @@ async function renderPhCartera(c) {
       }
     }
 
-    function renderIntegrity(info) {
+    function renderIntegrity(info: any, sysIntegrity: any = null) {
       const box = document.getElementById('ph-cartera-integrity');
       if (!box) return;
-      if (!info) {
+      if (!info && !sysIntegrity) {
         box.innerHTML = '';
         return;
       }
-      const tone = info.isBalanced
-        ? { bg: '#ECFDF5', border: '#6EE7B7', color: '#065F46', icon: 'fa-circle-check', title: 'Integridad OK' }
-        : { bg: '#FFF7ED', border: '#FDBA74', color: '#9A3412', icon: 'fa-triangle-exclamation', title: 'Descuadres detectados' };
+      
+      let html = '';
+      
+      // 1. Auditoría del Sistema Contable (Cartera PH vs Libro Auxiliar 13459501)
+      if (sysIntegrity && sysIntegrity.ok) {
+        const sysTone = sysIntegrity.balanced
+          ? { bg: '#F0FDF4', border: '#86EFAC', color: '#166534', icon: 'fa-shield-check', title: 'Integridad Contable 100% Cuadrada (Cartera PH === Libro Auxiliar)' }
+          : { bg: '#FEF2F2', border: '#FCA5A5', color: '#991B1B', icon: 'fa-triangle-exclamation', title: 'Alerta: Descuadre Contable Detectado (Ley 675 / CTCP)' };
 
-      box.innerHTML = `
-        <div class="rounded-2xl border p-4" style="background:${tone.bg};border-color:${tone.border}">
-          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <div class="font-bold" style="color:${tone.color}">
-              <i class="fas ${tone.icon} mr-2"></i>${tone.title}
+        html += `
+          <div class="rounded-2xl border p-4 mb-3 shadow-xs" style="background:${sysTone.bg};border-color:${sysTone.border}">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+              <div class="font-bold flex items-center gap-2" style="color:${sysTone.color}">
+                <i class="fas ${sysTone.icon} text-base"></i>
+                <span>${sysTone.title}</span>
+              </div>
+              <div class="text-xs px-2.5 py-1 rounded-full font-semibold" style="background:${sysIntegrity.balanced ? '#DCFCE7' : '#FEE2E2'};color:${sysTone.color}">
+                ${sysIntegrity.balancedUnits}/${sysIntegrity.unitsCount} unidades en balance perfecto
+              </div>
             </div>
-            <div class="text-sm" style="color:${tone.color}">
-              Facturas: <strong>${info.totals.invoices}</strong> | Líneas: <strong>${info.totals.lines}</strong>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mt-2" style="color:${sysTone.color}">
+              <div>Total Cartera PH: <strong>${_fmt(sysIntegrity.totalCartera)}</strong></div>
+              <div>Total Libro (13459501): <strong>${_fmt(sysIntegrity.totalLibro)}</strong></div>
+              <div>Diferencia Global: <strong>${_fmt(sysIntegrity.diferenciaGlobal)}</strong></div>
+              <div>Auditoría: <span class="font-mono text-xs">${new Date(sysIntegrity.auditedAt || Date.now()).toLocaleTimeString()}</span></div>
             </div>
+            ${sysIntegrity.mismatches && sysIntegrity.mismatches.length ? `
+              <div class="mt-3 p-3 rounded-xl bg-white/80 border border-red-200 text-xs text-red-900">
+                <div class="font-bold mb-1">Unidades con inconsistencia:</div>
+                ${sysIntegrity.mismatches.map((m: any) => `
+                  <div>Unidad ${esc(m.code)} (${esc(m.name)}): Cartera ${_fmt(m.carteraBalance)} vs Libro ${_fmt(m.libroBalance)} (Dif: ${_fmt(m.diferencia)})</div>
+                `).join('')}
+              </div>
+            ` : ''}
           </div>
-          <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm" style="color:${tone.color}">
-            <div>Total facturas: <strong>${fmt(info.totals.totalFacturas)}</strong></div>
-            <div>Total líneas: <strong>${fmt(info.totals.totalLineas)}</strong></div>
-            <div>Pendiente: <strong>${fmt(info.totals.totalPendiente)}</strong></div>
-            <div>Cancelado: <strong>${fmt(info.totals.totalCancelado)}</strong></div>
-            <div>Diferencia global: <strong>${fmt(info.totals.diferenciaGlobal)}</strong></div>
+        `;
+      }
+
+      // 2. Integridad de facturas vs líneas de la consulta actual
+      if (info) {
+        const tone = info.isBalanced
+          ? { bg: '#ECFDF5', border: '#6EE7B7', color: '#065F46', icon: 'fa-circle-check', title: 'Consistencia Operativa de Facturas y Líneas' }
+          : { bg: '#FFF7ED', border: '#FDBA74', color: '#9A3412', icon: 'fa-triangle-exclamation', title: 'Descuadres en Facturas detectados' };
+
+        html += `
+          <div class="rounded-2xl border p-4" style="background:${tone.bg};border-color:${tone.border}">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div class="font-bold" style="color:${tone.color}">
+                <i class="fas ${tone.icon} mr-2"></i>${tone.title}
+              </div>
+              <div class="text-sm" style="color:${tone.color}">
+                Facturas: <strong>${info.totals.invoices}</strong> | Líneas: <strong>${info.totals.lines}</strong>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm" style="color:${tone.color}">
+              <div>Total facturas: <strong>${_fmt(info.totals.totalFacturas)}</strong></div>
+              <div>Total líneas: <strong>${_fmt(info.totals.totalLineas)}</strong></div>
+              <div>Pendiente: <strong>${_fmt(info.totals.totalPendiente)}</strong></div>
+              <div>Cancelado: <strong>${_fmt(info.totals.totalCancelado)}</strong></div>
+              <div>Diferencia global: <strong>${_fmt(info.totals.diferenciaGlobal)}</strong></div>
+            </div>
+            ${info.mismatches.length ? `
+              <div class="mt-3 text-sm" style="color:${tone.color}">
+                <div class="font-semibold mb-1">Facturas descuadradas (Top ${Math.min(5, info.mismatches.length)}):</div>
+                ${info.mismatches.slice(0, 5).map((m: any) =>
+                  `<div>#${esc(m.number)} (${esc(m.period)}): Factura ${_fmt(m.totalFactura)} vs Líneas ${_fmt(m.totalOriginalLines || m.totalLineas)} (dif ${_fmt(m.diferencia)})</div>`
+                ).join('')}
+              </div>` : ''}
           </div>
-          ${info.mismatches.length ? `
-            <div class="mt-3 text-sm" style="color:${tone.color}">
-              <div class="font-semibold mb-1">Facturas descuadradas (Top ${Math.min(5, info.mismatches.length)}):</div>
-              ${info.mismatches.slice(0, 5).map(m =>
-                `<div>#${esc(m.number)} (${esc(m.period)}): Factura ${fmt(m.totalFactura)} vs Líneas ${fmt(m.totalLineas)} (dif ${fmt(m.diferencia)})</div>`
-              ).join('')}
-            </div>` : ''}
-        </div>`;
+        `;
+      }
+
+      box.innerHTML = html;
     }
 
     async function loadCartera() {
@@ -1719,11 +1763,12 @@ async function renderPhCartera(c) {
       const activeParties = openParties.filter(p => p.estado !== 'cancelado');
 
       try {
-        const [cartera, integrity] = await Promise.all([
+        const [cartera, integrity, sysIntegrity] = await Promise.all([
           API.getPhCarteraByUnit(unitId, '', toDate),
           API.getPhCarteraIntegrity(unitId, '', toDate),
+          API.getPhSystemIntegrity().catch(() => null),
         ]);
-        renderIntegrity(integrity);
+        renderIntegrity(integrity, sysIntegrity);
 
         const conceptFilter = document.getElementById('ph-cartera-concept-filter');
         if (conceptFilter) {
@@ -1804,12 +1849,20 @@ async function renderPhCartera(c) {
 
           const rows = [...byUnit.values()].sort((a, b) => a.unidad.localeCompare(b.unidad, 'es'));
 
-          const totalByConcept = {};
+          const totalByConcept: any = {};
           let grandTotal = 0;
-          let grandAnticipos = 0;
+          let grandDebits = 0;
+          let grandCredits = 0;
+          let creditUnitsCount = 0;
+
           for (const r of rows) {
-            grandTotal += Number(r.totalGeneral || 0);
-            grandAnticipos += Number(r.saldoAnticipo || 0);
+            const tot = Number(r.totalGeneral || 0);
+            grandTotal += tot;
+            if (tot > 0) grandDebits += tot;
+            else if (tot < -0.01) {
+              grandCredits += Math.abs(tot);
+              creditUnitsCount++;
+            }
             for (const c of concepts) {
               totalByConcept[c.id] = (totalByConcept[c.id] || 0) + Number(r.byConcept[c.id] || 0);
             }
@@ -1818,7 +1871,7 @@ async function renderPhCartera(c) {
           const uniqueDocs = new Set(activeParties.map(p => String(p.invoiceId || ''))).size;
 
           document.getElementById('ph-cartera-bal-meta').innerHTML =
-            `Unidades: <strong>${fmtN(rows.length)}</strong> · Conceptos: <strong>${fmtN(concepts.length)}</strong> · Documentos: <strong>${fmtN(uniqueDocs)}</strong> · Saldo facturado: <strong>${fmt(grandTotal)}</strong>${grandAnticipos > 0 ? ` · Saldo a favor (Anticipos 28): <strong class="text-emerald-700">-${fmt(grandAnticipos)}</strong> · Saldo neto real: <strong class="text-blue-800">${fmt(Math.max(0, grandTotal - grandAnticipos))}</strong>` : ''}`;
+            `Unidades con saldo: <strong>${fmtN(rows.length)}</strong> · Conceptos: <strong>${fmtN(concepts.length)}</strong> · Cartera CxC (Deuda): <strong class="text-gray-900">${_fmt(grandDebits)}</strong>${grandCredits > 0 ? ` · Saldos a favor (Anticipos): <strong class="text-emerald-700">-${_fmt(grandCredits)} (${creditUnitsCount} unidades)</strong>` : ''} · Saldo neto cartera: <strong class="text-blue-900">${_fmt(grandTotal)}</strong>`;
 
           if (colgroup) {
             colgroup.innerHTML = `
@@ -1839,29 +1892,39 @@ async function renderPhCartera(c) {
           }
 
           document.getElementById('ph-cartera-resumen-tbody').innerHTML = rows.map(r => {
-            const netAmt = Math.max(0, r.totalGeneral - (r.saldoAnticipo || 0));
+            const isCredit = Number(r.totalGeneral || 0) < -0.01;
             return `
-            <tr>
-              <td class="font-semibold" style="color:#0D2137">${esc(r.unidad)}</td>
+            <tr class="${isCredit ? 'bg-emerald-50/40' : ''}">
+              <td class="font-semibold" style="color:#0D2137">
+                ${esc(r.unidad)}
+                ${isCredit ? `<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800" title="Saldo a favor disponible para cuotas futuras"><i class="fas fa-piggy-bank mr-1"></i>A favor</span>` : ''}
+              </td>
               <td>
                 <span class="text-sm font-medium" style="color:#374151">${esc(r.ownerName || '—')}</span>
                 ${r.ownerDoc ? `<br><span class="text-xs" style="color:#9CA3AF">${esc(r.ownerDoc)}</span>` : ''}
               </td>
               ${concepts.map(c => {
                 const v = Number(r.byConcept[c.id] || 0);
-                return `<td class="text-right">${v ? fmt(v) : ''}</td>`;
+                if (Math.abs(v) < 0.01) return `<td class="text-right text-gray-300">—</td>`;
+                const isColCredit = v < -0.01;
+                return `<td class="text-right font-medium ${isColCredit ? 'text-emerald-700 font-bold' : ''}">
+                  ${isColCredit ? `(${_fmt(Math.abs(v))})` : _fmt(v)}
+                </td>`;
               }).join('')}
-              <td class="text-right font-semibold" style="color:#065F46">
-                <div>${fmt(r.totalGeneral)}</div>
-                ${r.saldoAnticipo > 0 ? `<div class="text-[11px] font-medium text-emerald-700" title="Saldo a favor en cuenta 28">Anticipo: -${fmt(r.saldoAnticipo)}<br><span class="font-bold ${netAmt > 0 ? 'text-amber-800' : 'text-emerald-800'}">Neto: ${fmt(netAmt)}</span></div>` : ''}
+              <td class="text-right font-semibold" style="color:${isCredit ? '#047857' : '#065F46'}">
+                <div class="${isCredit ? 'text-emerald-700 font-bold' : ''}">${isCredit ? `(${_fmt(Math.abs(r.totalGeneral))})` : _fmt(r.totalGeneral)}</div>
               </td>
             </tr>`;
           }).join('');
           document.getElementById('ph-cartera-resumen-tfoot').innerHTML = `
             <tr>
-              <td colspan="2" class="font-bold">Total general</td>
-              ${concepts.map(c => `<td class="font-bold text-right">${totalByConcept[c.id] ? fmt(totalByConcept[c.id]) : ''}</td>`).join('')}
-              <td class="font-bold text-right">${fmt(grandTotal)}</td>
+              <td colspan="2" class="font-bold">Total general neto</td>
+              ${concepts.map(c => {
+                const tv = Number(totalByConcept[c.id] || 0);
+                const isCrd = tv < -0.01;
+                return `<td class="font-bold text-right ${isCrd ? 'text-emerald-700' : ''}">${tv ? (isCrd ? `(${_fmt(Math.abs(tv))})` : _fmt(tv)) : ''}</td>`;
+              }).join('')}
+              <td class="font-bold text-right" style="color:${grandTotal < 0 ? '#047857' : '#0D2137'}">${grandTotal < 0 ? `(${_fmt(Math.abs(grandTotal))})` : _fmt(grandTotal)}</td>
             </tr>`;
 
           lastBalPdf = { concepts, rows, totalByConcept, grandTotal };

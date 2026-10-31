@@ -33,11 +33,19 @@ onBootstrap((e) => {
     console.error("[GRAVY] Error en migración de configuración DIAN:", err);
   }
 
-  // Agregar campo ftech_transaction_id a la colección einvoice_docs
+  // Agregar campos ftech_transaction_id, zip_filename y document_number a la colección einvoice_docs
   try {
     const docsCol = $app.findCollectionByNameOrId("einvoice_docs");
     const docFields = new Set(docsCol.fields.fieldNames());
     let modified = false;
+    if (!docFields.has("document_number")) {
+      docsCol.fields.add(new TextField({
+        name: "document_number",
+        max: 100,
+        required: false
+      }));
+      modified = true;
+    }
     if (!docFields.has("ftech_transaction_id")) {
       docsCol.fields.add(new TextField({
         name: "ftech_transaction_id",
@@ -54,7 +62,32 @@ onBootstrap((e) => {
     }
     if (modified) {
       $app.save(docsCol);
-      console.log("[GRAVY] Migración DIAN — Colección einvoice_docs actualizada (campos agregados).");
+      console.log("[GRAVY] Migración DIAN — Colección einvoice_docs actualizada (campos agregados, incluyendo document_number).");
+    }
+
+    // Backfill retroactivo: asignar document_number a los registros existentes que no lo tengan
+    try {
+      const recordsWithoutNum = $app.findRecordsByFilter("einvoice_docs", "document_number = '' || document_number = null", "", 1000);
+      let backfilledCount = 0;
+      for (let i = 0; i < recordsWithoutNum.length; i++) {
+        const docRec = recordsWithoutNum[i];
+        const txId = docRec.getString("tx_id");
+        if (txId) {
+          try {
+            const tx = $app.findRecordById("transactions", txId);
+            if (tx && tx.getString("number")) {
+              docRec.set("document_number", tx.getString("number"));
+              $app.save(docRec);
+              backfilledCount++;
+            }
+          } catch (_) {}
+        }
+      }
+      if (backfilledCount > 0) {
+        console.log(`[GRAVY] Migración DIAN — ${backfilledCount} registros en einvoice_docs actualizados con su document_number.`);
+      }
+    } catch (bfErr) {
+      console.warn("[GRAVY] Error en backfill de document_number en einvoice_docs:", bfErr);
     }
   } catch (err) {
     console.error("[GRAVY] Error al modificar la colección einvoice_docs:", err);

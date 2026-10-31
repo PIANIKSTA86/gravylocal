@@ -1,0 +1,450 @@
+{
+  "target": "C:\\Users\\JULIAN\\.gemini\\config\\skills\\human-interface-design\\references\\organic-ui.md",
+  "total_tests": 26,
+  "passed": 26,
+  "failed": 0,
+  "duration_seconds": 0.0795265999622643,
+  "results": [
+    {
+      "test_name": "B1.1_clamp_monotonicity",
+      "status": "PASS",
+      "passed": true,
+      "details": "Found 17 clamp expressions; all increasing = True",
+      "data": {
+        "clamps_count": 17,
+        "checks": [
+          {
+            "min": "64px",
+            "max": "128px",
+            "increasing": true
+          },
+          {
+            "min": "1.25rem",
+            "max": "2.25rem",
+            "increasing": true
+          },
+          {
+            "min": "64px",
+            "max": "128px",
+            "increasing": true
+          },
+          {
+            "min": "2.5rem",
+            "max": "4rem",
+            "increasing": true
+          },
+          {
+            "min": "2rem",
+            "max": "3rem",
+            "increasing": true
+          },
+          {
+            "min": "1.5rem",
+            "max": "2.25rem",
+            "increasing": true
+          },
+          {
+            "min": "1.25rem",
+            "max": "1.625rem",
+            "increasing": true
+          },
+          {
+            "min": "1.125rem",
+            "max": "1.35rem",
+            "increasing": true
+          },
+          {
+            "min": "2.5rem",
+            "max": "4rem",
+            "increasing": true
+          },
+          {
+            "min": "2rem",
+            "max": "3rem",
+            "increasing": true
+          },
+          {
+            "min": "1.5rem",
+            "max": "2.25rem",
+            "increasing": true
+          },
+          {
+            "min": "1.25rem",
+            "max": "1.625rem",
+            "increasing": true
+          },
+          {
+            "min": "1.125rem",
+            "max": "1.35rem",
+            "increasing": true
+          },
+          {
+            "min": "2rem",
+            "max": "3rem",
+            "increasing": true
+          },
+          {
+            "min": "1.125rem",
+            "max": "1.35rem",
+            "increasing": true
+          },
+          {
+            "min": "1.5rem",
+            "max": "2.25rem",
+            "increasing": true
+          },
+          {
+            "min": "2.25rem",
+            "max": "3.25rem",
+            "increasing": true
+          }
+        ]
+      }
+    },
+    {
+      "test_name": "B1.2_line_height_inversion",
+      "status": "PASS",
+      "passed": true,
+      "details": "Headline tight line-heights: ['1.1', '1.25', '1.1'], Body relaxed line-heights: ['1.5', '1.55', '1.65']",
+      "data": {
+        "headline_matches": [
+          "1.1",
+          "1.25",
+          "1.1",
+          "1.15",
+          "1.15",
+          "1.2",
+          "1.2",
+          "1.25",
+          "1.2",
+          "1.25",
+          "1.1",
+          "1.25",
+          "1.1",
+          "1.25"
+        ],
+        "body_matches": [
+          "1.5",
+          "1.55",
+          "1.65",
+          "1.5",
+          "1.5",
+          "1.6",
+          "1.5",
+          "1.65",
+          "1.5",
+          "1.55",
+          "1.65",
+          "1.55",
+          "1.65"
+        ]
+      }
+    },
+    {
+      "test_name": "B1.3_optimal_reading_measure",
+      "status": "PASS",
+      "passed": true,
+      "details": "65ch/prose documented = True, Excessive (>80ch) measures found = 0",
+      "data": {
+        "measures": [
+          "('', '')",
+          "('65', '')",
+          "('', '')",
+          "('', '65')",
+          "('', '65')"
+        ],
+        "excessive": []
+      }
+    },
+    {
+      "test_name": "B1.4_optical_tracking_calibration",
+      "status": "PASS",
+      "passed": true,
+      "details": "Negative headline tracking: True, Positive microcopy tracking: True",
+      "data": {
+        "neg_tracking": true,
+        "pos_tracking": true
+      }
+    },
+    {
+      "test_name": "B1.5_tabular_numeric_stability",
+      "status": "PASS",
+      "passed": true,
+      "details": "Found 24 tabular-nums declarations across tables and snippets",
+      "data": {
+        "count": 24
+      }
+    },
+    {
+      "test_name": "B2.1_coherent_120deg_key_light_and_specular_edge",
+      "status": "PASS",
+      "passed": true,
+      "details": "120\u00b0 light: True, Single-edge specular highlights: 12, Four-sided neon glow rejected: True",
+      "data": {
+        "specular_count": 12
+      }
+    },
+    {
+      "test_name": "B2.2_box_shadow_explicit_px_units",
+      "status": "PASS",
+      "passed": true,
+      "details": "Verified 11 production box-shadow rules; invalid/missing units = 0",
+      "data": {
+        "rules_checked": 11,
+        "invalid": []
+      }
+    },
+    {
+      "test_name": "B2.3_multilayer_shadow_stacking",
+      "status": "PASS",
+      "passed": true,
+      "details": "Found 10 multi-layer (>=3 comma-separated layers) shadow recipes",
+      "data": {
+        "multi_layer_count": 10
+      }
+    },
+    {
+      "test_name": "B2.4_dark_mode_monotonic_elevation",
+      "status": "PASS",
+      "passed": true,
+      "details": "Section 5.6 elevation lightness steps: [9, 16, 20, 24, 28] (strictly increasing)",
+      "data": {
+        "sequence": [
+          9,
+          16,
+          20,
+          24,
+          28
+        ]
+      }
+    },
+    {
+      "test_name": "B2.5_glassmorphism_opacity_safety_floor",
+      "status": "PASS",
+      "passed": true,
+      "details": "Recommended glass opacities: ['0.82', '0.75'], Opacity floor >= 0.50 explicitly mandated",
+      "data": {
+        "recommended_opacities": [
+          "0.82",
+          "0.75"
+        ]
+      }
+    },
+    {
+      "test_name": "B3.1_cubic_bezier_coordinate_bounds",
+      "status": "PASS",
+      "passed": true,
+      "details": "Found 6 cubic-bezier curves; all X coordinates in [0, 1] = True",
+      "data": {
+        "beziers": [
+          {
+            "x1": 0.16,
+            "y1": 1.0,
+            "x2": 0.3,
+            "y2": 1.0,
+            "valid": true
+          },
+          {
+            "x1": 0.16,
+            "y1": 1.0,
+            "x2": 0.3,
+            "y2": 1.0,
+            "valid": true
+          },
+          {
+            "x1": 0.34,
+            "y1": 1.56,
+            "x2": 0.64,
+            "y2": 1.0,
+            "valid": true
+          },
+          {
+            "x1": 0.2,
+            "y1": 0.0,
+            "x2": 0.0,
+            "y2": 1.0,
+            "valid": true
+          },
+          {
+            "x1": 0.16,
+            "y1": 1.0,
+            "x2": 0.3,
+            "y2": 1.0,
+            "valid": true
+          },
+          {
+            "x1": 0.16,
+            "y1": 1.0,
+            "x2": 0.3,
+            "y2": 1.0,
+            "valid": true
+          }
+        ]
+      }
+    },
+    {
+      "test_name": "B3.2_active_click_scale_depression_bounds",
+      "status": "PASS",
+      "passed": true,
+      "details": "Active scales: ['0.97', '0.98']; all within [0.94, 1.0) = True",
+      "data": {
+        "scales": [
+          "0.97",
+          "0.98"
+        ]
+      }
+    },
+    {
+      "test_name": "B3.3_microinteraction_duration_bounds",
+      "status": "PASS",
+      "passed": true,
+      "details": "Microinteraction durations: {75, 180, 150, 250, 220}, capped <= 250ms",
+      "data": {
+        "durations": [
+          75,
+          180,
+          150,
+          250,
+          220
+        ]
+      }
+    },
+    {
+      "test_name": "B3.4_touch_hover_pointer_decoupling",
+      "status": "PASS",
+      "passed": true,
+      "details": "@media (hover: hover) and (pointer: fine) present: True",
+      "data": {
+        "present": true
+      }
+    },
+    {
+      "test_name": "B3.5_vestibular_reduced_motion_override",
+      "status": "PASS",
+      "passed": true,
+      "details": "prefers-reduced-motion: True, transform: none override: True, opacity fallback: True",
+      "data": {
+        "reduced_motion": true,
+        "transform_none": true,
+        "opacity_fallback": true
+      }
+    },
+    {
+      "test_name": "B3.6_accessible_focus_ring_offset",
+      "status": "PASS",
+      "passed": true,
+      "details": "outline-offset declarations: ['2']px (all >= 2px)",
+      "data": {
+        "offsets": [
+          "2"
+        ]
+      }
+    },
+    {
+      "test_name": "B4.1_asymmetric_ratio_doctrine",
+      "status": "PASS",
+      "passed": true,
+      "details": "60/40 documented: True, 70/30 documented: True, Symmetrical 50/50 recommendations: 0",
+      "data": {
+        "has_60_40": true,
+        "has_70_30": true
+      }
+    },
+    {
+      "test_name": "B4.2_musical_cadence_ratio_four_to_one",
+      "status": "PASS",
+      "passed": true,
+      "details": "Min macro = 64px, Max micro = 16px -> Ratio = 4.0:1",
+      "data": {
+        "macro": [
+          64,
+          80,
+          96,
+          128
+        ],
+        "micro": [
+          4,
+          8,
+          12,
+          16
+        ]
+      }
+    },
+    {
+      "test_name": "B4.3_mobile_viewport_collapse",
+      "status": "PASS",
+      "passed": true,
+      "details": "640px breakpoint: True, 320px minimum: True, Single-column collapse: True",
+      "data": {
+        "640px": true,
+        "320px": true,
+        "single_col": true
+      }
+    },
+    {
+      "test_name": "B4.4_ultrawide_container_containment",
+      "status": "PASS",
+      "passed": true,
+      "details": "Optical max-width container bounds (1240px / max-w-7xl) enforced: True",
+      "data": {
+        "present": true
+      }
+    },
+    {
+      "test_name": "B4.5_nested_padding_degradation",
+      "status": "PASS",
+      "passed": true,
+      "details": "Nested container padding inward degradation rule documented: True",
+      "data": {
+        "present": true
+      }
+    },
+    {
+      "test_name": "B5.1_markdown_code_fence_balance",
+      "status": "PASS",
+      "passed": true,
+      "details": "Found 46 code fences ('```'); balanced = True",
+      "data": {
+        "fence_count": 46
+      }
+    },
+    {
+      "test_name": "B5.2_css_block_syntax_validation",
+      "status": "PASS",
+      "passed": true,
+      "details": "Parsed 16 CSS blocks; syntax/bracket errors = 0",
+      "data": {
+        "block_count": 16,
+        "errors": []
+      }
+    },
+    {
+      "test_name": "B5.3_html_block_syntax_validation",
+      "status": "PASS",
+      "passed": true,
+      "details": "Parsed 3 HTML blocks; tag errors = 0",
+      "data": {
+        "block_count": 3,
+        "errors": []
+      }
+    },
+    {
+      "test_name": "B5.4_dogfooding_slop_immunity",
+      "status": "PASS",
+      "passed": true,
+      "details": "Earnest AI slop violations found: 0",
+      "data": {
+        "violations": []
+      }
+    },
+    {
+      "test_name": "B5.5_document_structural_completeness",
+      "status": "PASS",
+      "passed": true,
+      "details": "All 7 required architectural sections present: True",
+      "data": {
+        "headings_count": 54
+      }
+    }
+  ]
+}

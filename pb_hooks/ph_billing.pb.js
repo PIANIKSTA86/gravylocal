@@ -782,6 +782,16 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
           txRec.set("cross_number", invNumber);
           txRec.set("cross_amount", invTotal);
           txApp.save(txRec);
+        } else {
+          // Re-sincronizar comprobante si ya existía (ej. re-liquidación de período)
+          txRec.set("status", "active");
+          txRec.set("cross_enabled", true);
+          txRec.set("cross_type", "ph_invoices");
+          txRec.set("cross_number", invNumber);
+          txRec.set("cross_amount", invTotal);
+          txApp.save(txRec);
+          txApp.db().newQuery("DELETE FROM tx_lines WHERE tx_id = {:txId}").bind({ txId: txRec.id }).execute();
+        }
 
           // Líneas Débito a Cartera por Concepto (CxC 13)
           for (const ln of invLines) {
@@ -856,7 +866,6 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
             }
             txApp.save(creditLine);
           }
-        }
 
         // Actualizar estado de la factura a 'posted' y vincular tx_id
         inv.set("status", "posted");

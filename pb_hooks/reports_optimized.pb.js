@@ -9,12 +9,25 @@
  */
 
 routerAdd("GET", "/api/gravy/report-balances", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
@@ -92,12 +105,25 @@ routerAdd("GET", "/api/gravy/report-balances", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
@@ -330,12 +356,25 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
@@ -350,6 +389,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
   let thirdType = String(queryParams.thirdType || "").trim().toUpperCase();
   let sellerId = String(queryParams.sellerId || "").trim();
   let asOfDate = String(queryParams.asOfDate || "").trim();
+  let accountCodesParam = String(queryParams.accountCodes || queryParams.account_codes || queryParams.accountIds || queryParams.account_ids || queryParams.accountId || "").trim();
 
   if (!asOfDate) {
     asOfDate = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
@@ -359,8 +399,28 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
 
   try {
     const isCxC = mode === 'cxc';
-    const accountPrefixes = isCxC ? ['13'] : ['22', '23', '25'];
-    const filterClause = accountPrefixes.map(p => `a.code LIKE '${p}%'`).join(' OR ');
+    const binds = { asOfDateLimit: asOfDate + " 23:59:59" };
+
+    const selectedAccountCodes = accountCodesParam
+      ? accountCodesParam.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+
+    let filterClause = "";
+    if (selectedAccountCodes.length > 0) {
+      const codePlaceholders = selectedAccountCodes.map((_, idx) => `{:acc_code_${idx}}`).join(',');
+      const idPlaceholders = selectedAccountCodes.map((_, idx) => `{:acc_id_${idx}}`).join(',');
+      selectedAccountCodes.forEach((val, idx) => {
+        binds[`acc_code_${idx}`] = val;
+        binds[`acc_id_${idx}`] = val;
+      });
+      filterClause = `(a.code IN (${codePlaceholders}) OR a.id IN (${idPlaceholders}))`;
+    } else {
+      // Cartera CxC: cuenta 1305 (Clientes) o cuentas del grupo 13 con requiere tercero y maneja cruce
+      // Cartera CxP: cuenta 2205 (Proveedores) o cuentas del grupo 22/23/25 con requiere tercero y maneja cruce
+      filterClause = isCxC
+        ? "(a.code LIKE '1305%' OR (a.code LIKE '13%' AND (a.requires_third_party = 1 OR a.requires_third_party = 'true') AND (a.maneja_cruce = 1 OR a.maneja_cruce = 'true')))"
+        : "(a.code LIKE '2205%' OR ((a.code LIKE '22%' OR a.code LIKE '23%' OR a.code LIKE '25%') AND (a.requires_third_party = 1 OR a.requires_third_party = 'true') AND (a.maneja_cruce = 1 OR a.maneja_cruce = 'true')))";
+    }
 
     let sqlAging = `
       SELECT
@@ -375,6 +435,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
         a.name AS account_name,
         a.nature AS account_nature,
         a.maneja_cruce AS account_maneja_cruce,
+        a.requires_third_party AS account_requires_third_party,
         COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO') AS third_party_id,
         COALESCE(tp.name, 'Sin tercero') AS third_party_name,
         COALESCE(tp.doc_number, '') AS third_party_doc,
@@ -394,7 +455,6 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
         AND (${filterClause})
     `;
 
-    const binds = { asOfDateLimit: asOfDate + " 23:59:59" };
     if (branchId) {
       sqlAging += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId}";
       binds.branchId = branchId;
@@ -419,6 +479,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
       account_name: "",
       account_nature: "",
       account_maneja_cruce: 0,
+      account_requires_third_party: 0,
       third_party_id: "",
       third_party_name: "",
       third_party_doc: "",
@@ -436,9 +497,21 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
 
     for (let i = 0; i < data.length; i++) {
       const row = data[i];
+      const accCode = String(row.account_code || '').trim();
       const manejaCruce = row.account_maneja_cruce === 1 || row.account_maneja_cruce === true || row.account_maneja_cruce === "1" || row.account_maneja_cruce === "true";
-      const refRaw = String(row.cross_doc_ref || '').trim();
-      if (!manejaCruce && !refRaw) continue;
+      const reqThird = row.account_requires_third_party === 1 || row.account_requires_third_party === true || row.account_requires_third_party === "1" || row.account_requires_third_party === "true";
+
+      if (selectedAccountCodes.length > 0) {
+        if (!selectedAccountCodes.includes(accCode) && !selectedAccountCodes.includes(row.account_id)) {
+          continue;
+        }
+      } else {
+        const isEligible = isCxC
+          ? (accCode.startsWith('1305') || (accCode.startsWith('13') && reqThird && manejaCruce))
+          : (accCode.startsWith('2205') || ((accCode.startsWith('22') || accCode.startsWith('23') || accCode.startsWith('25')) && reqThird && manejaCruce));
+
+        if (!isEligible) continue;
+      }
 
       const tpType = String(row.third_party_type || '').toUpperCase();
       if (thirdType && tpType !== thirdType) continue;
@@ -452,6 +525,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
         }
       }
 
+      const refRaw = String(row.cross_doc_ref || '').trim();
       const accNature = String(row.account_nature || '').toLowerCase() || defaultNature;
       const ref = refRaw || 'SIN_DOC';
       const key = `${row.account_id}|${row.third_party_id}|${ref}`;
@@ -580,12 +654,25 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
@@ -787,12 +874,25 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/report-journal", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
@@ -893,12 +993,25 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
@@ -909,11 +1022,11 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
   if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
   if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
 
-  let fromDate = String(queryParams.fromDate || '').trim();
-  let toDate = String(queryParams.toDate || '').trim();
-  let accountIdsStr = String(queryParams.accountIds || '').trim();
-  let thirdId = String(queryParams.thirdId || '').trim();
-  let auxPropertyId = String(queryParams.propertyId || queryParams.property_id || '').trim();
+  let fromDate = String(queryParams.fromDate || (c.queryParam ? c.queryParam("fromDate") : '') || '').trim();
+  let toDate = String(queryParams.toDate || (c.queryParam ? c.queryParam("toDate") : '') || '').trim();
+  let accountIdsStr = String(queryParams.accountIds || (c.queryParam ? c.queryParam("accountIds") : '') || '').trim();
+  let thirdId = String(queryParams.thirdId || (c.queryParam ? c.queryParam("thirdId") : '') || '').trim();
+  let auxPropertyId = String(queryParams.propertyId || queryParams.property_id || (c.queryParam ? (c.queryParam("propertyId") || c.queryParam("property_id")) : '') || '').trim();
 
   if (!fromDate || !toDate) {
     return c.json(400, { error: "Los parámetros fromDate y toDate son requeridos." });
@@ -1117,12 +1230,25 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
 // Params: cutoffDate, propertyId (opcional), conceptId (opcional)
 // ─────────────────────────────────────────────────────────────────────────────
 routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
   let cutoffDate = String(queryParams.cutoffDate || queryParams.asOfDate || '').trim();
   if (!cutoffDate) {
     cutoffDate = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
@@ -1229,7 +1355,10 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
         AND (
           UPPER(TRIM(l.cross_doc_ref)) IN (${numPlaceholders})
           OR l.cross_doc_ref LIKE 'ANTICIPO-%'
+          OR l.cross_doc_ref LIKE 'ANT-%'
+          OR l.cross_doc_ref LIKE 'CF-%'
         )
+        AND l.account_id IN (SELECT id FROM accounts WHERE code LIKE '13%')
       GROUP BY l.cross_doc_ref
     `;
     const qAbonos = $app.db().newQuery(sqlAbonos);
@@ -1237,13 +1366,13 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
     const abonosRaw = arrayOf(new DynamicModel({ cross_ref: "", abono: -0 }));
     qAbonos.all(abonosRaw);
 
-    // Mapa de abonos acumulados por número de factura
+    // Mapa de abonos acumulados por número de factura y bolsa de anticipos por propiedad
     const abonosMap = {};
+    const advancesByProp = {};
     for (const a of abonosRaw) {
       const ref = String(a.cross_ref || '').toUpperCase().trim();
       const val = Number(a.abono || 0);
       if (ref.startsWith('ANTICIPO-')) {
-        // Soporte Cartera Directa: ANTICIPO-YYYYMM-{propertyId}
         const parts = ref.split('-');
         if (parts.length >= 3) {
           const pCode = parts[1];
@@ -1255,7 +1384,22 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
           if (matchInv && matchInv.invoice_number) {
             const mKey = String(matchInv.invoice_number).toUpperCase().trim();
             abonosMap[mKey] = (abonosMap[mKey] || 0) + val;
+          } else {
+            const pKey = pId.toUpperCase();
+            advancesByProp[pKey] = (advancesByProp[pKey] || 0) + val;
           }
+        }
+      } else if (ref.startsWith('ANT-')) {
+        const pKey = ref.substring(4).toUpperCase();
+        advancesByProp[pKey] = (advancesByProp[pKey] || 0) + val;
+      } else if (ref.startsWith('CF-')) {
+        // Cuota anticipada o pago por concepto (ej: CF-202609-000078-ADM)
+        const baseInv = ref.split('-').slice(0, 3).join('-');
+        const matchInv = invoices.find(inv => String(inv.invoice_number || '').toUpperCase().trim() === baseInv);
+        if (matchInv) {
+          abonosMap[matchInv.invoice_number] = (abonosMap[matchInv.invoice_number] || 0) + val;
+        } else {
+          abonosMap[ref] = (abonosMap[ref] || 0) + val;
         }
       } else {
         abonosMap[ref] = (abonosMap[ref] || 0) + val;
@@ -1281,9 +1425,23 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
     const totals = { grandTotal: 0, por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0 };
 
     for (const inv of invoices) {
+      const pKey = String(inv.property_id || '').toUpperCase();
+      let propAdvance = advancesByProp[pKey] || 0;
       const numKey = String(inv.invoice_number || '').toUpperCase().trim();
-      const totalAbonado = abonosMap[numKey] || 0;
-      const saldo = Number(inv.total || 0) - totalAbonado;
+      let totalAbonado = abonosMap[numKey] || 0;
+      let saldo = Number(inv.total || 0) - totalAbonado;
+      if (propAdvance > 0 && saldo > 0) {
+        const applyAdv = Math.min(propAdvance, saldo);
+        saldo -= applyAdv;
+        totalAbonado += applyAdv;
+        propAdvance -= applyAdv;
+        advancesByProp[pKey] = propAdvance;
+      }
+
+      if (totalAbonado > Number(inv.total || 0)) {
+        const surplus = totalAbonado - Number(inv.total || 0);
+        advancesByProp[pKey] = (advancesByProp[pKey] || 0) + surplus;
+      }
 
       if (saldo <= 0.01) continue; // factura totalmente pagada
 
@@ -1338,6 +1496,56 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
       });
     }
 
+    // Agregar saldos a favor (anticipos no absorbidos) bajo Cuota de Administración
+    for (const pKey in advancesByProp) {
+      const rem = advancesByProp[pKey];
+      if (rem > 0.01) {
+        let propRec = null;
+        try { propRec = $app.findRecordById("ph_properties", pKey.toLowerCase()); } catch (_) {}
+        if (propRec) {
+          let ownerRec = null;
+          try {
+            if (propRec.getString("owner_id")) {
+              ownerRec = $app.findRecordById("third_parties", propRec.getString("owner_id"));
+            }
+          } catch (_) {}
+
+          rows.push({
+            invoice_id: "ADV-" + pKey,
+            invoice_number: "ANTICIPO",
+            period: "Anticipo",
+            invoice_date: "",
+            due_date: "",
+            days_overdue: -1,
+            property_id: propRec.id,
+            property_code: propRec.getString("code"),
+            property_name: propRec.getString("name"),
+            tower: propRec.getString("tower"),
+            apartment: propRec.getString("apartment"),
+            coef: propRec.getFloat("coef_participacion"),
+            owner_id: ownerRec ? ownerRec.id : "",
+            owner_name: ownerRec ? ownerRec.getString("name") : "",
+            owner_doc: ownerRec ? ownerRec.getString("doc_number") : "",
+            total_facturado: 0,
+            total_abonado: rem,
+            saldo: -rem,
+            por_vencer: -rem,
+            de_0_a_30: 0,
+            de_31_a_60: 0,
+            de_61_a_90: 0,
+            mayor_a_90: 0,
+            lines: [{
+              concept_id: "ADM",
+              concept_name: "Cuota de administración",
+              amount: -rem
+            }]
+          });
+          totals.grandTotal -= rem;
+          totals.por_vencer -= rem;
+        }
+      }
+    }
+
     return c.json(200, { rows, totals });
   } catch (err) {
     return c.json(500, { error: "Error en report-ph-cartera: " + err.message });
@@ -1345,12 +1553,25 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
@@ -1543,12 +1764,25 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/report-sales-by-seller", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
@@ -1666,12 +1900,25 @@ routerAdd("GET", "/api/gravy/report-sales-by-seller", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
@@ -1923,12 +2170,25 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/report-cost-centers", (c) => {
-  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const queryParams = c.requestInfo().query || {};
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
   if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();

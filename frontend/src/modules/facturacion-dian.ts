@@ -55,7 +55,7 @@ async function renderFacturacionDIAN(c: HTMLElement) {
 
     // Fetch all required tables in parallel with field & date scoping
     const [resolutions, docs, txs, invoices, purchases, inmoInvoices] = await Promise.all([
-      pb.listAll('dian_resolutions', { filter: 'active=true' }).catch((err: any) => { loadErrors.push(`resoluciones: ${err.message}`); return []; }),
+      pb.listAll('dian_resolutions', { filter: 'active=true && document_type != "DS" && document_type != "NDS"' }).catch((err: any) => { loadErrors.push(`resoluciones: ${err.message}`); return []; }),
       pb.listAll('einvoice_docs', { 
         fields: 'id,tx_id,status,cufe,dian_response,sent_at,ftech_transaction_id',
         sort: '-id' 
@@ -83,7 +83,7 @@ async function renderFacturacionDIAN(c: HTMLElement) {
     const totalMap = new Map<string, number>();
     const invoiceIdMap = new Map<string, string>();
     invoices.forEach((i: any) => { if (i.tx_id) { totalMap.set(i.tx_id, i.total); invoiceIdMap.set(i.tx_id, i.id); } });
-    purchases.forEach((p: any) => { if (p.tx_id) { totalMap.set(p.tx_id, p.total); invoiceIdMap.set(p.tx_id, p.id); } });
+    // purchases excluida: los documentos soporte se gestionan en su propio módulo doc-soporte
     inmoInvoices.forEach((ii: any) => { if (ii.tx_id) { totalMap.set(ii.tx_id, ii.total); invoiceIdMap.set(ii.tx_id, ii.id); } });
 
     // Map docRecord by tx_id
@@ -417,8 +417,8 @@ async function viewDianDetail(txId: string) {
   }
 }
 
-window.checkFtechStatus = async function(id: string, txId: string) {
-  if (!txId) {
+window.checkFtechStatus = async function(id: string, txId: string, docNumber?: string) {
+  if (!txId && !id && !docNumber) {
     showToast('No hay una transacción vinculada a este documento.', 'warning');
     return;
   }
@@ -426,17 +426,18 @@ window.checkFtechStatus = async function(id: string, txId: string) {
     showToast('Consultando estado en la DIAN...', 'info');
     const res = await pb.send('/api/dian/check-status', {
       method: 'POST',
-      body: JSON.stringify({ txId: txId }),
+      body: JSON.stringify({ txId: txId, id: id, documentNumber: docNumber, force: true }),
       headers: { 'Content-Type': 'application/json' }
     });
     
     if (res && res.success) {
       if (res.status === 'aceptada') {
-        showToast(`¡Documento aceptado y firmado por la DIAN! ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success', 6000);
+        const cufeDisplay = res.cufe ? ` (CUFE/CUDS: ${res.cufe.substring(0, 16)}...)` : '';
+        showToast(`¡Documento aceptado y firmado por la DIAN!${cufeDisplay} ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success', 7000);
       } else if (res.status === 'rechazada') {
         showToast(`Documento rechazado por DIAN: ${res.dianResponse || 'Rechazado'}`, 'error', 9000);
       } else {
-        showToast(`Estado DIAN: ${res.status.toUpperCase()} (${res.dianResponse || 'En proceso de firma'}).`, 'info', 6000);
+        showToast(`Estado DIAN: ${String(res.status || 'EN_PROCESO').toUpperCase()} (${res.dianResponse || 'En proceso de firma'}).`, 'info', 6000);
       }
       const container = $('#page-content');
       if (container) {
@@ -836,29 +837,93 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
 
 (window as any).resendDianEmail = async function(txId: string, number: string) {
   try {
-    showToast('Obteniendo información del cliente...', 'info');
+    showToast('Consultando información del documento...', 'info');
     const tx = await pb.get('transactions', txId, { expand: 'third_party_id' });
     const defaultEmail = tx.expand?.third_party_id?.email || '';
+    const thirdPartyName = tx.expand?.third_party_id?.name || 'Destinatario';
 
-    const customEmail = window.prompt("Confirmar o modificar el correo electrónico del destinatario:", defaultEmail);
-    if (customEmail === null) return; // Operación cancelada
-    if (!customEmail.trim()) {
-      return showToast('Debe ingresar un correo electrónico válido.', 'warning');
-    }
+    const modalBody = `
+      <div class="space-y-4">
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+          <i class="fas fa-paper-plane text-blue-600 mt-1"></i>
+          <div class="text-xs text-blue-800">
+            <p class="font-bold text-sm text-blue-900 mb-1">Reenvío Oficial de Documento DIAN</p>
+            <p>Se enviará el correo con el contenedor <strong>ZIP</strong> (XML firmado + Representación gráfica PDF) correspondiente al comprobante <strong>${esc(number)}</strong>.</p>
+          </div>
+        </div>
 
-    showToast(`Reenviando correo del documento ${number} a ${customEmail.trim()}...`, 'info');
-    const res = await pb.send('/api/dian/resend-email', {
-      method: 'POST',
-      body: JSON.stringify({ txId, email: customEmail.trim() }),
-      headers: { 'Content-Type': 'application/json' }
+        <div class="form-group">
+          <label class="form-label font-bold text-gray-700 text-sm">Tercero Registrado</label>
+          <input type="text" class="form-input w-full bg-gray-100 text-gray-600 cursor-not-allowed text-sm" value="${esc(thirdPartyName)}" disabled readonly>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label font-bold text-gray-700 text-sm">Correo Electrónico Destinatario <span class="text-red-500">*</span></label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+              <i class="fas fa-envelope"></i>
+            </span>
+            <input id="resend-email-input" type="email" class="form-input w-full pl-9 text-sm" placeholder="ejemplo@correo.com" value="${esc(defaultEmail)}">
+          </div>
+          <p class="text-xs text-gray-400 mt-1">Puede confirmar el correo registrado o ingresar uno alternativo para este reenvío.</p>
+        </div>
+      </div>
+    `;
+
+    const modalFooter = `
+      <button class="btn btn-outline text-sm" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary text-sm flex items-center gap-1.5" id="btn-confirm-resend-email">
+        <i class="fas fa-paper-plane"></i> Enviar Correo
+      </button>
+    `;
+
+    openModal(`Reenviar Documento ${number}`, modalBody, modalFooter);
+
+    setTimeout(() => {
+      const input = document.getElementById('resend-email-input') as HTMLInputElement;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 150);
+
+    const btnSend = document.getElementById('btn-confirm-resend-email') as HTMLButtonElement;
+    btnSend?.addEventListener('click', async () => {
+      const emailInput = (document.getElementById('resend-email-input') as HTMLInputElement)?.value || '';
+      const cleanEmail = emailInput.trim();
+      
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+        return showToast('Por favor ingrese un correo electrónico válido (ej: nombre@dominio.com).', 'warning');
+      }
+
+      btnSend.disabled = true;
+      btnSend.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando correo...';
+
+      try {
+        const res = await pb.send('/api/dian/resend-email', {
+          method: 'POST',
+          body: JSON.stringify({ txId, email: cleanEmail }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (res && res.success) {
+          closeModal();
+          showToast(res.message || `Correo reenviado exitosamente a ${cleanEmail}.`, 'success');
+        } else {
+          btnSend.disabled = false;
+          btnSend.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Correo';
+          showToast(res?.message || 'Error al reenviar correo.', 'error');
+        }
+      } catch (sendErr: any) {
+        btnSend.disabled = false;
+        btnSend.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Correo';
+        showToast(sendErr.message || 'Error al conectar con el servidor para reenviar.', 'error');
+      }
     });
-    if (res && res.success) {
-      showToast(res.message || 'Correo reenviado exitosamente.', 'success');
-    } else {
-      showToast(res.message || 'Error al reenviar correo.', 'error');
-    }
+
   } catch (err: any) {
-    showToast(err.message || 'Error al reenviar correo.', 'error');
+    showToast(err.message || 'Error al preparar el reenvío de correo.', 'error');
   }
 };
 

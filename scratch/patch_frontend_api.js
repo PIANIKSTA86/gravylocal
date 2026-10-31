@@ -1,0 +1,213 @@
+const fs = require('fs');
+
+const filePath = 'frontend/src/api.ts';
+let content = fs.readFileSync(filePath, 'utf8');
+
+const isCRLF = content.includes('\r\n');
+const eol = isCRLF ? '\r\n' : '\n';
+
+// Find start and end markers
+const startMarker = '    // 2. Obtener ABONOS de Tesorer';
+const endMarker = '    return { invoices, rows };\n  },';
+const endMarkerCRLF = '    return { invoices, rows };\r\n  },';
+
+const startIndex = content.indexOf('// 2. Obtener ABONOS de Tesorer');
+if (startIndex === -1) {
+  console.error('Start marker not found!');
+  process.exit(1);
+}
+
+// Find line start of startIndex
+const lineStart = content.lastIndexOf('\n', startIndex) + 1;
+
+// Find return { invoices, rows };
+const endIndex = content.indexOf('return { invoices, rows };', startIndex);
+if (endIndex === -1) {
+  console.error('End marker not found!');
+  process.exit(1);
+}
+
+const replacementLines = [
+  '    // 2. Obtener ABONOS de Tesorería (tx_lines que cruzan estas facturas o anticipos directos)',
+  '    // Buscamos líneas contables de tipo Recibo de Caja o ajustes que afecten el saldo de cartera (13%)',
+  '    const invNumbers = invoices.map(i => String(i.number || "").toUpperCase()).filter(Boolean);',
+  '    const causalityTxIds = new Set(invoices.map(i => i.tx_id).filter(Boolean));',
+  '    const abonosMap = new Map(); // key: cross_doc_ref, value: total_abono',
+  '    const advancesByPropMap = new Map<string, number>(); // key: property_id, value: unassigned advance pool',
+  '',
+  '    if (invNumbers.length > 0) {',
+  '      // Traemos líneas contables que afecten cartera (cuenta 13%) con cross_doc_ref y fecha <= corte',
+  '      const txLines = await pb.listAll("tx_lines", {',
+  '        filter: `cross_doc_ref!="" && account_id.code ~ "13%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,',
+  '        expand: "tx_id,account_id"',
+  '      });',
+  '',
+  '      for (const tl of txLines) {',
+  '        // En cuenta 13%, el abono o pago reduce la cartera mediante crédito',
+  '        const valAbono = Number(tl.credit || 0) - Number(tl.debit || 0);',
+  '        if (valAbono === 0) continue;',
+  '',
+  '        // Si es una línea débito perteneciente a la causación original de la factura, ignorar',
+  '        if (causalityTxIds.has(tl.tx_id) && valAbono < 0) continue;',
+  '',
+  '        const ref = String(tl.cross_doc_ref || "").trim().toUpperCase();',
+  '',
+  '        // Buscamos si esta referencia pertenece a alguna de nuestras facturas',
+  '        const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + "-"));',
+  '',
+  '        if (matchedInv) {',
+  '          abonosMap.set(ref, (abonosMap.get(ref) || 0) + valAbono);',
+  '        } else if (ref.startsWith("ANTICIPO-")) {',
+  '          // Soporte Cartera Directa: anticipo pre-asignado a cuota futura (ANTICIPO-YYYYMM-{propId})',
+  '          const parts = ref.split("-");',
+  '          if (parts.length >= 3) {',
+  '            const pCode = parts[1];',
+  '            const pId = parts.slice(2).join("-");',
+  '            const targetInv = invoices.find(inv => {',
+  '              const invPCode = String(inv.period || "").replace("-", "");',
+  '              return invPCode === pCode && String(inv.property_id).toUpperCase() === pId.toUpperCase();',
+  '            });',
+  '            if (targetInv && targetInv.number) {',
+  '              const invNum = String(targetInv.number).trim().toUpperCase();',
+  '              abonosMap.set(invNum, (abonosMap.get(invNum) || 0) + valAbono);',
+  '            } else {',
+  '              const pidKey = pId.toLowerCase();',
+  '              advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);',
+  '            }',
+  '          }',
+  '        } else if (ref.startsWith("ANT-")) {',
+  '          // Soporte saldo inicial de anticipos por unidad (ANT-{propId})',
+  '          const pidKey = ref.substring(4).toLowerCase();',
+  '          advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);',
+  '        }',
+  '      }',
+  '    }',
+  '',
+  '    // Obtener saldos a favor adicionales en cuentas 28% si existieren',
+  '    try {',
+  '      const ant28Lines = await pb.listAll("tx_lines", {',
+  '        filter: `account_id.code ~ "28%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,',
+  '        expand: "account_id"',
+  '      }).catch(() => []);',
+  '      for (const al of (ant28Lines || [])) {',
+  '        const rawRef = String(al.cross_doc_ref || "").trim();',
+  '        let pId = "";',
+  '        if (rawRef.startsWith("ANT-")) {',
+  '          pId = rawRef.substring(4);',
+  '        } else if (rawRef.startsWith("ANTICIPO-")) {',
+  '          pId = rawRef.split("-").slice(2).join("-");',
+  '        }',
+  '        const net = (Number(al.credit) || 0) - (Number(al.debit) || 0);',
+  '        if (pId && net > 0) {',
+  '          const pidKey = pId.toLowerCase();',
+  '          advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + net);',
+  '        }',
+  '      }',
+  '    } catch (_) {}',
+  '',
+  '    const properties = await this.getPhProperties(false).catch(() => []);',
+  '    const propById = new Map(properties.map(p => [String(p.id), p]));',
+  '',
+  '    // Ordenar facturas cronológicamente para aplicación FIFO estricta de pagos y anticipos',
+  '    invoices.sort((a, b) => {',
+  '      const dA = String(a.date || a.created || "");',
+  '      const dB = String(b.date || b.created || "");',
+  '      return dA.localeCompare(dB) || String(a.number || "").localeCompare(String(b.number || ""));',
+  '    });',
+  '',
+  '    const rows = [];',
+  '    for (const inv of invoices) {',
+  '      const prop = propById.get(String(inv.property_id));',
+  '      const owner = prop?.expand?.owner_id;',
+  '      const invLines = allInvLines.filter(l => l.invoice_id === inv.id);',
+  '',
+  '      const invNumber = String(inv.number || "").trim().toUpperCase();',
+  '      const fechaDoc = String(inv.date || inv.created || "").slice(0, 10);',
+  '      const venc = String(inv.due_date || "").slice(0, 10);',
+  '      const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);',
+  '',
+  '      // Control de abono general para distribuir entre líneas',
+  '      let generalAbono = abonosMap.get(invNumber) || 0;',
+  '',
+  '      // Saldo a favor de anticipos disponible para esta unidad (FIFO)',
+  '      const pIdKey = String(inv.property_id || "").toLowerCase();',
+  '      let propAdvancePool = advancesByPropMap.get(pIdKey) || 0;',
+  '',
+  '      for (const line of invLines) {',
+  '        const originalAmount = Number(line.amount || 0);',
+  '',
+  '        // 1. Intentar abono específico por concepto (ej: CF-001-ADMIN)',
+  '        const cCode = String(line.expand?.concept_id?.code || "").trim().toUpperCase();',
+  '        const normDesc = String(line.description || "").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "");',
+  '        const isMora = cCode === "MORA" || normDesc.includes("interes") || normDesc.includes("mora");',
+  '        const conceptCode = (cCode || (isMora ? "MORA" : "GEN")).toUpperCase();',
+  '        const specificRef = `${invNumber}-${conceptCode}`;',
+  '        let abonoAplicado = abonosMap.get(specificRef) || 0;',
+  '',
+  '        // 2. Si hay abono general remanente, aplicarlo a esta línea',
+  '        if (generalAbono > 0) {',
+  '          const porAplicar = Math.min(generalAbono, Math.max(0, originalAmount - abonoAplicado));',
+  '          abonoAplicado += porAplicar;',
+  '          generalAbono -= porAplicar;',
+  '        }',
+  '',
+  '        let currentBalance = originalAmount - abonoAplicado;',
+  '',
+  '        // 3. Si hay anticipo disponible para la unidad, amortizar FIFO en la línea',
+  '        if (propAdvancePool > 0 && currentBalance > 0) {',
+  '          const porAmortizar = Math.min(propAdvancePool, currentBalance);',
+  '          currentBalance -= porAmortizar;',
+  '          abonoAplicado += porAmortizar;',
+  '          propAdvancePool -= porAmortizar;',
+  '          advancesByPropMap.set(pIdKey, propAdvancePool);',
+  '        }',
+  '',
+  '        let estado = "por_vencer";',
+  '        if (currentBalance < 1) {',
+  '          estado = "cancelado";',
+  '        } else if (inv.status === "draft") {',
+  '          estado = "borrador";',
+  '        } else if (diasMoraRaw >= 0) {',
+  '          estado = "vencido";',
+  '        }',
+  '',
+  '        const rawConcepto = line.expand?.concept_id?.name || line.description || line.account_code || "Concepto";',
+  '        const normalizedConcepto = this.normalizePhCarteraConceptLabel(rawConcepto);',
+  '        const normalizedConceptId = line.concept_id',
+  '          ? String(line.concept_id)',
+  '          : String(normalizedConcepto || line.account_code || "OTROS").toUpperCase();',
+  '',
+  '        rows.push({',
+  '          invoice: inv;',
+  '          line,',
+  '          amount: currentBalance, // Saldo para el reporte',
+  '          originalAmount: originalAmount, // Valor original para integridad',
+  '          abono: abonoAplicado,',
+  '          saldoAnticipo: propAdvancePool,',
+  '          diasMora: Math.max(0, diasMoraRaw),',
+  '          diasMoraRaw,',
+  '          fechaDoc,',
+  '          dueDate: venc,',
+  '          estado,',
+  '          propertyId: String(inv.property_id || ""),',
+  '          propertyCode: String(prop?.code || ""),',
+  '          propertyName: String(prop?.name || ""),',
+  '          ownerId: String(prop?.owner_id || owner?.id || ""),',
+  '          ownerName: String(owner?.name || "").trim(),',
+  '          ownerDoc: String(owner?.doc_number || "").trim(),',
+  '          conceptoId: normalizedConceptId,',
+  '          concepto: normalizedConcepto,',
+  '        });',
+  '      }',
+  '    }',
+  '    '
+].join(eol);
+
+// Fix the typo `invoice: inv;` to `invoice: inv,`
+const fixedReplacement = replacementLines.replace('invoice: inv;', 'invoice: inv,');
+
+// Replace from lineStart up to endIndex
+const newContent = content.slice(0, lineStart) + fixedReplacement + content.slice(endIndex);
+fs.writeFileSync(filePath, newContent, 'utf8');
+console.log('Successfully patched frontend/src/api.ts');
+

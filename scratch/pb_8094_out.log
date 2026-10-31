@@ -1,0 +1,140 @@
+2026/10/30 12:15:05 THIRD_PARTIES FIELD NAMES:
+2026/10/30 12:15:05 - id
+2026/10/30 12:15:05 - type
+2026/10/30 12:15:05 - doc_type
+2026/10/30 12:15:05 - doc_number
+2026/10/30 12:15:05 - dv
+2026/10/30 12:15:05 - name
+2026/10/30 12:15:05 - commercial_name
+2026/10/30 12:15:05 - email
+2026/10/30 12:15:05 - phone
+2026/10/30 12:15:05 - address
+2026/10/30 12:15:05 - city
+2026/10/30 12:15:05 - department
+2026/10/30 12:15:05 - country
+2026/10/30 12:15:05 - tax_regime
+2026/10/30 12:15:05 - is_retention_agent
+2026/10/30 12:15:05 - bank_name
+2026/10/30 12:15:05 - bank_account
+2026/10/30 12:15:05 - contact_name
+2026/10/30 12:15:05 - contact_phone
+2026/10/30 12:15:05 - notes
+2026/10/30 12:15:05 - active
+2026/10/30 12:15:05 - person_type
+2026/10/30 12:15:05 - first_name
+2026/10/30 12:15:05 - last_name
+2026/10/30 12:15:05 - business_name
+2026/10/30 12:15:05 - city_code
+2026/10/30 12:15:05 - dept_code
+2026/10/30 12:15:05 - advisor
+2026/10/30 12:15:05 - phone2
+2026/10/30 12:15:05 - email2
+2026/10/30 12:15:05 - credit_limit
+2026/10/30 12:15:05 - max_invoices
+2026/10/30 12:15:05 - payment_days
+2026/10/30 12:15:05 - ciiu
+2026/10/30 12:15:05 - tfe
+2026/10/30 12:15:05 - tfc
+2026/10/30 12:15:05 - rf
+2026/10/30 12:15:05 - prf
+2026/10/30 12:15:05 - pi
+2026/10/30 12:15:05 - piv
+2026/10/30 12:15:05 - gc
+2026/10/30 12:15:05 - ar
+2026/10/30 12:15:05 - ei
+2026/10/30 12:15:05 - resp
+2026/10/30 12:15:05 - gcm
+2026/10/30 12:15:05 - rut_pdf
+2026/10/30 12:15:05 - geo_lat
+2026/10/30 12:15:05 - geo_lng
+2026/10/30 12:15:05 - geo_radius
+2026/10/30 12:15:05 - bank_account_type
+2026/10/30 12:15:05 - payment_method
+2026/10/30 12:15:05 THIRD_PARTIES RECORD COUNT: 5
+2026/10/30 12:15:05 TP Record 0: id=0k212h1ij9kkhuh, name=AFP PROTECCION, type=OTRO
+2026/10/30 12:15:05 TP Record 1: id=67p3gwfxngqbkrb, name=AFP PORVENIR, type=OTRO
+2026/10/30 12:15:05 TP Record 2: id=59v4mluzq8hf5ft, name=AFP COLPENSIONES, type=OTRO
+2026/10/30 12:15:05 TP Record 3: id=8s6wax5ppxaiycb, name=CCF COMFENALCO DEL VALLE DEL CAUCA - COMFENALCO VALLE, type=OTRO
+2026/10/30 12:15:05 TP Record 4: id=2p9hst1rl6121vr, name=EPS NUEVA EPS S.A - NUEVA EMPRESA PROMOTORA DE SALUD NUEVA EPS S.A, type=OTRO
+2026/10/30 12:15:05 CLIENTES RECORD COUNT: 0
+2026/10/30 12:15:05 [GRAVY-VENTAS] Migración de Ventas y POS completada.
+2026/10/30 12:15:05 [GRAVY-UNIFICATION] Encontrados 0 contratos NIIF 16 para migrar.
+2026/10/30 12:15:05 [GRAVY-UNIFICATION] 0 contratos NIIF 16 migrados a inmo_contracts.
+2026/10/30 12:15:05 [GRAVY-UNIFICATION] Antigua colección niif_leases eliminada.
+2026/10/30 12:15:05 [GRAVY-IMPORT-CONSOLIDADO] Aviso al extender imports: GoError: SQL logic error: error in table imports after rename: duplicate column name: forwarder_supplier_id (1)
+2026/10/30 12:15:05 [GRAVY-IMPORT-CONSOLIDADO] Migración de importaciones consolidadas completada con éxito.
+2026/10/30 12:15:05 [GRAVY SYNC] Sincronizando 2 usuarios existentes con el HUB...
+2026/10/30 12:15:06 [GRAVY SYNC] Sincronización legacy exitosa para admin@contaco.com (contraseña local alineada con el HUB)
+2026/10/30 12:15:06 [GRAVY SYNC] Sincronización legacy exitosa para szuluaga@gravy.com (contraseña local alineada con el HUB)
+2026/10/30 12:15:06 [GRAVY] patch_settings_rules: Reglas de settings actualizadas correctamente.
+2026/10/30 12:15:06 [GRAVY-INMO] Migración Inmobiliaria completada.
+2026/10/30 12:15:06 [GRAVY-IMPORTACIONES] Migración de importaciones completada.
+2026/10/30 12:15:06 [GRAVY] La colección payroll_novelties ya existe.
+2026/10/30 12:15:06 [GRAVY] La colección electronic_payrolls ya existe.
+2026/10/30 12:15:06 [GRAVY] La colección payroll_documents ya existe.
+2026/10/30 12:15:06 [GRAVY-IMPORT-REOPEN] Error en migración: GoError: SQL logic error: error in table imports after rename: duplicate column name: capitalization_tx_id (1)
+2026/10/30 12:15:06 [GRAVY-CRM-LOGISTICA] Migración de CRM y Logística/Despachos completada.
+2026/10/30 12:15:06 [GRAVY] Actualizadas reglas de la colección cash_concepts.
+2026/10/30 12:15:06 [GRAVY-PH] Reglas de settings sincronizadas con canWrite.
+2026/10/30 12:15:06 [GRAVY-PH] Colección ph_properties actualizada: reglas/campos sincronizados.
+2026/10/30 12:15:07 [GRAVY-PH] Colección ph_invoices actualizada: reglas y campos de email sincronizados.
+2026/10/30 12:15:07 [GRAVY-PH] Colección ph_invoice_lines actualizada: reglas/campos sincronizados.
+2026/10/30 12:15:07 [GRAVY-PH] Reglas sincronizadas (canWrite) en colecciones de configuración PH: 4
+2026/10/30 12:15:07 [GRAVY-PH] Reglas sincronizadas (canWrite) en colecciones de facturación PH: 2
+2026/10/30 12:15:07 [GRAVY-PH] ph_pqrs sincronizada (create para propietarios + campo evidences).
+2026/10/30 12:15:07 [GRAVY-PH] Reglas sincronizadas para ph_reservations (create habilitado para usuarios autenticados).
+2026/10/30 12:15:07 [GRAVY-PH] Migración Copropiedades completada.
+2026/10/30 12:15:07 [GRAVY-IMPORT-TRM] Error o aviso en migración de TRM: GoError: SQL logic error: error in table imports after rename: duplicate column name: insurance_exchange_rate (1)
+2026/10/30 12:15:07 [GRAVY-VENTAS-MULTIBODEGA] Inicialización y migración multi-bodega completada.
+2026/10/30 12:15:07 [GRAVY] Migración third_parties completada: campos nuevos agregados.
+2026/10/30 12:15:07 [GRAVY] Migración transaction_types: índice actualizado a UNIQUE(code, prefix).
+2026/10/30 12:15:07 [GRAVY-PEDIDOS] Migración de Pedidos y Cotizaciones completa.
+2026/10/30 12:15:07 [GRAVY] Reglas de users actualizadas.
+2026/10/30 12:15:07 [GRAVY] Reglas de eliminación de transactions actualizadas (Superadmin habilitado).
+2026/10/30 12:15:07 [GRAVY] Reglas de eliminación de inventory_movements actualizadas.
+2026/10/30 12:15:08 [GRAVY] Reglas de eliminación de inventory_movement_lines actualizadas.
+2026/10/30 12:15:08 [GRAVY] La colección payroll_settlements ya existe.
+2026/10/30 12:15:08 [GRAVY-RETURNS] Colección merchandise_returns ya existe.
+2026/10/30 12:15:08 [GRAVY-RETURNS] Colección merchandise_return_lines ya existe.
+2026/10/30 12:15:08 [GRAVY-RESERVAS-IMPORT] Migracion de reservas de importacion completada.
+2026/10/30 12:15:08 [GRAVY-PH-INDEXES] Índices de alto rendimiento para Facturación PH asegurados.
+2026/10/30 12:15:08 [GRAVY-PATCH] Reglas actualizadas: pos_shifts
+2026/10/30 12:15:08 [GRAVY-PATCH] Reglas actualizadas: invoices
+2026/10/30 12:15:08 [GRAVY-PATCH] Reglas actualizadas: invoice_lines
+2026/10/30 12:15:08 [GRAVY-PATCH] Reglas actualizadas: transactions
+2026/10/30 12:15:08 [GRAVY-PATCH] Reglas actualizadas: tx_lines
+2026/10/30 12:15:08 [GRAVY-PATCH] Reglas actualizadas: inventory_movements
+2026/10/30 12:15:08 [GRAVY-PATCH] Reglas actualizadas: inventory_movement_lines
+2026/10/30 12:15:08 [GRAVY-PATCH] Reglas actualizadas: inventory_stock
+2026/10/30 12:15:08 [GRAVY-PATCH] Reglas actualizadas: inventory_lots
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: inventory_pallets
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: sales_orders
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: sales_order_lines
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: settings
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: third_parties
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: products
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: warehouses
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: accounts
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: purchase_orders
+2026/10/30 12:15:09 [GRAVY-PATCH] Aviso (purchase_lines): GoError: sql: no rows in result set
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: purchase_invoices
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: purchase_invoice_lines
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: transaction_types
+2026/10/30 12:15:09 [GRAVY-PATCH] Reglas actualizadas: payroll_periods
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: payroll_lines
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: payroll_novelties
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: electronic_payrolls
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: payroll_documents
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: bank_accounts
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: bank_movements
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: inmo_properties
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: inmo_contracts
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: inmo_invoices
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: inmo_invoice_lines
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: inmo_property_history
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: inmo_maintenance
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas actualizadas: inmo_documents
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas de lectura de users actualizadas.
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas de lectura actualizadas para: products
+2026/10/30 12:15:10 [GRAVY-PATCH] Reglas de lectura actualizadas para: clientes
+2026/10/30 12:15:11 [GRAVY-PATCH] Reglas de lectura actualizadas para: listas_precios

@@ -49,6 +49,88 @@ function saveDianLog(logData) {
 }
 globalThis.saveDianLog = saveDianLog;
 
+function getMatiasCaller() {
+  if (typeof globalThis.callMatiasApi === "function") {
+    return globalThis.callMatiasApi;
+  }
+  return function(endpoint, method, payload, overrideOptions) {
+    const opts = overrideOptions || {};
+    let env = opts.environment;
+    if (!env) {
+      try {
+        const rEnv = $app.findFirstRecordByFilter("settings", "key = 'matias_environment'");
+        env = (rEnv ? rEnv.get("value") : "") || "sandbox";
+      } catch (_) {
+        env = "sandbox";
+      }
+    }
+    const baseUrl = env === "production"
+      ? "https://api-v2.matias-api.com/api/ubl2.1"
+      : "https://sandbox-api.matias-api.com/api/ubl2.1";
+
+    let token = opts.token;
+    if (!token) {
+      try {
+        const rTok = $app.findFirstRecordByFilter("settings", "key = 'matias_api_token'");
+        token = (rTok ? rTok.get("value") : "") || "";
+      } catch (_) {
+        token = "";
+      }
+    }
+
+    if (!token) {
+      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+    }
+
+    let clientUuid = opts.client_uuid;
+    if (!clientUuid) {
+      try {
+        const rUuid = $app.findFirstRecordByFilter("settings", "key = 'matias_client_uuid'");
+        clientUuid = (rUuid ? rUuid.get("value") : "") || "";
+      } catch (_) {
+        clientUuid = "";
+      }
+    }
+
+    let fullUrl = baseUrl + endpoint;
+    if (clientUuid) {
+      fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+    }
+
+    const reqOptions = {
+      url: fullUrl,
+      method: method || "GET",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      timeout: 120
+    };
+
+    if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+      reqOptions.body = JSON.stringify(payload);
+    }
+
+    const res = $http.send(reqOptions);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(res.raw);
+    } catch (_) {
+      parsed = { raw: res.raw };
+    }
+
+    return {
+      statusCode: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      data: parsed,
+      raw: res.raw
+    };
+  };
+}
+globalThis.getMatiasCaller = getMatiasCaller;
+
+
 
 function getAndIncrementDianShipmentConsecutive() {
   const currentYear = new Date().getFullYear();
@@ -158,6 +240,64 @@ globalThis.callFacturatechNominaSoap = callFacturatechNominaSoap;
  * Corrige bug donde datos históricos en third_parties.name contienen
  * un slash inicial (ej: "/JULIAN ESPINO ARRUBL" -> "JULIAN ESPINO ARRUBL").
  */
+
+function syncSmtpSettings() {
+  const smtpEnabled = getSetting("smtp_enabled", "0") === "1";
+  try {
+    const pbSettings = $app.settings();
+    if (smtpEnabled) {
+      const host = getSetting("smtp_host", "");
+      const port = parseInt(getSetting("smtp_port", "587"), 10);
+      const user = getSetting("smtp_username", "");
+      const pass = String(getSetting("smtp_password", "")).replace(/\s+/g, "");
+      const senderName = getSetting("smtp_sender_name", "");
+      const senderAddr = getSetting("smtp_sender_address", "");
+      
+      pbSettings.smtp.enabled = true;
+      pbSettings.smtp.host = host;
+      pbSettings.smtp.port = port;
+      pbSettings.smtp.username = user;
+      pbSettings.smtp.password = pass;
+      pbSettings.smtp.tls = (port === 465);
+      pbSettings.meta.senderName = senderName || getSetting("company_name", "GRAVY S.A.S");
+      pbSettings.meta.senderAddress = senderAddr || user;
+    } else {
+      pbSettings.smtp.enabled = false;
+    }
+    $app.save(pbSettings);
+  } catch (err) {
+    console.error("[GRAVY DIAN SMTP SYNC] Falló al aplicar settings SMTP locales a PocketBase:", err);
+  }
+}
+globalThis.syncSmtpSettings = syncSmtpSettings;
+
+function mapDocType(type) {
+  const t = String(type || '').trim().toUpperCase();
+  if (t === '13' || t === 'CC' || t.includes('CEDULA') || t.includes('CÉDULA')) return '13';
+  if (t === '31' || t === 'NIT') return '31';
+  if (t === '22' || t === 'CE' || t.includes('EXTRANJER')) return '22';
+  if (t === '41' || t === 'PASAPORTE' || t === 'PAS') return '41';
+  if (t === '47' || t === 'PEP') return '47';
+  if (t === '12' || t === 'TI' || t.includes('TARJETA')) return '12';
+  if (t === '11' || t === 'RC' || t.includes('REGISTRO')) return '11';
+  if (t === '42' || t === 'TE' || t.includes('EXTERIOR')) return '42';
+  if (/^\d{2}$/.test(t)) return t;
+  return '13';
+}
+globalThis.mapDocType = mapDocType;
+
+function sendInvoiceEmailHelper(txId, customEmail) {
+  try {
+    const { sendInvoiceEmailHelper: mailerHelper } = require(`${__hooks}/dian_mailer.js`);
+    return mailerHelper(txId, customEmail);
+  } catch (err) {
+    console.error("[GRAVY HOOK] Error en sendInvoiceEmailHelper delegado:", err);
+    throw err;
+  }
+}
+globalThis.sendInvoiceEmailHelper = sendInvoiceEmailHelper;
+
+
 routerAdd('POST', '/api/dian/emit', (e) => {
 
   function getSetting(key, defaultValue) {
@@ -221,518 +361,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     return '13';
   }
 
-function sendInvoiceEmailHelper(txId, customEmail) {
 
-  const syncSmtpSettings = function() {
-    const smtpEnabled = getSetting("smtp_enabled", "0") === "1";
-    try {
-      const pbSettings = $app.settings();
-      if (smtpEnabled) {
-        const host = getSetting("smtp_host", "");
-        const port = parseInt(getSetting("smtp_port", "587"), 10);
-        const user = getSetting("smtp_username", "");
-        const pass = getSetting("smtp_password", "");
-        const senderName = getSetting("smtp_sender_name", "");
-        const senderAddr = getSetting("smtp_sender_address", "");
-        
-        pbSettings.smtp.enabled = true;
-        pbSettings.smtp.host = host;
-        pbSettings.smtp.port = port;
-        pbSettings.smtp.username = user;
-        pbSettings.smtp.password = pass;
-        pbSettings.smtp.tls = (port === 465);
-        pbSettings.meta.senderName = senderName || getSetting("company_name", "GRAVY S.A.S");
-        pbSettings.meta.senderAddress = senderAddr || user;
-      } else {
-        pbSettings.smtp.enabled = false;
-      }
-      $app.save(pbSettings);
-    } catch (err) {
-      console.error("[GRAVY DIAN SMTP SYNC] Falló al aplicar settings SMTP locales a PocketBase:", err);
-    }
-  };
-
-  try {
-    const docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
-    if (!docRecord) {
-      throw new Error("Documento de facturación no encontrado para esta transacción.");
-    }
-    
-    const xmlContent = docRecord.getString("xml_content");
-    if (!xmlContent) {
-      throw new Error("El documento no posee contenido XML firmado para reenviar.");
-    }
-    
-    const tx = $app.findRecordById("transactions", txId);
-    $app.expandRecord(tx, ["third_party_id"], null);
-    const customer = tx.expandedOne("third_party_id");
-    let custEmail = customEmail;
-    if (!custEmail) {
-      custEmail = customer ? customer.getString("email") : "";
-    }
-    if (!custEmail) {
-      throw new Error("Debe configurar un correo en la ficha del tercero.");
-    }
-    
-    const companyName = getSetting("company_name", "GRAVY S.A.S");
-    const companyEmail = getSetting("company_email", "noreply@gravy.com");
-    const docNumber = tx.getString("number") || "Factura";
-
-    let totalVal = 0;
-    try {
-      const invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
-      totalVal = invRec.getFloat("total") || 0;
-    } catch (_) {
-      try {
-        const purRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
-        totalVal = purRec.getFloat("total") || 0;
-      } catch (_2) {}
-    }
-    const fmtTotal = "$ " + Math.round(totalVal).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-
-    const companyNitRaw = getSetting("company_nit", "900123456");
-    const companyNit = companyNitRaw.split('-')[0].replace(/[^0-9]/g, '');
-    
-    $app.expandRecord(tx, ["tx_type_id"], null);
-    const txType = tx.expandedOne("tx_type_id");
-    const txTypeCode = txType ? txType.getString("code") : "";
-    let docTypeCode = "01";
-    if (txTypeCode === "ND") docTypeCode = "02";
-    else if (txTypeCode === "NC") docTypeCode = "03";
-    
-    const commercialName = getSetting("company_name", "GRAVY S.A.S");
-    const emailSubject = `${companyNit};${companyName};${docNumber};${docTypeCode};${commercialName};`;
-
-    const einvoiceMethod = getSetting("einvoice_method", "dian");
-    let integrationComment = "";
-    if (einvoiceMethod === "facturatech") {
-      integrationComment = "La integracion de datos es realizada por proveedor tecnologico CADENA S.A. / NIT. 890.930.534-0";
-    } else {
-      integrationComment = "La integracion de datos es realizada directamente por la UAE DIAN bajo la modalidad de software propio a nombre del emisor de este documento electronico";
-    }
-
-    let invoiceData = null;
-    try {
-      let invRec = null;
-      let isPurchase = false;
-      try {
-        invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
-      } catch (_) {
-        try {
-          invRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
-          isPurchase = true;
-        } catch (_2) {}
-      }
-
-      if (invRec) {
-        let linesList = [];
-        if (!isPurchase) {
-          linesList = $app.findRecordsByFilter("invoice_lines", "invoice_id = '" + invRec.id + "'");
-        } else {
-          linesList = $app.findRecordsByFilter("purchase_invoice_lines", "invoice_id = '" + invRec.id + "'");
-        }
-        
-        $app.expandRecords(linesList, ["product_id"], null);
-        const linesData = [];
-        for (let i = 0; i < linesList.length; i++) {
-          const l = linesList[i];
-          const prod = l.expandedOne("product_id");
-          linesData.push({
-            desc: prod ? prod.getString("name") : "Producto",
-            code: prod ? prod.getString("code") : "—",
-            qty: l.getFloat("qty") || 0,
-            unitPrice: l.getFloat("unit_price") || 0,
-            lineTotal: l.getFloat("total") || 0,
-            ivaRate: l.getFloat("iva_rate") || 0,
-            unitCode: prod ? (prod.getString("unit") || "94") : "94",
-          });
-        }
-
-        const supplierAddress = getSetting("company_address", "");
-        const supplierPhone = getSetting("company_phone", "");
-        const supplierEmail = getSetting("company_email", "");
-
-        const customerName = sanitizeName(customer ? customer.getString("name") : "Consumidor Final");
-        const customerNit = customer ? customer.getString("doc_number") : "222222222";
-        const customerAddress = customer ? customer.getString("address") : "";
-        const customerPhone = customer ? customer.getString("phone") : "";
-        const customerEmail = customer ? customer.getString("email") : "";
-
-        const issueTime = docRecord.getString("sent_at") ? docRecord.getString("sent_at").split(" ")[1] || "12:00:00" : "12:00:00";
-
-        let cajeroName = "Admin";
-        const posShiftId = invRec.getString("pos_shift_id");
-        if (posShiftId) {
-          try {
-            const shift = $app.findRecordById("pos_shifts", posShiftId);
-            $app.expandRecord(shift, ["user_id"], null);
-            const user = shift.expandedOne("user_id");
-            if (user) {
-              cajeroName = user.getString("name") || user.getString("email") || "Admin";
-            }
-          } catch (_) {}
-        }
-
-        let resName = "Factura de Venta POS";
-        let resDesc = "";
-        let resNum = "";
-        let resDate = "";
-        let resExpiry = "";
-        let resFrom = "";
-        let resTo = "";
-        let resPrefix = "";
-        
-        let prefix = "";
-        if (docNumber.includes('-')) {
-          prefix = docNumber.split('-')[0].trim().toUpperCase();
-        }
-        let docType = invRec.getString("pos_shift_id") ? "POS" : "FV";
-        
-        try {
-          const registerId = invRec.getString("pos_shift_id") ? ($app.findRecordById("pos_shifts", invRec.getString("pos_shift_id")).getString("pos_register_id") || "") : "";
-          let filter = "document_type=\"" + docType + "\" && active=true";
-          let resList = [];
-          if (registerId && docType === "POS") {
-            resList = $app.findRecordsByFilter("dian_resolutions", filter + " && pos_register_id=\"" + registerId + "\"");
-          }
-          if (!resList.length) {
-            let fallbackFilter = filter;
-            if (docType === "POS") {
-              fallbackFilter += " && pos_register_id=\"\"";
-            }
-            if (prefix) {
-              fallbackFilter += " && prefix=\"" + prefix + "\"";
-            }
-            resList = $app.findRecordsByFilter("dian_resolutions", fallbackFilter);
-          }
-          if (!resList.length) {
-            resList = $app.findRecordsByFilter("dian_resolutions", "document_type=\"" + docType + "\" && active=true");
-          }
-          if (resList.length) {
-            const parts = docNumber.split('-');
-            const invNum = parseInt(parts[parts.length - 1], 10) || 0;
-            let resolution = resList.find(r => invNum >= r.getInt("number_from") && invNum <= r.getInt("number_to"));
-            if (!resolution) {
-              resolution = resList.find(r => r.getBool("active")) || resList[0];
-            }
-            if (resolution) {
-              resName = resolution.getString("name") || "Factura de Venta POS";
-              resDesc = resolution.getString("description") || "";
-              resNum = resolution.getString("resolution_number") || "";
-              resDate = resolution.getString("resolution_date") ? resolution.getString("resolution_date").slice(0, 10) : "";
-              resExpiry = resolution.getString("expiration_date") ? resolution.getString("expiration_date").slice(0, 10) : "";
-              resFrom = resolution.getInt("number_from") || "";
-              resTo = resolution.getInt("number_to") || "";
-              resPrefix = resolution.getString("prefix") || "";
-            }
-          }
-        } catch (_) {}
-
-        invoiceData = {
-          docId: docNumber,
-          issueDate: tx.getString("date"),
-          issueTime: issueTime,
-          cufe: docRecord.getString("cufe") || "N/A",
-          payableAmount: totalVal,
-          supplierName: companyName,
-          supplierNit: companyNitRaw,
-          supplierAddress: supplierAddress,
-          supplierPhone: supplierPhone,
-          supplierEmail: supplierEmail,
-          customerName: customerName,
-          customerNit: customerNit,
-          customerAddress: customerAddress,
-          customerPhone: customerPhone,
-          customerEmail: customerEmail,
-          lines: linesData,
-          companyLogo: getSetting("company_logo", ""),
-          cajero: cajeroName,
-          paymentMethod: invRec.getString("payment_method") || "EFECTIVO",
-          received: 0,
-          change: 0,
-          resolutionName: resName,
-          resolutionDesc: resDesc,
-          resolutionNumber: resNum,
-          resolutionDate: resDate,
-          resolutionExpiry: resExpiry,
-          resolutionRangeFrom: resFrom,
-          resolutionRangeTo: resTo,
-          resolutionPrefix: resPrefix
-        };
-      } else {
-        const linesList = $app.findRecordsByFilter("tx_lines", "tx_id = '" + txId + "'", "line_order");
-        const linesData = [];
-        let totalFromLines = 0;
-        for (let i = 0; i < linesList.length; i++) {
-          const l = linesList[i];
-          const d = l.getFloat("debit");
-          const c = l.getFloat("credit");
-          const amount = d > 0 ? d : c;
-          if (amount > 0) {
-            linesData.push({
-              desc: l.getString("description") || "Concepto Contable",
-              code: "—",
-              qty: 1,
-              unitPrice: amount,
-              lineTotal: amount,
-              ivaRate: 0
-            });
-            totalFromLines += amount;
-          }
-        }
-
-        const supplierAddress = getSetting("company_address", "");
-        const supplierPhone = getSetting("company_phone", "");
-        const supplierEmail = getSetting("company_email", "");
-
-        const customerName = customer ? customer.getString("name") : "Consumidor Final";
-        const customerNit = customer ? customer.getString("doc_number") : "222222222";
-        const customerAddress = customer ? customer.getString("address") : "";
-        const customerPhone = customer ? customer.getString("phone") : "";
-        const customerEmail = customer ? customer.getString("email") : "";
-
-        const issueTime = docRecord.getString("sent_at") ? docRecord.getString("sent_at").split(" ")[1] || "12:00:00" : "12:00:00";
-
-        let cajeroName = "Admin";
-        const posShiftId = tx.getString("pos_shift_id");
-        if (posShiftId) {
-          try {
-            const shift = $app.findRecordById("pos_shifts", posShiftId);
-            $app.expandRecord(shift, ["user_id"], null);
-            const user = shift.expandedOne("user_id");
-            if (user) {
-              cajeroName = user.getString("name") || user.getString("email") || "Admin";
-            }
-          } catch (_) {}
-        }
-
-        let resName = "Factura de Venta POS";
-        let resDesc = "";
-        let resNum = "";
-        let resDate = "";
-        let resExpiry = "";
-        let resFrom = "";
-        let resTo = "";
-        let resPrefix = "";
-        
-        let prefix = "";
-        if (docNumber.includes('-')) {
-          prefix = docNumber.split('-')[0].trim().toUpperCase();
-        }
-        let docType = posShiftId ? "POS" : "FV";
-        
-        try {
-          const registerId = posShiftId ? ($app.findRecordById("pos_shifts", posShiftId).getString("pos_register_id") || "") : "";
-          let filter = "document_type=\"" + docType + "\" && active=true";
-          let resList = [];
-          if (registerId && docType === "POS") {
-            resList = $app.findRecordsByFilter("dian_resolutions", filter + " && pos_register_id=\"" + registerId + "\"");
-          }
-          if (!resList.length) {
-            let fallbackFilter = filter;
-            if (docType === "POS") {
-              fallbackFilter += " && pos_register_id=\"\"";
-            }
-            if (prefix) {
-              fallbackFilter += " && prefix=\"" + prefix + "\"";
-            }
-            resList = $app.findRecordsByFilter("dian_resolutions", fallbackFilter);
-          }
-          if (!resList.length) {
-            resList = $app.findRecordsByFilter("dian_resolutions", "document_type=\"" + docType + "\" && active=true");
-          }
-          if (resList.length) {
-            const parts = docNumber.split('-');
-            const invNum = parseInt(parts[parts.length - 1], 10) || 0;
-            let resolution = resList.find(r => invNum >= r.getInt("number_from") && invNum <= r.getInt("number_to"));
-            if (!resolution) {
-              resolution = resList.find(r => r.getBool("active")) || resList[0];
-            }
-            if (resolution) {
-              resName = resolution.getString("name") || "Factura de Venta POS";
-              resDesc = resolution.getString("description") || "";
-              resNum = resolution.getString("resolution_number") || "";
-              resDate = resolution.getString("resolution_date") ? resolution.getString("resolution_date").slice(0, 10) : "";
-              resExpiry = resolution.getString("expiration_date") ? resolution.getString("expiration_date").slice(0, 10) : "";
-              resFrom = resolution.getInt("number_from") || "";
-              resTo = resolution.getInt("number_to") || "";
-              resPrefix = resolution.getString("prefix") || "";
-            }
-          }
-        } catch (_) {}
-
-        invoiceData = {
-          docId: docNumber,
-          issueDate: tx.getString("date"),
-          issueTime: issueTime,
-          cufe: docRecord.getString("cufe") || "N/A",
-          payableAmount: totalVal || totalFromLines,
-          supplierName: companyName,
-          supplierNit: companyNitRaw,
-          supplierAddress: supplierAddress,
-          supplierPhone: supplierPhone,
-          supplierEmail: supplierEmail,
-          customerName: customerName,
-          customerNit: customerNit,
-          customerAddress: customerAddress,
-          customerPhone: customerPhone,
-          customerEmail: customerEmail,
-          lines: linesData,
-          companyLogo: getSetting("company_logo", ""),
-          cajero: cajeroName,
-          paymentMethod: "EFECTIVO",
-          received: 0,
-          change: 0,
-          resolutionName: resName,
-          resolutionDesc: resDesc,
-          resolutionNumber: resNum,
-          resolutionDate: resDate,
-          resolutionExpiry: resExpiry,
-          resolutionRangeFrom: resFrom,
-          resolutionRangeTo: resTo,
-          resolutionPrefix: resPrefix
-        };
-      }
-    } catch (errData) {
-      console.warn("[GRAVY HOOK] Error al preparar structured invoiceData:", errData);
-    }
-
-    try {
-      syncSmtpSettings();
-    } catch (e) {
-      console.warn("[GRAVY] Error syncing SMTP settings:", e);
-    }
-
-    let zipPath = "";
-    const zipBasenameForEmail = docRecord.getString("zip_filename") || docNumber;
-    try {
-      const zipRes = $http.send({
-        url: "http://127.0.0.1:8088/api/dian/generate-zip-file",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ xmlContent: xmlContent, filename: zipBasenameForEmail, invoiceData: invoiceData })
-      });
-      if (zipRes.statusCode === 200) {
-        const zipData = JSON.parse(zipRes.raw);
-        if (zipData.success) {
-          zipPath = zipData.zipPath;
-        }
-      }
-    } catch (err) {
-      console.error("[GRAVY HOOK] Error al generar ZIP en el orquestador:", err);
-    }
-    
-    const message = new MailerMessage({
-      from: {
-        address: companyEmail,
-        name: companyName
-      },
-      to: [{ address: custEmail }],
-      subject: emailSubject,
-      html: `
-        <div style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8FAFC; padding: 40px 20px; color: #1E293B; max-width: 600px; margin: 0 auto; border-radius: 16px;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <img src="cid:gravy-logo.png" alt="GRAVY Logo" style="height: 48px; width: auto; display: block; margin: 0 auto;" />
-          </div>
-          <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 32px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
-            <div style="text-align: center; margin-bottom: 24px;">
-              <span style="background-color: #E0F2FE; color: #0369A1; padding: 6px 16px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">
-                Documento Oficial DIAN
-              </span>
-            </div>
-            
-            <h2 style="color: #0F172A; font-size: 22px; font-weight: 800; text-align: center; margin-top: 12px; margin-bottom: 8px;">
-              ¡Tu Factura Electrónica está lista!
-            </h2>
-            <p style="text-align: center; color: #64748B; font-size: 14px; margin-top: 0; margin-bottom: 28px;">
-              Emitida por <strong>${companyName}</strong>
-            </p>
-            
-            <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #F1F5F9; margin-bottom: 28px;">
-              <p style="font-size: 14px; margin: 0 0 12px 0; color: #475569;">
-                Estimado cliente <strong>${sanitizeName(customer ? customer.getString("name") : "Consumidor Final")}</strong>,
-              </p>
-              <p style="font-size: 14px; margin: 0; line-height: 1.6; color: #475569;">
-                Adjunto en este correo encontrará el archivo comprimido <strong>ZIP</strong> que contiene el XML firmado y la representación gráfica en formato PDF correspondientes a la <strong>Factura Electrónica de Venta No. ${docNumber}</strong>.
-              </p>
-            </div>
-            
-            <h3 style="color: #0F172A; font-size: 14px; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Detalles del Documento
-            </h3>
-            
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 28px;">
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Número de Documento:</td>
-                <td style="padding: 10px 0; text-align: right; font-weight: 700; color: #0F172A; border-bottom: 1px solid #F1F5F9;">${docNumber}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Fecha de Emisión:</td>
-                <td style="padding: 10px 0; text-align: right; font-weight: 600; color: #0F172A; border-bottom: 1px solid #F1F5F9;">${tx.getString("date")}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Monto Total:</td>
-                <td style="padding: 10px 0; text-align: right; font-size: 16px; font-weight: 800; color: #0284C7; border-bottom: 1px solid #F1F5F9;">${fmtTotal}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; vertical-align: top;">CUFE / CUDE:</td>
-                <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 11px; word-break: break-all; color: #475569; max-width: 200px;">
-                  ${docRecord.getString("cufe") || 'N/A'}
-                </td>
-              </tr>
-            </table>
-            
-            <div style="text-align: center; margin-top: 20px;">
-              <p style="font-size: 13px; color: #94A3B8; margin: 0;">
-                Gracias por su preferencia y confianza.
-              </p>
-            </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 24px; padding: 0 16px;">
-            <p style="font-size: 11px; color: #94A3B8; line-height: 1.5; margin: 0;">
-              ${integrationComment}
-            </p>
-            <p style="font-size: 10px; color: #CBD5E1; margin-top: 12px; margin-bottom: 0;">
-              Este es un mensaje automático generado por GRAVY. Por favor no responda a este correo.
-            </p>
-          </div>
-        </div>
-      `,
-    });
-    
-    const attachments = {};
-    if (zipPath) {
-      try {
-        const zipFile = $filesystem.fileFromPath(zipPath);
-        attachments[`${zipBasenameForEmail}.zip`] = zipFile.reader.open();
-      } catch (zipErr) {
-        console.error("[GRAVY HOOK] No se pudo abrir el archivo ZIP generado:", zipErr);
-        const xmlFile = $filesystem.fileFromBytes(xmlContent, `${zipBasenameForEmail}.xml`);
-        attachments[`${zipBasenameForEmail}.xml`] = xmlFile.reader.open();
-      }
-    } else {
-      const xmlFile = $filesystem.fileFromBytes(xmlContent, `${zipBasenameForEmail}.xml`);
-      attachments[`${zipBasenameForEmail}.xml`] = xmlFile.reader.open();
-    }
-
-    try {
-      const logoFile = $filesystem.fileFromPath("pb_public/assets/gravy-logo.png");
-      attachments["gravy-logo.png"] = logoFile.reader.open();
-    } catch (logoErr) {
-      console.warn("[GRAVY HOOK] No se pudo adjuntar el logo de GRAVY:", logoErr);
-    }
-    
-    message.attachments = attachments;
-    
-    $app.newMailClient().send(message);
-    console.log("[GRAVY HOOK] Correo enviado automáticamente a:", custEmail);
-    return true;
-  } catch (err) {
-    console.error("[GRAVY HOOK] Falló al enviar correo en helper:", err);
-    throw err;
-  }
-}
 
 
   const calcularDV = (nit) => {
@@ -2403,6 +2032,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     // Check or create einvoice_docs
     try {
       docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + realTxId + "'");
+      if (tx.getString("number") && !docRecord.getString("document_number")) {
+        docRecord.set("document_number", tx.getString("number"));
+        $app.save(docRecord);
+      }
       if (docRecord.getString("status") === "aceptada") {
         e.json(400, { message: "Este documento ya fue aceptado por la DIAN." });
         return;
@@ -2411,6 +2044,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       const einvoiceDocsCol = $app.findCollectionByNameOrId("einvoice_docs");
       docRecord = new Record(einvoiceDocsCol, {
         tx_id: realTxId,
+        document_number: tx.getString("number") || "",
         status: "pendiente",
         cufe: "",
         dian_response: "",
@@ -2503,12 +2137,20 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 
     if (isDS || isNDS) {
       try {
-        invoice = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + realTxId + "'");
+        invoice = $app.findFirstRecordByFilter("support_documents", "tx_id = '" + realTxId + "'");
         if (invoice) {
           isPurchase = true;
           purchaseInv = invoice;
         }
-      } catch (_) {}
+      } catch (_) {
+        try {
+          invoice = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + realTxId + "'");
+          if (invoice) {
+            isPurchase = true;
+            purchaseInv = invoice;
+          }
+        } catch (_2) {}
+      }
     }
 
     if (!invoice) {
@@ -2635,12 +2277,20 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         if (!isPurchase && (purchaseInv !== null || isDS || isNDS)) {
           isPurchase = true;
         }
-        const linesCollection = isPurchase ? 'purchase_invoice_lines' : 'invoice_lines';
-        let lines = $app.findRecordsByFilter(linesCollection, "invoice_id = '" + invoice.id + "'", "line_order");
-        if ((!lines || lines.length === 0) && isPurchase) {
+        let lines = [];
+        if (isDS || isNDS) {
           try {
-            lines = $app.findRecordsByFilter("purchase_invoice_lines", "purchase_invoice_id = '" + invoice.id + "'", "line_order");
+            lines = $app.findRecordsByFilter("support_document_lines", "document_id = '" + invoice.id + "'", "line_order");
           } catch (_) {}
+        }
+        if (!lines || lines.length === 0) {
+          const linesCollection = isPurchase ? 'purchase_invoice_lines' : 'invoice_lines';
+          lines = $app.findRecordsByFilter(linesCollection, "invoice_id = '" + invoice.id + "'", "line_order");
+          if ((!lines || lines.length === 0) && isPurchase) {
+            try {
+              lines = $app.findRecordsByFilter("purchase_invoice_lines", "purchase_invoice_id = '" + invoice.id + "'", "line_order");
+            } catch (_) {}
+          }
         }
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
@@ -3446,19 +3096,57 @@ function sendInvoiceEmailHelper(txId, customEmail) {
           city_id: resolvedCustomerCityId,
           dv: custDIANDocType === "31" ? (customer ? (customer.getString("dv") || calcularDV(custDocNum)) : calcularDV(custDocNum)) : null
         },
-        payments: [{
-          payment_method_id: (paymentForm === 'credito' || paymentForm === '2') ? 2 : 1,
-          means_payment_id: parseInt(paymentDianCode || 10, 10),
-          value_paid: parseFloat(total).toFixed(2),
-          payment_due_date: dueDate || issueDate,
-          duration_measure: String(creditDays || "0")
-        }],
-        payment_form: {
-          payment_form_id: (paymentForm === 'credito' || paymentForm === '2') ? 2 : 1,
-          payment_method_id: parseInt(paymentDianCode || 10, 10),
-          payment_due_date: dueDate || issueDate,
-          duration_measure: String(creditDays || "0")
-        },
+        payments: (function() {
+          const isCreditPayment = (paymentForm === 'credito' || paymentForm === '2');
+          let safePaymentDueDate = issueDate;
+          if (isCreditPayment) {
+            if (dueDate && String(dueDate).slice(0, 10) >= issueDate) {
+              safePaymentDueDate = String(dueDate).slice(0, 10);
+            } else if (creditDays > 0) {
+              try {
+                const dCalc = new Date(issueDate + "T12:00:00Z");
+                dCalc.setDate(dCalc.getDate() + Number(creditDays));
+                safePaymentDueDate = dCalc.toISOString().slice(0, 10);
+              } catch (_) {
+                safePaymentDueDate = issueDate;
+              }
+            } else {
+              safePaymentDueDate = issueDate;
+            }
+          }
+          return [{
+            payment_method_id: isCreditPayment ? 2 : 1,
+            means_payment_id: parseInt(paymentDianCode || 10, 10),
+            value_paid: parseFloat(total).toFixed(2),
+            payment_due_date: safePaymentDueDate,
+            duration_measure: String(creditDays || "0")
+          }];
+        })(),
+        payment_form: (function() {
+          const isCreditPayment = (paymentForm === 'credito' || paymentForm === '2');
+          let safePaymentDueDate = issueDate;
+          if (isCreditPayment) {
+            if (dueDate && String(dueDate).slice(0, 10) >= issueDate) {
+              safePaymentDueDate = String(dueDate).slice(0, 10);
+            } else if (creditDays > 0) {
+              try {
+                const dCalc = new Date(issueDate + "T12:00:00Z");
+                dCalc.setDate(dCalc.getDate() + Number(creditDays));
+                safePaymentDueDate = dCalc.toISOString().slice(0, 10);
+              } catch (_) {
+                safePaymentDueDate = issueDate;
+              }
+            } else {
+              safePaymentDueDate = issueDate;
+            }
+          }
+          return {
+            payment_form_id: isCreditPayment ? 2 : 1,
+            payment_method_id: parseInt(paymentDianCode || 10, 10),
+            payment_due_date: safePaymentDueDate,
+            duration_measure: String(creditDays || "0")
+          };
+        })(),
         legal_monetary_totals: {
           line_extension_amount: parseFloat(subtotal).toFixed(2),
           tax_exclusive_amount: parseFloat(subtotal).toFixed(2),
@@ -4055,520 +3743,117 @@ routerAdd('POST', '/api/dian/check-status', (e) => {
         }
       };
 
-function sendInvoiceEmailHelper(txId, customEmail) {
-
-
-  const syncSmtpSettings = function() {
-    const smtpEnabled = getSetting("smtp_enabled", "0") === "1";
-    try {
-      const pbSettings = $app.settings();
-      if (smtpEnabled) {
-        const host = getSetting("smtp_host", "");
-        const port = parseInt(getSetting("smtp_port", "587"), 10);
-        const user = getSetting("smtp_username", "");
-        const pass = getSetting("smtp_password", "");
-        const senderName = getSetting("smtp_sender_name", "");
-        const senderAddr = getSetting("smtp_sender_address", "");
-        
-        pbSettings.smtp.enabled = true;
-        pbSettings.smtp.host = host;
-        pbSettings.smtp.port = port;
-        pbSettings.smtp.username = user;
-        pbSettings.smtp.password = pass;
-        pbSettings.smtp.tls = (port === 465);
-        pbSettings.meta.senderName = senderName || getSetting("company_name", "GRAVY S.A.S");
-        pbSettings.meta.senderAddress = senderAddr || user;
-      } else {
-        pbSettings.smtp.enabled = false;
+  const getMatiasCaller = function() {
+    if (typeof globalThis.callMatiasApi === "function") {
+      return globalThis.callMatiasApi;
+    }
+    return function(endpoint, method, payload, overrideOptions) {
+      const opts = overrideOptions || {};
+      let env = opts.environment;
+      if (!env) {
+        try {
+          const rEnv = $app.findFirstRecordByFilter("settings", "key = 'matias_environment'");
+          env = (rEnv ? rEnv.get("value") : "") || "sandbox";
+        } catch (_) {
+          env = "sandbox";
+        }
       }
-      $app.save(pbSettings);
-    } catch (err) {
-      console.error("[GRAVY DIAN SMTP SYNC] Falló al aplicar settings SMTP locales a PocketBase:", err);
+      const baseUrl = env === "production"
+        ? "https://api-v2.matias-api.com/api/ubl2.1"
+        : "https://sandbox-api.matias-api.com/api/ubl2.1";
+
+      let token = opts.token;
+      if (!token) {
+        try {
+          const rTok = $app.findFirstRecordByFilter("settings", "key = 'matias_api_token'");
+          token = (rTok ? rTok.get("value") : "") || "";
+        } catch (_) {
+          token = "";
+        }
+      }
+
+      if (!token) {
+        throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+      }
+
+      let clientUuid = opts.client_uuid;
+      if (!clientUuid) {
+        try {
+          const rUuid = $app.findFirstRecordByFilter("settings", "key = 'matias_client_uuid'");
+          clientUuid = (rUuid ? rUuid.get("value") : "") || "";
+        } catch (_) {
+          clientUuid = "";
+        }
+      }
+
+      let fullUrl = baseUrl + endpoint;
+      if (clientUuid) {
+        fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+      }
+
+      const reqOptions = {
+        url: fullUrl,
+        method: method || "GET",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        timeout: 120
+      };
+
+      if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+        reqOptions.body = JSON.stringify(payload);
+      }
+
+      const res = $http.send(reqOptions);
+      let parsed = null;
+      try {
+        parsed = JSON.parse(res.raw);
+      } catch (_) {
+        parsed = { raw: res.raw };
+      }
+
+      return {
+        statusCode: res.statusCode,
+        ok: res.statusCode >= 200 && res.statusCode < 300,
+        data: parsed,
+        raw: res.raw
+      };
+    };
+  };
+
+  const decodeBase64Xml = (raw) => {
+    if (!raw) return "";
+    let input = String(raw).trim();
+    if (input.includes("<")) return input;
+    try {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+      input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+      let i = 0, utf8Str = "";
+      while (i < input.length) {
+        let enc1 = chars.indexOf(input.charAt(i++));
+        let enc2 = chars.indexOf(input.charAt(i++));
+        let enc3 = chars.indexOf(input.charAt(i++));
+        let enc4 = chars.indexOf(input.charAt(i++));
+        let chr1 = (enc1 << 2) | (enc2 >> 4);
+        let chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+        let chr3 = ((enc3 & 3) << 6) | enc4;
+        utf8Str += String.fromCharCode(chr1);
+        if (enc3 !== 64) utf8Str += String.fromCharCode(chr2);
+        if (enc4 !== 64) utf8Str += String.fromCharCode(chr3);
+      }
+      return utf8Str;
+    } catch (_) {
+      return input;
     }
   };
 
-  try {
-    const docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
-    if (!docRecord) {
-      throw new Error("Documento de facturación no encontrado para esta transacción.");
-    }
-    
-    const xmlContent = docRecord.getString("xml_content");
-    if (!xmlContent) {
-      throw new Error("El documento no posee contenido XML firmado para reenviar.");
-    }
-    
-    const tx = $app.findRecordById("transactions", txId);
-    $app.expandRecord(tx, ["third_party_id"], null);
-    const customer = tx.expandedOne("third_party_id");
-    let custEmail = customEmail;
-    if (!custEmail) {
-      custEmail = customer ? customer.getString("email") : "";
-    }
-    if (!custEmail) {
-      throw new Error("Debe configurar un correo en la ficha del tercero.");
-    }
-    
-    const companyName = getSetting("company_name", "GRAVY S.A.S");
-    const companyEmail = getSetting("company_email", "noreply@gravy.com");
-    const docNumber = tx.getString("number") || "Factura";
-
-    let totalVal = 0;
-    try {
-      const invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
-      totalVal = invRec.getFloat("total") || 0;
-    } catch (_) {
-      try {
-        const purRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
-        totalVal = purRec.getFloat("total") || 0;
-      } catch (_2) {}
-    }
-    const fmtTotal = "$ " + Math.round(totalVal).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-
-    const companyNitRaw = getSetting("company_nit", "900123456");
-    const companyNit = companyNitRaw.split('-')[0].replace(/[^0-9]/g, '');
-    
-    $app.expandRecord(tx, ["tx_type_id"], null);
-    const txType = tx.expandedOne("tx_type_id");
-    const txTypeCode = txType ? txType.getString("code") : "";
-    let docTypeCode = "01";
-    if (txTypeCode === "ND") docTypeCode = "02";
-    else if (txTypeCode === "NC") docTypeCode = "03";
-    
-    const commercialName = getSetting("company_name", "GRAVY S.A.S");
-    const emailSubject = `${companyNit};${companyName};${docNumber};${docTypeCode};${commercialName};`;
-
-    const einvoiceMethod = getSetting("einvoice_method", "dian");
-    let integrationComment = "";
-    if (einvoiceMethod === "facturatech") {
-      integrationComment = "La integracion de datos es realizada por proveedor tecnologico CADENA S.A. / NIT. 890.930.534-0";
-    } else {
-      integrationComment = "La integracion de datos es realizada directamente por la UAE DIAN bajo la modalidad de software propio a nombre del emisor de este documento electronico";
-    }
-
-    let invoiceData = null;
-    try {
-      let invRec = null;
-      let isPurchase = false;
-      try {
-        invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
-      } catch (_) {
-        try {
-          invRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
-          isPurchase = true;
-        } catch (_2) {}
-      }
-
-      if (invRec) {
-        let linesList = [];
-        if (!isPurchase) {
-          linesList = $app.findRecordsByFilter("invoice_lines", "invoice_id = '" + invRec.id + "'");
-        } else {
-          linesList = $app.findRecordsByFilter("purchase_invoice_lines", "invoice_id = '" + invRec.id + "'");
-        }
-        
-        $app.expandRecords(linesList, ["product_id"], null);
-        const linesData = [];
-        for (let i = 0; i < linesList.length; i++) {
-          const l = linesList[i];
-          const prod = l.expandedOne("product_id");
-          linesData.push({
-            desc: prod ? prod.getString("name") : "Producto",
-            code: prod ? prod.getString("code") : "—",
-            qty: l.getFloat("qty") || 0,
-            unitPrice: l.getFloat("unit_price") || 0,
-            lineTotal: l.getFloat("total") || 0,
-            ivaRate: l.getFloat("iva_rate") || 0,
-            unitCode: prod ? (prod.getString("unit") || "94") : "94",
-          });
-        }
-
-        const supplierAddress = getSetting("company_address", "");
-        const supplierPhone = getSetting("company_phone", "");
-        const supplierEmail = getSetting("company_email", "");
-
-        const customerName = sanitizeName(customer ? customer.getString("name") : "Consumidor Final");
-        const customerNit = customer ? customer.getString("doc_number") : "222222222";
-        const customerAddress = customer ? customer.getString("address") : "";
-        const customerPhone = customer ? customer.getString("phone") : "";
-        const customerEmail = customer ? customer.getString("email") : "";
-
-        const issueTime = docRecord.getString("sent_at") ? docRecord.getString("sent_at").split(" ")[1] || "12:00:00" : "12:00:00";
-
-        let cajeroName = "Admin";
-        const posShiftId = invRec.getString("pos_shift_id");
-        if (posShiftId) {
-          try {
-            const shift = $app.findRecordById("pos_shifts", posShiftId);
-            $app.expandRecord(shift, ["user_id"], null);
-            const user = shift.expandedOne("user_id");
-            if (user) {
-              cajeroName = user.getString("name") || user.getString("email") || "Admin";
-            }
-          } catch (_) {}
-        }
-
-        let resName = "Factura de Venta POS";
-        let resDesc = "";
-        let resNum = "";
-        let resDate = "";
-        let resExpiry = "";
-        let resFrom = "";
-        let resTo = "";
-        let resPrefix = "";
-        
-        let prefix = "";
-        if (docNumber.includes('-')) {
-          prefix = docNumber.split('-')[0].trim().toUpperCase();
-        }
-        let docType = invRec.getString("pos_shift_id") ? "POS" : "FV";
-        
-        try {
-          const registerId = invRec.getString("pos_shift_id") ? ($app.findRecordById("pos_shifts", invRec.getString("pos_shift_id")).getString("pos_register_id") || "") : "";
-          let filter = "document_type=\"" + docType + "\" && active=true";
-          let resList = [];
-          if (registerId && docType === "POS") {
-            resList = $app.findRecordsByFilter("dian_resolutions", filter + " && pos_register_id=\"" + registerId + "\"");
-          }
-          if (!resList.length) {
-            let fallbackFilter = filter;
-            if (docType === "POS") {
-              fallbackFilter += " && pos_register_id=\"\"";
-            }
-            if (prefix) {
-              fallbackFilter += " && prefix=\"" + prefix + "\"";
-            }
-            resList = $app.findRecordsByFilter("dian_resolutions", fallbackFilter);
-          }
-          if (!resList.length) {
-            resList = $app.findRecordsByFilter("dian_resolutions", "document_type=\"" + docType + "\" && active=true");
-          }
-          if (resList.length) {
-            const parts = docNumber.split('-');
-            const invNum = parseInt(parts[parts.length - 1], 10) || 0;
-            let resolution = resList.find(r => invNum >= r.getInt("number_from") && invNum <= r.getInt("number_to"));
-            if (!resolution) {
-              resolution = resList.find(r => r.getBool("active")) || resList[0];
-            }
-            if (resolution) {
-              resName = resolution.getString("name") || "Factura de Venta POS";
-              resDesc = resolution.getString("description") || "";
-              resNum = resolution.getString("resolution_number") || "";
-              resDate = resolution.getString("resolution_date") ? resolution.getString("resolution_date").slice(0, 10) : "";
-              resExpiry = resolution.getString("expiration_date") ? resolution.getString("expiration_date").slice(0, 10) : "";
-              resFrom = resolution.getInt("number_from") || "";
-              resTo = resolution.getInt("number_to") || "";
-              resPrefix = resolution.getString("prefix") || "";
-            }
-          }
-        } catch (_) {}
-
-        invoiceData = {
-          docId: docNumber,
-          issueDate: tx.getString("date"),
-          issueTime: issueTime,
-          cufe: docRecord.getString("cufe") || "N/A",
-          payableAmount: totalVal,
-          supplierName: companyName,
-          supplierNit: companyNitRaw,
-          supplierAddress: supplierAddress,
-          supplierPhone: supplierPhone,
-          supplierEmail: supplierEmail,
-          customerName: customerName,
-          customerNit: customerNit,
-          customerAddress: customerAddress,
-          customerPhone: customerPhone,
-          customerEmail: customerEmail,
-          lines: linesData,
-          companyLogo: getSetting("company_logo", ""),
-          cajero: cajeroName,
-          paymentMethod: invRec.getString("payment_method") || "EFECTIVO",
-          received: 0,
-          change: 0,
-          resolutionName: resName,
-          resolutionDesc: resDesc,
-          resolutionNumber: resNum,
-          resolutionDate: resDate,
-          resolutionExpiry: resExpiry,
-          resolutionRangeFrom: resFrom,
-          resolutionRangeTo: resTo,
-          resolutionPrefix: resPrefix
-        };
-      } else {
-        const linesList = $app.findRecordsByFilter("tx_lines", "tx_id = '" + txId + "'", "line_order");
-        const linesData = [];
-        let totalFromLines = 0;
-        for (let i = 0; i < linesList.length; i++) {
-          const l = linesList[i];
-          const d = l.getFloat("debit");
-          const c = l.getFloat("credit");
-          const amount = d > 0 ? d : c;
-          if (amount > 0) {
-            linesData.push({
-              desc: l.getString("description") || "Concepto Contable",
-              code: "—",
-              qty: 1,
-              unitPrice: amount,
-              lineTotal: amount,
-              ivaRate: 0
-            });
-            totalFromLines += amount;
-          }
-        }
-
-        const supplierAddress = getSetting("company_address", "");
-        const supplierPhone = getSetting("company_phone", "");
-        const supplierEmail = getSetting("company_email", "");
-
-        const customerName = customer ? customer.getString("name") : "Consumidor Final";
-        const customerNit = customer ? customer.getString("doc_number") : "222222222";
-        const customerAddress = customer ? customer.getString("address") : "";
-        const customerPhone = customer ? customer.getString("phone") : "";
-        const customerEmail = customer ? customer.getString("email") : "";
-
-        const issueTime = docRecord.getString("sent_at") ? docRecord.getString("sent_at").split(" ")[1] || "12:00:00" : "12:00:00";
-
-        let cajeroName = "Admin";
-        const posShiftId = tx.getString("pos_shift_id");
-        if (posShiftId) {
-          try {
-            const shift = $app.findRecordById("pos_shifts", posShiftId);
-            $app.expandRecord(shift, ["user_id"], null);
-            const user = shift.expandedOne("user_id");
-            if (user) {
-              cajeroName = user.getString("name") || user.getString("email") || "Admin";
-            }
-          } catch (_) {}
-        }
-
-        let resName = "Factura de Venta POS";
-        let resDesc = "";
-        let resNum = "";
-        let resDate = "";
-        let resExpiry = "";
-        let resFrom = "";
-        let resTo = "";
-        let resPrefix = "";
-        
-        let prefix = "";
-        if (docNumber.includes('-')) {
-          prefix = docNumber.split('-')[0].trim().toUpperCase();
-        }
-        let docType = posShiftId ? "POS" : "FV";
-        
-        try {
-          const registerId = posShiftId ? ($app.findRecordById("pos_shifts", posShiftId).getString("pos_register_id") || "") : "";
-          let filter = "document_type=\"" + docType + "\" && active=true";
-          let resList = [];
-          if (registerId && docType === "POS") {
-            resList = $app.findRecordsByFilter("dian_resolutions", filter + " && pos_register_id=\"" + registerId + "\"");
-          }
-          if (!resList.length) {
-            let fallbackFilter = filter;
-            if (docType === "POS") {
-              fallbackFilter += " && pos_register_id=\"\"";
-            }
-            if (prefix) {
-              fallbackFilter += " && prefix=\"" + prefix + "\"";
-            }
-            resList = $app.findRecordsByFilter("dian_resolutions", fallbackFilter);
-          }
-          if (!resList.length) {
-            resList = $app.findRecordsByFilter("dian_resolutions", "document_type=\"" + docType + "\" && active=true");
-          }
-          if (resList.length) {
-            const parts = docNumber.split('-');
-            const invNum = parseInt(parts[parts.length - 1], 10) || 0;
-            let resolution = resList.find(r => invNum >= r.getInt("number_from") && invNum <= r.getInt("number_to"));
-            if (!resolution) {
-              resolution = resList.find(r => r.getBool("active")) || resList[0];
-            }
-            if (resolution) {
-              resName = resolution.getString("name") || "Factura de Venta POS";
-              resDesc = resolution.getString("description") || "";
-              resNum = resolution.getString("resolution_number") || "";
-              resDate = resolution.getString("resolution_date") ? resolution.getString("resolution_date").slice(0, 10) : "";
-              resExpiry = resolution.getString("expiration_date") ? resolution.getString("expiration_date").slice(0, 10) : "";
-              resFrom = resolution.getInt("number_from") || "";
-              resTo = resolution.getInt("number_to") || "";
-              resPrefix = resolution.getString("prefix") || "";
-            }
-          }
-        } catch (_) {}
-
-        invoiceData = {
-          docId: docNumber,
-          issueDate: tx.getString("date"),
-          issueTime: issueTime,
-          cufe: docRecord.getString("cufe") || "N/A",
-          payableAmount: totalVal || totalFromLines,
-          supplierName: companyName,
-          supplierNit: companyNitRaw,
-          supplierAddress: supplierAddress,
-          supplierPhone: supplierPhone,
-          supplierEmail: supplierEmail,
-          customerName: customerName,
-          customerNit: customerNit,
-          customerAddress: customerAddress,
-          customerPhone: customerPhone,
-          customerEmail: customerEmail,
-          lines: linesData,
-          companyLogo: getSetting("company_logo", ""),
-          cajero: cajeroName,
-          paymentMethod: "EFECTIVO",
-          received: 0,
-          change: 0,
-          resolutionName: resName,
-          resolutionDesc: resDesc,
-          resolutionNumber: resNum,
-          resolutionDate: resDate,
-          resolutionExpiry: resExpiry,
-          resolutionRangeFrom: resFrom,
-          resolutionRangeTo: resTo,
-          resolutionPrefix: resPrefix
-        };
-      }
-    } catch (errData) {
-      console.warn("[GRAVY HOOK] Error al preparar structured invoiceData:", errData);
-    }
-
-    try {
-      syncSmtpSettings();
-    } catch (e) {
-      console.warn("[GRAVY] Error syncing SMTP settings:", e);
-    }
-
-    let zipPath = "";
-    const zipBasenameForEmail = docRecord.getString("zip_filename") || docNumber;
-    try {
-      const zipRes = $http.send({
-        url: "http://127.0.0.1:8088/api/dian/generate-zip-file",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ xmlContent: xmlContent, filename: zipBasenameForEmail, invoiceData: invoiceData })
-      });
-      if (zipRes.statusCode === 200) {
-        const zipData = JSON.parse(zipRes.raw);
-        if (zipData.success) {
-          zipPath = zipData.zipPath;
-        }
-      }
-    } catch (err) {
-      console.error("[GRAVY HOOK] Error al generar ZIP en el orquestador:", err);
-    }
-    
-    const message = new MailerMessage({
-      from: {
-        address: companyEmail,
-        name: companyName
-      },
-      to: [{ address: custEmail }],
-      subject: emailSubject,
-      html: `
-        <div style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8FAFC; padding: 40px 20px; color: #1E293B; max-width: 600px; margin: 0 auto; border-radius: 16px;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <img src="cid:gravy-logo.png" alt="GRAVY Logo" style="height: 48px; width: auto; display: block; margin: 0 auto;" />
-          </div>
-          <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 32px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
-            <div style="text-align: center; margin-bottom: 24px;">
-              <span style="background-color: #E0F2FE; color: #0369A1; padding: 6px 16px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">
-                Documento Oficial DIAN
-              </span>
-            </div>
-            
-            <h2 style="color: #0F172A; font-size: 22px; font-weight: 800; text-align: center; margin-top: 12px; margin-bottom: 8px;">
-              ¡Tu Factura Electrónica está lista!
-            </h2>
-            <p style="text-align: center; color: #64748B; font-size: 14px; margin-top: 0; margin-bottom: 28px;">
-              Emitida por <strong>${companyName}</strong>
-            </p>
-            
-            <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #F1F5F9; margin-bottom: 28px;">
-              <p style="font-size: 14px; margin: 0 0 12px 0; color: #475569;">
-                Estimado cliente <strong>${customer ? customer.getString("name") : "Consumidor Final"}</strong>,
-              </p>
-              <p style="font-size: 14px; margin: 0; line-height: 1.6; color: #475569;">
-                Adjunto en este correo encontrará el archivo comprimido <strong>ZIP</strong> que contiene el XML firmado y la representación gráfica en formato PDF correspondientes a la <strong>Factura Electrónica de Venta No. ${docNumber}</strong>.
-              </p>
-            </div>
-            
-            <h3 style="color: #0F172A; font-size: 14px; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Detalles del Documento
-            </h3>
-            
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 28px;">
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Número de Documento:</td>
-                <td style="padding: 10px 0; text-align: right; font-weight: 700; color: #0F172A; border-bottom: 1px solid #F1F5F9;">${docNumber}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Fecha de Emisión:</td>
-                <td style="padding: 10px 0; text-align: right; font-weight: 600; color: #0F172A; border-bottom: 1px solid #F1F5F9;">${tx.getString("date")}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Monto Total:</td>
-                <td style="padding: 10px 0; text-align: right; font-size: 16px; font-weight: 800; color: #0284C7; border-bottom: 1px solid #F1F5F9;">${fmtTotal}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; vertical-align: top;">CUFE / CUDE:</td>
-                <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 11px; word-break: break-all; color: #475569; max-width: 200px;">
-                  ${docRecord.getString("cufe") || 'N/A'}
-                </td>
-              </tr>
-            </table>
-            
-            <div style="text-align: center; margin-top: 20px;">
-              <p style="font-size: 13px; color: #94A3B8; margin: 0;">
-                Gracias por su preferencia y confianza.
-              </p>
-            </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 24px; padding: 0 16px;">
-            <p style="font-size: 11px; color: #94A3B8; line-height: 1.5; margin: 0;">
-              ${integrationComment}
-            </p>
-            <p style="font-size: 10px; color: #CBD5E1; margin-top: 12px; margin-bottom: 0;">
-              Este es un mensaje automático generado por GRAVY. Por favor no responda a este correo.
-            </p>
-          </div>
-        </div>
-      `,
-    });
-    
-    const attachments = {};
-    if (zipPath) {
-      try {
-        const zipFile = $filesystem.fileFromPath(zipPath);
-        attachments[`${zipBasenameForEmail}.zip`] = zipFile.reader.open();
-      } catch (zipErr) {
-        console.error("[GRAVY HOOK] No se pudo abrir el archivo ZIP generado:", zipErr);
-        const xmlFile = $filesystem.fileFromBytes(xmlContent, `${zipBasenameForEmail}.xml`);
-        attachments[`${zipBasenameForEmail}.xml`] = xmlFile.reader.open();
-      }
-    } else {
-      const xmlFile = $filesystem.fileFromBytes(xmlContent, `${zipBasenameForEmail}.xml`);
-      attachments[`${zipBasenameForEmail}.xml`] = xmlFile.reader.open();
-    }
-
-    try {
-      const logoFile = $filesystem.fileFromPath("pb_public/assets/gravy-logo.png");
-      attachments["gravy-logo.png"] = logoFile.reader.open();
-    } catch (logoErr) {
-      console.warn("[GRAVY HOOK] No se pudo adjuntar el logo de GRAVY:", logoErr);
-    }
-    
-    message.attachments = attachments;
-    
-    $app.newMailClient().send(message);
-    console.log("[GRAVY HOOK] Correo enviado automáticamente a:", custEmail);
-    return true;
-  } catch (err) {
-    console.error("[GRAVY HOOK] Falló al enviar correo en helper:", err);
-    throw err;
-  }
-}
-
+  const normalizeDocNum = function(num) {
+    const m = String(num || '').match(/^([a-zA-Z]+)[^0-9]*0*([1-9][0-9]*)$/);
+    if (m) return m[1].toUpperCase() + m[2];
+    return String(num || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  };
 
   const auth = e.requestInfo()?.auth;
   if (!auth) {
@@ -4577,27 +3862,82 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   }
   
   const body = e.requestInfo()?.body || {};
-  const txId = body.txId || body.tx_id;
-  if (!txId) {
-    e.json(400, { message: "txId es requerido." });
+  let txId = body.txId || body.tx_id;
+  const docId = body.id || body.docId;
+  let passedDocNumber = body.documentNumber || body.number || "";
+  
+  // Si no se envió txId, resolverlo mediante id de compra o factura
+  if (!txId && docId) {
+    try {
+      const pur = $app.findRecordById("purchase_invoices", docId);
+      if (pur) {
+        if (pur.getString("tx_id")) txId = pur.getString("tx_id");
+        if (!passedDocNumber) passedDocNumber = pur.getString("number") || "";
+      }
+    } catch (_) {}
+    if (!txId) {
+      try {
+        const inv = $app.findRecordById("invoices", docId);
+        if (inv) {
+          if (inv.getString("tx_id")) txId = inv.getString("tx_id");
+          if (!passedDocNumber) passedDocNumber = inv.getString("number") || "";
+        }
+      } catch (_) {}
+    }
+    if (!txId) {
+      try {
+        const einv = $app.findRecordById("einvoice_docs", docId);
+        if (einv) {
+          if (einv.getString("tx_id")) txId = einv.getString("tx_id");
+          if (!passedDocNumber) passedDocNumber = einv.getString("document_number") || "";
+        }
+      } catch (_) {}
+    }
+  }
+
+  if (!txId && !passedDocNumber) {
+    e.json(400, { message: "txId o número de documento es requerido." });
     return;
   }
   
   try {
     let docRecord = null;
-    try {
-      docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
-    } catch (_) {}
-
-    const tx = $app.findRecordById("transactions", txId);
-    if (!tx) {
-      e.json(404, { message: "Transacción no encontrada." });
-      return;
+    if (txId) {
+      try {
+        docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
+      } catch (_) {}
     }
-    $app.expandRecord(tx, ["tx_type_id"], null);
-    const txType = tx.expandedOne("tx_type_id");
-    const prefix = txType ? txType.getString("prefix") : "";
-    const docNumber = tx.getString("number") || "";
+
+    let tx = null;
+    let txType = null;
+    let prefix = "";
+    let docNumber = passedDocNumber;
+
+    if (txId) {
+      try {
+        tx = $app.findRecordById("transactions", txId);
+        if (tx) {
+          $app.expandRecord(tx, ["tx_type_id"], null);
+          txType = tx.expandedOne("tx_type_id");
+          prefix = txType ? txType.getString("prefix") : "";
+          if (!docNumber) docNumber = tx.getString("number") || "";
+        }
+      } catch (_) {}
+    }
+
+    if (!docNumber && txId) {
+      try {
+        const pur = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
+        if (pur) docNumber = pur.getString("number") || "";
+      } catch (_) {}
+      if (!docNumber) {
+        try {
+          const inv = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
+          if (inv) docNumber = inv.getString("number") || "";
+        } catch (_) {}
+      }
+    }
+
     let folio = docNumber;
     if (prefix && folio.startsWith(prefix)) {
       folio = folio.substring(prefix.length);
@@ -4606,99 +3946,233 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     if (!folio) folio = "0";
 
     const txTypeCode = txType ? String(txType.getString("code") || '').toUpperCase() : "";
-    const txPrefix = txType ? String(txType.getString("prefix") || '').toUpperCase() : "";
-    const isDS = (txTypeCode === "DS" || txPrefix === "DS" || txPrefix === "DSE" || docNumber.startsWith("DS"));
+    const txPrefix = txType ? String(txType.getString("prefix") || '').toUpperCase() : (prefix ? prefix.toUpperCase() : "");
+    const isDS = (txTypeCode === "DS" || txPrefix === "DS" || txPrefix === "DSE" || docNumber.startsWith("DS") || docNumber.startsWith("DSE"));
     const isNDS = (txTypeCode === "NDS" || txPrefix === "NDS");
     const isPOS = (txTypeCode === "POS");
     const isNC = (txTypeCode === "NC");
     const isND = (txTypeCode === "ND");
 
-    if (!docRecord) {
+    if (!docRecord && txId) {
       const col = $app.findCollectionByNameOrId("einvoice_docs");
       docRecord = new Record(col);
       docRecord.set("tx_id", txId);
+      docRecord.set("document_number", docNumber);
       docRecord.set("status", "pendiente");
       $app.save(docRecord);
-    }
-    
-    if (docRecord.getString("status") === "aceptada") {
-      const currentCufe = docRecord.getString("cufe") || "";
-      if (currentCufe && currentCufe.length > 20 && currentCufe !== "404" && !body.force) {
-        e.json(200, {
-          success: true,
-          status: "aceptada",
-          cufe: currentCufe,
-          dianResponse: "Este documento ya fue aceptado por la DIAN."
-        });
-        return;
-      }
+    } else if (docRecord && docNumber && !docRecord.getString("document_number")) {
+      docRecord.set("document_number", docNumber);
+      try { $app.save(docRecord); } catch (_) {}
     }
 
     const einvoiceMethod = getSetting("einvoice_method", "dian");
+
     if (einvoiceMethod === "matias") {
-      let currentStatus = docRecord.getString("status") || "pendiente";
-      let cufeKey = docRecord.getString("cufe") || "";
-      let respMsg = docRecord.getString("dian_response") || "Procesado por MATIAS API";
+      console.log("[GRAVY HOOK] Consultando estado oficial en MATIAS API para doc:", docNumber);
+      let currentStatus = docRecord ? (docRecord.getString("status") || "pendiente") : "pendiente";
+      let cufeKey = docRecord ? (docRecord.getString("cufe") || "") : "";
+      let respMsg = docRecord ? (docRecord.getString("dian_response") || "Procesado por MATIAS API") : "";
+      let savedXml = docRecord ? (docRecord.getString("xml_content") || "") : "";
 
-      const currentXml = docRecord.getString("xml_content") || "";
-      if (cufeKey && (!currentXml || !currentXml.includes("<") || currentXml.length < 200)) {
+      // 1. Si no tenemos CUFE en docRecord, buscar en purchase_invoices o invoices
+      if (!cufeKey || cufeKey.length < 20 || cufeKey === "404") {
+        if (isDS || isNDS) {
+          try {
+            const purRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
+            if (purRec && purRec.getString("cuds") && purRec.getString("cuds").length > 20) {
+              cufeKey = purRec.getString("cuds");
+            }
+          } catch (_) {}
+        } else {
+          try {
+            const invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
+            if (invRec && invRec.getString("cufe") && invRec.getString("cufe").length > 20) {
+              cufeKey = invRec.getString("cufe");
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 2. Si aún no tenemos CUFE, buscar en dian_logs de la transacción
+      if (!cufeKey || cufeKey.length < 20 || cufeKey === "404") {
         try {
-          const matiasCaller = getMatiasCaller();
-          let fetchedXml = "";
+          const logRec = $app.findFirstRecordByFilter("dian_logs", "tx_id = '" + txId + "' && cufe != ''");
+          if (logRec && logRec.getString("cufe") && logRec.getString("cufe").length > 20) {
+            cufeKey = logRec.getString("cufe");
+          }
+        } catch (_) {}
+      }
 
-          // 1. Intentar obtener AttachedDocument oficial
+      const matiasCaller = getMatiasCaller();
+
+      // 3. Si aún no tenemos CUFE o si queremos corroborar contra MATIAS API /documents
+      if (!cufeKey || cufeKey.length < 20 || cufeKey === "404") {
+        try {
+          const listRes = matiasCaller("/documents?per_page=50", "GET");
+          if (listRes && listRes.ok && listRes.data) {
+            const items = listRes.data.dataRecords?.data || listRes.data.data || (Array.isArray(listRes.data) ? listRes.data : []);
+            const targetNorm = normalizeDocNum(docNumber);
+            const matched = items.find(function(it) {
+              return normalizeDocNum(it.document_number) === targetNorm;
+            });
+
+            if (matched) {
+              console.log("[GRAVY HOOK] Documento encontrado en MATIAS /documents:", matched.document_number, matched.XmlDocumentKey);
+              cufeKey = matched.XmlDocumentKey || matched.cufe || matched.jsonData?.cufe || "";
+              if (matched.is_valid === 1 || matched.status === 1) {
+                currentStatus = "aceptada";
+              }
+              if (matched.jsonData?.qrDian) {
+                respMsg = "Documento validado por la DIAN";
+              }
+            }
+          }
+        } catch (eList) {
+          console.warn("[GRAVY HOOK] Error buscando documento en /documents de MATIAS:", eList);
+        }
+      }
+
+      // 4. Si tenemos CUFE, consultar estado oficial ante la DIAN vía MATIAS API: POST /status/document/{cufe}
+      if (cufeKey && cufeKey.length > 20 && cufeKey !== "404") {
+        try {
+          const statusRes = matiasCaller("/status/document/" + encodeURIComponent(cufeKey), "POST", {
+            sendmail: false,
+            sendmailtome: false
+          });
+
+          if (statusRes && statusRes.ok && statusRes.data) {
+            const rDian = statusRes.data.response || statusRes.data.ResponseDian || {};
+            const isValid = (
+              rDian.IsValid === true ||
+              rDian.IsValid === "true" ||
+              rDian.StatusCode === "00" ||
+              rDian.StatusCode === "02"
+            );
+
+            if (isValid) {
+              currentStatus = "aceptada";
+              respMsg = rDian.StatusMessage || rDian.StatusDescription || statusRes.data.message || "Documento validado por la DIAN";
+              if (rDian.XmlDocumentKey) cufeKey = rDian.XmlDocumentKey;
+
+              if (rDian.XmlBase64Bytes && (!savedXml || savedXml.length < 200)) {
+                savedXml = decodeBase64Xml(rDian.XmlBase64Bytes);
+              }
+            } else if (rDian.StatusCode === "04" || rDian.StatusCode === "99" || rDian.IsValid === false || rDian.IsValid === "false") {
+              currentStatus = "rechazada";
+              respMsg = rDian.StatusMessage || rDian.StatusDescription || (rDian.ErrorMessage?.string ? JSON.stringify(rDian.ErrorMessage.string) : "Documento rechazado por la DIAN");
+            }
+          }
+        } catch (eStat) {
+          console.warn("[GRAVY HOOK] Error al consultar /status/document/{cufe} en MATIAS:", eStat);
+        }
+      }
+
+      // 5. Si fue aceptado y aún no tenemos el XML completo o AttachedDocument, descargarlo de MATIAS API
+      if (currentStatus === "aceptada" && cufeKey && (!savedXml || !savedXml.includes("<") || savedXml.length < 200)) {
+        try {
+          // 5.1 Intentar AttachedDocument
           try {
             const attachedRes = matiasCaller("/documents/attached/" + encodeURIComponent(cufeKey), "POST");
             if (attachedRes && attachedRes.ok && attachedRes.data) {
               const attB64 = attachedRes.data.content?.XmlBytesBase64 || attachedRes.data.XmlBytesBase64 || attachedRes.data.xml || attachedRes.data.attachedDocument?.data;
               if (attB64) {
-                fetchedXml = decodeBase64Xml(attB64);
+                savedXml = decodeBase64Xml(attB64);
+              } else if (attachedRes.data.attachedDocument?.url) {
+                const fetchAd = $http.send({ url: attachedRes.data.attachedDocument.url, method: "GET", timeout: 30 });
+                if (fetchAd && fetchAd.statusCode === 200 && fetchAd.raw) {
+                  savedXml = fetchAd.raw;
+                }
               }
             }
           } catch (_) {}
 
-          // 2. Si no hay AttachedDocument, intentar XML firmado
-          if (!fetchedXml || !fetchedXml.includes("<") || fetchedXml.length < 200) {
+          // 5.2 Si no hay AttachedDocument, intentar XML firmado
+          if (!savedXml || !savedXml.includes("<") || savedXml.length < 200) {
             try {
               const xmlRes = matiasCaller("/documents/xml/" + encodeURIComponent(cufeKey), "GET");
               if (xmlRes && xmlRes.ok && xmlRes.data) {
                 const rawB64 = xmlRes.data.content?.XmlBytesBase64 || xmlRes.data.XmlBytesBase64;
                 if (rawB64) {
-                  fetchedXml = decodeBase64Xml(rawB64);
+                  savedXml = decodeBase64Xml(rawB64);
                 }
               }
             } catch (_) {}
           }
-
-          if (fetchedXml && fetchedXml.includes("<") && fetchedXml.length > 200) {
-            docRecord.set("xml_content", fetchedXml);
-            $app.save(docRecord);
-          }
         } catch (_) {}
       }
 
+      // 6. Actualizar registro en einvoice_docs
+      if (docRecord) {
+        docRecord.set("status", currentStatus);
+        if (cufeKey) docRecord.set("cufe", cufeKey);
+        docRecord.set("dian_response", respMsg);
+        if (savedXml && savedXml.length > 200) {
+          docRecord.set("xml_content", savedXml);
+        }
+        try { $app.save(docRecord); } catch (_) {}
+      }
+
+      // 7. Sincronizar en purchase_invoices (si es DS/NDS) o en invoices (si es FV/NC/ND)
       if (isDS || isNDS) {
         try {
-          const purRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
-          if (purRec) {
-            purRec.set("status_dian", currentStatus);
-            if (cufeKey) purRec.set("cuds", cufeKey);
-            if (docRecord.getString("xml_content")) purRec.set("xml_content", docRecord.getString("xml_content"));
-            purRec.set("dian_response", respMsg);
-            $app.save(purRec);
+          let updatedDoc = false;
+          try {
+            const suppRec = $app.findFirstRecordByFilter("support_documents", "tx_id = '" + txId + "'");
+            if (suppRec) {
+              suppRec.set("status_dian", currentStatus);
+              if (cufeKey) suppRec.set("cuds", cufeKey);
+              if (savedXml) suppRec.set("xml_content", savedXml);
+              suppRec.set("dian_response", respMsg);
+              $app.save(suppRec);
+              updatedDoc = true;
+            }
+          } catch (_) {}
+
+          if (!updatedDoc) {
+            const purRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
+            if (purRec) {
+              purRec.set("status_dian", currentStatus);
+              if (cufeKey) purRec.set("cuds", cufeKey);
+              if (savedXml) purRec.set("xml_content", savedXml);
+              purRec.set("dian_response", respMsg);
+              $app.save(purRec);
+            }
+          }
+        } catch (ePur) {
+          console.warn("[GRAVY HOOK] Error al sincronizar purchase_invoices en check-status:", ePur);
+        }
+      } else {
+        try {
+          const invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
+          if (invRec) {
+            invRec.set("status_dian", currentStatus);
+            if (cufeKey) invRec.set("cufe", cufeKey);
+            invRec.set("dian_response", respMsg);
+            $app.save(invRec);
           }
         } catch (_) {}
       }
 
+      // 8. Auto-enviar correo si es factura de venta y fue aceptada
+      if (currentStatus === "aceptada" && !isDS && !isNDS && txId) {
+        try {
+          sendInvoiceEmailHelper(txId);
+        } catch (emailErr) {
+          console.error("[GRAVY HOOK] Error al enviar correo automático desde check-status MATIAS:", emailErr);
+        }
+      }
+
+      // 9. Responder al frontend con los datos actualizados de inmediato
       e.json(200, {
-        success: true,
+        success: currentStatus === "aceptada",
         status: currentStatus,
         cufe: cufeKey,
-        dianResponse: respMsg
+        dianResponse: respMsg,
+        hasXml: !!(savedXml && savedXml.length > 200)
       });
       return;
     }
-    
+
     let transId = docRecord.getString("ftech_transaction_id");
     if (!transId) {
       // Para Documento Soporte (DS/NDS) o POS, Facturatech permite consultar por prefijo y folio directamente
@@ -4797,533 +4271,6 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 });
 
 routerAdd('POST', '/api/dian/resend-email', (e) => {
-
-  const getSetting = (typeof globalThis.getSetting === 'function')
-    ? globalThis.getSetting
-    : function(key, defaultValue) {
-        try {
-          const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
-          return (r ? r.get("value") : null) || defaultValue;
-        } catch (_) {
-          return defaultValue;
-        }
-      };
-
-function sendInvoiceEmailHelper(txId, customEmail) {
-
-
-  const syncSmtpSettings = function() {
-    const smtpEnabled = getSetting("smtp_enabled", "0") === "1";
-    try {
-      const pbSettings = $app.settings();
-      if (smtpEnabled) {
-        const host = getSetting("smtp_host", "");
-        const port = parseInt(getSetting("smtp_port", "587"), 10);
-        const user = getSetting("smtp_username", "");
-        const pass = getSetting("smtp_password", "");
-        const senderName = getSetting("smtp_sender_name", "");
-        const senderAddr = getSetting("smtp_sender_address", "");
-        
-        pbSettings.smtp.enabled = true;
-        pbSettings.smtp.host = host;
-        pbSettings.smtp.port = port;
-        pbSettings.smtp.username = user;
-        pbSettings.smtp.password = pass;
-        pbSettings.smtp.tls = (port === 465);
-        pbSettings.meta.senderName = senderName || getSetting("company_name", "GRAVY S.A.S");
-        pbSettings.meta.senderAddress = senderAddr || user;
-      } else {
-        pbSettings.smtp.enabled = false;
-      }
-      $app.save(pbSettings);
-    } catch (err) {
-      console.error("[GRAVY DIAN SMTP SYNC] Falló al aplicar settings SMTP locales a PocketBase:", err);
-    }
-  };
-
-  try {
-    const docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
-    if (!docRecord) {
-      throw new Error("Documento de facturación no encontrado para esta transacción.");
-    }
-    
-    const xmlContent = docRecord.getString("xml_content");
-    if (!xmlContent) {
-      throw new Error("El documento no posee contenido XML firmado para reenviar.");
-    }
-    
-    const tx = $app.findRecordById("transactions", txId);
-    $app.expandRecord(tx, ["third_party_id"], null);
-    const customer = tx.expandedOne("third_party_id");
-    let custEmail = customEmail;
-    if (!custEmail) {
-      custEmail = customer ? customer.getString("email") : "";
-    }
-    if (!custEmail) {
-      throw new Error("Debe configurar un correo en la ficha del tercero.");
-    }
-    
-    const companyName = getSetting("company_name", "GRAVY S.A.S");
-    const companyEmail = getSetting("company_email", "noreply@gravy.com");
-    const docNumber = tx.getString("number") || "Factura";
-
-    let totalVal = 0;
-    try {
-      const invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
-      totalVal = invRec.getFloat("total") || 0;
-    } catch (_) {
-      try {
-        const purRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
-        totalVal = purRec.getFloat("total") || 0;
-      } catch (_2) {}
-    }
-    const fmtTotal = "$ " + Math.round(totalVal).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-
-    const companyNitRaw = getSetting("company_nit", "900123456");
-    const companyNit = companyNitRaw.split('-')[0].replace(/[^0-9]/g, '');
-    
-    $app.expandRecord(tx, ["tx_type_id"], null);
-    const txType = tx.expandedOne("tx_type_id");
-    const txTypeCode = txType ? txType.getString("code") : "";
-    let docTypeCode = "01";
-    if (txTypeCode === "ND") docTypeCode = "02";
-    else if (txTypeCode === "NC") docTypeCode = "03";
-    
-    const commercialName = getSetting("company_name", "GRAVY S.A.S");
-    const emailSubject = `${companyNit};${companyName};${docNumber};${docTypeCode};${commercialName};`;
-
-    const einvoiceMethod = getSetting("einvoice_method", "dian");
-    let integrationComment = "";
-    if (einvoiceMethod === "facturatech") {
-      integrationComment = "La integracion de datos es realizada por proveedor tecnologico CADENA S.A. / NIT. 890.930.534-0";
-    } else {
-      integrationComment = "La integracion de datos es realizada directamente por la UAE DIAN bajo la modalidad de software propio a nombre del emisor de este documento electronico";
-    }
-
-    let invoiceData = null;
-    try {
-      let invRec = null;
-      let isPurchase = false;
-      try {
-        invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
-      } catch (_) {
-        try {
-          invRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
-          isPurchase = true;
-        } catch (_2) {}
-      }
-
-      if (invRec) {
-        let linesList = [];
-        if (!isPurchase) {
-          linesList = $app.findRecordsByFilter("invoice_lines", "invoice_id = '" + invRec.id + "'");
-        } else {
-          linesList = $app.findRecordsByFilter("purchase_invoice_lines", "invoice_id = '" + invRec.id + "'");
-        }
-        
-        $app.expandRecords(linesList, ["product_id"], null);
-        const linesData = [];
-        for (let i = 0; i < linesList.length; i++) {
-          const l = linesList[i];
-          const prod = l.expandedOne("product_id");
-          linesData.push({
-            desc: prod ? prod.getString("name") : "Producto",
-            code: prod ? prod.getString("code") : "—",
-            qty: l.getFloat("qty") || 0,
-            unitPrice: l.getFloat("unit_price") || 0,
-            lineTotal: l.getFloat("total") || 0,
-            ivaRate: l.getFloat("iva_rate") || 0,
-            unitCode: prod ? (prod.getString("unit") || "94") : "94",
-          });
-        }
-
-        const supplierAddress = getSetting("company_address", "");
-        const supplierPhone = getSetting("company_phone", "");
-        const supplierEmail = getSetting("company_email", "");
-
-        const customerName = customer ? customer.getString("name") : "Consumidor Final";
-        const customerNit = customer ? customer.getString("doc_number") : "222222222";
-        const customerAddress = customer ? customer.getString("address") : "";
-        const customerPhone = customer ? customer.getString("phone") : "";
-        const customerEmail = customer ? customer.getString("email") : "";
-
-        const issueTime = docRecord.getString("sent_at") ? docRecord.getString("sent_at").split(" ")[1] || "12:00:00" : "12:00:00";
-
-        let cajeroName = "Admin";
-        const posShiftId = invRec.getString("pos_shift_id");
-        if (posShiftId) {
-          try {
-            const shift = $app.findRecordById("pos_shifts", posShiftId);
-            $app.expandRecord(shift, ["user_id"], null);
-            const user = shift.expandedOne("user_id");
-            if (user) {
-              cajeroName = user.getString("name") || user.getString("email") || "Admin";
-            }
-          } catch (_) {}
-        }
-
-        let resName = "Factura de Venta POS";
-        let resDesc = "";
-        let resNum = "";
-        let resDate = "";
-        let resExpiry = "";
-        let resFrom = "";
-        let resTo = "";
-        let resPrefix = "";
-        
-        let prefix = "";
-        if (docNumber.includes('-')) {
-          prefix = docNumber.split('-')[0].trim().toUpperCase();
-        }
-        let docType = invRec.getString("pos_shift_id") ? "POS" : "FV";
-        
-        try {
-          const registerId = invRec.getString("pos_shift_id") ? ($app.findRecordById("pos_shifts", invRec.getString("pos_shift_id")).getString("pos_register_id") || "") : "";
-          let filter = "document_type=\"" + docType + "\" && active=true";
-          let resList = [];
-          if (registerId && docType === "POS") {
-            resList = $app.findRecordsByFilter("dian_resolutions", filter + " && pos_register_id=\"" + registerId + "\"");
-          }
-          if (!resList.length) {
-            let fallbackFilter = filter;
-            if (docType === "POS") {
-              fallbackFilter += " && pos_register_id=\"\"";
-            }
-            if (prefix) {
-              fallbackFilter += " && prefix=\"" + prefix + "\"";
-            }
-            resList = $app.findRecordsByFilter("dian_resolutions", fallbackFilter);
-          }
-          if (!resList.length) {
-            resList = $app.findRecordsByFilter("dian_resolutions", "document_type=\"" + docType + "\" && active=true");
-          }
-          if (resList.length) {
-            const parts = docNumber.split('-');
-            const invNum = parseInt(parts[parts.length - 1], 10) || 0;
-            let resolution = resList.find(r => invNum >= r.getInt("number_from") && invNum <= r.getInt("number_to"));
-            if (!resolution) {
-              resolution = resList.find(r => r.getBool("active")) || resList[0];
-            }
-            if (resolution) {
-              resName = resolution.getString("name") || "Factura de Venta POS";
-              resDesc = resolution.getString("description") || "";
-              resNum = resolution.getString("resolution_number") || "";
-              resDate = resolution.getString("resolution_date") ? resolution.getString("resolution_date").slice(0, 10) : "";
-              resExpiry = resolution.getString("expiration_date") ? resolution.getString("expiration_date").slice(0, 10) : "";
-              resFrom = resolution.getInt("number_from") || "";
-              resTo = resolution.getInt("number_to") || "";
-              resPrefix = resolution.getString("prefix") || "";
-            }
-          }
-        } catch (_) {}
-
-        invoiceData = {
-          docId: docNumber,
-          issueDate: tx.getString("date"),
-          issueTime: issueTime,
-          cufe: docRecord.getString("cufe") || "N/A",
-          payableAmount: totalVal,
-          supplierName: companyName,
-          supplierNit: companyNitRaw,
-          supplierAddress: supplierAddress,
-          supplierPhone: supplierPhone,
-          supplierEmail: supplierEmail,
-          customerName: customerName,
-          customerNit: customerNit,
-          customerAddress: customerAddress,
-          customerPhone: customerPhone,
-          customerEmail: customerEmail,
-          lines: linesData,
-          companyLogo: getSetting("company_logo", ""),
-          cajero: cajeroName,
-          paymentMethod: invRec.getString("payment_method") || "EFECTIVO",
-          received: 0,
-          change: 0,
-          resolutionName: resName,
-          resolutionDesc: resDesc,
-          resolutionNumber: resNum,
-          resolutionDate: resDate,
-          resolutionExpiry: resExpiry,
-          resolutionRangeFrom: resFrom,
-          resolutionRangeTo: resTo,
-          resolutionPrefix: resPrefix
-        };
-      } else {
-        const linesList = $app.findRecordsByFilter("tx_lines", "tx_id = '" + txId + "'", "line_order");
-        const linesData = [];
-        let totalFromLines = 0;
-        for (let i = 0; i < linesList.length; i++) {
-          const l = linesList[i];
-          const d = l.getFloat("debit");
-          const c = l.getFloat("credit");
-          const amount = d > 0 ? d : c;
-          if (amount > 0) {
-            linesData.push({
-              desc: l.getString("description") || "Concepto Contable",
-              code: "—",
-              qty: 1,
-              unitPrice: amount,
-              lineTotal: amount,
-              ivaRate: 0
-            });
-            totalFromLines += amount;
-          }
-        }
-
-        const supplierAddress = getSetting("company_address", "");
-        const supplierPhone = getSetting("company_phone", "");
-        const supplierEmail = getSetting("company_email", "");
-
-        const customerName = customer ? customer.getString("name") : "Consumidor Final";
-        const customerNit = customer ? customer.getString("doc_number") : "222222222";
-        const customerAddress = customer ? customer.getString("address") : "";
-        const customerPhone = customer ? customer.getString("phone") : "";
-        const customerEmail = customer ? customer.getString("email") : "";
-
-        const issueTime = docRecord.getString("sent_at") ? docRecord.getString("sent_at").split(" ")[1] || "12:00:00" : "12:00:00";
-
-        let cajeroName = "Admin";
-        const posShiftId = tx.getString("pos_shift_id");
-        if (posShiftId) {
-          try {
-            const shift = $app.findRecordById("pos_shifts", posShiftId);
-            $app.expandRecord(shift, ["user_id"], null);
-            const user = shift.expandedOne("user_id");
-            if (user) {
-              cajeroName = user.getString("name") || user.getString("email") || "Admin";
-            }
-          } catch (_) {}
-        }
-
-        let resName = "Factura de Venta POS";
-        let resDesc = "";
-        let resNum = "";
-        let resDate = "";
-        let resExpiry = "";
-        let resFrom = "";
-        let resTo = "";
-        let resPrefix = "";
-        
-        let prefix = "";
-        if (docNumber.includes('-')) {
-          prefix = docNumber.split('-')[0].trim().toUpperCase();
-        }
-        let docType = posShiftId ? "POS" : "FV";
-        
-        try {
-          const registerId = posShiftId ? ($app.findRecordById("pos_shifts", posShiftId).getString("pos_register_id") || "") : "";
-          let filter = "document_type=\"" + docType + "\" && active=true";
-          let resList = [];
-          if (registerId && docType === "POS") {
-            resList = $app.findRecordsByFilter("dian_resolutions", filter + " && pos_register_id=\"" + registerId + "\"");
-          }
-          if (!resList.length) {
-            let fallbackFilter = filter;
-            if (docType === "POS") {
-              fallbackFilter += " && pos_register_id=\"\"";
-            }
-            if (prefix) {
-              fallbackFilter += " && prefix=\"" + prefix + "\"";
-            }
-            resList = $app.findRecordsByFilter("dian_resolutions", fallbackFilter);
-          }
-          if (!resList.length) {
-            resList = $app.findRecordsByFilter("dian_resolutions", "document_type=\"" + docType + "\" && active=true");
-          }
-          if (resList.length) {
-            const parts = docNumber.split('-');
-            const invNum = parseInt(parts[parts.length - 1], 10) || 0;
-            let resolution = resList.find(r => invNum >= r.getInt("number_from") && invNum <= r.getInt("number_to"));
-            if (!resolution) {
-              resolution = resList.find(r => r.getBool("active")) || resList[0];
-            }
-            if (resolution) {
-              resName = resolution.getString("name") || "Factura de Venta POS";
-              resDesc = resolution.getString("description") || "";
-              resNum = resolution.getString("resolution_number") || "";
-              resDate = resolution.getString("resolution_date") ? resolution.getString("resolution_date").slice(0, 10) : "";
-              resExpiry = resolution.getString("expiration_date") ? resolution.getString("expiration_date").slice(0, 10) : "";
-              resFrom = resolution.getInt("number_from") || "";
-              resTo = resolution.getInt("number_to") || "";
-              resPrefix = resolution.getString("prefix") || "";
-            }
-          }
-        } catch (_) {}
-
-        invoiceData = {
-          docId: docNumber,
-          issueDate: tx.getString("date"),
-          issueTime: issueTime,
-          cufe: docRecord.getString("cufe") || "N/A",
-          payableAmount: totalVal || totalFromLines,
-          supplierName: companyName,
-          supplierNit: companyNitRaw,
-          supplierAddress: supplierAddress,
-          supplierPhone: supplierPhone,
-          supplierEmail: supplierEmail,
-          customerName: customerName,
-          customerNit: customerNit,
-          customerAddress: customerAddress,
-          customerPhone: customerPhone,
-          customerEmail: customerEmail,
-          lines: linesData,
-          companyLogo: getSetting("company_logo", ""),
-          cajero: cajeroName,
-          paymentMethod: "EFECTIVO",
-          received: 0,
-          change: 0,
-          resolutionName: resName,
-          resolutionDesc: resDesc,
-          resolutionNumber: resNum,
-          resolutionDate: resDate,
-          resolutionExpiry: resExpiry,
-          resolutionRangeFrom: resFrom,
-          resolutionRangeTo: resTo,
-          resolutionPrefix: resPrefix
-        };
-      }
-    } catch (errData) {
-      console.warn("[GRAVY HOOK] Error al preparar structured invoiceData:", errData);
-    }
-
-    try {
-      syncSmtpSettings();
-    } catch (e) {
-      console.warn("[GRAVY] Error syncing SMTP settings:", e);
-    }
-
-    let zipPath = "";
-    const zipBasenameForEmail = docRecord.getString("zip_filename") || docNumber;
-    try {
-      const zipRes = $http.send({
-        url: "http://127.0.0.1:8088/api/dian/generate-zip-file",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ xmlContent: xmlContent, filename: zipBasenameForEmail, invoiceData: invoiceData })
-      });
-      if (zipRes.statusCode === 200) {
-        const zipData = JSON.parse(zipRes.raw);
-        if (zipData.success) {
-          zipPath = zipData.zipPath;
-        }
-      }
-    } catch (err) {
-      console.error("[GRAVY HOOK] Error al generar ZIP en el orquestador:", err);
-    }
-    
-    const message = new MailerMessage({
-      from: {
-        address: companyEmail,
-        name: companyName
-      },
-      to: [{ address: custEmail }],
-      subject: emailSubject,
-      html: `
-        <div style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8FAFC; padding: 40px 20px; color: #1E293B; max-width: 600px; margin: 0 auto; border-radius: 16px;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <img src="cid:gravy-logo.png" alt="GRAVY Logo" style="height: 48px; width: auto; display: block; margin: 0 auto;" />
-          </div>
-          <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 32px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
-            <div style="text-align: center; margin-bottom: 24px;">
-              <span style="background-color: #E0F2FE; color: #0369A1; padding: 6px 16px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">
-                Documento Oficial DIAN
-              </span>
-            </div>
-            
-            <h2 style="color: #0F172A; font-size: 22px; font-weight: 800; text-align: center; margin-top: 12px; margin-bottom: 8px;">
-              ¡Tu Factura Electrónica está lista!
-            </h2>
-            <p style="text-align: center; color: #64748B; font-size: 14px; margin-top: 0; margin-bottom: 28px;">
-              Emitida por <strong>${companyName}</strong>
-            </p>
-            
-            <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #F1F5F9; margin-bottom: 28px;">
-              <p style="font-size: 14px; margin: 0 0 12px 0; color: #475569;">
-                Estimado cliente <strong>${customer ? customer.getString("name") : "Consumidor Final"}</strong>,
-              </p>
-              <p style="font-size: 14px; margin: 0; line-height: 1.6; color: #475569;">
-                Adjunto en este correo encontrará el archivo comprimido <strong>ZIP</strong> que contiene el XML firmado y la representación gráfica en formato PDF correspondientes a la <strong>Factura Electrónica de Venta No. ${docNumber}</strong>.
-              </p>
-            </div>
-            
-            <h3 style="color: #0F172A; font-size: 14px; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">
-              Detalles del Documento
-            </h3>
-            
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 28px;">
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Número de Documento:</td>
-                <td style="padding: 10px 0; text-align: right; font-weight: 700; color: #0F172A; border-bottom: 1px solid #F1F5F9;">${docNumber}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Fecha de Emisión:</td>
-                <td style="padding: 10px 0; text-align: right; font-weight: 600; color: #0F172A; border-bottom: 1px solid #F1F5F9;">${tx.getString("date")}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Monto Total:</td>
-                <td style="padding: 10px 0; text-align: right; font-size: 16px; font-weight: 800; color: #0284C7; border-bottom: 1px solid #F1F5F9;">${fmtTotal}</td>
-              </tr>
-              <tr>
-                <td style="padding: 10px 0; color: #64748B; vertical-align: top;">CUFE / CUDE:</td>
-                <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 11px; word-break: break-all; color: #475569; max-width: 200px;">
-                  ${docRecord.getString("cufe") || 'N/A'}
-                </td>
-              </tr>
-            </table>
-            
-            <div style="text-align: center; margin-top: 20px;">
-              <p style="font-size: 13px; color: #94A3B8; margin: 0;">
-                Gracias por su preferencia y confianza.
-              </p>
-            </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 24px; padding: 0 16px;">
-            <p style="font-size: 11px; color: #94A3B8; line-height: 1.5; margin: 0;">
-              ${integrationComment}
-            </p>
-            <p style="font-size: 10px; color: #CBD5E1; margin-top: 12px; margin-bottom: 0;">
-              Este es un mensaje automático generado por GRAVY. Por favor no responda a este correo.
-            </p>
-          </div>
-        </div>
-      `,
-    });
-    
-    const attachments = {};
-    if (zipPath) {
-      try {
-        const zipFile = $filesystem.fileFromPath(zipPath);
-        attachments[`${zipBasenameForEmail}.zip`] = zipFile.reader.open();
-      } catch (zipErr) {
-        console.error("[GRAVY HOOK] No se pudo abrir el archivo ZIP generado:", zipErr);
-        const xmlFile = $filesystem.fileFromBytes(xmlContent, `${zipBasenameForEmail}.xml`);
-        attachments[`${zipBasenameForEmail}.xml`] = xmlFile.reader.open();
-      }
-    } else {
-      const xmlFile = $filesystem.fileFromBytes(xmlContent, `${zipBasenameForEmail}.xml`);
-      attachments[`${zipBasenameForEmail}.xml`] = xmlFile.reader.open();
-    }
-
-    try {
-      const logoFile = $filesystem.fileFromPath("pb_public/assets/gravy-logo.png");
-      attachments["gravy-logo.png"] = logoFile.reader.open();
-    } catch (logoErr) {
-      console.warn("[GRAVY HOOK] No se pudo adjuntar el logo de GRAVY:", logoErr);
-    }
-    
-    message.attachments = attachments;
-    
-    $app.newMailClient().send(message);
-    console.log("[GRAVY HOOK] Correo enviado automáticamente a:", custEmail);
-    return true;
-  } catch (err) {
-    console.error("[GRAVY HOOK] Falló al enviar correo en helper:", err);
-    throw err;
-  }
-}
-
-
   const auth = e.requestInfo()?.auth;
   if (!auth) {
     e.json(401, { message: "Autenticación requerida." });
@@ -5331,1104 +4278,51 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   }
   
   const body = e.requestInfo()?.body || {};
-  const txId = body.txId || body.tx_id;
+  let txId = body.txId || body.tx_id;
+  const docId = body.id || body.docId;
+
+  if (!txId && docId) {
+    try {
+      const pur = $app.findRecordById("purchase_invoices", docId);
+      if (pur && pur.getString("tx_id")) txId = pur.getString("tx_id");
+    } catch (_) {}
+    if (!txId) {
+      try {
+        const inv = $app.findRecordById("invoices", docId);
+        if (inv && inv.getString("tx_id")) txId = inv.getString("tx_id");
+      } catch (_) {}
+    }
+    if (!txId) {
+      try {
+        const einv = $app.findRecordById("einvoice_docs", docId);
+        if (einv && einv.getString("tx_id")) txId = einv.getString("tx_id");
+      } catch (_) {}
+    }
+  }
+
   if (!txId) {
     e.json(400, { message: "txId es requerido." });
     return;
   }
   
   try {
-    sendInvoiceEmailHelper(txId, body.email || body.custEmail);
+    let fnSend = null;
+    try {
+      const { sendInvoiceEmailHelper: mailerHelper } = require(`${__hooks}/dian_mailer.js`);
+      fnSend = mailerHelper;
+    } catch (_) {}
+    if (!fnSend && typeof sendInvoiceEmailHelper === 'function') fnSend = sendInvoiceEmailHelper;
+    if (!fnSend && typeof globalThis.sendInvoiceEmailHelper === 'function') fnSend = globalThis.sendInvoiceEmailHelper;
+
+    if (!fnSend) {
+      throw new Error("El servicio de envío de correos (sendInvoiceEmailHelper) no está disponible.");
+    }
+
+    fnSend(txId, body.email || body.custEmail);
     e.json(200, { success: true, message: "Correo reenviado exitosamente." });
   } catch (err) {
     console.error("[GRAVY HOOK] Error al reenviar correo:", err);
-    e.json(500, { message: "Error al reenviar correo: " + err.message });
-  }
-});
-
-routerAdd("POST", "/api/dian/pdf-bytes", (e) => {
-  const getSetting = (typeof globalThis.getSetting === 'function')
-    ? globalThis.getSetting
-    : function(key, defaultValue) {
-        try {
-          const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
-          return (r ? r.get("value") : null) || defaultValue;
-        } catch (_) {
-          return defaultValue;
-        }
-      };
-
-  const body = e.requestInfo()?.body || {};
-  const invoiceId = body.invoiceId || body.invoice_id;
-  if (!invoiceId) {
-    e.json(400, { message: "invoiceId es requerido." });
-    return;
-  }
-
-  try {
-    const invRec = $app.findRecordById("invoices", invoiceId);
-    let customer = null;
-    if (invRec.getString("customer_id")) {
-      try { customer = $app.findRecordById("third_parties", invRec.getString("customer_id")); } catch (_) {}
-    }
-
-    const linesList = $app.findRecordsByFilter("invoice_lines", "invoice_id = '" + invRec.id + "'");
-    $app.expandRecords(linesList, ["product_id"], null);
-
-    const linesData = [];
-    for (let i = 0; i < linesList.length; i++) {
-      const l = linesList[i];
-      const prod = l.expandedOne("product_id");
-      linesData.push({
-        desc: prod ? prod.getString("name") : "Producto",
-        code: prod ? prod.getString("code") : "—",
-        qty: l.getFloat("qty") || 0,
-        unitPrice: l.getFloat("unit_price") || 0,
-        lineTotal: l.getFloat("total") || 0,
-        ivaRate: l.getFloat("iva_rate") || 0,
-        unitCode: prod ? (prod.getString("unit") || "94") : "94",
-      });
-    }
-
-    let xmlContent = "";
-    let cufe = "";
-    const txId = invRec.getString("tx_id");
-    if (txId) {
-      try {
-        const einvs = $app.findRecordsByFilter("einvoice_docs", "tx_id = '" + txId + "'");
-        if (einvs.length > 0) {
-          xmlContent = einvs[0].getString("signed_xml");
-          cufe = einvs[0].getString("cufe");
-        }
-      } catch (_) {}
-    }
-
-    const companyName = getSetting("company_name", "GRAVY S.A.S");
-    const companyNit = getSetting("company_nit", "1130636393-2");
-    const companyAddress = getSetting("company_address", "");
-    const companyPhone = getSetting("company_phone", "");
-    const companyEmail = getSetting("company_email", "");
-    const companyCity = getSetting("company_city", "");
-    const companyDept = getSetting("company_dept", getSetting("company_department", ""));
-    const companyCityCode = getSetting("company_city_code", getSetting("company_dane", ""));
-    const companyDeptCode = getSetting("company_dept_code", "");
-    const companyLogo = getSetting("company_logo", "");
-
-    let sellerName = "";
-    if (invRec.getString("seller_id")) {
-      try {
-        const sRec = $app.findRecordById("sellers", invRec.getString("seller_id"));
-        sellerName = sRec.getString("name");
-      } catch (_) {
-        try {
-          const uRec = $app.findRecordById("users", invRec.getString("seller_id"));
-          sellerName = uRec.getString("name") || uRec.getString("first_name") || "";
-        } catch (_) {}
-      }
-    }
-
-    let orderNumberVal = invRec.getString("_sales_order_number") || "";
-    if (!orderNumberVal && invRec.getString("sales_order_id")) {
-      try {
-        const soRec = $app.findRecordById("sales_orders", invRec.getString("sales_order_id"));
-        orderNumberVal = soRec.getString("number");
-      } catch (_) {}
-    }
-
-    let resNumber = "";
-    let resDate = "";
-    let resExpiry = "";
-    let resFrom = "";
-    let resTo = "";
-    let resPrefix = "";
-
-    const txTypeId = invRec.getString("tx_type_id");
-    if (txTypeId) {
-      try {
-        const txType = $app.findRecordById("transaction_types", txTypeId);
-        const prefix = txType.getString("prefix");
-        if (prefix) {
-          const resList = $app.findRecordsByFilter("dian_resolutions", "prefix = '" + prefix + "' && active = true");
-          if (resList.length > 0) {
-            const r = resList[0];
-            resNumber = r.getString("resolution_number");
-            resDate = r.getString("resolution_date") ? r.getString("resolution_date").slice(0, 10) : "";
-            resExpiry = r.getString("expiration_date") ? r.getString("expiration_date").slice(0, 10) : "";
-            resFrom = String(r.getInt("number_from"));
-            resTo = String(r.getInt("number_to"));
-            resPrefix = r.getString("prefix");
-          }
-        }
-      } catch (_) {}
-    }
-
-    const invoiceData = {
-      docId: invRec.getString("number"),
-      issueDate: invRec.getString("date"),
-      dueDate: invRec.getString("due_date") || invRec.getString("date"),
-      issueTime: "12:00:00",
-      cufe: cufe || (invRec.getString("status") === "draft" ? "BORRADOR - SIN VALIDEZ TRIBUTARIA" : "DOCUMENTO PENDIENTE DE FIRMA DIAN"),
-      supplierName: companyName,
-      supplierNit: companyNit,
-      supplierAddress: companyAddress,
-      supplierPhone: companyPhone,
-      supplierEmail: companyEmail,
-      supplierCity: companyCity,
-      supplierDept: companyDept,
-      supplierCityCode: companyCityCode,
-      supplierDeptCode: companyDeptCode,
-      customerName: customer ? customer.getString("name") : "Consumidor Final",
-      customerNit: customer ? (customer.getString("doc_number") || customer.getString("nit") || "222222222") : "222222222",
-      customerAddress: customer ? customer.getString("address") : "",
-      customerPhone: customer ? customer.getString("phone") : "",
-      customerEmail: customer ? customer.getString("email") : "",
-      customerCity: customer ? customer.getString("city") : "",
-      customerDept: customer ? customer.getString("department") : "",
-      customerCityCode: customer ? customer.getString("city_code") : "",
-      customerDeptCode: customer ? customer.getString("dept_code") : "",
-      poNumber: invRec.getString("po_number") || "",
-      orderNumber: orderNumberVal,
-      remisionNumber: invRec.getString("remision_number") || "",
-      sellerName: sellerName,
-      crossDocRef: invRec.getString("cross_doc_ref") || "",
-      payableAmount: invRec.getFloat("payable_total") || invRec.getFloat("total") || 0,
-      paymentMethod: invRec.getString("payment_method") || "EFECTIVO",
-      companyLogo: companyLogo,
-      resolutionName: "Factura Electrónica de Venta",
-      resolutionNumber: resNumber,
-      resolutionDate: resDate,
-      resolutionExpiry: resExpiry,
-      resolutionRangeFrom: resFrom,
-      resolutionRangeTo: resTo,
-      resolutionPrefix: resPrefix,
-      lines: linesData
-    };
-
-    const orchestratorRes = $http.send({
-      url: "http://127.0.0.1:8088/api/dian/generate-pdf",
-      method: "POST",
-      body: JSON.stringify({
-        xmlContent: xmlContent,
-        filename: invRec.getString("number") || "factura",
-        invoiceData: invoiceData
-      }),
-      headers: { "Content-Type": "application/json" }
-    });
-
-    if (orchestratorRes.statusCode === 200) {
-      e.blob(200, "application/pdf", orchestratorRes.raw);
-    } else {
-      e.json(500, { message: "Error en el motor de generación PDF." });
-    }
-  } catch (err) {
-    console.error("[GRAVY HOOK] Error al generar bytes de PDF:", err);
-    e.json(500, { message: "Error al generar PDF: " + err.message });
-  }
-});
-
-// ============================================================================
-// NÓMINA ELECTRÓNICA DIAN & FACTURATECH ENDPOINTS (Vía Hub Orquestador)
-// ============================================================================
-
-routerAdd('POST', '/api/dian/nomina/emit', (e) => {
-  function getNominaSetting(key, defVal) {
-    try {
-      const r = $app.findFirstRecordByFilter("settings", "key = '" + key.replace(/'/g, "''") + "'");
-      return (r ? r.get("value") : null) || defVal;
-    } catch (_) {
-      return defVal;
-    }
-  }
-
-  try {
-    let body = {};
-    try {
-      const reqInfo = e.requestInfo();
-      body = reqInfo ? (reqInfo.body || {}) : {};
-      if (typeof body === 'string') {
-        body = JSON.parse(body);
-      }
-    } catch (_) {
-      try { body = e.bindBody({}); } catch (_2) {}
-    }
-
-    const recordId = body.id || body.electronicPayrollId;
-    if (!recordId) {
-      e.json(400, { success: false, message: "ID de registro de nómina electrónica no especificado." });
-      return;
-    }
-
-    let rec = null;
-    try {
-      rec = $app.findRecordById("electronic_payrolls", recordId);
-    } catch (findErr) {
-      e.json(404, { success: false, message: "Registro de nómina no encontrado (" + recordId + "): " + findErr.message });
-      return;
-    }
-
-    if (!rec) {
-      e.json(404, { success: false, message: "Registro de nómina electrónica no encontrado." });
-      return;
-    }
-
-    const einvoiceMethod = getNominaSetting("einvoice_method", "simulation");
-    const ftechUsername = getNominaSetting("ftech_username", "");
-    const ftechPassword = getNominaSetting("ftech_password", "");
-    const ftechEnvironment = getNominaSetting("ftech_environment", "demo");
-
-    let reassignConsecutive = false;
-    if (body.reassignConsecutive === true || body.reassignConsecutive === 'true') {
-      reassignConsecutive = true;
-    }
-
-    let prefijo = rec.getString("prefijo") || "NOM";
-    let consecutivo = rec.getInt("consecutivo") || 1;
-    let xmlContent = rec.getString("xml_generado") || "";
-    let cufe = rec.getString("cufe") || "";
-
-    if (reassignConsecutive) {
-      try {
-        let activeNeRes = null;
-        try {
-          activeNeRes = $app.findFirstRecordByFilter("dian_resolutions", "document_type = 'NE' && active = true");
-        } catch (_) {}
-
-        let nextNum = 1;
-        if (activeNeRes) {
-          prefijo = (activeNeRes.getString("prefix") || prefijo || "NOM").trim();
-          nextNum = activeNeRes.getInt("current_number") || 1;
-          activeNeRes.set("current_number", nextNum + 1);
-          $app.save(activeNeRes);
-        } else {
-          try {
-            const maxPayrolls = $app.findRecordsByFilter("electronic_payrolls", "1=1", "-consecutivo", 1);
-            if (maxPayrolls && maxPayrolls.length > 0) {
-              nextNum = (maxPayrolls[0].getInt("consecutivo") || 0) + 1;
-            }
-          } catch (_) {}
-        }
-
-        consecutivo = nextNum;
-        rec.set("consecutivo", consecutivo);
-        rec.set("prefijo", prefijo);
-        rec.set("ftech_transaction_id", "");
-        rec.set("cufe", "");
-        rec.set("estado_dian", "PENDIENTE");
-
-        // Actualizar consecutivo y prefijo en el XML generado
-        xmlContent = xmlContent.replace(/Consecutivo="[0-9]+"/, `Consecutivo="${consecutivo}"`)
-                               .replace(/Numero="[A-Za-z0-9_-]+"/, `Numero="${prefijo}${consecutivo}"`)
-                               .replace(/Prefijo="[A-Za-z0-9_-]+"/, `Prefijo="${prefijo}"`);
-        rec.set("xml_generado", xmlContent);
-        $app.save(rec);
-        console.log(`[GRAVY HOOK] Consecutivo reasignado bajo confirmación de usuario a: ${prefijo}${consecutivo}`);
-      } catch (reassignErr) {
-        console.error("[GRAVY HOOK] Error al reasignar consecutivo:", reassignErr);
-      }
-    }
-
-    // Sanitización CUNE para Facturatech: el CUNE debe ir vacío CUNE="" para que el proveedor tecnológico lo selle
-    if (einvoiceMethod === "facturatech" && xmlContent) {
-      xmlContent = xmlContent.replace(/\bCUNE="[^"]*"/g, 'CUNE=""');
-      // Proteger EncripCUNE con espacio 'EncripCUNE ="CUNE-SHA384"' para evitar que cualquier versión previa del hub lo mutile
-      xmlContent = xmlContent.replace(/EncripCUNE\s*=\s*"[^"]*"/g, 'EncripCUNE ="CUNE-SHA384"');
-      rec.set("xml_generado", xmlContent);
-    }
-
-    if (einvoiceMethod === "facturatech") {
-      if (!ftechUsername) {
-        e.json(400, { success: false, message: "Modo Facturatech configurado pero falta el Usuario/NIT de Facturatech en Configuración." });
-        return;
-      }
-
-      console.log("[GRAVY HOOK] Transmitiendo Nómina Electrónica a Facturatech vía Hub Orquestador...");
-      const hubUrl = "http://127.0.0.1:8088/api/facturatech/upload-and-send";
-      
-      const hubPayload = {
-        xmlContent: xmlContent,
-        ftechUsername: ftechUsername,
-        ftechPassword: ftechPassword,
-        ftechEnvironment: ftechEnvironment,
-        documentType: "NominaIndividual",
-        documentNumber: `${prefijo}${consecutivo}`,
-        prefix: prefijo,
-        folio: consecutivo,
-        isNomina: true
-      };
-
-      const resHub = $http.send({
-        url: hubUrl,
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(hubPayload)
-      });
-
-      if (resHub.statusCode !== 200) {
-        let errDetails = resHub.raw;
-        try {
-          const parsed = JSON.parse(resHub.raw);
-          errDetails = parsed.error || parsed.message || resHub.raw;
-        } catch (_) {}
-        rec.set("estado_dian", "RECHAZADO");
-        rec.set("dian_response", "Error Hub Facturatech: " + errDetails);
-        $app.save(rec);
-        e.json(resHub.statusCode || 500, { success: false, status: "RECHAZADO", message: "Error Hub Facturatech: " + errDetails, consecutivo, prefijo });
-        return;
-      }
-
-      let hubResData = {};
-      try {
-        hubResData = JSON.parse(resHub.raw);
-      } catch (_) {}
-      
-      const transId = hubResData.transaccionID || "";
-      if (!hubResData.success || !transId) {
-        const errMsg = hubResData.error || hubResData.message || "Error al subir a Facturatech (sin ID de transacción).";
-        rec.set("estado_dian", "RECHAZADO");
-        rec.set("dian_response", errMsg);
-        $app.save(rec);
-        e.json(400, { success: false, status: "RECHAZADO", message: errMsg, consecutivo, prefijo });
-        return;
-      }
-
-      rec.set("ftech_transaction_id", transId);
-
-      // Consultar status inmediato a través del Hub
-      let finalStatus = "EN_PROCESO";
-      let statusMsg = hubResData.message || "Comprobante recibido por Facturatech y en proceso de validación DIAN.";
-
-      try {
-        const statusHubRes = $http.send({
-          url: "http://127.0.0.1:8088/api/facturatech/check-status",
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transId: transId,
-            ftechUsername: ftechUsername,
-            ftechPassword: ftechPassword,
-            ftechEnvironment: ftechEnvironment,
-            documentType: "NominaIndividual",
-            documentNumber: `${prefijo}${consecutivo}`,
-            prefix: prefijo,
-            folio: consecutivo,
-            isNomina: true
-          })
-        });
-
-        if (statusHubRes.statusCode === 200) {
-          const sData = JSON.parse(statusHubRes.raw);
-          if (sData.status === "aceptada" || sData.status === "APROBADO" || (sData.message && /aprobado/i.test(sData.message) && (sData.cufe || rec.get("cufe")))) {
-            finalStatus = "APROBADO";
-            if (sData.xmlContent && sData.xmlContent.includes("<")) {
-              rec.set("xml_generado", sData.xmlContent);
-              const cMatch = sData.xmlContent.match(/<cbc:UUID[^>]*>(.*?)<\/cbc:UUID>/i) ||
-                             sData.xmlContent.match(/<CUNE[^>]*>(.*?)<\/CUNE>/i) ||
-                             sData.xmlContent.match(/CUNE="([0-9a-fA-F]{64,96})"/i);
-              if (cMatch && cMatch[1]) {
-                cufe = cMatch[1].trim();
-                rec.set("cufe", cufe);
-              }
-            }
-          } else if (sData.status === "rechazada" || sData.status === "RECHAZADO") {
-            finalStatus = "RECHAZADO";
-          }
-          if (sData.message) statusMsg = sData.message;
-        }
-      } catch (stErr) {
-        console.warn("[GRAVY HOOK] No se pudo obtener status inmediato:", stErr);
-      }
-
-      rec.set("estado_dian", finalStatus);
-      rec.set("dian_response", statusMsg);
-      rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
-      $app.save(rec);
-
-      e.json(200, {
-        success: true,
-        status: finalStatus,
-        cufe: cufe,
-        consecutivo: consecutivo,
-        prefijo: prefijo,
-        transactionID: transId,
-        message: statusMsg
-      });
-      return;
-    }
-
-    if (einvoiceMethod === "matias") {
-      console.log("[GRAVY HOOK] Transmitiendo Nómina Electrónica vía MATIAS API...");
-      
-      const matiasCaller = getMatiasCaller();
-
-      // Obtener resolución activa para Nómina Electrónica (NE)
-      let neResolution = null;
-      try {
-        neResolution = $app.findFirstRecordByFilter("dian_resolutions", "document_type = 'NE' && active = true");
-      } catch (_) {}
-
-      const resNum = neResolution ? neResolution.getString("resolution_number") : getNominaSetting("dian_resolution_number", "18760000001");
-      const pfx = (neResolution ? neResolution.getString("prefix") : prefijo) || "SNEL";
-
-      // 1. Obtener registro de empleado vinculado (desde third_parties o employees)
-      let empRec = null;
-      const empId = rec.getString("employee_id");
-      if (empId) {
-        try {
-          empRec = $app.findRecordById("third_parties", empId);
-        } catch (_) {
-          try {
-            empRec = $app.findRecordById("employees", empId);
-          } catch (_2) {}
-        }
-      }
-
-      // 2. Obtener liquidación granular de nómina (payroll_lines) y metadatos
-      let pLine = null;
-      let pMeta = {};
-      if (empId) {
-        const periodId = rec.getString("periodo_id");
-        try {
-          if (periodId) {
-            pLine = $app.findFirstRecordByFilter("payroll_lines", "employee_id = '" + empId + "' && period_id = '" + periodId + "'");
-          }
-          if (!pLine) {
-            pLine = $app.findFirstRecordByFilter("payroll_lines", "employee_id = '" + empId + "'");
-          }
-          if (pLine && pLine.getString("notes")) {
-            const rawNotes = pLine.getString("notes");
-            if (rawNotes.startsWith("{") && rawNotes.includes("payroll_meta")) {
-              const parsedNotes = JSON.parse(rawNotes);
-              pMeta = parsedNotes.payroll_meta || {};
-            }
-          }
-        } catch (eLine) {
-          console.warn("[GRAVY HOOK] Error al cargar payroll_lines:", eLine);
-        }
-      }
-
-      // 3. Normalizar nombres y apellidos del trabajador
-      let fName = "Empleado";
-      let sName = "";
-      let fSurname = "General";
-      let sSurname = "";
-
-      if (empRec) {
-        const rawFirst = String(empRec.getString("first_name") || "").trim();
-        const rawLast = String(empRec.getString("last_name") || "").trim();
-        if (rawFirst && rawLast) {
-          const fParts = rawFirst.split(/\s+/);
-          fName = fParts[0] || "Empleado";
-          sName = fParts.slice(1).join(" ");
-          const lParts = rawLast.split(/\s+/);
-          fSurname = lParts[0] || "General";
-          sSurname = lParts.slice(1).join(" ");
-        } else {
-          const fullParts = String(empRec.getString("name") || "Empleado General").trim().split(/\s+/);
-          if (fullParts.length >= 4) {
-            fName = fullParts[0];
-            sName = fullParts[1];
-            fSurname = fullParts[2];
-            sSurname = fullParts.slice(3).join(" ");
-          } else if (fullParts.length === 3) {
-            fName = fullParts[0];
-            fSurname = fullParts[1];
-            sSurname = fullParts[2];
-          } else if (fullParts.length === 2) {
-            fName = fullParts[0];
-            fSurname = fullParts[1];
-          } else {
-            fName = fullParts[0] || "Empleado";
-          }
-        }
-      }
-
-      // 4. Tipo de documento de identidad
-      let idDocType = "3"; // Cédula de Ciudadanía
-      const rawDocType = empRec ? String(empRec.getString("doc_type") || "").toUpperCase() : "13";
-      if (rawDocType === "22" || rawDocType === "CE") idDocType = "4";
-      else if (rawDocType === "31" || rawDocType === "NIT") idDocType = "6";
-      else if (rawDocType === "41" || rawDocType === "PAS") idDocType = "5";
-      else if (rawDocType === "12" || rawDocType === "TI") idDocType = "2";
-      else if (rawDocType === "11" || rawDocType === "RC") idDocType = "1";
-      else if (rawDocType === "42" || rawDocType === "PEP") idDocType = "7";
-
-      // 5. Tipo de contrato: 1=Término Fijo, 2=Término Indefinido, 3=Obra o Labor, 4=Aprendizaje, 5=Prácticas
-      let contractTypeId = 2;
-      const rawContract = empRec ? String(empRec.getString("contract_type") || "").toUpperCase() : "";
-      if (rawContract.includes("FIJO")) contractTypeId = 1;
-      else if (rawContract.includes("OBRA")) contractTypeId = 3;
-      else if (rawContract.includes("APRENDIZ")) contractTypeId = 4;
-      else if (rawContract.includes("PRACTIC")) contractTypeId = 5;
-
-      // 6. Municipios DANE
-      let empCityId = 1006;
-      const citiesMap = (typeof globalThis.MATIAS_DANE_CITIES === "object" && globalThis.MATIAS_DANE_CITIES) ? globalThis.MATIAS_DANE_CITIES : null;
-      if (empRec) {
-        const cCode = String(empRec.getString("city_code") || "").trim();
-        if (citiesMap && citiesMap[cCode]) {
-          empCityId = citiesMap[cCode];
-        } else {
-          const cName = String(empRec.getString("city") || "").toLowerCase();
-          if (cName.includes("bogot")) empCityId = 149;
-          else if (cName.includes("medell")) empCityId = 1;
-          else if (cName.includes("barranqu")) empCityId = 126;
-          else empCityId = 1006;
-        }
-      }
-
-      let docNumStr = String(empRec?.getString("doc_number") || empRec?.getString("dni") || "1063279307").replace(/[^0-9A-Za-z]/g, "");
-      let empAddress = empRec?.getString("address") || "Dirección";
-      let workedDays = pLine ? String(pLine.getInt("days_worked") || 30) : "30";
-
-      if (xmlContent) {
-        const mDoc = xmlContent.match(/NumeroDocumento="([^"]+)"/);
-        if (mDoc) docNumStr = mDoc[1];
-        const mDias = xmlContent.match(/DiasTrabajados="([^"]+)"/);
-        if (mDias) workedDays = mDias[1];
-      }
-
-      const totalDev = (rec.getFloat("total_devengos") || 0).toFixed(2);
-      const totalDed = (rec.getFloat("total_deducciones") || 0).toFixed(2);
-      const totalNet = (rec.getFloat("total_neto") || 0).toFixed(2);
-
-      const ano = rec.getInt("ano") || new Date().getFullYear();
-      const mes = String(rec.getInt("mes") || (new Date().getMonth() + 1)).padStart(2, '0');
-      const lastDayOfMonth = new Date(ano, parseInt(mes, 10), 0).getDate();
-      const startDateStr = `${ano}-${mes}-01`;
-      const endDateStr = `${ano}-${mes}-${lastDayOfMonth}`;
-      const nowStr = new Date().toISOString().slice(0, 10);
-      const nowTimeStr = new Date().toTimeString().slice(0, 8);
-
-      // Sueldo contractual vs Sueldo trabajado proporcional
-      const contractSalary = pLine ? pLine.getFloat("salary_base") : (empRec ? empRec.getFloat("salary_base") : parseFloat(totalDev));
-      const wDaysInt = parseInt(workedDays, 10) || 30;
-      const proportionalSalary = pLine ? ((contractSalary / 30) * wDaysInt).toFixed(2) : totalDev;
-
-      // Estructura de Devengados (earn) enriquecida
-      const earnObj = {
-        basic: {
-          worked_days: String(wDaysInt),
-          salary_worked: parseFloat(proportionalSalary).toFixed(2)
-        }
-      };
-
-      const transAllowance = pLine ? pLine.getFloat("transport_allowance") : 0;
-      if (transAllowance > 0) {
-        earnObj.transport = {
-          transportation_assistance: transAllowance.toFixed(2),
-          viatic_maintenance: "0.0",
-          viatic_non_salary_maintenance: "0.0"
-        };
-      }
-
-      // Horas extras y recargos
-      const otMap = pMeta.overtime_breakdown || {};
-      if (otMap.hed && otMap.hed.amount > 0) {
-        earnObj.HEDs = [{
-          start_time: `${startDateStr} 00:00:00`,
-          final_hour: `${endDateStr} 23:59:59`,
-          amount: String(otMap.hed.hours || 1),
-          percentage: "0.2500",
-          payment: parseFloat(otMap.hed.amount).toFixed(2)
-        }];
-      }
-      if (otMap.hen && otMap.hen.amount > 0) {
-        earnObj.HENs = [{
-          start_time: `${startDateStr} 00:00:00`,
-          final_hour: `${endDateStr} 23:59:59`,
-          amount: String(otMap.hen.hours || 1),
-          percentage: "0.7500",
-          payment: parseFloat(otMap.hen.amount).toFixed(2)
-        }];
-      }
-      if (otMap.rno && otMap.rno.amount > 0) {
-        earnObj.HRNs = [{
-          start_time: `${startDateStr} 00:00:00`,
-          final_hour: `${endDateStr} 23:59:59`,
-          amount: String(otMap.rno.hours || 1),
-          percentage: "0.3500",
-          payment: parseFloat(otMap.rno.amount).toFixed(2)
-        }];
-      }
-      if (otMap.heddf && otMap.heddf.amount > 0) {
-        earnObj.HEDDFs = [{
-          start_time: `${startDateStr} 00:00:00`,
-          final_hour: `${endDateStr} 23:59:59`,
-          amount: String(otMap.heddf.hours || 1),
-          percentage: "1.0000",
-          payment: parseFloat(otMap.heddf.amount).toFixed(2)
-        }];
-      }
-      if (otMap.rdfd && otMap.rdfd.amount > 0) {
-        earnObj.HRDDFs = [{
-          start_time: `${startDateStr} 00:00:00`,
-          final_hour: `${endDateStr} 23:59:59`,
-          amount: String(otMap.rdfd.hours || 1),
-          percentage: "0.7500",
-          payment: parseFloat(otMap.rdfd.amount).toFixed(2)
-        }];
-      }
-      if (otMap.hendf && otMap.hendf.amount > 0) {
-        earnObj.HENDFs = [{
-          start_time: `${startDateStr} 00:00:00`,
-          final_hour: `${endDateStr} 23:59:59`,
-          amount: String(otMap.hendf.hours || 1),
-          percentage: "1.5000",
-          payment: parseFloat(otMap.hendf.amount).toFixed(2)
-        }];
-      }
-
-      // Novedades y conceptos adicionales
-      const ca = pMeta.concept_amounts || {};
-      if (ca.comisiones && ca.comisiones > 0) {
-        earnObj.commissions = [{ commission: parseFloat(ca.comisiones).toFixed(2) }];
-      }
-      if (ca.bonificacion && ca.bonificacion > 0) {
-        earnObj.bonuses = [{ bonusS: parseFloat(ca.bonificacion).toFixed(2), bonusNS: "0.00" }];
-      }
-      if (ca.vacaciones_disfrutadas && ca.vacaciones_disfrutadas > 0) {
-        earnObj.vacations = {
-          common: {
-            start_date: startDateStr,
-            final_date: endDateStr,
-            amount: String(pMeta.dias_vacaciones || 1),
-            payment: parseFloat(ca.vacaciones_disfrutadas).toFixed(2)
-          }
-        };
-      }
-      if (ca.prima_pagada && ca.prima_pagada > 0) {
-        earnObj.bonus = {
-          amount: "180",
-          payment: parseFloat(ca.prima_pagada).toFixed(2),
-          non_salary_payment: "0.00"
-        };
-      }
-      if (ca.cesantias_pagadas && ca.cesantias_pagadas > 0) {
-        const intCes = parseFloat(ca.intereses_cesantias_pagados || 0);
-        earnObj.cesantias = {
-          payment: parseFloat(ca.cesantias_pagadas).toFixed(2),
-          percentage: "12.00",
-          interest_payment: intCes.toFixed(2)
-        };
-      }
-      if (ca.incapacidades && ca.incapacidades > 0) {
-        earnObj.incapacity = [{
-          start_date: startDateStr,
-          final_date: endDateStr,
-          amount: "1",
-          type_id: 1,
-          payment: parseFloat(ca.incapacidades).toFixed(2)
-        }];
-      }
-      if (ca.aux_no_salariales && ca.aux_no_salariales > 0) {
-        earnObj.assistances = [{
-          assistanceS: "0.00",
-          assistanceNS: parseFloat(ca.aux_no_salariales).toFixed(2)
-        }];
-      }
-      if (ca.rodamiento && ca.rodamiento > 0) {
-        earnObj.other_concepts = [{
-          descripcion: "Auxilio de Rodamiento",
-          conceptS: "0.00",
-          conceptNS: parseFloat(ca.rodamiento).toFixed(2)
-        }];
-      }
-
-      // Estructura de Deducciones (deductions) enriquecida
-      const dedHealth = pLine ? pLine.getFloat("deduction_health") : (parseFloat(totalDed) / 2);
-      const dedPension = pLine ? pLine.getFloat("deduction_pension") : (parseFloat(totalDed) / 2);
-
-      const deductionsObj = {
-        health: {
-          percentage: "4",
-          deduction: dedHealth.toFixed(2)
-        },
-        pension_fund: {
-          percentage: "4",
-          deduction: dedPension.toFixed(2)
-        }
-      };
-
-      const solFund = pLine ? (pLine.getFloat("solidarity_fund") || pMeta.solidarity_fund || 0) : 0;
-      if (solFund > 0) {
-        deductionsObj.fundSP = {
-          percentage: "1.00",
-          deduction: solFund.toFixed(2),
-          percentageSub: "0.00",
-          deductionSub: "0.00"
-        };
-      }
-      const withTax = pLine ? (pLine.getFloat("withholding_tax") || pMeta.withholding_tax || 0) : 0;
-      if (withTax > 0) {
-        deductionsObj.retefuente = withTax.toFixed(2);
-      }
-      if (ca.libranza && ca.libranza > 0) {
-        deductionsObj.libranzas = [{
-          descripcion: "Libranza",
-          deduction: parseFloat(ca.libranza).toFixed(2)
-        }];
-      }
-      if (ca.embargo && ca.embargo > 0) {
-        deductionsObj.tax_embargo = parseFloat(ca.embargo).toFixed(2);
-      }
-      if (ca.prestamos && ca.prestamos > 0) {
-        deductionsObj.advances = [{
-          advance: parseFloat(ca.prestamos).toFixed(2)
-        }];
-      }
-      const dedOther = pLine ? pLine.getFloat("deduction_other") : 0;
-      if (dedOther > 0) {
-        deductionsObj.other_deductions = [{
-          other_deduction: dedOther.toFixed(2)
-        }];
-      }
-
-      // Datos bancarios y medios de pago reales
-      const empBank = empRec?.getString("bank_name") || "BANCOLOMBIA";
-      const empAccNum = empRec?.getString("bank_account") || "0";
-      const empAccType = (empRec?.getString("bank_account_type") || "AHORROS").toUpperCase();
-      const empMeansPay = empRec?.getString("payment_method") || (empAccNum && empAccNum !== "0" ? "30" : "10");
-
-      const matiasNominaPayload = {
-        resolution_number: String(resNum || "18760000001"),
-        prefix: pfx,
-        document_number: String(consecutivo),
-        generation_city_id: String(empCityId || 1006),
-        worker_code: docNumStr,
-        novelty: false,
-        pay_day: endDateStr,
-        period: {
-          date_entry: (empRec?.getString("hire_date") || "2023-01-01").slice(0, 10),
-          departure_date: null,
-          settlement_start_date: startDateStr,
-          settlement_end_date: endDateStr,
-          time_worked: String(wDaysInt),
-          generation_date: nowStr
-        },
-        general_information: {
-          generation_date: nowStr,
-          generation_time: nowTimeStr,
-          period_id: "5",
-          currency_id: "272",
-          trm: "0"
-        },
-        notes: `Nómina electrónica periodo ${ano}-${mes}`,
-        send_email: 1,
-        employee: {
-          worker_type_id: 1,
-          worker_subtype_id: 1,
-          high_risk_pension: "false",
-          identity_document_id: idDocType,
-          document_number: docNumStr,
-          first_surname: fSurname,
-          second_surname: sSurname,
-          first_name: fName,
-          other_names: sName,
-          email: empRec?.getString("email") || "",
-          working_country_id: 45,
-          work_city_id: empCityId,
-          work_address: empAddress,
-          integral_salary: "false",
-          contract_type_id: contractTypeId,
-          salary: parseFloat(contractSalary).toFixed(2),
-          worker_code: docNumStr
-        },
-        payment: {
-          payment_method_id: "1",
-          means_payment_id: String(empMeansPay),
-          bank: empBank,
-          account_type: empAccType,
-          account_number: empAccNum
-        },
-        earn: earnObj,
-        deductions: deductionsObj,
-        rounding: "0",
-        total_earned: String(totalDev),
-        deductions_total: String(totalDed),
-        deductiones_total: String(totalDed),
-        total_voucher: String(totalNet)
-      };
-
-      let matiasNominaEndpoint = "/ep/payroll";
-      let sendPayload = matiasNominaPayload;
-
-      const nomAction = body.action || (rec.getString("tipo") === 'reemplazo' ? 'replace' : (rec.getString("tipo") === 'eliminacion' ? 'delete' : 'emit'));
-
-      if (nomAction === "replace" || nomAction === "reemplazo") {
-        matiasNominaEndpoint = "/ep/payroll/replace";
-        const predNum = String(body.predecessor_number || rec.getString("predecessor_number") || ("NOM" + (consecutivo > 1 ? consecutivo - 1 : 1)));
-        const predCune = String(body.predecessor_cune || rec.getString("predecessor_cune") || cufe || "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
-        const predDate = String(body.predecessor_date || rec.getString("predecessor_date") || nowStr);
-
-        matiasNominaPayload.replacing_predecessor = {
-          number: predNum,
-          cune: predCune,
-          generation_date: predDate
-        };
-        sendPayload = matiasNominaPayload;
-      } else if (nomAction === "delete" || nomAction === "eliminacion") {
-        matiasNominaEndpoint = "/ep/payroll/delete";
-        const predNum = String(body.predecessor_number || rec.getString("predecessor_number") || ("NOM" + consecutivo));
-        const predCune = String(body.predecessor_cune || rec.getString("predecessor_cune") || cufe || "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
-        const predDate = String(body.predecessor_date || rec.getString("predecessor_date") || nowStr);
-
-        sendPayload = {
-          resolution_number: String(resNum || "18760000001"),
-          document_number: String(consecutivo),
-          generation_city_id: "1006",
-          deleting_predecessor: {
-            number: predNum,
-            cune: predCune,
-            generation_date: predDate
-          },
-          general_information: {
-            generation_date: nowStr,
-            generation_time: nowTimeStr
-          },
-          notes: body.notes || "Documento de nómina eliminado por ajuste contable"
-        };
-      }
-
-      const matiasRes = matiasCaller(matiasNominaEndpoint, "POST", sendPayload);
-      if (!matiasRes.ok) {
-        const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en MATIAS API (${matiasRes.statusCode})`;
-        rec.set("estado_dian", "RECHAZADO");
-        rec.set("dian_response", errMsg + (matiasRes.data?.response?.ErrorMessage?.string ? ": " + JSON.stringify(matiasRes.data.response.ErrorMessage.string) : ""));
-        $app.save(rec);
-        e.json(matiasRes.statusCode || 400, {
-          success: false,
-          status: "RECHAZADO",
-          message: errMsg,
-          details: matiasRes.data,
-          consecutivo,
-          prefijo: pfx
-        });
-        return;
-      }
-
-      const mData = matiasRes.data || {};
-      const xmlDocKey = mData.XmlDocumentKey || mData.cufe || mData.cune || "";
-      const statusCode = String(mData.response?.StatusCode || mData.response?.ResponseCode || "");
-      const isDianValid = mData.response?.IsValid === "true" || mData.response?.IsValid === true || statusCode === "00" || statusCode === "02";
-      const statusMsg = mData.response?.StatusMessage || mData.message || "Nómina Electrónica autorizada por la DIAN.";
-
-      rec.set("estado_dian", isDianValid ? "APROBADO" : "RECHAZADO");
-      rec.set("cufe", xmlDocKey);
-      rec.set("dian_response", statusMsg);
-      if (mData.response?.XmlBase64Bytes) {
-        rec.set("xml_generado", mData.response.XmlBase64Bytes);
-      }
-      rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
-      $app.save(rec);
-
-      e.json(200, {
-        success: true,
-        status: isDianValid ? "APROBADO" : "RECHAZADO",
-        cufe: xmlDocKey,
-        consecutivo: consecutivo,
-        prefijo: pfx,
-        transactionID: mData.uuid || "",
-        message: statusMsg
-      });
-      return;
-    }
-
-    // Modo Simulación explícito
-    rec.set("estado_dian", "SIMULADO");
-    rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
-    $app.save(rec);
-
-    e.json(200, {
-      success: true,
-      simulated: true,
-      status: "SIMULADO",
-      cufe: cufe,
-      message: "Modo Simulación: El comprobante no fue transmitido a la DIAN real porque el método de facturación electrónica configurado es 'simulation'."
-    });
-    return;
-
-  } catch (err) {
-    console.error("[GRAVY HOOK] Error en /api/dian/nomina/emit:", err);
-    e.json(500, { success: false, message: "Error al emitir nómina electrónica: " + err.message });
-  }
-});
-
-routerAdd('POST', '/api/dian/nomina/check-status', (e) => {
-  function getNominaSetting(key, defVal) {
-    try {
-      const r = $app.findFirstRecordByFilter("settings", "key = '" + key.replace(/'/g, "''") + "'");
-      return (r ? r.get("value") : null) || defVal;
-    } catch (_) {
-      return defVal;
-    }
-  }
-
-  try {
-    let body = {};
-    try {
-      const reqInfo = e.requestInfo();
-      body = reqInfo ? (reqInfo.body || {}) : {};
-      if (typeof body === 'string') {
-        body = JSON.parse(body);
-      }
-    } catch (_) {
-      try { body = e.bindBody({}); } catch (_2) {}
-    }
-
-    const recordId = body.id || body.electronicPayrollId;
-    if (!recordId) {
-      e.json(400, { success: false, message: "ID de registro no especificado." });
-      return;
-    }
-
-    let rec = null;
-    try {
-      rec = $app.findRecordById("electronic_payrolls", recordId);
-    } catch (findErr) {
-      e.json(404, { success: false, message: "Registro de nómina electrónica no encontrado: " + findErr.message });
-      return;
-    }
-
-    if (!rec) {
-      e.json(404, { success: false, message: "Registro de nómina electrónica no encontrado." });
-      return;
-    }
-
-    const einvoiceMethod = getNominaSetting("einvoice_method", "simulation");
-    if (einvoiceMethod === "matias") {
-      e.json(200, {
-        success: true,
-        status: rec.getString("estado_dian") || "PENDIENTE",
-        cufe: rec.getString("cufe") || "",
-        dianResponse: rec.getString("dian_response") || "Procesado por MATIAS API",
-        consecutivo: rec.getInt("consecutivo"),
-        prefijo: rec.getString("prefijo")
-      });
-      return;
-    }
-
-    const ftechUsername = getNominaSetting("ftech_username", "");
-    const ftechPassword = getNominaSetting("ftech_password", "");
-    const ftechEnvironment = getNominaSetting("ftech_environment", "demo");
-    const prefijo = rec.getString("prefijo") || "NOM";
-    const consecutivo = rec.getInt("consecutivo") || 1;
-    const transId = rec.getString("ftech_transaction_id");
-
-    if ((transId || (prefijo && consecutivo)) && ftechUsername) {
-      try {
-        const statusHubRes = $http.send({
-          url: "http://127.0.0.1:8088/api/facturatech/check-status",
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transId: transId,
-            ftechUsername: ftechUsername,
-            ftechPassword: ftechPassword,
-            ftechEnvironment: ftechEnvironment,
-            documentType: "NominaIndividual",
-            documentNumber: `${prefijo}${consecutivo}`,
-            prefix: prefijo,
-            folio: consecutivo,
-            isNomina: true
-          })
-        });
-
-        if (statusHubRes.statusCode === 200) {
-          const sData = JSON.parse(statusHubRes.raw);
-          let estadoFinal = "EN_PROCESO";
-          if (sData.status === "aceptada" || sData.status === "APROBADO" || (sData.message && /aprobado/i.test(sData.message) && (sData.cufe || rec.get("cufe")))) {
-            estadoFinal = "APROBADO";
-            if (sData.cufe) {
-              rec.set("cufe", sData.cufe.trim());
-            }
-            if (sData.xmlContent && sData.xmlContent.includes("<")) {
-              rec.set("xml_generado", sData.xmlContent);
-              const cMatch = sData.xmlContent.match(/<cbc:UUID[^>]*>(.*?)<\/cbc:UUID>/i) ||
-                             sData.xmlContent.match(/<CUNE[^>]*>(.*?)<\/CUNE>/i) ||
-                             sData.xmlContent.match(/CUNE="([0-9a-fA-F]{64,96})"/i) ||
-                             sData.xmlContent.match(/([0-9a-fA-F]{64,96})/);
-              if (cMatch && cMatch[1] && !rec.get("cufe")) {
-                rec.set("cufe", cMatch[1].trim());
-              }
-            }
-          } else if (sData.status === "rechazada" || sData.status === "RECHAZADO") {
-            estadoFinal = "RECHAZADO";
-          }
-
-          rec.set("estado_dian", estadoFinal);
-          if (sData.message) rec.set("dian_response", sData.message);
-          $app.save(rec);
-          e.json(200, { success: true, status: estadoFinal, message: sData.message || `Estado DIAN: ${estadoFinal}` });
-          return;
-        }
-      } catch (errSoap) {
-        console.error("[GRAVY HOOK] Error al consultar status Facturatech Nómina:", errSoap);
-      }
-    }
-
-    const currentStatus = rec.getString("estado_dian") || "PENDIENTE";
-    e.json(200, {
-      success: true,
-      status: currentStatus,
-      message: `Estado actual: ${currentStatus}`
-    });
-    return;
-
-  } catch (err) {
-    e.json(500, { success: false, message: "Error al consultar estado de nómina: " + err.message });
-  }
-});
-
-routerAdd('POST', '/api/dian/nomina/download-xml', (e) => {
-  try {
-    let body = {};
-    try {
-      const reqInfo = e.requestInfo();
-      body = reqInfo ? (reqInfo.body || {}) : {};
-      if (typeof body === 'string') {
-        body = JSON.parse(body);
-      }
-    } catch (_) {
-      try { body = e.bindBody({}); } catch (_2) {}
-    }
-
-    const recordId = body.id || body.electronicPayrollId;
-    if (!recordId) {
-      e.json(400, { success: false, message: "ID de registro de nómina electrónica no especificado." });
-      return;
-    }
-
-    let rec = null;
-    try {
-      rec = $app.findRecordById("electronic_payrolls", recordId);
-    } catch (findErr) {
-      e.json(404, { success: false, message: "Registro no encontrado: " + findErr.message });
-      return;
-    }
-
-    if (!rec) {
-      e.json(404, { success: false, message: "Registro de nómina electrónica no encontrado." });
-      return;
-    }
-
-    const prefijo = rec.getString("prefijo") || "NOM";
-    const consecutivo = rec.getInt("consecutivo") || 1;
-    const filename = `NominaIndividual_${prefijo}-${consecutivo}.xml`;
-
-    let currentXml = rec.getString("xml_generado") || "";
-    const isSigned = currentXml.includes("AttachedDocument") || currentXml.includes("ds:SignatureValue") || currentXml.includes("ApplicationResponse");
-
-    e.json(200, {
-      success: true,
-      isSigned: isSigned,
-      xml: currentXml,
-      filename: filename
-    });
-    return;
-
-  } catch (err) {
-    console.error("[GRAVY HOOK] Error al descargar XML de nómina:", err);
-    e.json(500, { success: false, message: "Error al descargar XML: " + err.message });
+    e.json(500, { message: "Error al reenviar correo: " + (err.message || String(err)) });
   }
 });
 
@@ -6442,43 +4336,198 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
 
     const recordId = body.id || body.electronicPayrollId;
     const rec = recordId ? $app.findRecordById("electronic_payrolls", recordId) : null;
+    if (!rec) {
+      return e.json(404, { message: "Registro de nómina electrónica no encontrado." });
+    }
 
-    let companyName = "GRAVY S.A.S";
+    let getSetting = (k, def) => {
+      try {
+        const r = $app.findFirstRecordByFilter("settings", "key = '" + String(k || '').replace(/'/g, "''") + "'");
+        return (r ? r.get("value") : null) || def;
+      } catch (_) {
+        return def;
+      }
+    };
+
     try {
-      const cRec = $app.findFirstRecordByFilter("settings", "key = 'company_name'");
-      if (cRec) companyName = cRec.getString("value") || companyName;
+      const mailer = require(`${__hooks}/dian_mailer.js`);
+      if (mailer.getSetting) getSetting = mailer.getSetting;
+      if (mailer.syncSmtpSettings) mailer.syncSmtpSettings();
+    } catch (eSync) {
+      console.warn("[GRAVY] Error loading mailer helpers for payroll:", eSync);
+    }
+
+    let companyName = getSetting("company_name", "GRAVY S.A.S");
+    const companyEmail = getSetting("company_email", "noreply@gravy.com");
+    const fromAddr = getSetting("smtp_sender_address", "") || getSetting("smtp_username", "") || companyEmail;
+    const fromName = getSetting("smtp_sender_name", "") || companyName;
+
+    const prefijo = rec.getString("prefijo") || "NOM";
+    const consecutivo = rec.getInt("consecutivo") || 1;
+    const docNumber = `${prefijo}-${consecutivo}`;
+    const cune = rec.getString("cufe") || "Registrado en el portal DIAN";
+    const xmlGenerado = rec.getString("xml_generado") || "";
+
+    const isAjuste = prefijo.includes("AJ") || prefijo.startsWith("NA") || xmlGenerado.includes('TipoXML="103"') || xmlGenerado.includes('NominaIndividualDeAjuste');
+    const docTitle = isAjuste ? "Nota de Ajuste de Nómina Electrónica" : "Comprobante de Nómina Electrónica";
+    const badgeLabel = isAjuste ? "Ajuste Nómina DIAN" : "Nómina Oficial DIAN";
+    const badgeBg = isAjuste ? "#FEF3C7" : "#DCFCE7";
+    const badgeColor = isAjuste ? "#92400E" : "#166534";
+    const actionDesc = isAjuste 
+      ? `su <strong>nota de ajuste de nómina electrónica</strong> correspondiente al consecutivo <strong>${docNumber}</strong> procesada y validada ante la DIAN.`
+      : `su <strong>comprobante formal de nómina electrónica</strong> correspondiente al consecutivo <strong>${docNumber}</strong> procesado y validado ante la DIAN.`;
+
+    let empName = "Colaborador";
+    try {
+      const empId = rec.getString("employee_id");
+      if (empId) {
+        try {
+          const empRec = $app.findRecordById("third_parties", empId);
+          if (empRec) empName = empRec.getString("name") || empRec.getString("first_name") || "Colaborador";
+        } catch (_) {
+          try {
+            const empRec = $app.findRecordById("employees", empId);
+            if (empRec) empName = empRec.getString("name") || empRec.getString("first_name") || "Colaborador";
+          } catch (_2) {}
+        }
+      }
+      if ((empName === "Colaborador" || !empName) && xmlGenerado) {
+        const mPrimer = xmlGenerado.match(/PrimerNombre\s*=\s*"([^"]+)"/i);
+        const mOtros = xmlGenerado.match(/OtrosNombres\s*=\s*"([^"]+)"/i);
+        const mPrimerAp = xmlGenerado.match(/PrimerApellido\s*=\s*"([^"]+)"/i);
+        const mSegundoAp = xmlGenerado.match(/SegundoApellido\s*=\s*"([^"]+)"/i);
+        const xmlName = [
+          mPrimer ? mPrimer[1] : '',
+          mOtros ? mOtros[1] : '',
+          mPrimerAp ? mPrimerAp[1] : '',
+          mSegundoAp ? mSegundoAp[1] : ''
+        ].filter(Boolean).join(' ').trim();
+        if (xmlName) empName = xmlName;
+      }
     } catch (_) {}
 
-    const subject = `Comprobante de Nómina Electrónica — ${companyName}`;
+    const totalDevengos = rec.getFloat("total_devengos") || 0;
+    const totalDeducciones = rec.getFloat("total_deducciones") || 0;
+    const totalNeto = rec.getFloat("total_neto") || (totalDevengos - totalDeducciones);
+    const fmtNeto = "$ " + Math.round(totalNeto).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+    const subject = `${docTitle} ${docNumber} — ${companyName}`;
     const htmlBody = `
-      <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-        <h2 style="color: #0D2137;">Comprobante de Nómina Electrónica DIAN</h2>
-        <p>Estimado(a) colaborador(a),</p>
-        <p>Adjunto a este mensaje encontrará la información de su comprobante de nómina electrónica procesado por <strong>${companyName}</strong>.</p>
-        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; margin: 15px 0;">
-          <p style="margin: 5px 0;"><strong>Empresa:</strong> ${companyName}</p>
-          <p style="margin: 5px 0;"><strong>Estado DIAN:</strong> APROBADO</p>
-          <p style="margin: 5px 0;"><strong>CUNE:</strong> ${rec ? (rec.getString("cufe") || "N/A") : "Registrado en el portal DIAN"}</p>
+      <div style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8FAFC; padding: 40px 20px; color: #1E293B; max-width: 600px; margin: 0 auto; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin: 0 auto;">
+            <tr>
+              <td align="center" style="vertical-align: middle;">
+                <img src="cid:gravy-logo.png" alt="GRAVY" width="48" height="48" style="height: 48px; width: 48px; display: block; margin: 0 auto; border: 0; outline: none; border-radius: 10px; font-family: 'Plus Jakarta Sans', -apple-system, sans-serif; font-weight: 800; color: #7C3AED; font-size: 18px;" />
+              </td>
+            </tr>
+          </table>
         </div>
-        <p>Para consultas adicionales sobre su liquidación de nómina, comuníquese con el departamento de Gestión Humana.</p>
-        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-        <p style="font-size: 11px; color: #94a3b8;">Mensaje generado automáticamente por el sistema contable GRAVY.</p>
+        <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 32px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <span style="background-color: ${badgeBg}; color: ${badgeColor}; padding: 6px 16px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">
+              ${badgeLabel}
+            </span>
+          </div>
+          <h2 style="color: #0F172A; font-size: 22px; font-weight: 800; text-align: center; margin-top: 12px; margin-bottom: 8px;">
+            ${docTitle}
+          </h2>
+          <p style="text-align: center; color: #64748B; font-size: 14px; margin-top: 0; margin-bottom: 28px;">
+            Emitido por <strong>${companyName}</strong>
+          </p>
+          <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #F1F5F9; margin-bottom: 28px;">
+            <p style="font-size: 14px; margin: 0 0 12px 0; color: #475569;">
+              Estimado(a) colaborador(a) <strong>${empName}</strong>,
+            </p>
+            <p style="font-size: 14px; margin: 0; line-height: 1.6; color: #475569;">
+              Adjunto a este mensaje encontrará ${actionDesc}
+            </p>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 28px;">
+            <tr>
+              <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Documento:</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: 700; color: #0F172A; border-bottom: 1px solid #F1F5F9;">${docNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Estado DIAN:</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: 700; color: #16A34A; border-bottom: 1px solid #F1F5F9;">${rec.getString("estado_dian") || "APROBADO"}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Neto Pagado:</td>
+              <td style="padding: 10px 0; text-align: right; font-size: 16px; font-weight: 800; color: #0284C7; border-bottom: 1px solid #F1F5F9;">${fmtNeto}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color: #64748B; vertical-align: top;">CUNE:</td>
+              <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 11px; word-break: break-all; color: #475569; max-width: 200px;">
+                ${cune}
+              </td>
+            </tr>
+          </table>
+          <p style="font-size: 12px; color: #64748B; text-align: center; margin: 0;">
+            Para consultas sobre su liquidación, comuníquese con el departamento de Gestión Humana.
+          </p>
+        </div>
+        <div style="text-align: center; margin-top: 24px; padding: 0 16px;">
+          <p style="font-size: 10px; color: #CBD5E1; margin: 0;">
+            Mensaje generado automáticamente por el sistema contable GRAVY. Por favor no responda a este correo.
+          </p>
+        </div>
       </div>
     `;
 
     const message = new MailerMessage({
       from: {
-        address: $app.settings().meta.senderAddress || "no-reply@gravy.com",
-        name: $app.settings().meta.senderName || companyName
+        address: fromAddr,
+        name: fromName
       },
       to: [{ address: email }],
       subject: subject,
       html: htmlBody
     });
 
+    const attachments = {};
+    if (xmlGenerado) {
+      const xmlFile = $filesystem.fileFromBytes(xmlGenerado, `Nomina_${docNumber}.xml`);
+      attachments[`Nomina_${docNumber}.xml`] = xmlFile.reader.open();
+    }
+    const pdfB64 = rec.getString("pdf_base64");
+    if (pdfB64) {
+      try {
+        const pdfFile = $filesystem.fileFromBytes(pdfB64, `Nomina_${docNumber}.pdf`);
+        attachments[`Nomina_${docNumber}.pdf`] = pdfFile.reader.open();
+      } catch (_) {}
+    }
+    message.attachments = attachments;
+
+    const inlineAttachments = {};
+    const cleanHooks = String(typeof __hooks !== "undefined" ? __hooks : "").replace(/\\/g, "/");
+    const candidateLogoPaths = [
+      cleanHooks + "/assets/gravy-logo.png",
+      cleanHooks + "/../../../pb_public/assets/gravy-logo-email.png",
+      cleanHooks + "/../../../pb_public/assets/gravy-logo.png",
+      cleanHooks + "/../../pb_public/assets/gravy-logo.png",
+      cleanHooks + "/../pb_public/assets/gravy-logo.png",
+      "C:/Users/JULIAN/Desktop/GravyLocalTABS/pb_public/assets/gravy-logo-email.png",
+      "C:/Users/JULIAN/Desktop/GravyLocalTABS/pb_public/assets/gravy-logo.png",
+      "pb_public/assets/gravy-logo.png"
+    ];
+
+    for (let i = 0; i < candidateLogoPaths.length; i++) {
+      try {
+        const logoFile = $filesystem.fileFromPath(candidateLogoPaths[i]);
+        if (logoFile && logoFile.size > 0) {
+          inlineAttachments["gravy-logo.png"] = logoFile.reader.open();
+          break;
+        }
+      } catch (_) {}
+    }
+
+    if (Object.keys(inlineAttachments).length > 0) {
+      message.inlineAttachments = inlineAttachments;
+    }
+
     $app.newMailClient().send(message);
     return e.json(200, { success: true, message: `Correo de comprobante de nómina enviado exitosamente a ${email}` });
-
   } catch (err) {
     console.error("[GRAVY HOOK] Error al enviar email de nómina:", err);
     return e.json(500, { message: "Error al enviar correo de nómina: " + err.message });

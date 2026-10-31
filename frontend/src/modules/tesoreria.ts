@@ -1366,11 +1366,12 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
 
     _renderTesoOpenItemsGrid(isRecaudo);
 
-    // Sugerencia inteligente de monto: Si hay saldo neto positivo con anticipo, sugerir el saldo neto
+    // Sugerencia inteligente de monto: Si hay saldo neto positivo con anticipo y está activo el cruce, sugerir el saldo neto
     const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement | null;
-    if (montoEl && !montoEl.value) {
+    if (montoEl) {
+      const cruzarAnt = (document.getElementById('teso-modal-cruzar-anticipos') as HTMLInputElement)?.checked ?? false;
       const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
-      const defaultMonto = (totalAnticipo > 0.01 && saldoNeto > 0.01) ? saldoNeto : totalCartera;
+      const defaultMonto = (totalAnticipo > 0.01 && saldoNeto > 0.01 && cruzarAnt) ? saldoNeto : totalCartera;
       if (defaultMonto > 0) {
         montoEl.value = defaultMonto.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces });
       }
@@ -1856,6 +1857,107 @@ function _toggleModalManualMode() {
 }
 
 // ─── INDICADOR DE DIFERENCIA (Actualizado para Saldo Neto y Anticipos) ──────
+// ─── PROYECCIÓN EN TIEMPO REAL DE ABONOS EN MODO AUTOMÁTICO ─────────────────
+function _updateTesoAutoProjectedAbonos() {
+  const modoSelect = document.getElementById('teso-modal-modo') as HTMLSelectElement | null;
+  const isManual = modoSelect?.value === 'manual';
+  if (isManual) return;
+
+  const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement | null;
+  const monto = parseFormattedNumber(montoEl?.value || '0');
+  const cruzarAnticipos = (document.getElementById('teso-modal-cruzar-anticipos') as HTMLInputElement)?.checked ?? false;
+  const totalAnticipo = _tesoCurrentTotalAnticipo;
+  const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
+
+  // 1. Clasificar partidas en memoria
+  const ncItems = _tesoCurrentOpenItems.filter(i => i.saldo < -0.005);
+  const invoiceItems = _tesoCurrentOpenItems.filter(i => i.saldo > 0.005);
+
+  const invState = invoiceItems.map(inv => ({
+    key: inv.key,
+    ref: inv.ref,
+    saldoRestante: inv.saldo,
+    abonoNC: 0,
+    abonoAnt: 0,
+    abonoCash: 0
+  }));
+
+  const ncState = ncItems.map(nc => ({
+    key: nc.key,
+    ref: nc.ref,
+    remanente: Math.abs(nc.saldo),
+    cruzado: 0
+  }));
+
+  // A. Compensar NCs contra Facturas vivas
+  for (const nc of ncState) {
+    for (const inv of invState) {
+      if (nc.remanente <= 0.005) break;
+      if (inv.saldoRestante <= 0.005) continue;
+      const cruzar = Math.min(nc.remanente, inv.saldoRestante);
+      nc.cruzado += cruzar;
+      nc.remanente -= cruzar;
+      inv.abonoNC += cruzar;
+      inv.saldoRestante -= cruzar;
+    }
+  }
+
+  // B. Aplicar anticipos si cruzarAnticipos está activo
+  let antRemanente = cruzarAnticipos ? totalAnticipo : 0;
+  if (antRemanente > 0.005) {
+    for (const inv of invState) {
+      if (antRemanente <= 0.005) break;
+      if (inv.saldoRestante <= 0.005) continue;
+      const aplicar = Math.min(antRemanente, inv.saldoRestante);
+      inv.abonoAnt += aplicar;
+      inv.saldoRestante -= aplicar;
+      antRemanente -= aplicar;
+    }
+  }
+
+  // C. Aplicar fondos de bancos/caja (monto)
+  let cashRemanente = monto;
+  for (const inv of invState) {
+    if (cashRemanente <= 0.005) break;
+    if (inv.saldoRestante <= 0.005) continue;
+    const aplicar = Math.min(cashRemanente, inv.saldoRestante);
+    inv.abonoCash += aplicar;
+    inv.saldoRestante -= aplicar;
+    cashRemanente -= aplicar;
+  }
+
+  // Renderizar proyección en los inputs de la tabla
+  let totalFacturasAbonado = 0;
+  document.querySelectorAll('.teso-abono-input').forEach(el => {
+    const inp = el as HTMLInputElement;
+    const key = inp.dataset.key;
+    const isNC = inp.dataset.nature === 'CREDITO';
+    if (isNC) {
+      const matchNC = ncState.find(n => n.key === key);
+      const cruzado = matchNC ? matchNC.cruzado : 0;
+      inp.value = cruzado > 0 ? '-' + cruzado.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+      inp.style.color = cruzado > 0 ? '#B45309' : '#0F172A';
+    } else {
+      const matchInv = invState.find(i => i.key === key);
+      const totalAbono = matchInv ? (matchInv.abonoNC + matchInv.abonoAnt + matchInv.abonoCash) : 0;
+      inp.value = totalAbono > 0 ? totalAbono.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+      inp.style.color = totalAbono > 0 ? '#047857' : '#0F172A';
+      totalFacturasAbonado += totalAbono;
+    }
+  });
+
+  const totEl = document.getElementById('teso-modal-total-abonos');
+  if (totEl) {
+    const totalCruzadoNC = ncState.reduce((s, n) => s + n.cruzado, 0);
+    const netoAbonos = Math.max(0, totalFacturasAbonado - totalCruzadoNC);
+    if (totalCruzadoNC > 0) {
+      totEl.innerHTML = `<span>${_fmt(netoAbonos)}</span> <span class="text-[10px] text-amber-600 font-bold">(-${_fmt(totalCruzadoNC)} NC)</span>`;
+    } else {
+      totEl.textContent = _fmt(totalFacturasAbonado);
+    }
+  }
+}
+
 function _updateMontoIndicator() {
   const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement;
   const indicatorEl = document.getElementById('teso-monto-indicator');
@@ -1866,6 +1968,7 @@ function _updateMontoIndicator() {
 
   if (monto <= 0 || totalCartera <= 0) {
     indicatorEl.innerHTML = '';
+    _updateTesoAutoProjectedAbonos();
     return;
   }
 
@@ -1932,6 +2035,20 @@ function _updateMontoIndicator() {
         <i class="fas fa-plus-circle"></i> Excedente de ${_fmt(absDiff)} registrado como nuevo anticipo a favor
       </span>`;
   }
+
+  // Actualizar texto del botón principal dinámicamente con excedente si aplica
+  const saveBtn = document.getElementById('btn-save-teso-tx') as HTMLButtonElement | null;
+  if (saveBtn && saveBtn.dataset.submitting !== 'true') {
+    const docLabel = isRecaudo ? 'RC' : 'CE';
+    if (diff > 0.01) {
+      saveBtn.innerHTML = `<i class="fas fa-paper-plane mr-2"></i>Registrar ${docLabel} (+ Excedente ${_fmt(absDiff)})`;
+    } else {
+      saveBtn.innerHTML = `<i class="fas fa-paper-plane mr-2"></i>Registrar ${docLabel}`;
+    }
+  }
+
+  // Actualizar proyección en vivo de abonos en modo automático
+  _updateTesoAutoProjectedAbonos();
 }
 
 async function _saveTransaccionTeso(isRecaudo: boolean) {
@@ -2369,9 +2486,20 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     } catch (_) {}
 
   } catch (err: any) {
-    console.error(err);
-    const detail = err.data ? JSON.stringify(err.data) : '';
-    _showToast(`Error: ${err.message} ${detail}`, 'error');
+    console.error('[TESO ERROR]', err);
+    let userMsg = err.message || 'No fue posible registrar el comprobante.';
+    if (err.data && err.data.message) {
+      userMsg = err.data.message;
+    }
+    if (userMsg.includes('{"') || userMsg.includes('status":')) {
+      try {
+        const parsed = JSON.parse(userMsg);
+        if (parsed.message) userMsg = parsed.message;
+      } catch(_) {
+        userMsg = userMsg.replace(/\{.*\}$/g, '').trim();
+      }
+    }
+    _showToast(userMsg, 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-paper-plane mr-2"></i>Registrar ${typeCode}`; }
   } finally {
     if (btn) {
@@ -2815,11 +2943,11 @@ function _toggleTesoRetenciones() {
   if (_tesoCurrentThirdParty) {
     const isRecaudo = !!document.getElementById('modal-rc-wrap');
     _loadOpenItemsForModal(_tesoCurrentThirdParty.id, isRecaudo, _tesoCurrentPropertyId || undefined).then(() => {
-      const total = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+      const targetMonto = (checked && _tesoCurrentTotalAnticipo > 0.01) ? _tesoCurrentSaldoNeto : _tesoCurrentTotalCartera;
       const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement;
       if (montoEl) {
         const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
-        montoEl.value = total > 0 ? total.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+        montoEl.value = targetMonto > 0 ? targetMonto.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
       }
       if ((window as any)._applyDefaultRetenciones) (window as any)._applyDefaultRetenciones();
       else _recalculateTesoNeto();
@@ -3308,10 +3436,10 @@ async function openRecaudoModal() {
           </div>
         </div>
         
-        <!-- Fila de Valores -->
+        <!-- Fila de Valores Recaudo -->
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div class="form-group mb-0">
-            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Total Valor Bruto</label>
+            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Valor Recibido en Banco / Caja</label>
             <div class="relative">
               <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-500 font-bold">$</div>
               <input id="teso-modal-monto" type="text"
@@ -3648,10 +3776,10 @@ async function openPagoModal() {
           </div>
         </div>
         
-        <!-- Fila de Valores -->
+        <!-- Fila de Valores Egreso -->
         <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div class="form-group mb-0">
-            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Total Valor Bruto</label>
+            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Valor Girado / Pagado</label>
             <div class="relative">
               <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-500 font-bold">$</div>
               <input id="teso-modal-monto" type="text"

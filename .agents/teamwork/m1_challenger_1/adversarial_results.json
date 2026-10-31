@@ -1,0 +1,306 @@
+{
+  "total": 27,
+  "passed": 27,
+  "failed": 0,
+  "duration_s": 63.716391099849716,
+  "results": [
+    {
+      "test_name": "B1.1_hyphenated_css_attributes",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Buzzwords=0, Score=100.0",
+      "data": {
+        "code": 0,
+        "buzzwords": 0,
+        "score": 100.0
+      }
+    },
+    {
+      "test_name": "B1.2_css_color_hash_token_elevate",
+      "status": "PASS",
+      "passed": true,
+      "details": "Immune to #elevate: buzzwords=0",
+      "data": {
+        "code": 0,
+        "findings": [],
+        "has_false_positive": false
+      }
+    },
+    {
+      "test_name": "B1.3_css_custom_properties_variables",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Buzzwords=0",
+      "data": {
+        "code": 0,
+        "buzzwords": 0
+      }
+    },
+    {
+      "test_name": "B1.4_code_comments_filtering",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Buzzwords=0, Findings=[]",
+      "data": {
+        "code": 0,
+        "findings": []
+      }
+    },
+    {
+      "test_name": "B1.5_markdown_fenced_code_blocks",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Buzzwords=0",
+      "data": {
+        "code": 0,
+        "findings": []
+      }
+    },
+    {
+      "test_name": "B1.6_html_attribute_values_href_and_data",
+      "status": "PASS",
+      "passed": true,
+      "details": "Immune to attributes",
+      "data": {
+        "code": 0,
+        "findings": [],
+        "has_attr_fp": false
+      }
+    },
+    {
+      "test_name": "B2.1_spanish_accents_and_inverted_punctuation",
+      "status": "PASS",
+      "passed": true,
+      "details": "Detected: desata=True, potenciar=True, sum\u00e9rgete=True, tapiz=True, hol\u00edstico=True, sin fricci\u00f3n=True, no busques m\u00e1s=True. Total=7",
+      "data": {
+        "matched_words": [
+          "desata",
+          "potenciar",
+          "sum\u00e9rgete",
+          "tapiz",
+          "hol\u00edstico",
+          "sin fricci\u00f3n",
+          "no busques m\u00e1s"
+        ],
+        "all_detected": true
+      }
+    },
+    {
+      "test_name": "B2.2_uppercase_and_mixed_case_cliches",
+      "status": "PASS",
+      "passed": true,
+      "details": "Matched=['UNLEASH', 'DELVE', 'TAPESTRY', 'BESPOKE', 'ROBUST', 'SUPERCHARGE'], Found 6 buzzwords",
+      "data": {
+        "matched": [
+          "UNLEASH",
+          "DELVE",
+          "TAPESTRY",
+          "BESPOKE",
+          "ROBUST",
+          "SUPERCHARGE"
+        ]
+      }
+    },
+    {
+      "test_name": "B2.3_quoted_cliches",
+      "status": "PASS",
+      "passed": true,
+      "details": "Matched=['effortless', 'seamless', 'game-changer', 'realm']",
+      "data": {
+        "matched": [
+          "effortless",
+          "seamless",
+          "game-changer",
+          "realm"
+        ]
+      }
+    },
+    {
+      "test_name": "B2.4_structural_formula_recall_en_es",
+      "status": "PASS",
+      "passed": true,
+      "details": "Formulas detected=10 / 10 expected, Exit=1",
+      "data": {
+        "total_formulas": 10
+      }
+    },
+    {
+      "test_name": "B2.5_triad_parallelism_detection",
+      "status": "PASS",
+      "passed": true,
+      "details": "Triads detected=1, Exit=1",
+      "data": {
+        "total_triads": 1
+      }
+    },
+    {
+      "test_name": "B2.6_markdown_headings_buzzword_recall",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=1, Headings Buzzwords=7/7, Score=0.0. Markdown headings audited correctly",
+      "data": {
+        "total_buzzwords": 7,
+        "score": 0.0,
+        "critical_blindspot": false
+      }
+    },
+    {
+      "test_name": "B3.1_empty_file_zero_bytes",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Score=100.0, Time=334.6ms",
+      "data": {
+        "code": 0,
+        "score": 100.0,
+        "duration_ms": 334.646999835968
+      }
+    },
+    {
+      "test_name": "B3.2_single_word_clean",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Score=100.0",
+      "data": {
+        "code": 0,
+        "score": 100.0
+      }
+    },
+    {
+      "test_name": "B3.3_single_word_slop",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=1, Score=0.0 (Correctly failed on 100% density)",
+      "data": {
+        "code": 1,
+        "score": 0.0
+      }
+    },
+    {
+      "test_name": "B3.4_whitespace_and_punctuation_only",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Score=100.0",
+      "data": {
+        "code": 0,
+        "score": 100.0
+      }
+    },
+    {
+      "test_name": "B3.5_unicode_emojis_support",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=1, Findings=['Unleash', 'seamless'], No UnicodeEncode/Decode crash",
+      "data": {
+        "code": 1,
+        "findings": [
+          "Unleash",
+          "seamless"
+        ]
+      }
+    },
+    {
+      "test_name": "B3.6_binary_bytes_resilience",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=1, Survived crash=True, Findings=1",
+      "data": {
+        "code": 1,
+        "survived": true
+      }
+    },
+    {
+      "test_name": "B3.7_10mb_large_file_stress",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Size=10.12MB, Words=1,534,512, Duration=54.71s, Score=100.0",
+      "data": {
+        "size_mb": 10.122020721435547,
+        "duration_s": 54.71078780014068,
+        "words": 1534512,
+        "score": 100.0
+      }
+    },
+    {
+      "test_name": "B4.1_cli_threshold_95_fail",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=1, Score=0.0 < 95.0",
+      "data": {
+        "code": 1,
+        "score": 0.0
+      }
+    },
+    {
+      "test_name": "B4.2_cli_threshold_0_pass",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Passed=True, Score=0.0 >= 0",
+      "data": {
+        "code": 0,
+        "score": 0.0,
+        "passed": true
+      }
+    },
+    {
+      "test_name": "B4.3_cli_lang_es_ignores_english",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Buzzwords=0 (EN buzzwords ignored under --lang es)",
+      "data": {
+        "code": 0,
+        "buzzwords": 0
+      }
+    },
+    {
+      "test_name": "B4.4_cli_lang_en_ignores_spanish",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=0, Buzzwords=0 (ES buzzwords ignored under --lang en)",
+      "data": {
+        "code": 0,
+        "buzzwords": 0
+      }
+    },
+    {
+      "test_name": "B4.5_cli_format_json_and_flag_json_equivalence",
+      "status": "PASS",
+      "passed": true,
+      "details": "Summary match=True, ReturnCodes=0/0",
+      "data": {
+        "equiv": true
+      }
+    },
+    {
+      "test_name": "B4.6_cli_non_existent_path_exit_2",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=2, Stderr='Error: Target path does not exist: C:\\Users\\JULIAN\\Desktop\\GravyLocalTABS\\non_existent_path_xyz_123.md'",
+      "data": {
+        "code": 2,
+        "stderr": "Error: Target path does not exist: C:\\Users\\JULIAN\\Desktop\\GravyLocalTABS\\non_existent_path_xyz_123.md"
+      }
+    },
+    {
+      "test_name": "B4.7_cli_invalid_lang_choice_exit_2",
+      "status": "PASS",
+      "passed": true,
+      "details": "Exit=2",
+      "data": {
+        "code": 2
+      }
+    },
+    {
+      "test_name": "B4.8_directory_scan_ignores_node_modules",
+      "status": "PASS",
+      "passed": true,
+      "details": "Total files=2, Ignored node_modules=True",
+      "data": {
+        "total_files": 2,
+        "scanned_files": [
+          "C:\\Users\\JULIAN\\AppData\\Local\\Temp\\tmpoum82sl0\\index.html",
+          "C:\\Users\\JULIAN\\AppData\\Local\\Temp\\tmpoum82sl0\\sub\\page.tsx"
+        ]
+      }
+    }
+  ]
+}

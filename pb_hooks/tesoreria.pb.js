@@ -77,7 +77,7 @@ onRecordCreateRequest((e) => {
   // NUNCA debe auto-cruzar anticipos o saldos a favor preexistentes (los anticipos preexistentes
   // se liquidan/cruzan exclusivamente en la facturación o mediante comprobante explícito de cruce contable).
   const isCrucePuro = params.is_cruce_anticipo === true || (rawAmount <= 0.001 && params.cruzar_anticipos === true);
-  const cruzarAnticipos = isCrucePuro || (params.cruzar_anticipos === true && !propertyId && !isRC);
+  const cruzarAnticipos = isCrucePuro || (params.cruzar_anticipos === true);
   const branch_id = rec.get("branch_id") || null;
   const cost_center_id = params.cost_center_id || null;
 
@@ -398,9 +398,10 @@ onRecordCreateRequest((e) => {
         nuevoAnticipo = totalCarteraACancelar - sumDist;
       }
     } else {
-      // Separar anticipos disponibles de cartera
+      // 1. Separar anticipos disponibles, notas crédito / saldos a favor, y facturas exigibles
       const anticipoItems = cruzarAnticipos ? openItems.filter(i => i.isAnticipo && !i.isReceivable) : [];
-      const cxcItems      = openItems.filter(i => !i.isAnticipo);
+      const ncItems       = openItems.filter(i => !i.isAnticipo && (i.isCreditDoc || !i.isReceivable));
+      const invoiceItems  = openItems.filter(i => !i.isAnticipo && !i.isCreditDoc && i.isReceivable);
       const rules         = params.reglas || {};
 
       function isPartidaInteres(item) {
@@ -421,63 +422,109 @@ onRecordCreateRequest((e) => {
         return false;
       }
 
-      cxcItems.sort((a, b) => {
+      // Ordenar facturas: 1° Intereses de mora, 2° FIFO por antigüedad
+      invoiceItems.sort((a, b) => {
         const aIsInt = isPartidaInteres(a);
         const bIsInt = isPartidaInteres(b);
-
-        // 1. Regla legal y contable: Intereses moratorios primero
         if (rules.interesPrioridad !== false) {
           if (aIsInt && !bIsInt) return -1;
           if (!aIsInt && bIsInt) return 1;
         }
-
-        // 2. Regla FIFO: Antigüedad de la deuda (fechas más antiguas primero)
         const aDate = a.firstDate || a.dueDate || "";
         const bDate = b.firstDate || b.dueDate || "";
-        if (aDate && bDate && aDate !== bDate) {
-          return aDate.localeCompare(bDate);
-        }
-
-        // 3. Desempate por referencia
+        if (aDate && bDate && aDate !== bDate) return aDate.localeCompare(bDate);
         return String(a.cross_doc_ref || "").localeCompare(String(b.cross_doc_ref || ""));
       });
 
-      let anticipoDisponible = anticipoItems.reduce((s, i) => s + i.saldo, 0);
-      const saldosCxC = cxcItems.map(i => ({ ...i, saldoRestante: i.saldo }));
-      
-      let anticoporConsumir = anticipoDisponible;
-      if (anticoporConsumir > 0.01) {
-        for (const cxc of saldosCxC) {
-          if (anticoporConsumir <= 0.01) break;
-          const aplicar = Math.min(anticoporConsumir, cxc.saldoRestante);
-          if (aplicar > 0.01) {
-            anticipoAbonos.push({
-              key: cxc.key, cross_doc_ref: cxc.cross_doc_ref,
-              account_id: cxc.account_id, monto: aplicar,
-              isReceivable: cxc.isReceivable, isAnticipo: false
+      // Ordenar notas crédito: FIFO por antigüedad
+      ncItems.sort((a, b) => {
+        const aDate = a.firstDate || a.dueDate || "";
+        const bDate = b.firstDate || b.dueDate || "";
+        if (aDate && bDate && aDate !== bDate) return aDate.localeCompare(bDate);
+        return String(a.cross_doc_ref || "").localeCompare(String(b.cross_doc_ref || ""));
+      });
+
+      const saldosFacturas = invoiceItems.map(i => ({ ...i, saldoRestante: Number(i.saldo || 0) }));
+
+      // A. Cruce automático de Notas Crédito / Saldos a favor contra Facturas (Compensación directa)
+      for (const nc of ncItems) {
+        let ncRemanente = Number(nc.saldo || 0);
+        for (const inv of saldosFacturas) {
+          if (ncRemanente <= 0.005) break;
+          if (inv.saldoRestante <= 0.005) continue;
+          const cruzar = Math.min(ncRemanente, inv.saldoRestante);
+          if (cruzar > 0.005) {
+            cashAbonos.push({
+              key: nc.key,
+              cross_doc_ref: nc.cross_doc_ref,
+              account_id: nc.account_id,
+              monto: cruzar,
+              isCreditDoc: true,
+              isReceivable: false,
+              isAnticipo: false,
+              description: isRC ? ("Cruce Nota Crédito " + nc.cross_doc_ref + " contra " + inv.cross_doc_ref) : ("Cruce Nota Débito " + nc.cross_doc_ref)
             });
-            cxc.saldoRestante -= aplicar;
-            anticoporConsumir -= aplicar;
+            cashAbonos.push({
+              key: inv.key,
+              cross_doc_ref: inv.cross_doc_ref,
+              account_id: inv.account_id,
+              monto: cruzar,
+              isCreditDoc: false,
+              isReceivable: true,
+              isAnticipo: false,
+              description: isRC ? ("Abono por compensación Nota Crédito " + nc.cross_doc_ref) : ("Abono por compensación Nota Débito " + nc.cross_doc_ref)
+            });
+            inv.saldoRestante = Math.round((inv.saldoRestante - cruzar) * 100) / 100;
+            ncRemanente = Math.round((ncRemanente - cruzar) * 100) / 100;
           }
         }
       }
 
-      let saldoCash = totalCarteraACancelar;
-      for (const cxc of saldosCxC) {
-        if (saldoCash <= 0.01) break;
-        if (cxc.saldoRestante <= 0.01) continue;
-        const aplicar = Math.min(saldoCash, cxc.saldoRestante);
-        if (aplicar > 0.01) {
-          cashAbonos.push({
-            key: cxc.key, cross_doc_ref: cxc.cross_doc_ref,
-            account_id: cxc.account_id, monto: aplicar,
-            isReceivable: cxc.isReceivable, isAnticipo: false
-          });
-          saldoCash -= aplicar;
+      // B. Cruce de Anticipos disponibles si está habilitado
+      let anticipoDisponible = anticipoItems.reduce((s, i) => s + Number(i.saldo || 0), 0);
+      let anticoporConsumir = anticipoDisponible;
+      if (anticoporConsumir > 0.005) {
+        for (const inv of saldosFacturas) {
+          if (anticoporConsumir <= 0.005) break;
+          if (inv.saldoRestante <= 0.005) continue;
+          const aplicar = Math.min(anticoporConsumir, inv.saldoRestante);
+          if (aplicar > 0.005) {
+            anticipoAbonos.push({
+              key: inv.key,
+              cross_doc_ref: inv.cross_doc_ref,
+              account_id: inv.account_id,
+              monto: aplicar,
+              isReceivable: true,
+              isAnticipo: false
+            });
+            inv.saldoRestante = Math.round((inv.saldoRestante - aplicar) * 100) / 100;
+            anticoporConsumir = Math.round((anticoporConsumir - aplicar) * 100) / 100;
+          }
         }
       }
 
-      nuevoAnticipo = saldoCash > 0.01 ? saldoCash : 0;
+      // C. Abonos con Cash / Medios de Pago a Cartera (Fondos reales de Caja/Bancos)
+      let saldoCash = totalCarteraACancelar;
+      for (const inv of saldosFacturas) {
+        if (saldoCash <= 0.005) break;
+        if (inv.saldoRestante <= 0.005) continue;
+        const aplicar = Math.min(saldoCash, inv.saldoRestante);
+        if (aplicar > 0.005) {
+          cashAbonos.push({
+            key: inv.key,
+            cross_doc_ref: inv.cross_doc_ref,
+            account_id: inv.account_id,
+            monto: aplicar,
+            isReceivable: true,
+            isAnticipo: false,
+            isCreditDoc: false
+          });
+          inv.saldoRestante = Math.round((inv.saldoRestante - aplicar) * 100) / 100;
+          saldoCash = Math.round((saldoCash - aplicar) * 100) / 100;
+        }
+      }
+
+      nuevoAnticipo = saldoCash > 0.005 ? saldoCash : 0;
       anticipoConsumido = Math.min(anticipoDisponible, anticipoAbonos.reduce((s, a) => s + a.monto, 0));
     }
   }
@@ -528,21 +575,26 @@ onRecordCreateRequest((e) => {
 
   // 1. Anticipo existente consumido
   if (anticipoAbonos.length > 0 && anticipoConsumido > 0.01) {
-    // En CARTERA_DIRECTA, el anticipo reside en la cuenta de cartera (1345), NUNCA en la cuenta 28
-    const cuentaAnticipoConsumo = (isRC && propertyId && metodoSaldosFavor === 'CARTERA_DIRECTA')
-      ? (cxcAccId || anticipoAccountId)
-      : anticipoAccountId;
+    // En CARTERA_DIRECTA o comercial, resolver cuenta exacta del anticipo preexistente
+    const cuentaAnticipoConsumo = (anticipoItems.length > 0 && anticipoItems[0].account_id)
+      ? anticipoItems[0].account_id
+      : ((isRC && propertyId && metodoSaldosFavor === 'CARTERA_DIRECTA')
+        ? (cxcAccId || anticipoAccountId)
+        : anticipoAccountId);
+    const activeAntRef = (anticipoItems.length > 0 && anticipoItems[0].cross_doc_ref)
+      ? anticipoItems[0].cross_doc_ref
+      : anticipoRef;
 
     if (cuentaAnticipoConsumo) {
       plannedLines.push({
         account_id: cuentaAnticipoConsumo,
         third_party_id: third_party_id,
-        cross_doc_ref: anticipoRef,
+        cross_doc_ref: activeAntRef,
         debit: isRC ? anticipoConsumido : 0,
         credit: isRC ? 0 : anticipoConsumido,
         description: (isRC && propertyId && metodoSaldosFavor === 'CARTERA_DIRECTA')
-          ? "Aplicación saldo a favor cartera " + anticipoRef
-          : "Aplicación anticipo " + anticipoRef
+          ? "Aplicación saldo a favor cartera " + activeAntRef
+          : "Aplicación anticipo " + activeAntRef
       });
       for (const ab of anticipoAbonos) {
         if (!ab.account_id || ab.monto <= 0) continue;
@@ -663,14 +715,41 @@ onRecordCreateRequest((e) => {
         const quotaAmt = Math.round(Math.min(remainingAnt, targetQuota) * 100) / 100;
         const pCode = curPeriod.replace('-', '');
         const isPartial = quotaAmt < targetQuota && adminFee > 0;
-        const partialLabel = isPartial ? ` (Abono parcial: $${quotaAmt} de $${targetQuota})` : '';
+        const partialLabel = isPartial ? ` (Abono parcial: ${quotaAmt} de ${targetQuota})` : '';
+
+        // Determinar la referencia limpia de cuota de administración CF-YYYYMM-XXXXXX-ADM
+        let targetDocRef = "";
+        try {
+          const existingInv = $app.findFirstRecordByFilter("ph_invoices", "property_id = '" + propertyId + "' && period = '" + curPeriod + "' && status != 'voided'");
+          if (existingInv && existingInv.get("number")) {
+            targetDocRef = existingInv.get("number") + "-ADM";
+          }
+        } catch(_) {}
+
+        if (!targetDocRef) {
+          let propSeq = "";
+          try {
+            const priorInvs = $app.findRecordsByFilter("ph_invoices", "property_id = '" + propertyId + "' && number ~ 'CF-'", "-period", 1, 0);
+            if (priorInvs && priorInvs.length > 0 && priorInvs[0].get("number")) {
+              propSeq = priorInvs[0].get("number").split("-")[2];
+            }
+          } catch(_) {}
+
+          if (propSeq) {
+            targetDocRef = "CF-" + pCode + "-" + propSeq + "-ADM";
+          } else {
+            const pCodeStr = propRecord ? String(propRecord.get("code") || "") : "";
+            targetDocRef = "CF-" + pCode + "-" + (pCodeStr || "ADM") + "-ADM";
+          }
+        }
+
         plannedLines.push({
           account_id: cxcAccId,
           third_party_id: third_party_id,
-          cross_doc_ref: `ANTICIPO-${pCode}-${propertyId}`,
+          cross_doc_ref: targetDocRef,
           debit: 0,
           credit: quotaAmt,
-          description: `Abono anticipado cuota ${curPeriod}${partialLabel} - ${propCodeName}`
+          description: "Abono a " + targetDocRef + partialLabel + " - " + propCodeName
         });
         remainingAnt = Math.round((remainingAnt - quotaAmt) * 100) / 100;
         curPeriod = getNextPeriodStr(curPeriod);

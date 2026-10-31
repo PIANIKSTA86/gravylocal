@@ -1,30 +1,43 @@
-const { execSync } = require('child_process');
-const http = require('http');
+const { execSync, spawn } = require('child_process');
+const path = require('path');
 
 try {
-  const netstat = execSync('netstat -ano | findstr :8092 | findstr LISTENING', { encoding: 'utf8' });
-  const match = netstat.match(/LISTENING\s+(\d+)/);
-  if (match) {
-    const pid = match[1];
-    console.log(`Killing PID ${pid} via WMI...`);
-    try {
-      execSync(`powershell -Command "(Get-WmiObject Win32_Process -Filter 'ProcessId=${pid}').Terminate()"`);
-      console.log('Terminated via WMI');
-    } catch (e) {
-      console.log('WMI terminate failed:', e.message);
-    }
-  }
+  execSync('taskkill /F /PID 15924');
+  console.log('Killed PID 15924');
 } catch (e) {
-  console.log('No process on 8092 found or error:', e.message);
+  console.log('Kill err:', e.message);
 }
 
-setTimeout(() => {
-  console.log('Triggering orchestrator ensure 8092...');
-  http.get('http://127.0.0.1:8088/api/orchestrate/ensure/8092', (res) => {
-    let data = '';
-    res.on('data', chunk => data += chunk);
-    res.on('end', () => {
-      console.log('Ensure response:', data);
-    });
-  }).on('error', err => console.error('Ensure error:', err));
-}, 2000);
+// Find any other pid on 8092
+try {
+  const netstat = execSync('netstat -ano | findstr :8092', { encoding: 'utf8' });
+  for (const line of netstat.split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 5 && parts[1].includes(':8092') && parts[3] === 'LISTENING') {
+      const pid = parseInt(parts[4], 10);
+      if (pid && pid > 0) {
+        try { execSync(`taskkill /F /PID ${pid}`); } catch (_) {}
+      }
+    }
+  }
+} catch (_) {}
+
+const root = path.resolve(__dirname, '..');
+const sub = spawn(
+  path.join(root, 'pocketbase.exe'),
+  [
+    'serve',
+    '--http=0.0.0.0:8092',
+    `--dir=${path.join(root, 'empresas', 'empresa_8092', 'pb_data')}`,
+    `--publicDir=${path.join(root, 'pb_public')}`,
+    `--hooksDir=${path.join(root, 'empresas', 'empresa_8092', 'pb_hooks')}`,
+    '--migrationsDir=pb_migrations'
+  ],
+  {
+    detached: true,
+    stdio: 'ignore',
+    cwd: root
+  }
+);
+sub.unref();
+console.log('Spawned 8092 with PID', sub.pid);

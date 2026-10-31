@@ -184,7 +184,7 @@ async function loadDocSoportePage(c: HTMLElement) {
     if (prefix) txFilter += ` || tx_type_id.prefix="${prefix}"`;
   });
 
-  const [docs, txs, purInvoices] = await Promise.all([
+  const [docs, txs, purInvoices, suppDocs] = await Promise.all([
     pb.listAll('einvoice_docs', { 
       fields: 'id,tx_id,status,cufe,hash,dian_response', 
       sort: '-id' 
@@ -198,6 +198,10 @@ async function loadDocSoportePage(c: HTMLElement) {
       filter: purFilter, 
       sort: '-date,-id', 
       expand: 'supplier_id,tx_type_id,cost_center_id' 
+    }).catch(() => []),
+    pb.listAll('support_documents', {
+      sort: '-date,-id',
+      expand: 'supplier_id,tx_type_id,cost_center_id'
     }).catch(() => [])
   ]);
 
@@ -205,13 +209,52 @@ async function loadDocSoportePage(c: HTMLElement) {
   docs.forEach((d: any) => { if (d.tx_id) docMap.set(d.tx_id, d); });
 
   const dsList: DocSoporteItem[] = [];
+  const seenNumbers = new Set<string>();
+  const seenTxIds = new Set<string>();
 
+  // 1. Fuente desacoplada principal: support_documents
+  suppDocs.forEach((s: any) => {
+    const doc = s.tx_id ? docMap.get(s.tx_id) : null;
+    const statusDian = s.status_dian || (doc ? doc.status : (s.status === 'draft' ? 'borrador' : 'pendiente'));
+    const numNorm = String(s.number || '').trim().toUpperCase();
+    if (numNorm) seenNumbers.add(numNorm);
+    if (s.tx_id) seenTxIds.add(s.tx_id);
+
+    dsList.push({
+      id: s.id,
+      tx_id: s.tx_id || '',
+      number: s.number || 'DS-BORRADOR',
+      date: s.date || '',
+      supplier_id: s.supplier_id || '',
+      supplier_name: s.expand?.supplier_id?.name || 'Sujeto No Obligado',
+      supplier_nit: s.expand?.supplier_id?.doc_number || 'NIT',
+      total: s.total || s.payable_total || 0,
+      subtotal: s.subtotal || 0,
+      ret_total: s.ret_total || 0,
+      status: s.status || 'draft',
+      status_dian: statusDian,
+      cuds: s.cuds || doc?.cufe || doc?.hash || '',
+      xml_content: s.xml_content || doc?.xml_content || '',
+      dian_response: s.dian_response || doc?.dian_response || '',
+      doc_type: (s.doc_type || 'DS') as 'DS' | 'NDS',
+      cost_center_id: s.cost_center_id || '',
+      cost_center_code: s.expand?.cost_center_id?.code || '',
+      cost_center_name: s.expand?.cost_center_id?.name || '',
+      expand: s.expand
+    });
+  });
+
+  // 2. Respaldo para registros legacy en purchase_invoices
   purInvoices.forEach((p: any) => {
+    const numNorm = String(p.number || '').trim().toUpperCase();
+    if ((numNorm && seenNumbers.has(numNorm)) || (p.tx_id && seenTxIds.has(p.tx_id))) return;
     const code = String(p.expand?.tx_type_id?.code || '').toUpperCase();
-    const prefix = String(p.number || '').split('-')[0].toUpperCase();
-    if (code === 'DS' || code === 'NDS' || dsPrefixes.has(prefix) || String(p.number || '').startsWith('DS')) {
+    const prefix = numNorm.split('-')[0];
+    if (code === 'DS' || code === 'NDS' || dsPrefixes.has(prefix) || numNorm.startsWith('DS')) {
       const doc = p.tx_id ? docMap.get(p.tx_id) : null;
       const statusDian = doc ? (doc.status || 'pendiente') : (p.status === 'draft' ? 'borrador' : 'pendiente');
+      if (numNorm) seenNumbers.add(numNorm);
+      if (p.tx_id) seenTxIds.add(p.tx_id);
 
       dsList.push({
         id: p.id,
@@ -238,33 +281,37 @@ async function loadDocSoportePage(c: HTMLElement) {
     }
   });
 
+  // 3. Respaldo para comprobantes contables históricos en transactions
   txs.forEach((t: any) => {
-    const code = String(t.expand?.tx_type_id?.code || '').toUpperCase();
-    const prefix = String(t.expand?.tx_type_id?.prefix || '').toUpperCase();
-    if ((code === 'DS' || code === 'NDS' || dsPrefixes.has(prefix)) && !dsList.some(d => d.tx_id === t.id)) {
-      const doc = docMap.get(t.id);
-      const statusDian = doc ? (doc.status || 'pendiente') : (t.status === 'draft' ? 'borrador' : 'pendiente');
+    const numNorm = String(t.number || '').trim().toUpperCase();
+    if ((numNorm && seenNumbers.has(numNorm)) || seenTxIds.has(t.id)) return;
+    const doc = docMap.get(t.id);
+    const statusDian = doc ? (doc.status || 'pendiente') : (t.status === 'draft' ? 'borrador' : 'pendiente');
+    if (numNorm) seenNumbers.add(numNorm);
+    seenTxIds.add(t.id);
 
-      dsList.push({
-        id: t.id,
-        tx_id: t.id,
-        number: t.number || '',
-        date: t.date || '',
-        supplier_id: t.third_party_id || '',
-        supplier_name: t.expand?.third_party_id?.name || 'Sujeto No Obligado',
-        supplier_nit: t.expand?.third_party_id?.doc_number || 'NIT',
-        total: t.cross_amount || 0,
-        subtotal: t.net_amount || (t.cross_amount || 0),
-        ret_total: t.ret_amount || 0,
-        status: t.status === 'draft' ? 'draft' : 'posted',
-        status_dian: statusDian,
-        cuds: doc?.cufe || doc?.hash || '',
-        xml_content: doc?.xml_content || '',
-        dian_response: doc?.dian_response || '',
-        doc_type: code === 'NDS' ? 'NDS' : 'DS',
-        expand: t.expand
-      });
-    }
+    dsList.push({
+      id: t.id,
+      tx_id: t.id,
+      number: t.number || 'DS',
+      date: t.date || '',
+      supplier_id: t.third_party_id || '',
+      supplier_name: t.expand?.third_party_id?.name || 'Sujeto No Obligado',
+      supplier_nit: t.expand?.third_party_id?.doc_number || 'NIT',
+      total: t.total || 0,
+      subtotal: t.total || 0,
+      ret_total: 0,
+      status: t.status || 'posted',
+      status_dian: statusDian,
+      cuds: doc?.cufe || doc?.hash || '',
+      xml_content: doc?.xml_content || '',
+      dian_response: doc?.dian_response || '',
+      doc_type: String(t.expand?.tx_type_id?.code || '').toUpperCase() === 'NDS' ? 'NDS' : 'DS',
+      cost_center_id: '',
+      cost_center_code: '',
+      cost_center_name: '',
+      expand: t.expand
+    });
   });
 
 function getDsPeriodDates(periodType: string): { from: string; to: string } {
@@ -493,7 +540,9 @@ function renderDsRows(list: DocSoporteItem[]): string {
   return list.map(d => {
     const st = badgeMap[d.status_dian] || badgeMap.pendiente;
     const isNDS = d.doc_type === 'NDS';
-    const isDraft = d.status_dian === 'borrador' || d.status === 'draft';
+    const isAccepted = d.status_dian === 'aceptada' && d.cuds && d.cuds.length > 20 && d.cuds !== '404';
+    const isEditable = !isAccepted;
+    const canPostDraft = (d.status === 'draft' || d.status_dian === 'borrador') && d.status_dian !== 'rechazada';
 
     return `
       <tr class="hover:bg-slate-50 transition-colors">
@@ -534,10 +583,12 @@ function renderDsRows(list: DocSoporteItem[]): string {
               <i class="fas fa-eye text-gray-600"></i>
             </button>
             
-            ${isDraft ? `
-              <button class="btn btn-outline btn-sm p-1.5 border-slate-500 hover:bg-slate-50 text-slate-700" title="Editar Borrador" onclick="window.openEditDsModal('${esc(d.id)}')">
+            ${isEditable ? `
+              <button class="btn btn-outline btn-sm p-1.5 border-slate-500 hover:bg-slate-50 text-slate-700" title="${d.status_dian === 'rechazada' ? 'Editar y Corregir' : 'Editar Borrador'}" onclick="window.openEditDsModal('${esc(d.id)}')">
                 <i class="fas fa-pen-to-square"></i>
               </button>
+            ` : ''}
+            ${canPostDraft ? `
               <button class="btn btn-outline btn-sm p-1.5 border-emerald-600 hover:bg-emerald-50 text-emerald-700" title="Contabilizar Borrador" onclick="window.contabilizarDsRow('${esc(d.id)}')">
                 <i class="fas fa-calculator"></i>
               </button>
@@ -550,7 +601,7 @@ function renderDsRows(list: DocSoporteItem[]): string {
             ` : ''}
 
             ${(d.status_dian === 'enviada' || d.status_dian === 'aceptada' || d.status_dian === 'rechazada' || !d.cuds || d.cuds === '404') ? `
-              <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado DIAN" onclick="window.checkFtechStatus('${esc(d.id)}','${esc(d.tx_id || '')}')">
+              <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado DIAN" onclick="window.checkFtechStatus('${esc(d.id)}','${esc(d.tx_id || '')}','${esc(d.number || '')}')">
                 <i class="fas fa-arrows-rotate text-blue-600"></i>
               </button>
             ` : ''}
@@ -793,16 +844,48 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
   const dsTxTypes = txTypes.filter((t: any) => String(t.code).toUpperCase() === 'DS' || dsResolutions.some((r: any) => r.prefix === t.prefix));
 
   let existingPur: any = null, existingLines: any[] = [];
+  let isSupportDoc = false;
 
   if (editId) {
-    existingPur = await pb.get('purchase_invoices', editId, { expand: 'supplier_id,tx_type_id' }).catch(() => null);
+    // 1. Intentar en support_documents (fuente desacoplada principal)
+    try {
+      existingPur = await pb.get('support_documents', editId, { expand: 'supplier_id,tx_type_id,cost_center_id,bank_account_id' });
+      if (existingPur) {
+        isSupportDoc = true;
+        existingLines = await pb.listAll('support_document_lines', {
+          filter: `document_id="${pb.escapeFilterValue(existingPur.id)}"`,
+          expand: 'product_id,account_id',
+          sort: 'line_order'
+        }).catch(() => []);
+      }
+    } catch (_) {}
+
+    // 2. Si no encontró por ID, buscar por tx_id en support_documents
     if (!existingPur) {
       try {
-        existingPur = await pb.getFirstRecordByFilter('purchase_invoices', `tx_id = "${pb.escapeFilterValue(editId)}"`, { expand: 'supplier_id,tx_type_id' });
+        existingPur = await pb.getFirstRecordByFilter('support_documents', `tx_id="${pb.escapeFilterValue(editId)}"`, { expand: 'supplier_id,tx_type_id,cost_center_id,bank_account_id' });
+        if (existingPur) {
+          isSupportDoc = true;
+          existingLines = await pb.listAll('support_document_lines', {
+            filter: `document_id="${pb.escapeFilterValue(existingPur.id)}"`,
+            expand: 'product_id,account_id',
+            sort: 'line_order'
+          }).catch(() => []);
+        }
       } catch (_) {}
     }
-    if (existingPur) {
-      existingLines = await pb.listAll('purchase_invoice_lines', { filter: `invoice_id = "${existingPur.id}"`, expand: 'product_id,account_id' });
+
+    // 3. Fallback a purchase_invoices (para registros legacy)
+    if (!existingPur) {
+      existingPur = await pb.get('purchase_invoices', editId, { expand: 'supplier_id,tx_type_id' }).catch(() => null);
+      if (!existingPur) {
+        try {
+          existingPur = await pb.getFirstRecordByFilter('purchase_invoices', `tx_id = "${pb.escapeFilterValue(editId)}"`, { expand: 'supplier_id,tx_type_id' });
+        } catch (_) {}
+      }
+      if (existingPur) {
+        existingLines = await pb.listAll('purchase_invoice_lines', { filter: `invoice_id = "${existingPur.id}"`, expand: 'product_id,account_id' });
+      }
     }
   }
 
@@ -1267,6 +1350,8 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         addDsLine(prod, l, withholdingRules);
       } else if (acct) {
         addDsLine({ account_id: acct.id, code: acct.code, name: acct.name, cost_price: l.unit_price || 0 }, l, withholdingRules);
+      } else {
+        addDsLine({ name: l.description || 'Concepto / Servicio', cost_price: l.unit_price || 0 }, l, withholdingRules);
       }
     });
   } else {
@@ -1339,6 +1424,8 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
       }
 
       const paymentMethod = isCredit ? 'CREDITO' : (requiresBank ? 'TRANSFERENCIA' : 'EFECTIVO');
+      const warehouseId = (document.getElementById('ds-warehouse') as HTMLSelectElement)?.value || '';
+      const costCenterId = (document.getElementById('ds-cost-center') as HTMLSelectElement)?.value || null;
 
       let subtotalSum = 0;
       let retSum = 0;
@@ -1403,8 +1490,6 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
       }
 
       const payableTotal = Math.max(0, subtotalSum - retSum);
-      const warehouseId = (document.getElementById('ds-warehouse') as HTMLSelectElement)?.value || '';
-      const costCenterId = (document.getElementById('ds-cost-center') as HTMLSelectElement)?.value || null;
 
       const headerPayload = {
         cost_center_id: costCenterId,
@@ -1421,7 +1506,7 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         payment_method: paymentMethod,
         bank_account_id: bankAccountId,
         notes: (document.getElementById('ds-notes') as HTMLTextAreaElement).value || 'Documento Soporte a No Obligado a Facturar',
-        status: 'draft',
+        status: (existingPur && existingPur.status) ? existingPur.status : 'draft',
         subtotal: subtotalSum,
         total: subtotalSum,
         ret_total: retSum,
@@ -1433,7 +1518,18 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
       let purInv: any;
       if (existingPur && existingPur.id) {
         // ACTUALIZAR BORRADOR EXISTENTE (Sin crear registros duplicados ni alterar consecutivos)
-        if (typeof (window as any).API?.updatePurchaseInvoice === 'function') {
+        if (isSupportDoc || typeof (window as any).API?.updateSupportDocument === 'function') {
+          try {
+            purInv = await (window as any).API.updateSupportDocument(existingPur.id, headerPayload, linesData);
+          } catch (upErr: any) {
+            console.warn('[DS] Fallback update purchase_invoices:', upErr);
+            if (typeof (window as any).API?.updatePurchaseInvoice === 'function') {
+              purInv = await (window as any).API.updatePurchaseInvoice(existingPur.id, headerPayload, linesData);
+            } else {
+              throw upErr;
+            }
+          }
+        } else if (typeof (window as any).API?.updatePurchaseInvoice === 'function') {
           purInv = await (window as any).API.updatePurchaseInvoice(existingPur.id, headerPayload, linesData);
         } else {
           await pb.update('purchase_invoices', existingPur.id, headerPayload);
@@ -1454,13 +1550,15 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         }
       } else {
         // CREAR NUEVO DOCUMENTO SOPORTE
-        if (typeof (window as any).API?.createPurchaseInvoice === 'function') {
+        if (typeof (window as any).API?.createSupportDocument === 'function') {
+          purInv = await (window as any).API.createSupportDocument(headerPayload, linesData);
+        } else if (typeof (window as any).API?.createPurchaseInvoice === 'function') {
           purInv = await (window as any).API.createPurchaseInvoice(headerPayload, linesData);
         } else {
-          purInv = await pb.create('purchase_invoices', headerPayload);
+          purInv = await pb.create('support_documents', headerPayload);
           for (let i = 0; i < linesData.length; i++) {
-            await pb.create('purchase_invoice_lines', {
-              invoice_id: purInv.id,
+            await pb.create('support_document_lines', {
+              document_id: purInv.id,
               line_order: i + 1,
               ...linesData[i]
             });
@@ -1471,11 +1569,18 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
       closeModal();
 
       if (isEmitDirect) {
-        showToast('Borrador generado. Firmando y contabilizando ante la DIAN...', 'info');
-        const postedRes = await (window as any).API.postPurchaseInvoice(purInv.id);
-        if (postedRes && postedRes.tx) {
-          if ((window as any).emitDianDocFromList) {
-            await (window as any).emitDianDocFromList('', postedRes.tx.id, purInv.number || 'DS');
+        showToast('Documento guardado. Firmando y contabilizando ante la DIAN...', 'info');
+        const postFn = (window as any).API?.postSupportDocument || (window as any).API?.postPurchaseInvoice;
+        const postedRes = await postFn(purInv.id).catch((pErr: any) => {
+          showToast(pErr.message || 'Error al contabilizar documento', 'error');
+          return null;
+        });
+        const targetTxId = postedRes?.tx?.id || purInv?.tx_id || existingPur?.tx_id;
+        if (targetTxId) {
+          if (typeof (window as any).emitDocSoporteFromList === 'function') {
+            await (window as any).emitDocSoporteFromList(targetTxId, purInv.number || 'DS');
+          } else if (typeof (window as any).emitDianDocFromList === 'function') {
+            await (window as any).emitDianDocFromList('', targetTxId, purInv.number || 'DS');
           }
         }
       } else {
@@ -1488,6 +1593,7 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         renderDocSoporte((window as any).getPageContainer ? (window as any).getPageContainer(null, 'doc-soporte') : container);
       }
     } catch (err: any) {
+      console.error('[DOC SOPORTE SUBMIT ERROR]', err);
       showToast(err.response?.message || err.message, 'error');
     }
   };
@@ -1848,7 +1954,21 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
     try {
       showToast('Generando Nota de Ajuste NDS...', 'info');
 
-      const origTx = await pb.get('transactions', targetTxId, { expand: 'third_party_id' }).catch(() => null);
+      let actualTxId = targetTxId;
+      let origTx = await pb.get('transactions', actualTxId, { expand: 'third_party_id' }).catch(() => null);
+      if (!origTx) {
+        // En caso de que se haya seleccionado el id de support_documents
+        try {
+          const sDoc = await pb.get('support_documents', targetTxId).catch(() => null);
+          if (sDoc && sDoc.tx_id) {
+            actualTxId = sDoc.tx_id;
+            origTx = await pb.get('transactions', actualTxId, { expand: 'third_party_id' }).catch(() => null);
+          }
+        } catch (_) {}
+      }
+      if (!origTx) {
+        return showToast('No se encontró el comprobante contable del documento soporte original.', 'warning');
+      }
 
       const txTypes = await pb.listAll('transaction_types', { filter: 'code="NDS"' }).catch(() => []);
       let txTypeId = txTypes.length ? txTypes[0].id : '';
@@ -1861,7 +1981,7 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
 
       // Reversión contable simétrica: consultar líneas del comprobante original
       const origLines = await pb.listAll('tx_lines', {
-        filter: `tx_id="${pb.escapeFilterValue(targetTxId)}"`,
+        filter: `tx_id="${pb.escapeFilterValue(actualTxId)}"`,
         sort: 'line_order',
         expand: 'account_id'
       }).catch(() => []);
@@ -1895,7 +2015,7 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
           description: `NDS Ajuste a DS ${origTx?.number || ''}: ${ndsReason}`,
           third_party_id: origTx?.third_party_id || null,
           cross_enabled: true,
-          cross_type: 'purchase_invoices',
+          cross_type: 'support_documents',
           cross_number: origTx?.number || '',
           status: 'active',
           branch_id: origTx?.branch_id || null,
@@ -1943,28 +2063,46 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
   }
   let dsList = (window as any).__lastDsList;
   if (!dsList || !dsList.length) {
-    const rawInvoices = await pb.listAll('purchase_invoices', { sort: '-date', expand: 'supplier_id,tx_type_id' }).catch(() => []);
-    dsList = rawInvoices.map((p: any) => ({
-      id: p.id,
-      tx_id: p.tx_id || p.id,
-      doc_type: 'DS',
-      number: p.number || 'DS',
-      date: p.date,
-      supplier_name: p.expand?.supplier_id?.name || 'Sujeto No Obligado',
-      supplier_nit: p.expand?.supplier_id?.doc_number || p.expand?.supplier_id?.nit || '',
-      total: p.total || 0,
-      status_dian: p.status_dian || 'aceptada',
-      cuds: p.cuds || '',
-      xml_content: p.xml_content || ''
-    }));
+    const rawSupp = await pb.listAll('support_documents', { sort: '-date', expand: 'supplier_id,tx_type_id' }).catch(() => []);
+    if (rawSupp.length) {
+      dsList = rawSupp.map((p: any) => ({
+        id: p.id,
+        tx_id: p.tx_id || p.id,
+        doc_type: (p.doc_type || 'DS') as 'DS' | 'NDS',
+        number: p.number || 'DS',
+        date: p.date,
+        supplier_name: p.expand?.supplier_id?.name || 'Sujeto No Obligado',
+        supplier_nit: p.expand?.supplier_id?.doc_number || p.expand?.supplier_id?.nit || '',
+        total: p.total || 0,
+        status_dian: p.status_dian || 'aceptada',
+        cuds: p.cuds || '',
+        xml_content: p.xml_content || ''
+      }));
+    } else {
+      const rawInvoices = await pb.listAll('purchase_invoices', { sort: '-date', expand: 'supplier_id,tx_type_id' }).catch(() => []);
+      dsList = rawInvoices.map((p: any) => ({
+        id: p.id,
+        tx_id: p.tx_id || p.id,
+        doc_type: 'DS',
+        number: p.number || 'DS',
+        date: p.date,
+        supplier_name: p.expand?.supplier_id?.name || 'Sujeto No Obligado',
+        supplier_nit: p.expand?.supplier_id?.doc_number || p.expand?.supplier_id?.nit || '',
+        total: p.total || 0,
+        status_dian: p.status_dian || 'aceptada',
+        cuds: p.cuds || '',
+        xml_content: p.xml_content || ''
+      }));
+    }
   }
   openNuevaNdsModal(resolutions, dsList, dsId || txId);
 };
 (window as any).contabilizarDsRow = async function(id: string) {
   try {
     showToast('Contabilizando documento soporte...', 'info');
-    const res = await (window as any).API.postPurchaseInvoice(id);
-    showToast(`Documento soporte contabilizado con éxito. Consecutivo asignado: ${res.inv.number || 'DS'}`, 'success');
+    const postFn = (window as any).API?.postSupportDocument || (window as any).API?.postPurchaseInvoice;
+    const res = await postFn(id);
+    showToast(`Documento soporte contabilizado con éxito. Consecutivo asignado: ${res.doc?.number || res.inv?.number || 'DS'}`, 'success');
     if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
     else renderDocSoporte();
   } catch (err: any) {
@@ -2013,13 +2151,14 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
       async () => {
         try {
           showToast('Contabilizando documento soporte...', 'info');
-          const posted = await (window as any).API.postPurchaseInvoice(id);
+          const postFn = (window as any).API?.postSupportDocument || (window as any).API?.postPurchaseInvoice;
+          const posted = await postFn(id);
           if (posted && posted.tx && posted.tx.id) {
-            showToast(`Documento contabilizado (${posted.inv.number || docNumber}). Transmitiendo a la DIAN...`, 'info');
+            showToast(`Documento contabilizado (${posted.doc?.number || posted.inv?.number || docNumber}). Transmitiendo a la DIAN...`, 'info');
             if (typeof (window as any).emitDocSoporteFromList === 'function') {
-              await (window as any).emitDocSoporteFromList(posted.tx.id, posted.inv.number || docNumber);
+              await (window as any).emitDocSoporteFromList(posted.tx.id, posted.doc?.number || posted.inv?.number || docNumber);
             } else if (typeof (window as any).emitDianDocFromList === 'function') {
-              await (window as any).emitDianDocFromList('', posted.tx.id, posted.inv.number || docNumber);
+              await (window as any).emitDianDocFromList('', posted.tx.id, posted.doc?.number || posted.inv?.number || docNumber);
             }
             if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
             else renderDocSoporte();
@@ -2043,24 +2182,43 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
   try {
     showToast('Cargando detalle...', 'info');
     let d: any = null;
+    let suppDoc: any = null;
+
     if (txId) {
       const docs = await pb.listAll('einvoice_docs', { filter: `tx_id="${pb.escapeFilterValue(txId)}"` }).catch(() => []);
       if (docs.length) d = docs[0];
     }
-    if (!d) {
+
+    if (id) {
+      suppDoc = await pb.get('support_documents', id).catch(() => null);
+    }
+    if (!suppDoc && txId) {
       try {
-        d = await pb.get('dian_documents', id);
-      } catch (_) {
-        d = await pb.get('purchase_invoices', id);
+        suppDoc = await pb.getFirstRecordByFilter('support_documents', `tx_id="${pb.escapeFilterValue(txId)}"`);
+      } catch (_) {}
+    }
+
+    if (!d) {
+      if (suppDoc) {
+        d = suppDoc;
+      } else {
+        d = await pb.get('purchase_invoices', id).catch(() => null);
+        if (!d) {
+          d = await pb.get('einvoice_docs', id).catch(() => null);
+        }
       }
     }
+
     let tx: any = null;
     if (txId) {
       tx = await pb.get('transactions', txId).catch(() => null);
+    } else if (suppDoc && suppDoc.tx_id) {
+      tx = await pb.get('transactions', suppDoc.tx_id).catch(() => null);
+      txId = suppDoc.tx_id;
     }
 
-    const docNum = (tx && tx.number) || (d && d.number) || 'DS';
-    const statusVal = (d && (d.status_dian || d.status)) || 'pendiente';
+    const docNum = (suppDoc && suppDoc.number) || (tx && tx.number) || (d && d.number) || 'DS';
+    const statusVal = (suppDoc && (suppDoc.status_dian || suppDoc.status)) || (d && (d.status_dian || d.status)) || 'pendiente';
     const statusInfo: Record<string, { cls: string; label: string }> = {
       borrador:  { cls: 'badge-slate',  label: 'Borrador'  },
       pendiente: { cls: 'badge-orange', label: 'Pendiente' },
@@ -2070,20 +2228,27 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
     };
     const si = statusInfo[statusVal] || statusInfo.pendiente;
 
-    const xmlContent = (d && d.xml_content) || `<?xml version="1.0" encoding="UTF-8"?>
+    const xmlContent = (suppDoc && suppDoc.xml_content) || (d && d.xml_content) || `<?xml version="1.0" encoding="UTF-8"?>
 <DocumentoSoporte>
   <ID>${esc(docNum)}</ID>
   <Note>Documento Soporte sin XML firmado generado aún.</Note>
 </DocumentoSoporte>`;
 
-    const currentCuds = (d && (d.cuds || d.cufe)) || '';
+    const currentCuds = (suppDoc && (suppDoc.cuds || suppDoc.cufe)) || (d && (d.cuds || d.cufe)) || '';
     const hasValidCuds = currentCuds && currentCuds.length > 20 && currentCuds !== '404';
+    const dianResponseText = (suppDoc && suppDoc.dian_response) || (d && d.dian_response) || '—';
+    const docDate = (suppDoc && suppDoc.date) || (d && (d.date || d.created)) || (tx && tx.date) || '—';
 
     const modalFooter = `
       <div class="flex flex-wrap items-center justify-between w-full gap-2">
         <div class="flex flex-wrap items-center gap-2">
-          ${txId ? `
-            <button class="btn btn-outline btn-sm border-blue-600 text-blue-600 hover:bg-blue-50" title="Consultar estado actualizado en la DIAN" onclick="window.refreshDsStatusFromModal('${esc(id)}','${esc(txId)}')">
+          ${(!hasValidCuds || statusVal !== 'aceptada') ? `
+            <button class="btn btn-outline btn-sm border-indigo-600 text-indigo-700 hover:bg-indigo-50" title="Editar y corregir datos del documento" onclick="closeModal(); window.openEditDsModal('${esc(id)}')">
+              <i class="fas fa-pen-to-square mr-1.5 text-indigo-600"></i>Editar y Corregir
+            </button>
+          ` : ''}
+          ${(txId || id) ? `
+            <button class="btn btn-outline btn-sm border-blue-600 text-blue-600 hover:bg-blue-50" title="Consultar estado actualizado en la DIAN" onclick="window.refreshDsStatusFromModal('${esc(id)}','${esc(txId || '')}','${esc(docNum)}')">
               <i class="fas fa-arrows-rotate mr-1.5 text-blue-600"></i>Actualizar Estado DIAN
             </button>
           ` : ''}
@@ -2111,13 +2276,13 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
         <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
           <div><span class="form-label font-bold text-gray-500">Comprobante</span><p class="font-mono font-semibold text-indigo-800">${esc(docNum)}</p></div>
           <div><span class="form-label font-bold text-gray-500">Estado DIAN</span><p><span class="badge ${si.cls}">${si.label}</span></p></div>
-          <div><span class="form-label font-bold text-gray-500">Fecha</span><p>${esc(d.date || d.created || (tx && tx.date) || '—')}</p></div>
+          <div><span class="form-label font-bold text-gray-500">Fecha</span><p>${esc(docDate)}</p></div>
           <div class="col-span-2 md:col-span-3"><span class="form-label font-bold text-gray-500">CUDS / CUFE</span><p class="font-mono text-xs break-all p-2 rounded" style="background:#F9FAFB;border:1px solid #E5E7EB">${esc(currentCuds || 'Pendiente de transmisión')}</p></div>
           <div class="col-span-2 md:col-span-3">
             <span class="form-label font-bold text-gray-500">Respuesta del Servidor DIAN</span>
             <div class="p-2.5 rounded text-sm font-medium border flex items-start gap-2 ${statusVal === 'rechazada' ? 'bg-rose-50 text-rose-800 border-rose-200' : (statusVal === 'aceptada' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200')}">
               <i class="fas ${statusVal === 'rechazada' ? 'fa-circle-xmark text-rose-600 mt-0.5' : (statusVal === 'aceptada' ? 'fa-circle-check text-emerald-600 mt-0.5' : 'fa-circle-info text-slate-500 mt-0.5')}"></i>
-              <span>${esc(d.dian_response || '—')}</span>
+              <span>${esc(dianResponseText)}</span>
             </div>
           </div>
         </div>
@@ -2134,13 +2299,13 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
   }
 };
 
-(window as any).refreshDsStatusFromModal = async function(id: string, txId: string) {
+(window as any).refreshDsStatusFromModal = async function(id: string, txId: string, docNum?: string) {
   if (typeof (window as any).checkFtechStatus === 'function') {
-    await (window as any).checkFtechStatus(id, txId);
+    await (window as any).checkFtechStatus(id, txId, docNum);
   }
   setTimeout(() => {
     (window as any).viewDsDetail(id, txId);
-  }, 600);
+  }, 700);
 };
 
 (window as any).reemitFromDsModal = async function(id: string, txId: string, docNum: string) {

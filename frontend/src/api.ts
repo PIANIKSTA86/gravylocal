@@ -2019,9 +2019,11 @@ const API = {
 
   // â”€â”€ Compras â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  /** Lista paginada de facturas de compra */
-  async getPurchaseInvoices(opts = {}) {
-    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+  /** Lista paginada de facturas de compra (excluye documentos soporte desacoplados) */
+  async getPurchaseInvoices(opts: any = {}) {
+    let { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    const excludeDs = '(number !~ "DS" && number !~ "NDS")';
+    filter = filter ? `(${filter}) && ${excludeDs}` : excludeDs;
     return pb.list('purchase_invoices', {
       page, perPage, filter, sort,
       expand: 'supplier_id,warehouse_id,tx_type_id',
@@ -2894,6 +2896,400 @@ const API = {
     }
     await pb.update('purchase_invoices', invoiceId, { status: 'voided' });
     await this.logAudit('VOID', 'PurchaseInvoice', invoiceId, `Anulada ${inv.number} | Motivo: ${safeReason}`);
+  },
+
+  // ── Documento Soporte Electrónico (DS / NDS) — Módulo Desacoplado ──
+
+  async createSupportDocument(header: any, lines: any[]) {
+    const txTypeId = String(header?.tx_type_id || '').trim();
+    const docNumber = String(header?.number || '').trim();
+    if (!docNumber) throw new Error('El documento soporte debe tener un número asignado.');
+
+    let subtotal = 0;
+    let retTot = Number(header?.ret_total || 0);
+    for (const l of lines) {
+      subtotal += Number(l.subtotal || l.total || 0);
+    }
+    const payableTotal = Math.max(0, subtotal - retTot);
+
+    const doc = await pb.create('support_documents', {
+      ...header,
+      subtotal,
+      total: subtotal,
+      ret_total: retTot,
+      payable_total: payableTotal,
+      status: header.status || 'draft',
+      status_dian: header.status_dian || 'borrador',
+    });
+
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('support_document_lines', {
+        document_id: doc.id,
+        line_order: i + 1,
+        ...lines[i],
+      });
+    }
+
+    await this.logAudit('CREATE', 'SupportDocument', doc.id, `Creado borrador de Documento Soporte ${doc.number}`);
+    return doc;
+  },
+
+  async updateSupportDocument(id: string, header: any, lines: any[]) {
+    let subtotal = 0;
+    let retTot = Number(header?.ret_total || 0);
+    for (const l of lines) {
+      subtotal += Number(l.subtotal || l.total || 0);
+    }
+    const payableTotal = Math.max(0, subtotal - retTot);
+
+    await pb.update('support_documents', id, {
+      ...header,
+      subtotal,
+      total: subtotal,
+      ret_total: retTot,
+      payable_total: payableTotal,
+    });
+
+    // Reemplazar líneas
+    const oldLines = await pb.listAll('support_document_lines', {
+      filter: `document_id="${pb.escapeFilterValue(id)}"`,
+    });
+    for (const ol of oldLines) {
+      await pb.delete('support_document_lines', ol.id);
+    }
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('support_document_lines', {
+        document_id: id,
+        line_order: i + 1,
+        ...lines[i],
+      });
+    }
+
+    await this.logAudit('UPDATE', 'SupportDocument', id, `Actualizado Documento Soporte ${header.number || id}`);
+    return pb.get('support_documents', id, { expand: 'supplier_id,tx_type_id,cost_center_id' });
+  },
+
+  async getSupportDocument(id: string) {
+    return pb.get('support_documents', id, { expand: 'supplier_id,tx_type_id,cost_center_id,bank_account_id' });
+  },
+
+  async getSupportDocumentLines(documentId: string) {
+    const safe = pb.escapeFilterValue(documentId);
+    return pb.listAll('support_document_lines', {
+      filter: `document_id="${safe}"`,
+      sort: 'line_order',
+      expand: 'account_id,product_id',
+    });
+  },
+
+  async postSupportDocument(documentId: string) {
+    let doc: any = null;
+    try {
+      doc = await pb.get('support_documents', documentId, { expand: 'supplier_id,tx_type_id,cost_center_id' });
+    } catch (_) {
+      try {
+        const list = await pb.listAll('support_documents', { filter: `tx_id="${pb.escapeFilterValue(documentId)}"`, expand: 'supplier_id,tx_type_id,cost_center_id' });
+        if (list.length) doc = list[0];
+      } catch (_) {}
+    }
+    if (!doc) {
+      // Compatibilidad con registros legacy en purchase_invoices
+      return this.postPurchaseInvoice(documentId);
+    }
+
+    if (doc.status === 'posted') {
+      if (doc.tx_id) {
+        const existingTx = await pb.get('transactions', doc.tx_id).catch(() => null);
+        if (existingTx) return { doc, tx: existingTx };
+      }
+      throw new Error('El documento soporte ya fue contabilizado.');
+    }
+    if (doc.status === 'voided') throw new Error('El documento soporte está anulado.');
+
+    const lines = await this.getSupportDocumentLines(doc.id);
+    if (!lines.length) throw new Error('El documento soporte no tiene líneas de detalle.');
+
+    const txTypeCode = String(doc.expand?.tx_type_id?.code || '').toUpperCase();
+    const isNDS = (txTypeCode === 'NDS' || doc.doc_type === 'NDS');
+    const docLabel = isNDS ? 'Nota de Ajuste (DS)' : 'Documento Soporte';
+
+    let dsCfg: any = {};
+    try {
+      const rawCfg = await this.getSetting('doc_soporte_config_v1');
+      dsCfg = rawCfg ? JSON.parse(rawCfg) : {};
+    } catch (_) {
+      dsCfg = {};
+    }
+    if (!dsCfg?.accounting?.accounts?.payable_code) {
+      try {
+        const rawFallback = await this.getSetting('purchase_config_v1');
+        if (rawFallback) {
+          const parsed = JSON.parse(rawFallback);
+          dsCfg.accounting = {
+            ...(parsed.accounting || {}),
+            ...(dsCfg.accounting || {}),
+            accounts: {
+              ...(parsed.accounting?.accounts || {}),
+              ...(dsCfg.accounting?.accounts || {}),
+            },
+          };
+        }
+      } catch (_) {}
+    }
+
+    const cfgAccounting = dsCfg?.accounting || {};
+    const cfgAccounts = cfgAccounting?.accounts || {};
+    const cfgRetRules = Array.isArray(cfgAccounting?.withholding_rules) ? cfgAccounting.withholding_rules : [];
+    const codePayable = String(cfgAccounts.payable_code || '22050501').trim();
+    const codeCash = String(cfgAccounts.cash_account_code || '11050501').trim();
+    const codeBank = String(cfgAccounts.bank_account_code || '11100501').trim();
+    const codeExpFallback = String(cfgAccounts.expense_fallback_code || '51350501').trim();
+
+    const paymentForm = String(doc.payment_form || (doc.payment_method === 'CREDITO' ? '2' : '1')).trim();
+    const isCredit = (paymentForm === '2') || (String(doc.payment_method || '').toUpperCase() === 'CREDITO');
+    const paymentDianCode = String(doc.payment_dian_code || (isCredit ? '30' : '10')).trim();
+    const requiresBank = (paymentDianCode === '42' || paymentDianCode === '47' || paymentDianCode === '48' || paymentDianCode === '49') || (String(doc.payment_method || '').toUpperCase() === 'TRANSFERENCIA');
+
+    let dueDate = doc.due_date || doc.date || new Date().toISOString().slice(0, 10);
+    let creditDays = 0;
+    if (isCredit) {
+      if (doc.due_date && doc.date) {
+        const diffTime = Math.abs(new Date(doc.due_date).getTime() - new Date(doc.date).getTime());
+        creditDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 0;
+      } else {
+        creditDays = Number(dsCfg?.operational?.default_due_days || 30);
+      }
+    }
+
+    let effectiveCrossDoc = String(doc.supplier_ref || doc.number || 'DS').trim();
+
+    const accountByIdCache: any = {};
+    const accountByCodeCache: any = {};
+
+    const getAccById = async (id: string) => {
+      const key = String(id || '').trim();
+      if (!key) throw new Error('Cuenta contable no especificada en una de las líneas.');
+      if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
+      return accountByIdCache[key];
+    };
+
+    const findAccByCode = async (code: string) => {
+      const key = String(code).trim();
+      if (accountByCodeCache[key]) return accountByCodeCache[key];
+      const safeCode = pb.escapeFilterValue(key);
+      const res = await pb.list('accounts', { filter: `code="${safeCode}" && active=true`, perPage: 1 });
+      let candidate = res.items.length ? res.items[0] : null;
+      if (!candidate || String(candidate.code || '').replace(/\D/g, '').length <= 4) {
+        const prefixSafe = safeCode.length > 4 ? safeCode.substring(0, 4) : safeCode;
+        const resPref = await pb.list('accounts', { filter: `code ~ "${prefixSafe}" && active=true`, sort: '-code', perPage: 20 });
+        const bestAux = resPref.items.find((a: any) => String(a.code || '').replace(/\D/g, '').length >= 6);
+        if (bestAux) candidate = bestAux;
+        else if (!candidate) throw new Error(`Cuenta contable ${key} no encontrada en el plan de cuentas.`);
+      }
+      accountByCodeCache[key] = candidate;
+      accountByIdCache[candidate.id] = candidate;
+      return candidate;
+    };
+
+    const buildTxLine = async ({
+      accountId,
+      thirdPartyId = null,
+      debit = 0,
+      credit = 0,
+      description = '',
+      crossDocRef = '',
+      crossDocDate = null,
+      dueDate = null,
+      costCenterId = null,
+    }: any) => {
+      const acc = await getAccById(accountId);
+      if (acc.active === false) throw new Error(`La cuenta contable ${acc.code} está inactiva.`);
+      return {
+        account_id: acc.id,
+        third_party_id: thirdPartyId,
+        debit: Math.round(debit * 100) / 100,
+        credit: Math.round(credit * 100) / 100,
+        description: description || `${docLabel} ${doc.number}`,
+        cross_doc_ref: crossDocRef,
+        cross_doc_date: crossDocDate,
+        due_date: dueDate,
+        cost_center_id: costCenterId || doc.cost_center_id || null,
+      };
+    };
+
+    let accProveedor: any = null;
+    let accCajaBanco: any = null;
+    if (isCredit) {
+      accProveedor = await findAccByCode(codePayable);
+    } else if (requiresBank) {
+      if (doc.bank_account_id) {
+        try {
+          const bankRec = await pb.get('bank_accounts', doc.bank_account_id);
+          if (bankRec?.account_id) accCajaBanco = await getAccById(bankRec.account_id);
+        } catch (_) {}
+      }
+      if (!accCajaBanco) accCajaBanco = await findAccByCode(codeBank);
+    } else {
+      accCajaBanco = await findAccByCode(codeCash);
+    }
+
+    const txLines: any[] = [];
+    let aggSub = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineSub = Number(line.subtotal || line.total || 0);
+      aggSub += lineSub;
+
+      let lineAccountId = line.account_id;
+      if (!lineAccountId && line.expand?.product_id?.expense_account_id) {
+        lineAccountId = line.expand.product_id.expense_account_id;
+      }
+      if (!lineAccountId) {
+        const fallbackAcc = await findAccByCode(codeExpFallback);
+        lineAccountId = fallbackAcc.id;
+      }
+
+      txLines.push(await buildTxLine({
+        accountId: lineAccountId,
+        thirdPartyId: doc.supplier_id,
+        debit: lineSub,
+        credit: 0,
+        description: line.description || `${docLabel} ${doc.number} línea ${i + 1}`,
+        crossDocRef: effectiveCrossDoc,
+        crossDocDate: doc.date,
+        dueDate: isCredit ? dueDate : doc.date,
+        costCenterId: doc.cost_center_id,
+      }));
+    }
+
+    // Retenciones fiscales
+    const retByAccount: Record<string, number> = {};
+    const hdrRules = [
+      { id: String(doc.ret_rule_renta_id || '').trim(), kind: 'renta' },
+      { id: String(doc.ret_rule_ica_id || '').trim(), kind: 'ica' },
+    ];
+    for (const { id } of hdrRules) {
+      if (!id) continue;
+      const rule = cfgRetRules.find((r: any) => String(r.id || '') === id);
+      if (!rule) continue;
+      const minBase = Number(rule.min_base || 0) || 0;
+      if (aggSub <= 0 || aggSub < minBase) continue;
+      const rate = Number(rule.rate || 0) || 0;
+      if (rate <= 0) continue;
+      const amt = aggSub * rate / 100;
+      const code = String(rule.account_code || '').trim();
+      if (!code) throw new Error(`La regla de retención "${rule.concept}" no tiene cuenta contable configurada.`);
+      retByAccount[code] = (retByAccount[code] || 0) + amt;
+    }
+
+    let retTotal = 0;
+    for (const accCode of Object.keys(retByAccount)) {
+      const amount = Number(retByAccount[accCode] || 0);
+      if (amount <= 0) continue;
+      retTotal += amount;
+      const retAcc = await findAccByCode(accCode);
+      txLines.push(await buildTxLine({
+        accountId: retAcc.id,
+        thirdPartyId: doc.supplier_id,
+        debit: 0,
+        credit: amount,
+        description: `Retención en la fuente ${docLabel} ${doc.number}`,
+        crossDocRef: '',
+        crossDocDate: null,
+        dueDate: null,
+      }));
+    }
+
+    const sumDebits = txLines.reduce((acc, ln) => acc + (ln.debit || 0), 0);
+    const sumCreditsExclSupplier = txLines.reduce((acc, ln) => acc + (ln.credit || 0), 0);
+    const payableCredit = Math.max(0, Math.round((sumDebits - sumCreditsExclSupplier) * 100) / 100);
+
+    const contrapartidaAcc = isCredit ? accProveedor : accCajaBanco;
+    const contrapartidaDesc = `${effectiveCrossDoc ? `Ref: ${effectiveCrossDoc} - ` : ''}${doc.expand?.supplier_id?.name || ''}`;
+
+    txLines.push(await buildTxLine({
+      accountId: contrapartidaAcc.id,
+      thirdPartyId: doc.supplier_id,
+      debit: 0,
+      credit: payableCredit,
+      description: contrapartidaDesc,
+      crossDocRef: isCredit ? effectiveCrossDoc : '',
+      crossDocDate: doc.date,
+      dueDate: isCredit ? dueDate : doc.date,
+    }));
+
+    if (isNDS) {
+      for (const ln of txLines) {
+        const temp = ln.debit;
+        ln.debit = ln.credit;
+        ln.credit = temp;
+      }
+    }
+
+    let effectiveTxTypeId = String(doc.tx_type_id || '').trim();
+    let effectiveTxNumber = String(doc.tx_number || doc.number || 'AUTO').trim();
+
+    if (!effectiveTxTypeId) {
+      const found = await pb.list('transaction_types', {
+        filter: `active=true && (prefix="DS" || code="DS")`,
+        perPage: 1,
+      });
+      if (found.items.length) effectiveTxTypeId = found.items[0].id;
+    }
+    if (!effectiveTxTypeId) throw new Error('El documento soporte no tiene tipo de comprobante contable asignado.');
+
+    const tx = await this.createTransaction({
+      tx_type_id: effectiveTxTypeId,
+      number: effectiveTxNumber,
+      date: doc.date,
+      description: `${docLabel} ${doc.number} - ${doc.expand?.supplier_id?.name || ''}`,
+      third_party_id: doc.supplier_id,
+      payment_days: isCredit ? creditDays : 0,
+      cross_enabled: isCredit,
+      cross_type: 'support_documents',
+      cross_number: isCredit ? effectiveCrossDoc : doc.number,
+      idempotency_key: `idemp_ds_${doc.number || doc.id}`,
+      status: dsCfg?.operational?.immediate_posting ? 'active' : 'draft',
+      branch_id: doc.branch_id || null,
+    }, txLines);
+
+    await pb.update('support_documents', doc.id, {
+      status: 'posted',
+      tx_id: tx.id,
+      tx_number: tx.number,
+      ret_total: retTotal,
+      payable_total: payableCredit,
+      payment_form: paymentForm,
+      payment_method: isCredit ? 'CREDITO' : (requiresBank ? 'TRANSFERENCIA' : 'EFECTIVO'),
+      payment_dian_code: paymentDianCode,
+      due_date: isCredit ? dueDate : doc.date,
+      supplier_ref: effectiveCrossDoc,
+    });
+
+    await this.logAudit('POST', 'SupportDocument', doc.id, `Contabilizado Documento Soporte ${tx.number || doc.number}`);
+    return { doc, tx };
+  },
+
+  async voidSupportDocument(documentId: string, reason = '') {
+    const safeReason = String(reason || '').trim();
+    if (!safeReason) throw new Error('Debes indicar el motivo de anulación del documento soporte.');
+
+    let doc: any = null;
+    try {
+      doc = await pb.get('support_documents', documentId);
+    } catch (_) {
+      return this.voidPurchaseInvoice(documentId, reason);
+    }
+
+    if (doc.status === 'voided') throw new Error('El documento soporte ya está anulado.');
+
+    if (doc.status === 'posted' && doc.tx_id) {
+      await this.voidTransaction(doc.tx_id, safeReason);
+    }
+
+    await pb.update('support_documents', doc.id, { status: 'voided' });
+    await this.logAudit('VOID', 'SupportDocument', doc.id, `Anulado ${doc.number} | Motivo: ${safeReason}`);
   },
 
   // â”€â”€ Ventas y POS (Comercial) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -5968,82 +6364,98 @@ const API = {
       } catch (_) { }
     }
 
-    // 2. Obtener ABONOS de TesorerÃ­a (tx_lines que cruzan estas facturas)
-    // Buscamos lÃ­neas contables de tipo Recibo de Caja o ajustes que afecten el saldo
-    // CUADRE CRÃTICO: Buscamos tx_lines donde cross_doc_ref coincida con el nÃºmero de factura
-    // o empiece por el nÃºmero de factura (para casos de desglose por concepto CF-001-ADMIN)
-    const invNumbers = invoices.map(i => String(i.number || '').toUpperCase()).filter(Boolean);
+    // 2. Obtener ABONOS de Tesorería (tx_lines que cruzan estas facturas o anticipos directos)
+    // Buscamos líneas contables de tipo Recibo de Caja o ajustes que afecten el saldo de cartera (13%)
+    const invNumbers = invoices.map(i => String(i.number || "").toUpperCase()).filter(Boolean);
     const causalityTxIds = new Set(invoices.map(i => i.tx_id).filter(Boolean));
     const abonosMap = new Map(); // key: cross_doc_ref, value: total_abono
+    const advancesByPropMap = new Map<string, number>(); // key: property_id, value: unassigned advance pool
 
-    if (invNumbers.length > 0) {
-      // Optimizamos: traemos líneas contables que afecten cartera (cuenta 13%) y tengan cross_doc_ref
-      // cuya fecha sea <= fecha de corte. Evitamos que la contrapartida de banco (débito) anule el abono.
-      const txLines = await pb.listAll('tx_lines', {
-        filter: `cross_doc_ref!="" && account_id.code ~ "13%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
-        expand: 'tx_id,account_id'
+    const properties = await this.getPhProperties(false).catch(() => []);
+    const propById = new Map(properties.map((p: any) => [String(p.id).toLowerCase(), p]));
+
+    if (invNumbers.length > 0 || properties.length > 0) {
+      // Traemos líneas contables que afecten cartera (cuenta 13%) con fecha <= corte
+      const txLines = await pb.listAll("tx_lines", {
+        filter: `account_id.code ~ "13%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
+        expand: "tx_id,account_id"
       });
 
       for (const tl of txLines) {
-        // IGNORAR la causación original de la factura
-        if (causalityTxIds.has(tl.tx_id)) continue;
-
-        const ref = String(tl.cross_doc_ref || '').trim().toUpperCase();
-        // En cuenta 13%, el abono o pago reduce la cartera mediante crédito
+        // En cuenta 13%, el abono o pago reduce la cartera mediante crédito neto
         const valAbono = Number(tl.credit || 0) - Number(tl.debit || 0);
-        if (valAbono === 0) continue;
+        if (valAbono <= 0) continue; // Un abono o anticipo en cartera siempre es un crédito (CR > DB)
+
+        const ref = String(tl.cross_doc_ref || "").trim().toUpperCase();
 
         // Buscamos si esta referencia pertenece a alguna de nuestras facturas
-        const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + '-'));
+        const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + "-"));
 
         if (matchedInv) {
           abonosMap.set(ref, (abonosMap.get(ref) || 0) + valAbono);
-        } else if (ref.startsWith('ANTICIPO-')) {
+        } else if (ref.startsWith("ANTICIPO-")) {
           // Soporte Cartera Directa: anticipo pre-asignado a cuota futura (ANTICIPO-YYYYMM-{propId})
-          const parts = ref.split('-');
+          const parts = ref.split("-");
           if (parts.length >= 3) {
             const pCode = parts[1];
-            const pId = parts.slice(2).join('-');
+            const pId = parts.slice(2).join("-");
             const targetInv = invoices.find(inv => {
-              const invPCode = String(inv.period || '').replace('-', '');
-              return invPCode === pCode && String(inv.property_id) === pId;
+              const invPCode = String(inv.period || "").replace("-", "");
+              return invPCode === pCode && String(inv.property_id).toUpperCase() === pId.toUpperCase();
             });
             if (targetInv && targetInv.number) {
               const invNum = String(targetInv.number).trim().toUpperCase();
               abonosMap.set(invNum, (abonosMap.get(invNum) || 0) + valAbono);
+            } else {
+              const pidKey = pId.toLowerCase();
+              advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+            }
+          }
+        } else if (ref.startsWith("ANT-")) {
+          // Soporte saldo inicial de anticipos por unidad (ANT-{propId})
+          const pidKey = ref.substring(4).toLowerCase();
+          advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+        } else if (tl.description) {
+          // Fallback por descripción explícita de unidad (ej: "Unidad 2603" o "Apartamento. B-603")
+          for (const p of properties) {
+            if (tl.description.includes(`Unidad ${p.code}`) || (p.name && tl.description.includes(p.name)) || (p.code && tl.description.includes(`- ${p.code}`))) {
+              const pidKey = String(p.id).toLowerCase();
+              advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+              break;
             }
           }
         }
       }
     }
 
-    // Obtener saldos a favor (anticipos acumulados en cuentas 28% y cartera directa 13%)
-    const antMap = new Map<string, number>();
+    // Obtener saldos a favor adicionales en cuentas 28% si existieren
     try {
-      const antLines = await pb.listAll('tx_lines', {
-        filter: `(account_id.code ~ "28%" || cross_doc_ref ~ "ANTICIPO-%" || cross_doc_ref ~ "ANT-%") && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
-        expand: 'account_id'
+      const ant28Lines = await pb.listAll("tx_lines", {
+        filter: `account_id.code ~ "28%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
+        expand: "account_id"
       }).catch(() => []);
-      for (const al of (antLines || [])) {
-        const rawRef = String(al.cross_doc_ref || '').trim();
-        let pId = '';
-        if (rawRef.startsWith('ANT-')) {
+      for (const al of (ant28Lines || [])) {
+        const rawRef = String(al.cross_doc_ref || "").trim();
+        let pId = "";
+        if (rawRef.startsWith("ANT-")) {
           pId = rawRef.substring(4);
-        } else if (rawRef.startsWith('ANTICIPO-')) {
-          pId = rawRef.split('-').slice(2).join('-');
+        } else if (rawRef.startsWith("ANTICIPO-")) {
+          pId = rawRef.split("-").slice(2).join("-");
         }
         const net = (Number(al.credit) || 0) - (Number(al.debit) || 0);
-        if (pId) {
-          antMap.set(pId, (antMap.get(pId) || 0) + net);
-        }
-        if (al.third_party_id) {
-          antMap.set(al.third_party_id, (antMap.get(al.third_party_id) || 0) + net);
+        if (pId && net > 0) {
+          const pidKey = pId.toLowerCase();
+          advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + net);
         }
       }
     } catch (_) {}
 
-    const properties = await this.getPhProperties(false).catch(() => []);
-    const propById = new Map(properties.map(p => [String(p.id), p]));
+    // Ordenar facturas cronológicamente para aplicación FIFO estricta de pagos y anticipos
+    invoices.sort((a, b) => {
+      const dA = String(a.date || a.created || "");
+      const dB = String(b.date || b.created || "");
+      return dA.localeCompare(dB) || String(a.number || "").localeCompare(String(b.number || ""));
+    });
 
     const rows = [];
     for (const inv of invoices) {
@@ -6051,25 +6463,26 @@ const API = {
       const owner = prop?.expand?.owner_id;
       const invLines = allInvLines.filter(l => l.invoice_id === inv.id);
 
-      const invNumber = String(inv.number || '').trim().toUpperCase();
-      const fechaDoc = String(inv.date || inv.created || '').slice(0, 10);
-      const venc = String(inv.due_date || '').slice(0, 10);
+      const invNumber = String(inv.number || "").trim().toUpperCase();
+      const fechaDoc = String(inv.date || inv.created || "").slice(0, 10);
+      const venc = String(inv.due_date || "").slice(0, 10);
       const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
 
       // Control de abono general para distribuir entre líneas
       let generalAbono = abonosMap.get(invNumber) || 0;
 
-      // Saldo a favor en anticipos para esta propiedad / propietario
-      const saldoAnticipoTotal = Math.max(0, antMap.get(String(inv.property_id)) || (owner?.id ? antMap.get(owner.id) || 0 : 0));
+      // Saldo a favor de anticipos disponible para esta unidad (FIFO)
+      const pIdKey = String(inv.property_id || "").toLowerCase();
+      let propAdvancePool = advancesByPropMap.get(pIdKey) || 0;
 
       for (const line of invLines) {
         const originalAmount = Number(line.amount || 0);
 
         // 1. Intentar abono específico por concepto (ej: CF-001-ADMIN)
-        const cCode = String(line.expand?.concept_id?.code || '').trim().toUpperCase();
-        const normDesc = String(line.description || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const isMora = cCode === 'MORA' || normDesc.includes('interes') || normDesc.includes('mora');
-        const conceptCode = (cCode || (isMora ? 'MORA' : 'GEN')).toUpperCase();
+        const cCode = String(line.expand?.concept_id?.code || "").trim().toUpperCase();
+        const normDesc = String(line.description || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const isMora = cCode === "MORA" || normDesc.includes("interes") || normDesc.includes("mora");
+        const conceptCode = (cCode || (isMora ? "MORA" : (normDesc.includes("admin") ? "ADM" : "GEN"))).toUpperCase();
         const specificRef = `${invNumber}-${conceptCode}`;
         let abonoAplicado = abonosMap.get(specificRef) || 0;
 
@@ -6080,22 +6493,40 @@ const API = {
           generalAbono -= porAplicar;
         }
 
-        const currentBalance = originalAmount - abonoAplicado;
-
-        let estado = 'por_vencer';
-        if (currentBalance < 1) {
-          estado = 'cancelado';
-        } else if (inv.status === 'draft') {
-          estado = 'borrador';
-        } else if (diasMoraRaw >= 0) {
-          estado = 'vencido';
+        // Si el abono acumulado excede el valor de la línea (sobrepago),
+        // el excedente alimenta la bolsa de anticipos (propAdvancePool) de la unidad
+        if (abonoAplicado > originalAmount) {
+          const surplus = abonoAplicado - originalAmount;
+          abonoAplicado = originalAmount;
+          propAdvancePool += surplus;
+          advancesByPropMap.set(pIdKey, propAdvancePool);
         }
 
-        const rawConcepto = line.expand?.concept_id?.name || line.description || line.account_code || 'Concepto';
+        let currentBalance = originalAmount - abonoAplicado;
+
+        // 3. Si hay anticipo disponible para la unidad, amortizar FIFO en la línea
+        if (propAdvancePool > 0 && currentBalance > 0) {
+          const porAmortizar = Math.min(propAdvancePool, currentBalance);
+          currentBalance -= porAmortizar;
+          abonoAplicado += porAmortizar;
+          propAdvancePool -= porAmortizar;
+          advancesByPropMap.set(pIdKey, propAdvancePool);
+        }
+
+        let estado = "por_vencer";
+        if (currentBalance < 1) {
+          estado = "cancelado";
+        } else if (inv.status === "draft") {
+          estado = "borrador";
+        } else if (diasMoraRaw >= 0) {
+          estado = "vencido";
+        }
+
+        const rawConcepto = line.expand?.concept_id?.name || line.description || line.account_code || "Concepto";
         const normalizedConcepto = this.normalizePhCarteraConceptLabel(rawConcepto);
         const normalizedConceptId = line.concept_id
           ? String(line.concept_id)
-          : String(normalizedConcepto || line.account_code || 'OTROS').toUpperCase();
+          : String(normalizedConcepto || line.account_code || "OTROS").toUpperCase();
 
         rows.push({
           invoice: inv,
@@ -6103,23 +6534,76 @@ const API = {
           amount: currentBalance, // Saldo para el reporte
           originalAmount: originalAmount, // Valor original para integridad
           abono: abonoAplicado,
-          saldoAnticipo: saldoAnticipoTotal,
+          saldoAnticipo: propAdvancePool,
           diasMora: Math.max(0, diasMoraRaw),
           diasMoraRaw,
           fechaDoc,
           dueDate: venc,
           estado,
-          propertyId: String(inv.property_id || ''),
+          propertyId: String(inv.property_id || ""),
+          propertyCode: String(prop?.code || ""),
+          propertyName: String(prop?.name || ""),
+          ownerId: String(prop?.owner_id || owner?.id || ""),
+          ownerName: String(owner?.name || "").trim(),
+          ownerDoc: String(owner?.doc_number || "").trim(),
+          conceptoId: normalizedConceptId,
+          concepto: normalizedConcepto,
+        });
+      }
+
+      if (generalAbono > 0) {
+        propAdvancePool += generalAbono;
+        advancesByPropMap.set(pIdKey, propAdvancePool);
+      }
+    }
+
+    // 4. Incorporar saldos a favor (anticipos no absorbidos en cuenta 134595)
+    // Se unifican directamente bajo el concepto 'Cuota de administración' (ADM)
+    const admConceptId = allInvLines.find(l => {
+      const norm = String(l.description || l.expand?.concept_id?.name || '').toLowerCase();
+      return norm.includes('administra');
+    })?.concept_id || 'CUOTA DE ADMINISTRACION';
+
+    for (const [pIdKey, remAdvance] of advancesByPropMap.entries()) {
+      if (remAdvance > 0.01) {
+        if (propertyId && String(propertyId).toLowerCase() !== pIdKey) {
+          continue;
+        }
+        const prop = propById.get(pIdKey) || properties.find((p: any) => String(p.id).toLowerCase() === pIdKey);
+        const owner = prop?.expand?.owner_id;
+
+        rows.push({
+          invoice: {
+            id: `ADV-${pIdKey}`,
+            number: 'ANTICIPO',
+            period: 'Anticipo',
+            status: 'posted',
+            total: 0,
+          },
+          line: {
+            description: 'Anticipo Cuota de Administración',
+          },
+          amount: -remAdvance, // Saldo a favor acreedor (negativo)
+          originalAmount: 0,
+          abono: remAdvance,
+          saldoAnticipo: remAdvance,
+          diasMora: 0,
+          diasMoraRaw: -1,
+          fechaDoc: cutoffDate || new Date().toISOString().slice(0, 10),
+          dueDate: '',
+          estado: 'saldo_a_favor',
+          propertyId: prop?.id || pIdKey,
           propertyCode: String(prop?.code || ''),
           propertyName: String(prop?.name || ''),
           ownerId: String(prop?.owner_id || owner?.id || ''),
           ownerName: String(owner?.name || '').trim(),
           ownerDoc: String(owner?.doc_number || '').trim(),
-          conceptoId: normalizedConceptId,
-          concepto: normalizedConcepto,
+          conceptoId: admConceptId,
+          concepto: 'Cuota de administración',
         });
       }
     }
+
     return { invoices, rows };
   },
 
@@ -6184,6 +6668,8 @@ const API = {
         plazoDias: r.plazoDias,
         dueDate: r.dueDate,
         diasMora: r.diasMora,
+        diasMoraRaw: r.diasMoraRaw,
+        saldoAnticipo: r.saldoAnticipo,
         estado: r.estado,
       }))
       .sort((a, b) => {
@@ -6304,6 +6790,7 @@ const API = {
 
     const byInvoice = {};
     for (const r of rows) {
+      if (r.estado === 'saldo_a_favor') continue;
       const id = r.invoice.id;
       if (!byInvoice[id]) {
         byInvoice[id] = {
@@ -6321,7 +6808,7 @@ const API = {
 
     const mismatches = Object.values(byInvoice)
       .map((m) => {
-        m.diferencia = Math.round((m.totalFactura - m.totalLineas) * 100) / 100;
+        m.diferencia = Math.round((m.totalFactura - (m.totalOriginalLines || 0)) * 100) / 100;
         return m;
       })
       .filter((m) => Math.abs(m.diferencia) > 1)
@@ -6332,6 +6819,23 @@ const API = {
       mismatches,
       isBalanced: Math.abs(totals.diferenciaGlobal) <= 1 && mismatches.length === 0,
     };
+  },
+
+  /**
+   * Auditoría de integridad contable de todo el sistema en tiempo real.
+   * Valida cuadre 100% de todas las unidades habitacionales: Cartera PH vs Libro Auxiliar 13459501.
+   */
+  async getPhSystemIntegrity() {
+    const res = await fetch(`${pb.baseUrl}/api/ph/integrity-check`, {
+      headers: {
+        ...(pb.authStore.token ? { Authorization: `Bearer ${pb.authStore.token}` } : {}),
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Error ${res.status} al verificar integridad del sistema`);
+    }
+    return res.json();
   },
   // -- Presupuestos (PH) -------------------------------------
   async getPhBudgets(year = null) {

@@ -485,8 +485,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         LEFT JOIN third_parties tp ON tp.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id)
         WHERE t.status = 'active'
           AND t.date <= {:asOfLimit}
-          AND a.code LIKE '13%'
-          AND (a.maneja_cruce = 1 OR TRIM(COALESCE(l.cross_doc_ref, '')) != '')`
+          AND (a.code LIKE '1305%' OR (a.code LIKE '13%' AND (a.requires_third_party = 1 OR a.requires_third_party = 'true') AND (a.maneja_cruce = 1 OR a.maneja_cruce = 'true')))`
           + bBranch
           + (advisorId ? " AND tp.advisor = {:advisorId} " : "")
           + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
@@ -574,8 +573,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         LEFT JOIN third_parties tp ON tp.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id)
         WHERE t.status = 'active'
           AND t.date <= {:asOfLimit}
-          AND (a.code LIKE '22%' OR a.code LIKE '23%' OR a.code LIKE '25%')
-          AND (a.maneja_cruce = 1 OR TRIM(COALESCE(l.cross_doc_ref, '')) != '')`
+          AND (a.code LIKE '2205%' OR ((a.code LIKE '22%' OR a.code LIKE '23%' OR a.code LIKE '25%') AND (a.requires_third_party = 1 OR a.requires_third_party = 'true') AND (a.maneja_cruce = 1 OR a.maneja_cruce = 'true')))`
           + bBranch
           + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
         GROUP BY l.account_id, l.third_party_id, crossDocRef
@@ -892,7 +890,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
           COALESCE(SUM(CASE WHEN strftime('%Y-%m', date) = {:curMon} THEN total ELSE 0 END), 0) AS pThisMonth,
           COALESCE(SUM(CASE WHEN strftime('%Y-%m', date) = {:prevMon} THEN total ELSE 0 END), 0) AS pPrevMonth
         FROM purchase_invoices
-        WHERE status != 'voided'` + (branchId ? " AND branch_id = {:branchId}" : "");
+        WHERE status != 'voided' AND number NOT LIKE 'DS%' AND number NOT LIKE 'NDS%'` + (branchId ? " AND branch_id = {:branchId}" : "");
       const purPeriodQuery = $app.db().newQuery(purPeriodSql);
       const purBind = { curMon: currentMonthStr, prevMon: previousMonthStr };
       if (branchId) purBind.branchId = branchId;

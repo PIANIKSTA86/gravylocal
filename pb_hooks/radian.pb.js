@@ -84,6 +84,13 @@ function callMatiasApi(endpoint, method, payload) {
   };
 }
 globalThis.callMatiasApi = callMatiasApi;
+function getMatiasCaller() {
+  if (typeof callMatiasApi === 'function') return callMatiasApi;
+  if (typeof globalThis.callMatiasApi === 'function') return globalThis.callMatiasApi;
+  throw new Error("El conector de MATIAS API no está disponible en este servidor.");
+}
+globalThis.getMatiasCaller = getMatiasCaller;
+
 
 // --- 1. PROBAR CONEXIÓN IMAP ---
 routerAdd('POST', '/api/radian/test-imap', (c) => {
@@ -110,6 +117,69 @@ routerAdd('POST', '/api/radian/test-imap', (c) => {
 
 // --- 2. SINCRONIZAR CORREO DE FACTURACIÓN (BUZÓN IMAP) ---
 routerAdd('POST', '/api/radian/sync-email', (c) => {
+  function getRadianSetting(key, defVal) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defVal;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
+  function getMatiasBaseUrl() {
+    const env = getRadianSetting("matias_environment", "sandbox");
+    if (env === "production") {
+      const customUrl = getRadianSetting("matias_custom_url", "");
+      return customUrl ? customUrl.replace(/\/+$/, "") : "https://api-v2.matias-api.com/api/ubl2.1";
+    }
+    return "https://sandbox-api.matias-api.com/api/ubl2.1";
+  }
+
+  function callMatiasApi(endpoint, method, payload) {
+    const baseUrl = getMatiasBaseUrl();
+    const token = getRadianSetting("matias_api_token", "");
+    const clientUuid = getRadianSetting("matias_client_uuid", "");
+
+    if (!token) {
+      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+    }
+
+    let fullUrl = baseUrl + endpoint;
+    if (clientUuid) {
+      fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+    }
+
+    const reqOptions = {
+      url: fullUrl,
+      method: method || "GET",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      timeout: 120
+    };
+
+    if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+      reqOptions.body = JSON.stringify(payload);
+    }
+
+    const res = $http.send(reqOptions);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(res.raw);
+    } catch (_) {
+      parsed = { raw: res.raw };
+    }
+
+    return {
+      statusCode: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      data: parsed,
+      raw: res.raw
+    };
+  }
+
   try {
     const getSetting = (typeof globalThis.getRadianSetting === 'function')
       ? globalThis.getRadianSetting
@@ -354,6 +424,69 @@ routerAdd('POST', '/api/radian/sync-email', (c) => {
 
 // --- 3. IMPORTACIÓN MASIVA DESDE EXCEL DE LA DIAN ---
 routerAdd('POST', '/api/radian/import-excel', (c) => {
+  function getRadianSetting(key, defVal) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defVal;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
+  function getMatiasBaseUrl() {
+    const env = getRadianSetting("matias_environment", "sandbox");
+    if (env === "production") {
+      const customUrl = getRadianSetting("matias_custom_url", "");
+      return customUrl ? customUrl.replace(/\/+$/, "") : "https://api-v2.matias-api.com/api/ubl2.1";
+    }
+    return "https://sandbox-api.matias-api.com/api/ubl2.1";
+  }
+
+  function callMatiasApi(endpoint, method, payload) {
+    const baseUrl = getMatiasBaseUrl();
+    const token = getRadianSetting("matias_api_token", "");
+    const clientUuid = getRadianSetting("matias_client_uuid", "");
+
+    if (!token) {
+      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+    }
+
+    let fullUrl = baseUrl + endpoint;
+    if (clientUuid) {
+      fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+    }
+
+    const reqOptions = {
+      url: fullUrl,
+      method: method || "GET",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      timeout: 120
+    };
+
+    if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+      reqOptions.body = JSON.stringify(payload);
+    }
+
+    const res = $http.send(reqOptions);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(res.raw);
+    } catch (_) {
+      parsed = { raw: res.raw };
+    }
+
+    return {
+      statusCode: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      data: parsed,
+      raw: res.raw
+    };
+  }
+
   try {
     const rawBody = c.requestInfo()?.body || {};
     const excelBase64 = rawBody.document_base64 || rawBody.excelBase64 || "";
@@ -434,6 +567,69 @@ routerAdd('POST', '/api/radian/import-excel', (c) => {
 
 // --- 4. IMPORTACIÓN PUNTUAL POR CUFE ---
 routerAdd('POST', '/api/radian/import-cufe', (c) => {
+  function getRadianSetting(key, defVal) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defVal;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
+  function getMatiasBaseUrl() {
+    const env = getRadianSetting("matias_environment", "sandbox");
+    if (env === "production") {
+      const customUrl = getRadianSetting("matias_custom_url", "");
+      return customUrl ? customUrl.replace(/\/+$/, "") : "https://api-v2.matias-api.com/api/ubl2.1";
+    }
+    return "https://sandbox-api.matias-api.com/api/ubl2.1";
+  }
+
+  function callMatiasApi(endpoint, method, payload) {
+    const baseUrl = getMatiasBaseUrl();
+    const token = getRadianSetting("matias_api_token", "");
+    const clientUuid = getRadianSetting("matias_client_uuid", "");
+
+    if (!token) {
+      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+    }
+
+    let fullUrl = baseUrl + endpoint;
+    if (clientUuid) {
+      fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+    }
+
+    const reqOptions = {
+      url: fullUrl,
+      method: method || "GET",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      timeout: 120
+    };
+
+    if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+      reqOptions.body = JSON.stringify(payload);
+    }
+
+    const res = $http.send(reqOptions);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(res.raw);
+    } catch (_) {
+      parsed = { raw: res.raw };
+    }
+
+    return {
+      statusCode: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      data: parsed,
+      raw: res.raw
+    };
+  }
+
   try {
     const rawBody = c.requestInfo()?.body || {};
     const cufe = (rawBody.cufe || rawBody.trackId || "").trim();
@@ -492,6 +688,69 @@ routerAdd('POST', '/api/radian/import-cufe', (c) => {
 
 // --- 5. EMISIÓN DE EVENTOS RADIAN (030, 032, 033, 031) ---
 routerAdd('POST', '/api/radian/send-event', (c) => {
+  function getRadianSetting(key, defVal) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defVal;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
+  function getMatiasBaseUrl() {
+    const env = getRadianSetting("matias_environment", "sandbox");
+    if (env === "production") {
+      const customUrl = getRadianSetting("matias_custom_url", "");
+      return customUrl ? customUrl.replace(/\/+$/, "") : "https://api-v2.matias-api.com/api/ubl2.1";
+    }
+    return "https://sandbox-api.matias-api.com/api/ubl2.1";
+  }
+
+  function callMatiasApi(endpoint, method, payload) {
+    const baseUrl = getMatiasBaseUrl();
+    const token = getRadianSetting("matias_api_token", "");
+    const clientUuid = getRadianSetting("matias_client_uuid", "");
+
+    if (!token) {
+      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+    }
+
+    let fullUrl = baseUrl + endpoint;
+    if (clientUuid) {
+      fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+    }
+
+    const reqOptions = {
+      url: fullUrl,
+      method: method || "GET",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      timeout: 120
+    };
+
+    if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+      reqOptions.body = JSON.stringify(payload);
+    }
+
+    const res = $http.send(reqOptions);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(res.raw);
+    } catch (_) {
+      parsed = { raw: res.raw };
+    }
+
+    return {
+      statusCode: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      data: parsed,
+      raw: res.raw
+    };
+  }
+
   try {
     const rawBody = c.requestInfo()?.body || {};
     const docId = rawBody.docId || "";
@@ -504,9 +763,18 @@ routerAdd('POST', '/api/radian/send-event', (c) => {
       return c.json(400, { success: false, error: "Identificador del documento no suministrado." });
     }
 
-    const docRecord = $app.findRecordById("electronic_documents", docId);
+    let docRecord = null;
+    if (docId) {
+      try {
+        docRecord = $app.findRecordById("electronic_documents", docId);
+      } catch (_) {
+        try {
+          docRecord = $app.findFirstRecordByFilter("electronic_documents", "uuid = '" + String(docId).replace(/'/g, "''") + "'");
+        } catch (_) {}
+      }
+    }
     if (!docRecord) {
-      return c.json(404, { success: false, error: "Documento electrónico no encontrado en el buzón tributario." });
+      return c.json(404, { success: false, error: "Documento electrónico no encontrado en el buzón tributario (" + docId + ")." });
     }
 
     const cufe = docRecord.getString("uuid");
@@ -555,11 +823,51 @@ routerAdd('POST', '/api/radian/send-event', (c) => {
       eventPayload.claim_code = claimCode;
     }
 
+    // Datos del Responsable de Recepción (Res. DIAN 000085 de 2022)
+    const respDni = rawBody.reception_person?.dni || getRadianSetting("radian_responsible_dni", "");
+    const respFirstName = rawBody.reception_person?.first_name || getRadianSetting("radian_responsible_first_name", "");
+    const respLastName = rawBody.reception_person?.last_name || getRadianSetting("radian_responsible_last_name", "");
+    const respJobTitle = rawBody.reception_person?.job_title || getRadianSetting("radian_responsible_job_title", "Contador General");
+    const respDept = rawBody.reception_person?.department || getRadianSetting("radian_responsible_department", "Contabilidad");
+    const respEmail = rawBody.reception_person?.email || getRadianSetting("radian_responsible_email", "");
+
+    if (respDni && respFirstName) {
+      eventPayload.reception_person = {
+        identity_document_id: 1, // CC
+        dni: String(respDni).trim(),
+        first_name: String(respFirstName).trim(),
+        last_name: String(respLastName || '').trim(),
+        job_title: String(respJobTitle || 'Responsable de Recepción').trim(),
+        department: String(respDept || 'Contabilidad').trim(),
+        email: String(respEmail || '').trim()
+      };
+    }
+
     // 3. Transmitir evento a la DIAN a través del servicio
     const matiasRes = callMatiasApi(`/events/send/${encodeURIComponent(cufe)}`, "POST", eventPayload);
 
     if (!matiasRes.ok) {
       const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en el servicio de transmisión DIAN (${matiasRes.statusCode})`;
+
+      // Detección automática de Facturas de Contado (Res. DIAN 000085 de 2022)
+      if (errMsg.toLowerCase().includes("contado")) {
+        try {
+          docRecord.set("radian_030_status", "not_applicable");
+          docRecord.set("radian_032_status", "not_applicable");
+          docRecord.set("radian_033_status", "not_applicable");
+          docRecord.set("radian_last_response", "Documento de contado: No requiere ni admite eventos RADIAN (Res. DIAN 000085 de 2022).");
+          $app.save(docRecord);
+        } catch (_) {}
+
+        return c.json(200, {
+          success: true,
+          isContado: true,
+          eventCode: eventCode,
+          message: "Factura emitida como Pago de Contado. Conforme a la Res. DIAN 000085 de 2022, no requiere acuse de recibo en RADIAN.",
+          dianData: matiasRes.data
+        });
+      }
+
       return c.json(matiasRes.statusCode, { success: false, error: errMsg, details: matiasRes.data });
     }
 
@@ -693,6 +1001,69 @@ routerAdd('GET', '/api/radian/documents', (c) => {
 
 // --- 7. SINCRONIZAR Y CONSULTAR ESTADO DE EVENTO DIAN EN TIEMPO REAL ---
 routerAdd('POST', '/api/radian/sync-event-status', (c) => {
+  function getRadianSetting(key, defVal) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defVal;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
+  function getMatiasBaseUrl() {
+    const env = getRadianSetting("matias_environment", "sandbox");
+    if (env === "production") {
+      const customUrl = getRadianSetting("matias_custom_url", "");
+      return customUrl ? customUrl.replace(/\/+$/, "") : "https://api-v2.matias-api.com/api/ubl2.1";
+    }
+    return "https://sandbox-api.matias-api.com/api/ubl2.1";
+  }
+
+  function callMatiasApi(endpoint, method, payload) {
+    const baseUrl = getMatiasBaseUrl();
+    const token = getRadianSetting("matias_api_token", "");
+    const clientUuid = getRadianSetting("matias_client_uuid", "");
+
+    if (!token) {
+      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+    }
+
+    let fullUrl = baseUrl + endpoint;
+    if (clientUuid) {
+      fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+    }
+
+    const reqOptions = {
+      url: fullUrl,
+      method: method || "GET",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      timeout: 120
+    };
+
+    if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+      reqOptions.body = JSON.stringify(payload);
+    }
+
+    const res = $http.send(reqOptions);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(res.raw);
+    } catch (_) {
+      parsed = { raw: res.raw };
+    }
+
+    return {
+      statusCode: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      data: parsed,
+      raw: res.raw
+    };
+  }
+
   try {
     const rawBody = c.requestInfo()?.body || {};
     const docId = rawBody.docId || "";
@@ -700,7 +1071,13 @@ routerAdd('POST', '/api/radian/sync-event-status', (c) => {
 
     let docRecord = null;
     if (docId) {
-      docRecord = $app.findRecordById("electronic_documents", docId);
+      try {
+        docRecord = $app.findRecordById("electronic_documents", docId);
+      } catch (_) {
+        try {
+          docRecord = $app.findFirstRecordByFilter("electronic_documents", "uuid = '" + String(docId).replace(/'/g, "''") + "'");
+        } catch (_) {}
+      }
       if (docRecord) {
         trackId = docRecord.getString("uuid") || trackId;
       }
@@ -760,6 +1137,69 @@ routerAdd('POST', '/api/radian/sync-event-status', (c) => {
 
 // Alias compatible para consultas de estado
 routerAdd('POST', '/api/radian/check-event-status', (c) => {
+  function getRadianSetting(key, defVal) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defVal;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
+  function getMatiasBaseUrl() {
+    const env = getRadianSetting("matias_environment", "sandbox");
+    if (env === "production") {
+      const customUrl = getRadianSetting("matias_custom_url", "");
+      return customUrl ? customUrl.replace(/\/+$/, "") : "https://api-v2.matias-api.com/api/ubl2.1";
+    }
+    return "https://sandbox-api.matias-api.com/api/ubl2.1";
+  }
+
+  function callMatiasApi(endpoint, method, payload) {
+    const baseUrl = getMatiasBaseUrl();
+    const token = getRadianSetting("matias_api_token", "");
+    const clientUuid = getRadianSetting("matias_client_uuid", "");
+
+    if (!token) {
+      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+    }
+
+    let fullUrl = baseUrl + endpoint;
+    if (clientUuid) {
+      fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+    }
+
+    const reqOptions = {
+      url: fullUrl,
+      method: method || "GET",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      timeout: 120
+    };
+
+    if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+      reqOptions.body = JSON.stringify(payload);
+    }
+
+    const res = $http.send(reqOptions);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(res.raw);
+    } catch (_) {
+      parsed = { raw: res.raw };
+    }
+
+    return {
+      statusCode: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      data: parsed,
+      raw: res.raw
+    };
+  }
+
   try {
     const rawBody = c.requestInfo()?.body || {};
     const trackId = rawBody.trackId || rawBody.cufe || "";
@@ -775,6 +1215,69 @@ routerAdd('POST', '/api/radian/check-event-status', (c) => {
 
 // --- 8. REENVIAR CORREO DE EVENTO DIAN ---
 routerAdd('POST', '/api/radian/resend-email', (c) => {
+  function getRadianSetting(key, defVal) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defVal;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
+  function getMatiasBaseUrl() {
+    const env = getRadianSetting("matias_environment", "sandbox");
+    if (env === "production") {
+      const customUrl = getRadianSetting("matias_custom_url", "");
+      return customUrl ? customUrl.replace(/\/+$/, "") : "https://api-v2.matias-api.com/api/ubl2.1";
+    }
+    return "https://sandbox-api.matias-api.com/api/ubl2.1";
+  }
+
+  function callMatiasApi(endpoint, method, payload) {
+    const baseUrl = getMatiasBaseUrl();
+    const token = getRadianSetting("matias_api_token", "");
+    const clientUuid = getRadianSetting("matias_client_uuid", "");
+
+    if (!token) {
+      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+    }
+
+    let fullUrl = baseUrl + endpoint;
+    if (clientUuid) {
+      fullUrl += (fullUrl.includes("?") ? "&" : "?") + "client_uuid=" + encodeURIComponent(clientUuid);
+    }
+
+    const reqOptions = {
+      url: fullUrl,
+      method: method || "GET",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      timeout: 120
+    };
+
+    if (payload && (method === "POST" || method === "PUT" || method === "PATCH")) {
+      reqOptions.body = JSON.stringify(payload);
+    }
+
+    const res = $http.send(reqOptions);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(res.raw);
+    } catch (_) {
+      parsed = { raw: res.raw };
+    }
+
+    return {
+      statusCode: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      data: parsed,
+      raw: res.raw
+    };
+  }
+
   try {
     const rawBody = c.requestInfo()?.body || {};
     const trackId = rawBody.trackId || rawBody.cufe || "";

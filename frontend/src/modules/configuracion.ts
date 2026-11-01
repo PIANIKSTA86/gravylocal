@@ -288,6 +288,51 @@ async function renderConfiguracion(c) {
             </div>
           </div>
 
+          <!-- RESPONSABLE DE RECEPCIÓN DIAN / EVENTOS RADIAN -->
+          <div class="md:col-span-2 p-4 rounded-xl border border-violet-200 bg-violet-50/50 space-y-3" id="radian-responsible-container">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-violet-700">
+                  <i class="fas fa-user-shield text-sm"></i>
+                </div>
+                <div>
+                  <h5 class="font-bold text-slate-800 text-sm">Responsable de Recepción DIAN / Eventos RADIAN</h5>
+                  <p class="text-xs text-slate-500">Persona natural autorizada por la empresa para certificar acuses de recibo y recibo de bienes (Res. DIAN 000085 de 2022).</p>
+                </div>
+              </div>
+              <button type="button" id="btn-autofill-radian-resp" class="btn btn-outline btn-sm text-xs border-violet-300 text-violet-700 hover:bg-violet-100">
+                <i class="fas fa-wand-magic-sparkles mr-1"></i> Usar datos de la empresa
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+              <div class="form-group">
+                <label class="form-label text-xs">Cédula de Ciudadanía (DNI) *</label>
+                <input id="radian-resp-dni" class="form-input text-xs" value="${esc(byKey['radian_responsible_dni']?.value || '')}" placeholder="Ej: 1130636393" ${canEdit ? '' : 'readonly'}>
+              </div>
+              <div class="form-group">
+                <label class="form-label text-xs">Nombres *</label>
+                <input id="radian-resp-first-name" class="form-input text-xs" value="${esc(byKey['radian_responsible_first_name']?.value || '')}" placeholder="Ej: Julian" ${canEdit ? '' : 'readonly'}>
+              </div>
+              <div class="form-group">
+                <label class="form-label text-xs">Apellidos *</label>
+                <input id="radian-resp-last-name" class="form-input text-xs" value="${esc(byKey['radian_responsible_last_name']?.value || '')}" placeholder="Ej: Espinosa Arrubla" ${canEdit ? '' : 'readonly'}>
+              </div>
+              <div class="form-group">
+                <label class="form-label text-xs">Cargo u Ocupación</label>
+                <input id="radian-resp-job-title" class="form-input text-xs" value="${esc(byKey['radian_responsible_job_title']?.value || 'Representante Legal / Contador')}" placeholder="Ej: Contador General / Compras" ${canEdit ? '' : 'readonly'}>
+              </div>
+              <div class="form-group">
+                <label class="form-label text-xs">Área o Departamento</label>
+                <input id="radian-resp-department" class="form-input text-xs" value="${esc(byKey['radian_responsible_department']?.value || 'Contabilidad')}" placeholder="Ej: Contabilidad / Tesorería" ${canEdit ? '' : 'readonly'}>
+              </div>
+              <div class="form-group">
+                <label class="form-label text-xs">Correo Electrónico</label>
+                <input id="radian-resp-email" type="email" class="form-input text-xs" value="${esc(byKey['radian_responsible_email']?.value || '')}" placeholder="Ej: julian_piano@hotmail.com" ${canEdit ? '' : 'readonly'}>
+              </div>
+            </div>
+          </div>
+
           <!-- CONTENEDOR DIRECTO DIAN -->
           <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3" id="dian-fields-container" style="${byKey['einvoice_method']?.value === 'dian' ? '' : 'display:none'}">
             <div class="form-group">
@@ -604,6 +649,43 @@ async function renderConfiguracion(c) {
                 </select>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN MARCO LEGAL & CUMPLIMIENTO (HABEAS DATA / JURISDICCIÓN) -->
+      <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-scale-balanced mr-2" style="color:#7C3AED"></i>Cumplimiento Legal y Tratamiento de Datos (Ley 1581)</h4>
+            <p class="text-sm" style="color:#6B7280">Canales oficiales para peticiones ARCO, domicilio contractual y régimen de despliegue.</p>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" class="btn btn-outline btn-sm" onclick="if(window.navigate) window.navigate('centro-legal');">
+              <i class="fas fa-book-open mr-1"></i> Ver Centro Legal
+            </button>
+            ${canEdit ? '<button class="btn btn-secondary btn-sm" id="btn-save-legal-cfg"><i class="fas fa-floppy-disk mr-1"></i> Guardar Ajustes Legales</button>' : ''}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="form-group">
+            <label class="form-label">Correo Notificaciones & Habeas Data (ARCO)</label>
+            <input id="cfg-legal-email" type="email" class="form-input" value="${esc(byKey['legal_contact_email']?.value || 'gravy.legal@gmail.com')}" placeholder="gravy.legal@gmail.com" ${canEdit ? '' : 'readonly'}>
+            <p class="text-[11px] mt-1" style="color:#9CA3AF">Buzón para requerimientos de la SIC y titulares de datos.</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ciudad de Jurisdicción Contractual</label>
+            <input id="cfg-legal-city" class="form-input" value="${esc(byKey['legal_jurisdiction_city']?.value || 'Cali / Valle del Cauca, Colombia')}" placeholder="Ej: Cali / Valle del Cauca, Colombia" ${canEdit ? '' : 'readonly'}>
+            <p class="text-[11px] mt-1" style="color:#9CA3AF">Sede judicial fijada para los términos y controversias.</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Régimen de Despliegue de Servidor</label>
+            <select id="cfg-deployment-mode" class="form-input" ${canEdit ? '' : 'disabled'}>
+              <option value="local" ${(byKey['service_deployment_mode']?.value || 'local') === 'local' ? 'selected' : ''}>Servidor Local (Local-First On-Premise)</option>
+              <option value="cloud" ${byKey['service_deployment_mode']?.value === 'cloud' ? 'selected' : ''}>Cloud SaaS Multi-Empresa (AWS Nube)</option>
+            </select>
+            <p class="text-[11px] mt-1" style="color:#9CA3AF">Determina las cláusulas de responsabilidad aplicables.</p>
           </div>
         </div>
       </div>
@@ -1100,6 +1182,27 @@ async function renderConfiguracion(c) {
       if (logoFileInput) logoFileInput.value = '';
     });
 
+    $('#btn-autofill-radian-resp')?.addEventListener('click', () => {
+      const nit = (getInputVal('company-nit') || '').split('-')[0].trim();
+      const name = (getInputVal('company-name') || '').trim();
+      const email = (getInputVal('company-email') || '').trim();
+      const repLegal = (getInputVal('representante-legal-name') || '').trim() || name;
+
+      const dniInput = $('#radian-resp-dni') as HTMLInputElement | null;
+      const fnInput = $('#radian-resp-first-name') as HTMLInputElement | null;
+      const lnInput = $('#radian-resp-last-name') as HTMLInputElement | null;
+      const emInput = $('#radian-resp-email') as HTMLInputElement | null;
+
+      if (dniInput && !dniInput.value && nit) dniInput.value = nit;
+      if (fnInput && !fnInput.value && repLegal) {
+        const parts = repLegal.split(' ');
+        fnInput.value = parts.slice(0, Math.ceil(parts.length / 2)).join(' ');
+        if (lnInput && !lnInput.value) lnInput.value = parts.slice(Math.ceil(parts.length / 2)).join(' ') || repLegal;
+      }
+      if (emInput && !emInput.value && email) emInput.value = email;
+      showToast('Datos de la empresa precargados en el responsable RADIAN', 'info');
+    });
+
     $('#btn-save-dian')?.addEventListener('click', async () => {
       if (!canEdit) return showToast('Sin permisos para actualizar configuración', 'error');
       
@@ -1120,6 +1223,12 @@ async function renderConfiguracion(c) {
           ['ftech_password', getInputVal('ftech-password').trim()],
           ['invoice_header_text', getInputVal('invoice-header-text')],
           ['invoice_footer_text', getInputVal('invoice-footer-text')],
+          ['radian_responsible_dni', getInputVal('radian-resp-dni').trim()],
+          ['radian_responsible_first_name', getInputVal('radian-resp-first-name').trim()],
+          ['radian_responsible_last_name', getInputVal('radian-resp-last-name').trim()],
+          ['radian_responsible_job_title', getInputVal('radian-resp-job-title').trim()],
+          ['radian_responsible_department', getInputVal('radian-resp-department').trim()],
+          ['radian_responsible_email', getInputVal('radian-resp-email').trim()],
         ];
         
         if (uploadedCertBase64) {
@@ -1316,6 +1425,21 @@ async function renderConfiguracion(c) {
     });
 
     $('#btn-save-signatures')?.addEventListener('click', saveSignatureSettingsFromForm);
+
+    $('#btn-save-legal-cfg')?.addEventListener('click', async () => {
+      if (!canEdit) return showToast('Sin permisos para actualizar configuración legal', 'error');
+      try {
+        const payload = [
+          ['legal_contact_email', getInputVal('cfg-legal-email').trim()],
+          ['legal_jurisdiction_city', getInputVal('cfg-legal-city').trim()],
+          ['service_deployment_mode', getSelectVal('cfg-deployment-mode') || 'local'],
+        ];
+        await Promise.all(payload.map(([k, v]) => API.setSetting(k, v)));
+        showToast('Parámetros legales y de cumplimiento guardados con éxito', 'success');
+      } catch (err: any) {
+        showToast(err.message || 'Error al guardar parámetros legales', 'error');
+      }
+    });
   } catch (err) {
     c.innerHTML = `<div class="bg-white rounded-2xl border p-8 text-center" style="border-color:#F0F0F0"><i class="fas fa-circle-exclamation text-3xl mb-3" style="color:#EF4444"></i><p class="font-semibold" style="color:#374151">No fue posible cargar la configuración</p><p class="text-sm mt-2" style="color:#6B7280">${esc(err.message)}</p></div>`;
   }

@@ -123,7 +123,7 @@ async function loadCdePage(c: HTMLElement) {
         <span id="cde-progress-percent" class="text-xs font-bold" style="color: #7C3AED;">0%</span>
       </div>
       <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-        <div id="cde-progress-bar" class="bg-gradient-to-r from-cyan-400 to-indigo-500 h-full w-0 transition-all duration-300"></div>
+        <div id="cde-progress-bar" class="bg-violet-600 h-full w-0 transition-all duration-300"></div>
       </div>
     </div>
 
@@ -139,6 +139,7 @@ async function loadCdePage(c: HTMLElement) {
       </select>
       <select id="cde-radian-f" class="form-input" style="max-width:200px">
         <option value="">Todos los eventos DIAN</option>
+        <option value="contado">Pago de Contado (Sin RADIAN)</option>
         <option value="pending_030">Pendiente Acuse (030)</option>
         <option value="pending_032">Pendiente Recibo Bien (032)</option>
         <option value="033">Aceptada Título (033)</option>
@@ -151,6 +152,9 @@ async function loadCdePage(c: HTMLElement) {
         <option value="manual_cufe">CUFE Manual</option>
         <option value="xml">Carga XML/ZIP</option>
       </select>
+      <button class="btn btn-outline btn-sm text-xs" id="btn-cde-clear" title="Restablecer todos los filtros">
+        <i class="fas fa-eraser mr-1"></i>Limpiar
+      </button>
     </div>
 
     <!-- Tabla -->
@@ -225,8 +229,10 @@ async function loadCdePage(c: HTMLElement) {
       const matchesQ = !q || text.includes(q);
       const matchesStatus = !st || status === st;
       let matchesRadian = true;
-      if (rad === 'pending_030') {
-        matchesRadian = radian !== '030' && radian !== '032' && radian !== '033' && radian !== '031';
+      if (rad === 'contado') {
+        matchesRadian = radian === 'contado';
+      } else if (rad === 'pending_030') {
+        matchesRadian = radian !== '030' && radian !== '032' && radian !== '033' && radian !== '031' && radian !== 'contado';
       } else if (rad === 'pending_032') {
         matchesRadian = radian === '030';
       } else if (rad) {
@@ -242,6 +248,17 @@ async function loadCdePage(c: HTMLElement) {
   document.getElementById('cde-status-f')?.addEventListener('change', applyFilter);
   document.getElementById('cde-radian-f')?.addEventListener('change', applyFilter);
   document.getElementById('cde-source-f')?.addEventListener('change', applyFilter);
+  document.getElementById('btn-cde-clear')?.addEventListener('click', () => {
+    const qEl = document.getElementById('cde-q') as HTMLInputElement;
+    const stEl = document.getElementById('cde-status-f') as HTMLSelectElement;
+    const radEl = document.getElementById('cde-radian-f') as HTMLSelectElement;
+    const srcEl = document.getElementById('cde-source-f') as HTMLSelectElement;
+    if (qEl) qEl.value = '';
+    if (stEl) stEl.value = '';
+    if (radEl) radEl.value = '';
+    if (srcEl) srcEl.value = '';
+    applyFilter();
+  });
 
   const tbl = document.getElementById('cde-table') as HTMLTableElement;
   if (tbl) (window as any).makeTableSortable(tbl);
@@ -256,7 +273,7 @@ function cdeKpi(title: string, value: any, icon: string, color: string, bg: stri
           <i class="${icon}"></i>
         </div>
       </div>
-      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950 font-mono" style="font-variant-numeric:tabular-nums">${value}</p>
     </div>
   `;
 }
@@ -298,8 +315,26 @@ function renderDocRow(d: ElecDoc) {
   const isPurchase = d.document_type === 'invoice_purchase' || !d.document_type.includes('sale');
   let radianCellHtml = '';
 
+  const isContado = (
+    d.radian_030_status === 'not_applicable' ||
+    d.radian_030_status === 'contado' ||
+    (d.radian_last_response && d.radian_last_response.toLowerCase().includes('contado'))
+  );
+
   if (!isPurchase) {
     radianCellHtml = `<span class="text-[11px] text-slate-400 italic">Emisión Propia</span>`;
+  } else if (isContado) {
+    radianCellHtml = `
+      <div class="flex items-center gap-1.5" title="Factura de Contado: Conforme a la Res. DIAN 000085 de 2022, no requiere ni admite acuses de recibo en RADIAN al no constituir título valor para circulación.">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+          <i class="fas fa-money-bill-wave text-slate-400 text-[9px]"></i>
+          Pago de Contado
+        </span>
+        <span class="text-[10px] text-slate-400 cursor-help" title="Exenta de eventos RADIAN por pago de contado (Res. DIAN 000085 de 2022)">
+          <i class="fas fa-circle-info hover:text-slate-600"></i>
+        </span>
+      </div>
+    `;
   } else if (d.radian_031_status === 'sent') {
     radianCellHtml = `
       <div class="flex items-center gap-1">
@@ -368,7 +403,7 @@ function renderDocRow(d: ElecDoc) {
     `;
   }
 
-  const radianAttr = d.radian_031_status === 'sent' ? '031' : (d.radian_033_status === 'sent' ? '033' : (d.radian_032_status === 'sent' ? '032' : (d.radian_030_status === 'sent' ? '030' : 'none')));
+  const radianAttr = isContado ? 'contado' : (d.radian_031_status === 'sent' ? '031' : (d.radian_033_status === 'sent' ? '033' : (d.radian_032_status === 'sent' ? '032' : (d.radian_030_status === 'sent' ? '030' : 'none'))));
   const sourceAttr = d.reception_source || 'xml';
 
   return `
@@ -383,9 +418,9 @@ function renderDocRow(d: ElecDoc) {
         <div class="text-[10px] text-gray-400">NIT: ${(window as any).esc(d.supplier_nit)}</div>
       </td>
       <td><span class="text-xs">${(window as any).esc(d.issue_date)}</span></td>
-      <td class="text-right font-mono text-xs">${(window as any).fmt(d.subtotal)}</td>
-      <td class="text-right font-mono text-xs">${(window as any).fmt(d.tax_amount)}</td>
-      <td class="text-right font-mono text-xs font-bold" style="color: #7C3AED;">${(window as any).fmt(d.total)}</td>
+      <td class="text-right font-mono text-xs" style="font-variant-numeric:tabular-nums">${(window as any).fmt(d.subtotal)}</td>
+      <td class="text-right font-mono text-xs" style="font-variant-numeric:tabular-nums">${(window as any).fmt(d.tax_amount)}</td>
+      <td class="text-right font-mono text-xs font-bold text-violet-800" style="font-variant-numeric:tabular-nums">${(window as any).fmt(d.total)}</td>
       <td>
         <span class="badge ${statusBadges[d.status] || 'badge-gray'} text-xs capitalize">${d.status}</span>
       </td>
@@ -456,7 +491,7 @@ async function handleFilesSelected(files: FileList, c: HTMLElement) {
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
     updateProgress(0, `Abriendo ${f.name}...`);
-    
+
     if (f.name.endsWith('.zip')) {
       try {
         const zip = await JSZip.loadAsync(f);
@@ -544,7 +579,7 @@ async function handleFilesSelected(files: FileList, c: HTMLElement) {
             supplier_name: parsedData.supplierName,
             supplier_nit: parsedData.supplierNit
           })
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       for (const line of parsedData.lines) {
@@ -578,7 +613,7 @@ async function handleFilesSelected(files: FileList, c: HTMLElement) {
 
   updateProgress(100, `Importación finalizada. Nuevos: ${processedCount}, Omitidos: ${skippedCount}, Errores: ${errorCount}`);
   (window as any).showToast(`Importación masiva: ${processedCount} nuevos importados, ${skippedCount} duplicados omitidos.`, 'success');
-  
+
   setTimeout(() => {
     progressContainer?.classList.add('hidden');
     loadCdePage(c);
@@ -631,6 +666,63 @@ function getElementPathText(parent: any, tags: string[]): string {
   return el ? el.textContent.trim() : '';
 }
 
+function consolidateDocTaxes(rawTaxes: any[], docSubtotal = 0, docTaxAmount = 0): any[] {
+  if (!rawTaxes || !rawTaxes.length) return [];
+  const taxGroupMap: { [key: string]: any[] } = {};
+  for (const t of rawTaxes) {
+    const type = (t.tax_type || t.taxType || 'iva').toLowerCase();
+    const rate = parseFloat(t.rate) || 0;
+    const key = `${type}_${rate}`;
+    if (!taxGroupMap[key]) taxGroupMap[key] = [];
+    taxGroupMap[key].push(t);
+  }
+
+  const result: any[] = [];
+  for (const key of Object.keys(taxGroupMap)) {
+    const groupItems = taxGroupMap[key];
+    const headerMatch = groupItems.find((x: any) =>
+      (Math.abs(parseFloat(x.amount || 0) - docTaxAmount) < 0.05 && parseFloat(x.amount || 0) > 0) ||
+      (Math.abs(parseFloat(x.base || 0) - docSubtotal) < 0.05 && parseFloat(x.base || 0) > 0)
+    );
+    if (headerMatch && groupItems.length > 1) {
+      result.push({
+        id: headerMatch.id,
+        tax_type: (headerMatch.tax_type || headerMatch.taxType || 'iva').toLowerCase(),
+        taxType: (headerMatch.tax_type || headerMatch.taxType || 'iva').toLowerCase(),
+        rate: parseFloat(headerMatch.rate) || 0,
+        base: parseFloat(headerMatch.base) || docSubtotal,
+        amount: parseFloat(headerMatch.amount) || docTaxAmount
+      });
+    } else {
+      const first = groupItems[0];
+      const allIdentical = groupItems.length > 1 && groupItems.every((x: any) =>
+        Math.abs(parseFloat(x.base || 0) - parseFloat(first.base || 0)) < 0.01 &&
+        Math.abs(parseFloat(x.amount || 0) - parseFloat(first.amount || 0)) < 0.01
+      );
+
+      let totalBase = 0;
+      let totalAmount = 0;
+      if (allIdentical && (Math.abs(parseFloat(first.amount || 0) - docTaxAmount) < 0.05 || Math.abs(parseFloat(first.base || 0) - docSubtotal) < 0.05)) {
+        totalBase = parseFloat(first.base) || 0;
+        totalAmount = parseFloat(first.amount) || 0;
+      } else {
+        totalBase = groupItems.reduce((acc: number, cur: any) => acc + (parseFloat(cur.base) || 0), 0);
+        totalAmount = groupItems.reduce((acc: number, cur: any) => acc + (parseFloat(cur.amount) || 0), 0);
+      }
+
+      result.push({
+        id: first.id,
+        tax_type: (first.tax_type || first.taxType || 'iva').toLowerCase(),
+        taxType: (first.tax_type || first.taxType || 'iva').toLowerCase(),
+        rate: parseFloat(first.rate) || 0,
+        base: Math.round(totalBase * 100) / 100,
+        amount: Math.round(totalAmount * 100) / 100
+      });
+    }
+  }
+  return result;
+}
+
 function parseDianXml(xmlText: string) {
   const parser = new DOMParser();
   let xmlDoc = parser.parseFromString(xmlText, 'text/xml');
@@ -640,7 +732,7 @@ function parseDianXml(xmlText: string) {
   }
 
   let root = xmlDoc.documentElement;
-  
+
   if (root.localName === 'AttachedDocument' || root.tagName.endsWith('AttachedDocument')) {
     const descEl = xmlDoc.getElementsByTagName('cbc:Description')[0] || xmlDoc.getElementsByTagName('Description')[0];
     if (descEl && descEl.textContent) {
@@ -670,7 +762,7 @@ function parseDianXml(xmlText: string) {
   if (!supplierNIT) {
     supplierNIT = getElementPathText(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:PartyIdentification', 'cbc:ID']);
   }
-  
+
   let supplierName = getElementPathText(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:PartyLegalEntity', 'cbc:RegistrationName']);
   if (!supplierName) {
     supplierName = getElementPathText(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:PartyName', 'cbc:Name']);
@@ -681,7 +773,7 @@ function parseDianXml(xmlText: string) {
 
   const supplierContactEmail = getElementPathText(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:Contact', 'cbc:ElectronicMail']);
   const supplierContactPhone = getElementPathText(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:Contact', 'cbc:Telephone']);
-  
+
   let addressLine = getElementPathText(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:PhysicalLocation', 'cac:Address', 'cac:AddressLine', 'cbc:Line']);
   if (!addressLine) {
     addressLine = getElementPathText(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:RegistrationAddress', 'cac:AddressLine', 'cbc:Line']);
@@ -711,8 +803,8 @@ function parseDianXml(xmlText: string) {
     }
   }
 
-  const supplierIdEl = findElementPath(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:PartyTaxScheme', 'cbc:CompanyID']) || 
-                       findElementPath(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:PartyIdentification', 'cbc:ID']);
+  const supplierIdEl = findElementPath(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:PartyTaxScheme', 'cbc:CompanyID']) ||
+    findElementPath(xmlDoc, ['cac:AccountingSupplierParty', 'cac:Party', 'cac:PartyIdentification', 'cbc:ID']);
   const dv = supplierIdEl ? supplierIdEl.getAttribute('schemeID') || '' : '';
 
   let customerNIT = getElementPathText(xmlDoc, ['cac:AccountingCustomerParty', 'cac:Party', 'cac:PartyTaxScheme', 'cbc:CompanyID']);
@@ -749,7 +841,7 @@ function parseDianXml(xmlText: string) {
     const description = getElementPathText(xLine, ['cac:Item', 'cbc:Description']);
     const code = getElementPathText(xLine, ['cac:Item', 'cac:SellersItemIdentification', 'cbc:ID']);
     const unspscCode = getElementPathText(xLine, ['cac:Item', 'cac:StandardItemIdentification', 'cbc:ID']);
-    
+
     let qtyEl = xLine.getElementsByTagName('cbc:InvoicedQuantity')[0] || xLine.getElementsByTagName('cbc:CreditedQuantity')[0] || xLine.getElementsByTagName('cbc:DebitedQuantity')[0];
     if (!qtyEl) {
       qtyEl = xLine.querySelector('*[tagName*="Quantity"]');
@@ -769,7 +861,7 @@ function parseDianXml(xmlText: string) {
     });
   }
 
-  const taxes: any[] = [];
+  const rawTaxes: any[] = [];
   const docTaxTotals = xmlDoc.getElementsByTagName('cac:TaxTotal');
   for (let i = 0; i < docTaxTotals.length; i++) {
     const dtt = docTaxTotals[i];
@@ -787,9 +879,11 @@ function parseDianXml(xmlText: string) {
       if (code === '02') taxType = 'ica';
       else if (code === '03' || code === '04') taxType = 'inc';
 
-      taxes.push({ taxType, rate, base, amount });
+      rawTaxes.push({ taxType, rate, base, amount });
     }
   }
+
+  const taxes = consolidateDocTaxes(rawTaxes, subtotal, taxAmount);
 
   return {
     uuid,
@@ -840,10 +934,10 @@ async function deleteDocElectronico(id: string) {
     ]);
 
     for (const item of items) {
-      await (window as any).pb.delete('electronic_document_items', item.id).catch(() => {});
+      await (window as any).pb.delete('electronic_document_items', item.id).catch(() => { });
     }
     for (const tax of taxes) {
-      await (window as any).pb.delete('electronic_document_taxes', tax.id).catch(() => {});
+      await (window as any).pb.delete('electronic_document_taxes', tax.id).catch(() => { });
     }
 
     await (window as any).pb.delete('electronic_documents', id);
@@ -864,7 +958,8 @@ async function viewDocXmlDetails(id: string) {
   try {
     const d = await (window as any).pb.get('electronic_documents', id);
     const items = await (window as any).pb.listAll('electronic_document_items', { filter: `document_id = "${id}"` });
-    const taxes = await (window as any).pb.listAll('electronic_document_taxes', { filter: `document_id = "${id}"` });
+    const rawTaxes = await (window as any).pb.listAll('electronic_document_taxes', { filter: `document_id = "${id}"` });
+    const taxes = consolidateDocTaxes(rawTaxes, d.subtotal, d.tax_amount);
 
     const htmlBody = `
       <div class="space-y-4">
@@ -968,7 +1063,8 @@ async function openDocHomologationModal(id: string) {
   try {
     const d = await (window as any).pb.get('electronic_documents', id);
     const items = await (window as any).pb.listAll('electronic_document_items', { filter: `document_id = "${id}"` });
-    const taxes = await (window as any).pb.listAll('electronic_document_taxes', { filter: `document_id = "${id}"` });
+    const rawTaxes = await (window as any).pb.listAll('electronic_document_taxes', { filter: `document_id = "${id}"` });
+    const taxes = consolidateDocTaxes(rawTaxes, d.subtotal, d.tax_amount);
 
     const NitLimpio = d.supplier_nit.split('-')[0].trim();
     let thirdParty = await findThirdPartyByNit(d.supplier_nit);
@@ -988,13 +1084,13 @@ async function openDocHomologationModal(id: string) {
       (window as any).pb.listAll('bank_accounts', { filter: 'active=true', sort: 'name', expand: 'account_id' }).catch(() => [])
     ]);
 
-    const paymentAccounts = allAccounts.filter((ac: any) => 
-      ac.active !== false && 
+    const paymentAccounts = allAccounts.filter((ac: any) =>
+      ac.active !== false &&
       (ac.code.startsWith('1105') || ac.code.startsWith('1110') || ac.code.startsWith('1120'))
     ).sort((a: any, b: any) => a.code.localeCompare(b.code));
 
-    const payableAccounts = allAccounts.filter((ac: any) => 
-      ac.active !== false && 
+    const payableAccounts = allAccounts.filter((ac: any) =>
+      ac.active !== false &&
       (ac.code.startsWith('22') || ac.code.startsWith('23'))
     ).sort((a: any, b: any) => a.code.localeCompare(b.code));
 
@@ -1022,13 +1118,84 @@ async function openDocHomologationModal(id: string) {
     const taxRegime = thirdParty?.tax_regime || 'COMUN';
     const isAutoRetenedor = taxRegime === 'AUTORRETENEDOR' || taxRegime === 'REGIMEN_SIMPLE';
     const isGranContribuyente = taxRegime === 'GRAN_CONTR';
-    
+
+    let defRentaConcept = 'COMPRAS_DECL';
     let suggestedReteRentaRate = 2.5;
+    let shouldApplyRenta = true;
     if (isAutoRetenedor) {
       suggestedReteRentaRate = 0;
+      shouldApplyRenta = false;
     } else if (thirdParty?.person_type === 'NATURAL') {
+      defRentaConcept = 'COMPRAS_NODECL';
       suggestedReteRentaRate = 3.5;
     }
+
+    // Detección de la condición tributaria de la Empresa Receptora (Adquirente en GRAVY)
+    const companyTpId = await (window as any).API.getSetting('company_third_party_id').catch(() => '');
+    let companyThirdParty: any = null;
+    if (companyTpId) {
+      companyThirdParty = await (window as any).pb.get('third_parties', companyTpId).catch(() => null);
+    }
+    if (!companyThirdParty) {
+      const compNit = d.customer_nit || await (window as any).API.getSetting('company_nit').catch(() => '');
+      if (compNit) {
+        companyThirdParty = await findThirdPartyByNit(compNit);
+      }
+    }
+
+    const companyRegime = (companyThirdParty?.tax_regime || '').toUpperCase();
+    let companyRespList: string[] = [];
+    if (companyThirdParty?.resp) {
+      try {
+        companyRespList = typeof companyThirdParty.resp === 'string' ? JSON.parse(companyThirdParty.resp) : companyThirdParty.resp;
+      } catch { }
+    }
+    const isCompanyNoRespIva = companyRegime === 'NO_RESP' ||
+      companyRegime === 'SIMPLIFICADO' ||
+      companyRespList.includes('49') ||
+      companyRespList.includes('53') ||
+      companyThirdParty?.tax_regime === 'NO_RESP';
+    const defaultIvaTreatment = isCompanyNoRespIva ? 'MAYOR_COSTO' : 'DESCONTABLE';
+
+    // Preselección estricta y correcta del Tipo de Comprobante Contable (Serie ERP)
+    const findBestTxType = (docType: string) => {
+      if (docType === 'invoice_purchase') {
+        let found = txTypes.find((t: any) => t.prefix === 'FC');
+        if (found) return found.id;
+        found = txTypes.find((t: any) => t.prefix?.startsWith('FC') && !t.prefix.includes('NC') && !t.prefix.includes('ND'));
+        if (found) return found.id;
+        found = txTypes.find((t: any) => t.name?.toLowerCase().includes('factura de compra'));
+        if (found) return found.id;
+        found = txTypes.find((t: any) => {
+          const n = (t.name || '').toLowerCase();
+          const p = (t.prefix || '').toUpperCase();
+          return n.includes('compra') && !n.includes('crédito') && !n.includes('credito') &&
+            !n.includes('débito') && !n.includes('debito') && !n.includes('devolución') &&
+            !n.includes('devolucion') && !p.startsWith('NC') && !p.startsWith('ND');
+        });
+        if (found) return found.id;
+      } else if (docType === 'credit_note') {
+        let found = txTypes.find((t: any) => t.prefix === 'NCFC' || t.prefix === 'NCC');
+        if (found) return found.id;
+        found = txTypes.find((t: any) => (t.prefix?.startsWith('NC') || t.name?.toLowerCase().includes('crédito') || t.name?.toLowerCase().includes('credito')) && (t.name?.toLowerCase().includes('compra') || t.name?.toLowerCase().includes('devolución')));
+        if (found) return found.id;
+        found = txTypes.find((t: any) => t.prefix?.startsWith('NC'));
+        if (found) return found.id;
+      } else if (docType === 'debit_note') {
+        let found = txTypes.find((t: any) => t.prefix === 'NDFC' || t.prefix === 'NDC');
+        if (found) return found.id;
+        found = txTypes.find((t: any) => t.prefix?.startsWith('ND'));
+        if (found) return found.id;
+      } else if (docType === 'support_document') {
+        let found = txTypes.find((t: any) => t.prefix === 'DS');
+        if (found) return found.id;
+        found = txTypes.find((t: any) => t.name?.toLowerCase().includes('soporte'));
+        if (found) return found.id;
+      }
+      return txTypes[0]?.id || '';
+    };
+
+    const initialTxTypeId = findBestTxType(d.document_type || 'invoice_purchase');
 
     const isPurchaseDoc = d.document_type === 'invoice_purchase' || d.document_type === 'credit_note';
 
@@ -1123,6 +1290,43 @@ async function openDocHomologationModal(id: string) {
           </div>
         </div>
 
+        <!-- Tratamiento Contable del IVA (Mayor Valor del Costo vs Descontable - Art. 488/490 E.T.) -->
+        <div class="bg-indigo-50/50 border border-indigo-200 p-3 rounded-xl space-y-2">
+          <div class="flex items-center justify-between font-bold text-indigo-950 text-xs">
+            <span class="flex items-center gap-1.5">
+              <i class="fas fa-balance-scale text-indigo-600"></i>
+              <span>Tratamiento Contable del IVA en la Compra (NIIF / Estatuto Tributario / Exógena)</span>
+            </span>
+            <span class="text-[10px] text-indigo-700 font-semibold px-2 py-0.5 rounded-full ${isCompanyNoRespIva ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-900 border border-emerald-300'}">
+              ${isCompanyNoRespIva ? '⚠️ Empresa Receptora: No Responsable de IVA' : '✓ Empresa Receptora: Responsable de IVA'}
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 items-center pt-1">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-700 mb-1">Destino Contable del IVA</label>
+              <select id="cde-iva-treatment" class="form-input w-full font-bold text-xs" style="border-color:#818CF8;">
+                <option value="MAYOR_COSTO" ${defaultIvaTreatment === 'MAYOR_COSTO' ? 'selected' : ''}>
+                  📦 IVA Mayor Valor del Costo / Gasto (Art. 488 E.T.)
+                </option>
+                <option value="DESCONTABLE" ${defaultIvaTreatment === 'DESCONTABLE' ? 'selected' : ''}>
+                  📊 IVA Descontable en Compras (Cuenta PUC 2408)
+                </option>
+              </select>
+            </div>
+
+            <div id="cde-iva-treatment-info" class="text-[11px] p-2.5 rounded-lg border ${defaultIvaTreatment === 'MAYOR_COSTO' ? 'bg-amber-50/80 border-amber-200 text-amber-900' : 'bg-indigo-50/80 border-indigo-200 text-indigo-950'} leading-tight">
+              ${defaultIvaTreatment === 'MAYOR_COSTO' ? `
+                <i class="fas fa-info-circle mr-1 text-amber-600"></i>
+                <strong>Mayor Valor del Costo/Gasto:</strong> El IVA (${(window as any).fmt(d.tax_amount)}) se acumulará directamente a las cuentas de inventario o gasto del comprobante. No se debitará saldo a la cuenta 2408.
+              ` : `
+                <i class="fas fa-info-circle mr-1 text-indigo-600"></i>
+                <strong>IVA Descontable:</strong> El IVA (${(window as any).fmt(d.tax_amount)}) se causará a la cuenta PUC 2408 para deducción en la declaración bimestral/cuatrimestral de IVA ante la DIAN.
+              `}
+            </div>
+          </div>
+        </div>
+
         <!-- Selección Tipo de Documento ERP & Tipo de Transacción -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border">
           <div>
@@ -1138,14 +1342,9 @@ async function openDocHomologationModal(id: string) {
           <div>
             <label class="block font-bold text-slate-700 mb-1">2. Tipo de Comprobante Contable (Serie ERP)</label>
             <select id="cde-tx-type-id" class="form-input w-full">
-              ${txTypes.map((t: any) => {
-                let isSel = false;
-                if (d.document_type === 'credit_note' && (t.prefix === 'NC' || t.name.toLowerCase().includes('crédito'))) isSel = true;
-                else if (d.document_type === 'debit_note' && (t.prefix === 'ND' || t.name.toLowerCase().includes('débito'))) isSel = true;
-                else if (d.document_type === 'support_document' && (t.prefix === 'DS' || t.name.toLowerCase().includes('soporte'))) isSel = true;
-                else if (d.document_type === 'invoice_purchase' && (t.prefix === 'FC' || t.name.toLowerCase().includes('compra'))) isSel = true;
-                return `<option value="${t.id}" ${isSel ? 'selected' : ''}>[${t.prefix}] ${t.name}</option>`;
-              }).join('')}
+              ${txTypes.map((t: any) => `
+                <option value="${t.id}" ${t.id === initialTxTypeId ? 'selected' : ''}>[${t.prefix}] ${t.name}</option>
+              `).join('')}
             </select>
           </div>
         </div>
@@ -1171,15 +1370,15 @@ async function openDocHomologationModal(id: string) {
               <label class="block font-semibold mb-1 text-slate-700">Cuenta y Método de Pago (Módulo de Tesorería)</label>
               <select id="cde-payment-account-id" class="form-input w-full font-mono text-xs font-semibold">
                 ${treasuryAccounts.length ? treasuryAccounts.map((b: any) => {
-                  const accCode = b.expand?.account_id?.code || '';
-                  const extraNum = b.number ? ` N° ${b.number}` : '';
-                  const pucTag = accCode ? ` — PUC: ${accCode}` : '';
-                  return `
+      const accCode = b.expand?.account_id?.code || '';
+      const extraNum = b.number ? ` N° ${b.number}` : '';
+      const pucTag = accCode ? ` — PUC: ${accCode}` : '';
+      return `
                     <option value="${b.id}">
                       🏦 ${(window as any).esc(b.name)}${(window as any).esc(extraNum)}${pucTag}
                     </option>
                   `;
-                }).join('') : `
+    }).join('') : `
                   ${paymentAccounts.map((acc: any) => `
                     <option value="${acc.id}">
                       [${acc.code}] ${acc.name} (${acc.code.startsWith('1105') ? '💵 Efectivo / Caja' : '🏦 Banco / Tarjeta'})
@@ -1216,55 +1415,115 @@ async function openDocHomologationModal(id: string) {
           </div>
         </div>
 
-        <!-- Panel de Retenciones Fiscales (ReteFuente, ReteIVA, ReteICA) -->
-        <div class="bg-indigo-50/60 border border-indigo-200 p-3 rounded-xl space-y-2">
-          <div class="flex items-center justify-between font-bold text-indigo-900">
-            <span><i class="fas fa-hand-holding-dollar mr-1"></i> Retenciones Fiscales a Aplicar (Causación de Compra)</span>
-            <span class="text-xs text-indigo-700 font-normal">Auto-deducido por perfil del tercero</span>
+        <!-- Panel de Retenciones Fiscales Dinámicas (ReteFuente, ReteIVA, ReteICA) -->
+        <div class="bg-indigo-50/50 border border-indigo-200 p-3 rounded-xl space-y-2.5">
+          <div class="flex items-center justify-between font-bold text-indigo-900 text-xs">
+            <span class="flex items-center gap-1.5">
+              <i class="fas fa-hand-holding-dollar text-indigo-600"></i>
+              <span>Retenciones Fiscales (Causación de Compra / NIIF)</span>
+            </span>
+            <span class="text-[10px] text-indigo-700 font-medium">Sugerencia según perfil fiscal del tercero</span>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <!-- ReteFuente -->
-            <div class="bg-white p-2.5 rounded-lg border border-indigo-100 flex flex-col justify-between space-y-1">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+            <!-- 1. ReteFuente (Renta) -->
+            <div class="bg-white p-2.5 rounded-lg border border-indigo-100 flex flex-col justify-between space-y-2 shadow-xs">
               <div class="flex items-center justify-between">
-                <label for="cde-apply-reterenta" class="font-bold cursor-pointer select-none text-slate-700">ReteFuente (Renta)</label>
-                <input type="checkbox" id="cde-apply-reterenta" class="w-4 h-4 accent-indigo-600 cursor-pointer" ${suggestedReteRentaRate > 0 ? 'checked' : ''}>
+                <label for="cde-apply-reterenta" class="font-bold cursor-pointer select-none text-slate-800 text-xs flex items-center gap-1.5">
+                  <input type="checkbox" id="cde-apply-reterenta" class="w-4 h-4 accent-indigo-600 cursor-pointer" ${shouldApplyRenta ? 'checked' : ''}>
+                  <span>ReteFuente (Renta)</span>
+                </label>
+                <span id="cde-val-reterenta" class="font-mono font-bold text-indigo-900 text-xs">$ 0</span>
               </div>
-              <div class="flex items-center gap-2">
-                <input type="number" step="0.1" id="cde-rate-reterenta" class="form-input text-xs w-16 font-bold font-mono" value="${suggestedReteRentaRate}">
-                <span class="text-xs font-mono">%</span>
-                <span id="cde-val-reterenta" class="font-mono font-bold text-slate-800 ml-auto text-xs">$ 0</span>
+              <div>
+                <label class="block text-[10px] text-slate-500 font-semibold mb-0.5">Concepto Tributario DIAN</label>
+                <select id="cde-concept-reterenta" class="form-input text-xs w-full py-1 px-2 font-medium">
+                  <option value="COMPRAS_DECL" data-rate="2.5" data-acc="236540" ${defRentaConcept === 'COMPRAS_DECL' ? 'selected' : ''}>Compras Generales - Declarante (2.5%)</option>
+                  <option value="COMPRAS_NODECL" data-rate="3.5" data-acc="236540" ${defRentaConcept === 'COMPRAS_NODECL' ? 'selected' : ''}>Compras Generales - No Declarante (3.5%)</option>
+                  <option value="SERVICIOS_DECL" data-rate="4.0" data-acc="236525">Servicios Generales - Declarante (4.0%)</option>
+                  <option value="SERVICIOS_NODECL" data-rate="6.0" data-acc="236525">Servicios Generales - No Declarante (6.0%)</option>
+                  <option value="TRANSPORTE" data-rate="1.0" data-acc="236525">Transporte de Carga y Fletes (1.0%)</option>
+                  <option value="ARRIENDO_INM" data-rate="3.5" data-acc="236530">Arrendamiento Inmuebles (3.5%)</option>
+                  <option value="ARRIENDO_MUEB" data-rate="4.0" data-acc="236530">Arrendamiento Bienes Muebles (4.0%)</option>
+                  <option value="HONORARIOS_PN" data-rate="10.0" data-acc="236515">Honorarios / Comisiones PN (10.0%)</option>
+                  <option value="HONORARIOS_PJ" data-rate="11.0" data-acc="236515">Honorarios / Consultoría PJ (11.0%)</option>
+                  <option value="COMBUSTIBLES" data-rate="0.1" data-acc="236540">Combustibles y Derivados (0.1%)</option>
+                  <option value="CUSTOM" data-rate="${suggestedReteRentaRate}" data-acc="236540">Personalizada / Otra Tarifa...</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                <span class="text-[10px] text-slate-500 font-mono">Base: ${(window as any).fmt(d.subtotal)}</span>
+                <div class="flex items-center gap-1">
+                  <span class="text-[10px] text-slate-400">Tarifa:</span>
+                  <input type="number" step="0.1" id="cde-rate-reterenta" class="form-input text-xs w-16 py-0.5 px-1 font-bold font-mono text-right" value="${suggestedReteRentaRate}">
+                  <span class="text-xs font-mono font-bold">%</span>
+                </div>
               </div>
             </div>
 
-            <!-- ReteIVA -->
-            <div class="bg-white p-2.5 rounded-lg border border-indigo-100 flex flex-col justify-between space-y-1">
+            <!-- 2. ReteIVA -->
+            <div class="bg-white p-2.5 rounded-lg border border-indigo-100 flex flex-col justify-between space-y-2 shadow-xs">
               <div class="flex items-center justify-between">
-                <label for="cde-apply-reteiva" class="font-bold cursor-pointer select-none text-slate-700">ReteIVA (15% del IVA)</label>
-                <input type="checkbox" id="cde-apply-reteiva" class="w-4 h-4 accent-indigo-600 cursor-pointer" ${isGranContribuyente ? 'checked' : ''}>
+                <label for="cde-apply-reteiva" class="font-bold cursor-pointer select-none text-slate-800 text-xs flex items-center gap-1.5">
+                  <input type="checkbox" id="cde-apply-reteiva" class="w-4 h-4 accent-indigo-600 cursor-pointer" ${isGranContribuyente ? 'checked' : ''}>
+                  <span>ReteIVA (del IVA facturado)</span>
+                </label>
+                <span id="cde-val-reteiva" class="font-mono font-bold text-indigo-900 text-xs">$ 0</span>
               </div>
-              <div class="flex items-center gap-2">
-                <input type="number" step="0.1" id="cde-rate-reteiva" class="form-input text-xs w-16 font-bold font-mono" value="15">
-                <span class="text-xs font-mono">%</span>
-                <span id="cde-val-reteiva" class="font-mono font-bold text-slate-800 ml-auto text-xs">$ 0</span>
+              <div>
+                <label class="block text-[10px] text-slate-500 font-semibold mb-0.5">Concepto / Aplicabilidad</label>
+                <select id="cde-concept-reteiva" class="form-input text-xs w-full py-1 px-2 font-medium">
+                  <option value="GEN_15" data-rate="15.0" selected>Tarifa General DIAN (15% del IVA - Art. 437-1)</option>
+                  <option value="EXT_100" data-rate="100.0">Servicios Prestados en Exterior (100% del IVA)</option>
+                  <option value="CUSTOM" data-rate="15.0">Personalizada / Otra Tarifa...</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                <span class="text-[10px] text-slate-500 font-mono">IVA Base: ${(window as any).fmt(d.tax_amount)}</span>
+                <div class="flex items-center gap-1">
+                  <span class="text-[10px] text-slate-400">Tarifa:</span>
+                  <input type="number" step="0.1" id="cde-rate-reteiva" class="form-input text-xs w-16 py-0.5 px-1 font-bold font-mono text-right" value="15">
+                  <span class="text-xs font-mono font-bold">%</span>
+                </div>
               </div>
             </div>
 
-            <!-- ReteICA -->
-            <div class="bg-white p-2.5 rounded-lg border border-indigo-100 flex flex-col justify-between space-y-1">
+            <!-- 3. ReteICA -->
+            <div class="bg-white p-2.5 rounded-lg border border-indigo-100 flex flex-col justify-between space-y-2 shadow-xs">
               <div class="flex items-center justify-between">
-                <label for="cde-apply-reteica" class="font-bold cursor-pointer select-none text-slate-700">ReteICA (x mil)</label>
-                <input type="checkbox" id="cde-apply-reteica" class="w-4 h-4 accent-indigo-600 cursor-pointer">
+                <label for="cde-apply-reteica" class="font-bold cursor-pointer select-none text-slate-800 text-xs flex items-center gap-1.5">
+                  <input type="checkbox" id="cde-apply-reteica" class="w-4 h-4 accent-indigo-600 cursor-pointer">
+                  <span>ReteICA (x mil municipal)</span>
+                </label>
+                <span id="cde-val-reteica" class="font-mono font-bold text-slate-800 text-xs">$ 0</span>
               </div>
-              <div class="flex items-center gap-2">
-                <input type="number" step="0.01" id="cde-rate-reteica" class="form-input text-xs w-16 font-bold font-mono" value="9.66">
-                <span class="text-xs font-mono">‰</span>
-                <span id="cde-val-reteica" class="font-mono font-bold text-slate-800 ml-auto text-xs">$ 0</span>
+              <div>
+                <label class="block text-[10px] text-slate-500 font-semibold mb-0.5">Actividad Económica / Tarifa Municipal</label>
+                <select id="cde-concept-reteica" class="form-input text-xs w-full py-1 px-2 font-medium">
+                  <option value="ICA_7_70" data-rate="7.7" data-acc="236840" selected>Comercial General (7.70 ‰)</option>
+                  <option value="ICA_4_14" data-rate="4.14" data-acc="236801">Comercial / Industrial (4.14 ‰)</option>
+                  <option value="ICA_6_90" data-rate="6.9" data-acc="236801">Servicios / Comercial (6.90 ‰)</option>
+                  <option value="ICA_7_00" data-rate="7.0" data-acc="236801">Producción Industrial (7.00 ‰)</option>
+                  <option value="ICA_8_00" data-rate="8.0" data-acc="236801">Comercial Minorista (8.00 ‰)</option>
+                  <option value="ICA_9_66" data-rate="9.66" data-acc="236801">Servicios Profesionales (9.66 ‰)</option>
+                  <option value="ICA_10_00" data-rate="10.0" data-acc="236801">Servicios Especiales (10.00 ‰)</option>
+                  <option value="ICA_11_04" data-rate="11.04" data-acc="236801">Comercio al por Menor (11.04 ‰)</option>
+                  <option value="ICA_13_80" data-rate="13.8" data-acc="236801">Servicios Financieros (13.80 ‰)</option>
+                  <option value="CUSTOM" data-rate="7.7" data-acc="236840">Personalizada / Otra Tarifa...</option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                <span class="text-[10px] text-slate-500 font-mono">Base: ${(window as any).fmt(d.subtotal)}</span>
+                <div class="flex items-center gap-1">
+                  <span class="text-[10px] text-slate-400">Tarifa:</span>
+                  <input type="number" step="0.01" id="cde-rate-reteica" class="form-input text-xs w-16 py-0.5 px-1 font-bold font-mono text-right" value="7.7">
+                  <span class="text-xs font-mono font-bold">‰</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="flex items-center justify-between pt-1 border-t border-indigo-200 text-xs font-semibold">
+          <div class="flex items-center justify-between pt-2 border-t border-indigo-200 text-xs font-semibold">
             <span>Total Retenciones: <strong id="cde-total-retenciones-val" class="font-mono text-amber-700">$ 0</strong></span>
             <span>Neto a Pagar Proveedor (CxP): <strong id="cde-neto-cxp-val" class="font-mono text-indigo-900 text-sm font-extrabold">${(window as any).fmt(d.total)}</strong></span>
           </div>
@@ -1282,8 +1541,8 @@ async function openDocHomologationModal(id: string) {
         <div id="cde-consolidated-panel" class="${isConsolidated ? '' : 'hidden'} border rounded-xl p-3 bg-white grid grid-cols-1 md:grid-cols-2 gap-3 items-center shadow-sm border-slate-200">
           <div>
             <div class="font-semibold text-slate-800">Consolidado General de Compra / Gasto</div>
-            <div class="text-[10px] text-gray-500 mt-0.5">
-              Se imputará el subtotal completo (${(window as any).fmt(d.subtotal)}) a una sola cuenta contable global.
+            <div id="cde-consolidated-help-text" class="text-[10px] text-gray-500 mt-0.5">
+              ${defaultIvaTreatment === 'MAYOR_COSTO' ? `Se imputará el total completo ($ ${(window as any).fmt(d.subtotal + d.tax_amount)} con IVA incluido) a una sola cuenta contable global.` : `Se imputará el subtotal completo ($ ${(window as any).fmt(d.subtotal)}) a una sola cuenta contable global.`}
             </div>
           </div>
           <div class="relative">
@@ -1376,16 +1635,16 @@ async function openDocHomologationModal(id: string) {
 
           <div class="space-y-2 max-h-96 overflow-y-auto pr-1">
             ${items.map((it: any, index: number) => {
-              const matchedProd = resolveInitialProductMatch(it);
-              const initialMode = isPurchaseDoc ? 'inventory' : 'expense';
-              const suggestedAcc = resolveInitialAccount(it);
-              const suggestedInvAcc = resolveInitialInventoryAccount(it, matchedProd);
+      const matchedProd = resolveInitialProductMatch(it);
+      const initialMode = isPurchaseDoc ? 'inventory' : 'expense';
+      const suggestedAcc = resolveInitialAccount(it);
+      const suggestedInvAcc = resolveInitialInventoryAccount(it, matchedProd);
 
-              const initialSku = matchedProd ? matchedProd.code : (it.code || '');
-              const initialProdText = matchedProd ? `${matchedProd.code} — ${matchedProd.name}` : '';
-              const initialProdId = matchedProd ? matchedProd.id : '';
+      const initialSku = matchedProd ? matchedProd.code : (it.code || '');
+      const initialProdText = matchedProd ? `${matchedProd.code} — ${matchedProd.name}` : '';
+      const initialProdId = matchedProd ? matchedProd.id : '';
 
-              return `
+      return `
                 <div class="border rounded-xl p-2.5 bg-white space-y-2 shadow-sm border-slate-200 hover:border-indigo-200 transition-colors" id="cde-item-card-${index}">
                   <!-- Encabezado del Ítem XML -->
                   <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-1.5">
@@ -1480,7 +1739,7 @@ async function openDocHomologationModal(id: string) {
 
                 </div>
               `;
-            }).join('')}
+    }).join('')}
           </div>
         </div>
 
@@ -1575,6 +1834,61 @@ async function openDocHomologationModal(id: string) {
       if (elNetoCxP) elNetoCxP.textContent = (window as any).fmt(netoCxP);
     };
 
+    // Vincular selectores de conceptos y tarifas de retenciones
+    const conceptRentaEl = document.getElementById('cde-concept-reterenta') as HTMLSelectElement;
+    const rateRentaEl = document.getElementById('cde-rate-reterenta') as HTMLInputElement;
+    conceptRentaEl?.addEventListener('change', () => {
+      const opt = conceptRentaEl.options[conceptRentaEl.selectedIndex];
+      const r = opt.getAttribute('data-rate');
+      if (r !== null && opt.value !== 'CUSTOM') {
+        rateRentaEl.value = r;
+      }
+      updateRetentionsCalculation();
+    });
+    rateRentaEl?.addEventListener('input', () => {
+      const opt = conceptRentaEl.options[conceptRentaEl.selectedIndex];
+      if (opt.getAttribute('data-rate') !== rateRentaEl.value) {
+        conceptRentaEl.value = 'CUSTOM';
+      }
+      updateRetentionsCalculation();
+    });
+
+    const conceptReteIvaEl = document.getElementById('cde-concept-reteiva') as HTMLSelectElement;
+    const rateReteIvaEl = document.getElementById('cde-rate-reteiva') as HTMLInputElement;
+    conceptReteIvaEl?.addEventListener('change', () => {
+      const opt = conceptReteIvaEl.options[conceptReteIvaEl.selectedIndex];
+      const r = opt.getAttribute('data-rate');
+      if (r !== null && opt.value !== 'CUSTOM') {
+        rateReteIvaEl.value = r;
+      }
+      updateRetentionsCalculation();
+    });
+    rateReteIvaEl?.addEventListener('input', () => {
+      const opt = conceptReteIvaEl.options[conceptReteIvaEl.selectedIndex];
+      if (opt.getAttribute('data-rate') !== rateReteIvaEl.value) {
+        conceptReteIvaEl.value = 'CUSTOM';
+      }
+      updateRetentionsCalculation();
+    });
+
+    const conceptReteIcaEl = document.getElementById('cde-concept-reteica') as HTMLSelectElement;
+    const rateReteIcaEl = document.getElementById('cde-rate-reteica') as HTMLInputElement;
+    conceptReteIcaEl?.addEventListener('change', () => {
+      const opt = conceptReteIcaEl.options[conceptReteIcaEl.selectedIndex];
+      const r = opt.getAttribute('data-rate');
+      if (r !== null && opt.value !== 'CUSTOM') {
+        rateReteIcaEl.value = r;
+      }
+      updateRetentionsCalculation();
+    });
+    rateReteIcaEl?.addEventListener('input', () => {
+      const opt = conceptReteIcaEl.options[conceptReteIcaEl.selectedIndex];
+      if (opt.getAttribute('data-rate') !== rateReteIcaEl.value) {
+        conceptReteIcaEl.value = 'CUSTOM';
+      }
+      updateRetentionsCalculation();
+    });
+
     ['cde-apply-reterenta', 'cde-apply-reteiva', 'cde-apply-reteica', 'cde-rate-reterenta', 'cde-rate-reteiva', 'cde-rate-reteica'].forEach(idEl => {
       const el = document.getElementById(idEl);
       el?.addEventListener('change', updateRetentionsCalculation);
@@ -1582,6 +1896,36 @@ async function openDocHomologationModal(id: string) {
     });
 
     updateRetentionsCalculation();
+
+    // Manejador interactivo para Tratamiento del IVA (Mayor Valor del Costo vs Descontable)
+    const ivaTreatmentSelect = document.getElementById('cde-iva-treatment') as HTMLSelectElement;
+    const ivaTreatmentInfo = document.getElementById('cde-iva-treatment-info');
+    const consolidatedHelpText = document.getElementById('cde-consolidated-help-text');
+
+    ivaTreatmentSelect?.addEventListener('change', () => {
+      const isMC = ivaTreatmentSelect.value === 'MAYOR_COSTO';
+      if (ivaTreatmentInfo) {
+        if (isMC) {
+          ivaTreatmentInfo.className = 'text-[11px] p-2.5 rounded-lg border bg-amber-50/80 border-amber-200 text-amber-900 leading-tight';
+          ivaTreatmentInfo.innerHTML = `
+            <i class="fas fa-info-circle mr-1 text-amber-600"></i>
+            <strong>Mayor Valor del Costo/Gasto:</strong> El IVA (${(window as any).fmt(d.tax_amount)}) se acumulará directamente a las cuentas de inventario o gasto del comprobante. No se debitará saldo a la cuenta 2408.
+          `;
+        } else {
+          ivaTreatmentInfo.className = 'text-[11px] p-2.5 rounded-lg border bg-indigo-50/80 border-indigo-200 text-indigo-950 leading-tight';
+          ivaTreatmentInfo.innerHTML = `
+            <i class="fas fa-info-circle mr-1 text-indigo-600"></i>
+            <strong>IVA Descontable:</strong> El IVA (${(window as any).fmt(d.tax_amount)}) se causará a la cuenta PUC 2408 para deducción en la declaración bimestral/cuatrimestral de IVA ante la DIAN.
+          `;
+        }
+      }
+
+      if (consolidatedHelpText) {
+        consolidatedHelpText.textContent = isMC
+          ? `Se imputará el total completo ($ ${(window as any).fmt(d.subtotal + d.tax_amount)} con IVA incluido) a una sola cuenta contable global.`
+          : `Se imputará el subtotal completo ($ ${(window as any).fmt(d.subtotal)}) a una sola cuenta contable global.`;
+      }
+    });
 
     // Cálculo dinámico en vivo de Precio 1 global opcional para productos de la compra
     const updateCdeAutoCalcPriceGlobal = () => {
@@ -1672,17 +2016,7 @@ async function openDocHomologationModal(id: string) {
 
     docTypeSelect?.addEventListener('change', () => {
       const selectedType = docTypeSelect.value;
-      let matchedId = '';
-
-      for (let i = 0; i < txTypeSelect.options.length; i++) {
-        const opt = txTypeSelect.options[i];
-        const text = opt.text.toUpperCase();
-        if (selectedType === 'credit_note' && (text.includes('[NC]') || text.includes('CRÉDITO'))) { matchedId = opt.value; break; }
-        if (selectedType === 'debit_note' && (text.includes('[ND]') || text.includes('DÉBITO'))) { matchedId = opt.value; break; }
-        if (selectedType === 'support_document' && (text.includes('[DS]') || text.includes('SOPORTE'))) { matchedId = opt.value; break; }
-        if (selectedType === 'invoice_purchase' && (text.includes('[FC]') || text.includes('COMPRA'))) { matchedId = opt.value; break; }
-      }
-
+      const matchedId = findBestTxType(selectedType);
       if (matchedId) txTypeSelect.value = matchedId;
     });
 
@@ -1797,6 +2131,8 @@ async function openDocHomologationModal(id: string) {
       }
 
       const isConsolidatedDoc = (document.getElementById('cde-doc-consolidate') as HTMLInputElement)?.checked;
+      const ivaTreatment = (document.getElementById('cde-iva-treatment') as HTMLSelectElement)?.value || 'MAYOR_COSTO';
+      const isMayorCosto = ivaTreatment === 'MAYOR_COSTO';
 
       const lines: any[] = [];
       const inventoryItemsToProcess: any[] = [];
@@ -1811,12 +2147,12 @@ async function openDocHomologationModal(id: string) {
         }
 
         const lineAccId = accQuery.items[0].id;
-        const subtotalVal = d.subtotal;
+        const subtotalVal = isMayorCosto ? (d.subtotal + d.tax_amount) : d.subtotal;
 
         if (isCreditNote) {
-          lines.push({ account_id: lineAccId, third_party_id: thirdParty.id, debit: 0, credit: subtotalVal, description: `Nota Crédito XML Consolidada: ${d.supplier_name}` });
+          lines.push({ account_id: lineAccId, third_party_id: thirdParty.id, debit: 0, credit: subtotalVal, description: `Nota Crédito XML Consolidada${isMayorCosto && d.tax_amount > 0 ? ' (IVA Inc.)' : ''}: ${d.supplier_name}` });
         } else {
-          lines.push({ account_id: lineAccId, third_party_id: thirdParty.id, debit: subtotalVal, credit: 0, description: `Compra/Gasto XML Consolidado: ${d.supplier_name}` });
+          lines.push({ account_id: lineAccId, third_party_id: thirdParty.id, debit: subtotalVal, credit: 0, description: `Compra/Gasto XML Consolidado${isMayorCosto && d.tax_amount > 0 ? ' (IVA Inc.)' : ''}: ${d.supplier_name}` });
         }
 
         if (saveRules) {
@@ -1832,10 +2168,23 @@ async function openDocHomologationModal(id: string) {
         const globalRoundingType = (document.getElementById('cde-rounding-type-global') as HTMLSelectElement)?.value || 'NEAREST_100';
         const defaultProductConfig = await (window as any).API.getDefaultProductAccountingAndTaxConfig().catch(() => null);
 
+        let remainingIva = d.tax_amount || 0;
+
         for (let index = 0; index < items.length; index++) {
           const it = items[index];
           const lineTypeSelect = document.getElementById(`cde-line-type-${index}`) as HTMLSelectElement;
           const isInv = lineTypeSelect?.value === 'inventory';
+
+          let itemIva = 0;
+          if (isMayorCosto && d.tax_amount > 0) {
+            if (index === items.length - 1) {
+              itemIva = Math.round(remainingIva * 100) / 100;
+            } else {
+              itemIva = Math.round(((it.subtotal || 0) / (d.subtotal || 1)) * d.tax_amount * 100) / 100;
+              remainingIva -= itemIva;
+            }
+          }
+          const effectiveItemTotal = isMayorCosto ? (it.subtotal + itemIva) : it.subtotal;
 
           let lineAccId = '';
 
@@ -1859,7 +2208,7 @@ async function openDocHomologationModal(id: string) {
             const invAccQuery = await (window as any).pb.list('accounts', { filter: `code="${invAccCodeVal}"`, perPage: 1 });
             const invAccIdResolved = invAccQuery.items[0]?.id || '';
 
-            const unitCost = Number(it.price) || 0;
+            const unitCost = (isMayorCosto && it.qty > 0) ? (effectiveItemTotal / it.qty) : (Number(it.price) || 0);
             let computedBasePrice = unitCost > 0 ? unitCost * 1.3 : 0;
             let isAutoCalc = false;
             let marginFactorToUse = 0;
@@ -1928,7 +2277,8 @@ async function openDocHomologationModal(id: string) {
             inventoryItemsToProcess.push({
               item: it,
               product_id: productRecord.id,
-              sku: prodSkuVal
+              sku: prodSkuVal,
+              unit_cost: unitCost
             });
 
             if (saveRules && it.code) {
@@ -1965,40 +2315,42 @@ async function openDocHomologationModal(id: string) {
           }
 
           if (isCreditNote) {
-            lines.push({ account_id: lineAccId, third_party_id: thirdParty.id, debit: 0, credit: it.subtotal, description: `NC XML [${isInv ? 'INV' : 'GASTO'}]: ${it.description}` });
+            lines.push({ account_id: lineAccId, third_party_id: thirdParty.id, debit: 0, credit: effectiveItemTotal, description: `NC XML [${isInv ? 'INV' : 'GASTO'}]${isMayorCosto && itemIva > 0 ? ' (IVA Inc.)' : ''}: ${it.description}` });
           } else {
-            lines.push({ account_id: lineAccId, third_party_id: thirdParty.id, debit: it.subtotal, credit: 0, description: `Compra XML [${isInv ? 'INV' : 'GASTO'}]: ${it.description}` });
+            lines.push({ account_id: lineAccId, third_party_id: thirdParty.id, debit: effectiveItemTotal, credit: 0, description: `Compra XML [${isInv ? 'INV' : 'GASTO'}]${isMayorCosto && itemIva > 0 ? ' (IVA Inc.)' : ''}: ${it.description}` });
           }
         }
       }
 
-      // Impuestos
-      const iva19Code = await (window as any).API.getSetting('cde_iva_19_account').catch(() => '') || '240810';
-      const iva5Code = await (window as any).API.getSetting('cde_iva_5_account').catch(() => '') || '240805';
-      const otherTaxesCode = await (window as any).API.getSetting('cde_other_taxes_account').catch(() => '') || '240890';
+      // Impuestos (Solo se causan a la cuenta 2408 si el IVA es descontable!)
+      if (!isMayorCosto) {
+        const iva19Code = await (window as any).API.getSetting('cde_iva_19_account').catch(() => '') || '240810';
+        const iva5Code = await (window as any).API.getSetting('cde_iva_5_account').catch(() => '') || '240805';
+        const otherTaxesCode = await (window as any).API.getSetting('cde_other_taxes_account').catch(() => '') || '240890';
 
-      for (const tax of taxes) {
-        if (!tax.amount) continue;
-        let taxCode = otherTaxesCode;
-        if (tax.tax_type === 'iva') {
-          const rateVal = parseFloat(tax.rate) || 0;
-          if (Math.abs(rateVal - 19) < 0.1) {
-            taxCode = iva19Code;
-          } else if (Math.abs(rateVal - 5) < 0.1) {
-            taxCode = iva5Code;
+        for (const tax of taxes) {
+          if (!tax.amount) continue;
+          let taxCode = otherTaxesCode;
+          if (tax.tax_type === 'iva') {
+            const rateVal = parseFloat(tax.rate) || 0;
+            if (Math.abs(rateVal - 19) < 0.1) {
+              taxCode = iva19Code;
+            } else if (Math.abs(rateVal - 5) < 0.1) {
+              taxCode = iva5Code;
+            }
           }
-        }
 
-        let taxAcc = await (window as any).pb.list('accounts', { filter: `code="${taxCode}"`, perPage: 1 });
-        if (!taxAcc.items.length) {
-          taxAcc = await (window as any).pb.list('accounts', { filter: `code="240810"`, perPage: 1 });
-        }
+          let taxAcc = await (window as any).pb.list('accounts', { filter: `code="${taxCode}"`, perPage: 1 });
+          if (!taxAcc.items.length) {
+            taxAcc = await (window as any).pb.list('accounts', { filter: `code="240810"`, perPage: 1 });
+          }
 
-        if (taxAcc.items.length) {
-          if (isCreditNote) {
-            lines.push({ account_id: taxAcc.items[0].id, third_party_id: thirdParty.id, debit: 0, credit: tax.amount, description: `${tax.tax_type.toUpperCase()} (${tax.rate}%) NC ${d.number}` });
-          } else {
-            lines.push({ account_id: taxAcc.items[0].id, third_party_id: thirdParty.id, debit: tax.amount, credit: 0, description: `${tax.tax_type.toUpperCase()} (${tax.rate}%) Factura ${d.number}` });
+          if (taxAcc.items.length) {
+            if (isCreditNote) {
+              lines.push({ account_id: taxAcc.items[0].id, third_party_id: thirdParty.id, debit: 0, credit: tax.amount, description: `${tax.tax_type.toUpperCase()} (${tax.rate}%) NC ${d.number}` });
+            } else {
+              lines.push({ account_id: taxAcc.items[0].id, third_party_id: thirdParty.id, debit: tax.amount, credit: 0, description: `${tax.tax_type.toUpperCase()} (${tax.rate}%) Factura ${d.number}` });
+            }
           }
         }
       }
@@ -2023,37 +2375,66 @@ async function openDocHomologationModal(id: string) {
       const netPayableTotal = d.total - totalRetenciones;
 
       if (valRenterenta > 0) {
-        const accRenta = await (window as any).pb.list('accounts', { filter: `code="236540"`, perPage: 1 }).catch(() => ({ items: [] }));
-        const accRentaId = accRenta.items[0]?.id || (await (window as any).pb.list('accounts', { filter: `code="236505"`, perPage: 1 })).items[0]?.id;
-        if (accRentaId) {
+        const retConceptEl = document.getElementById('cde-concept-reterenta') as HTMLSelectElement;
+        const selectedConceptOpt = retConceptEl?.options[retConceptEl.selectedIndex];
+        const targetAccPrefix = selectedConceptOpt?.getAttribute('data-acc') || '236540';
+
+        let accRentaList = await (window as any).pb.list('accounts', {
+          filter: `active=true && (code="${targetAccPrefix}" || code ~ "${targetAccPrefix}")`,
+          sort: '-code',
+          perPage: 15
+        }).catch(() => ({ items: [] }));
+
+        let accRentaRecord = accRentaList.items.find((a: any) => a.name.includes(`${rateRenta}%`) || a.name.includes(`${rateRenta}`)) ||
+          accRentaList.items.find((a: any) => a.code.length > 6) ||
+          accRentaList.items[0];
+
+        if (!accRentaRecord) {
+          const fb = await (window as any).pb.list('accounts', { filter: 'code ~ "2365"', perPage: 1 }).catch(() => ({ items: [] }));
+          accRentaRecord = fb.items[0];
+        }
+
+        if (accRentaRecord?.id) {
           if (isCreditNote) {
-            lines.push({ account_id: accRentaId, third_party_id: thirdParty.id, debit: valRenterenta, credit: 0, description: `Reversión ReteFuente (${rateRenta}%) NC ${d.number}` });
+            lines.push({ account_id: accRentaRecord.id, third_party_id: thirdParty.id, debit: valRenterenta, credit: 0, description: `Reversión ReteFuente (${rateRenta}%) NC ${d.number}` });
           } else {
-            lines.push({ account_id: accRentaId, third_party_id: thirdParty.id, debit: 0, credit: valRenterenta, description: `Retención en la Fuente (${rateRenta}%) Factura ${d.number}` });
+            lines.push({ account_id: accRentaRecord.id, third_party_id: thirdParty.id, debit: 0, credit: valRenterenta, description: `Retención en la Fuente (${rateRenta}%) Factura ${d.number}` });
           }
         }
       }
 
       if (valReteIva > 0) {
-        const accReteIva = await (window as any).pb.list('accounts', { filter: `code="236701"`, perPage: 1 }).catch(() => ({ items: [] }));
-        const accReteIvaId = accReteIva.items[0]?.id;
-        if (accReteIvaId) {
+        let accReteIva = await (window as any).pb.list('accounts', {
+          filter: 'active=true && (code ~ "236705" || code ~ "236701" || code ~ "2367")',
+          sort: '-code',
+          perPage: 10
+        }).catch(() => ({ items: [] }));
+        const accReteIvaRecord = accReteIva.items.find((a: any) => a.code.length > 6) || accReteIva.items[0];
+        if (accReteIvaRecord?.id) {
           if (isCreditNote) {
-            lines.push({ account_id: accReteIvaId, third_party_id: thirdParty.id, debit: valReteIva, credit: 0, description: `Reversión ReteIVA (${rateReteIva}%) NC ${d.number}` });
+            lines.push({ account_id: accReteIvaRecord.id, third_party_id: thirdParty.id, debit: valReteIva, credit: 0, description: `Reversión ReteIVA (${rateReteIva}%) NC ${d.number}` });
           } else {
-            lines.push({ account_id: accReteIvaId, third_party_id: thirdParty.id, debit: 0, credit: valReteIva, description: `ReteIVA (${rateReteIva}%) Factura ${d.number}` });
+            lines.push({ account_id: accReteIvaRecord.id, third_party_id: thirdParty.id, debit: 0, credit: valReteIva, description: `ReteIVA (${rateReteIva}%) Factura ${d.number}` });
           }
         }
       }
 
       if (valReteIca > 0) {
-        const accReteIca = await (window as any).pb.list('accounts', { filter: `code="236801"`, perPage: 1 }).catch(() => ({ items: [] }));
-        const accReteIcaId = accReteIca.items[0]?.id;
-        if (accReteIcaId) {
+        const retIcaEl = document.getElementById('cde-concept-reteica') as HTMLSelectElement;
+        const selectedIcaOpt = retIcaEl?.options[retIcaEl.selectedIndex];
+        const targetIcaPrefix = selectedIcaOpt?.getAttribute('data-acc') || '236801';
+
+        let accReteIca = await (window as any).pb.list('accounts', {
+          filter: `active=true && (code ~ "${targetIcaPrefix}" || code ~ "2368")`,
+          sort: '-code',
+          perPage: 15
+        }).catch(() => ({ items: [] }));
+        const accReteIcaRecord = accReteIca.items.find((a: any) => a.name.includes(`${rateReteIca}`) || a.code.length > 6) || accReteIca.items[0];
+        if (accReteIcaRecord?.id) {
           if (isCreditNote) {
-            lines.push({ account_id: accReteIcaId, third_party_id: thirdParty.id, debit: valReteIca, credit: 0, description: `Reversión ReteICA (${rateReteIca}‰) NC ${d.number}` });
+            lines.push({ account_id: accReteIcaRecord.id, third_party_id: thirdParty.id, debit: valReteIca, credit: 0, description: `Reversión ReteICA (${rateReteIca}‰) NC ${d.number}` });
           } else {
-            lines.push({ account_id: accReteIcaId, third_party_id: thirdParty.id, debit: 0, credit: valReteIca, description: `ReteICA (${rateReteIca}‰) Factura ${d.number}` });
+            lines.push({ account_id: accReteIcaRecord.id, third_party_id: thirdParty.id, debit: 0, credit: valReteIca, description: `ReteICA (${rateReteIca}‰) Factura ${d.number}` });
           }
         }
       }
@@ -2121,8 +2502,8 @@ async function openDocHomologationModal(id: string) {
         }
       } else {
         // A Crédito: Imputación a Pasivo (Proveedores 2205 / Gastos 2335) con documento de cruce
-        const payAccCode = (document.getElementById('cde-payable-account-code') as HTMLSelectElement)?.value || 
-                          await (window as any).API.getSetting('cde_default_payable_account').catch(() => '') || '220501';
+        const payAccCode = (document.getElementById('cde-payable-account-code') as HTMLSelectElement)?.value ||
+          await (window as any).API.getSetting('cde_default_payable_account').catch(() => '') || '220501';
         const payAcc = await (window as any).pb.list('accounts', { filter: `code="${payAccCode}"`, perPage: 1 });
         if (!payAcc.items.length) {
           return (window as any).showToast(`La cuenta de pasivo/proveedores ${payAccCode} no existe en el PUC.`, 'error');
@@ -2281,7 +2662,7 @@ async function openDocHomologationModal(id: string) {
                   movement_id: mov.id,
                   product_id: invIt.product_id,
                   qty: invIt.item.qty,
-                  unit_cost: invIt.item.price,
+                  unit_cost: invIt.unit_cost !== undefined ? invIt.unit_cost : invIt.item.price,
                   notes: `SKU ERP: ${invIt.sku} | Doc XML ${d.number}`,
                   line_order: k + 1
                 });
@@ -2349,7 +2730,7 @@ function setupDynamicAccountAutocomplete(
       return;
     }
 
-    const filtered = allAccounts.filter((a: any) => 
+    const filtered = allAccounts.filter((a: any) =>
       a.code.startsWith(query) || a.name.toLowerCase().includes(query)
     ).slice(0, 15);
 
@@ -2472,7 +2853,7 @@ function setupDynamicProductAutocomplete(
       return;
     }
 
-    const filtered = productsList.filter((p: any) => 
+    const filtered = productsList.filter((p: any) =>
       p.code.toLowerCase().includes(query) || p.name.toLowerCase().includes(query)
     ).slice(0, 15);
 
@@ -2624,7 +3005,10 @@ async function saveOrUpdateRule(ruleType: string, keyValue: string, accountCode:
 
 async function openCdeSettingsModal(parentContainer: HTMLElement) {
   try {
-    const [defExpense, defPayable, defInventory, defIva19, defIva5, defOtherTaxes, isImmediatePosting, rules, allAccounts] = await Promise.all([
+    const [
+      defExpense, defPayable, defInventory, defIva19, defIva5, defOtherTaxes, isImmediatePosting, rules, allAccounts,
+      respDni, respFirstName, respLastName, respJobTitle, respDept, respEmail
+    ] = await Promise.all([
       (window as any).API.getSetting('cde_default_expense_account').catch(() => '') || '519530',
       (window as any).API.getSetting('cde_default_payable_account').catch(() => '') || '220501',
       (window as any).API.getSetting('cde_default_inventory_account').catch(() => '') || '143501',
@@ -2633,7 +3017,13 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
       (window as any).API.getSetting('cde_other_taxes_account').catch(() => '') || '240890',
       (window as any).API.getSetting('cde_immediate_posting').catch(() => '') === 'true',
       (window as any).pb.listAll('homologation_rules', { sort: '-id' }),
-      (window as any).API.getAccounts(true)
+      (window as any).API.getAccounts(true),
+      (window as any).API.getSetting('radian_responsible_dni').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_first_name').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_last_name').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_job_title').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_department').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_email').catch(() => '')
     ]);
 
     const htmlBody = `
@@ -2641,6 +3031,7 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
         <div class="flex border-b" style="border-color: #E2E8F0;">
           <button class="px-4 py-2 font-bold border-b-2" id="tab-cde-defaults" style="border-color: #7C3AED; color: #7C3AED;" onclick="window._cdeSwitchTab(0)">Cuentas por Defecto</button>
           <button class="px-4 py-2 font-bold border-b-2 border-transparent text-slate-500" id="tab-cde-rules" onclick="window._cdeSwitchTab(1)">Reglas Guardadas (${rules.length})</button>
+          <button class="px-4 py-2 font-bold border-b-2 border-transparent text-slate-500" id="tab-cde-responsible" onclick="window._cdeSwitchTab(2)">Responsable RADIAN</button>
         </div>
 
         <!-- Panel 1: Defaults -->
@@ -2744,6 +3135,41 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
             </table>
           </div>
         </div>
+
+        <!-- Panel 3: Responsable RADIAN -->
+        <div id="panel-cde-responsible" class="hidden pt-2 space-y-3">
+          <div class="p-3 bg-violet-50 rounded-xl border border-violet-200 text-violet-950">
+            <div class="font-bold mb-1 flex items-center gap-1.5"><i class="fas fa-user-shield text-violet-700"></i> Responsable Legal de Eventos RADIAN</div>
+            <p class="text-[11px] text-slate-600">Persona natural autorizada por la empresa para certificar acuses de recibo y recibo de bienes ante la DIAN (Res. 000085 de 2022).</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold mb-1 text-slate-700">Cédula de Ciudadanía (DNI) *</label>
+              <input type="text" id="cde-cfg-resp-dni" class="form-input w-full text-xs" placeholder="Ej: 1130636393" value="${(window as any).esc(respDni || '')}">
+            </div>
+            <div>
+              <label class="block font-semibold mb-1 text-slate-700">Correo Electrónico</label>
+              <input type="email" id="cde-cfg-resp-email" class="form-input w-full text-xs" placeholder="Ej: contacto@empresa.com" value="${(window as any).esc(respEmail || '')}">
+            </div>
+            <div>
+              <label class="block font-semibold mb-1 text-slate-700">Nombres *</label>
+              <input type="text" id="cde-cfg-resp-first-name" class="form-input w-full text-xs" placeholder="Ej: Julian" value="${(window as any).esc(respFirstName || '')}">
+            </div>
+            <div>
+              <label class="block font-semibold mb-1 text-slate-700">Apellidos *</label>
+              <input type="text" id="cde-cfg-resp-last-name" class="form-input w-full text-xs" placeholder="Ej: Espinosa Arrubla" value="${(window as any).esc(respLastName || '')}">
+            </div>
+            <div>
+              <label class="block font-semibold mb-1 text-slate-700">Cargo u Ocupación</label>
+              <input type="text" id="cde-cfg-resp-job-title" class="form-input w-full text-xs" placeholder="Ej: Representante Legal / Contador" value="${(window as any).esc(respJobTitle || 'Representante Legal / Contador')}">
+            </div>
+            <div>
+              <label class="block font-semibold mb-1 text-slate-700">Área o Departamento</label>
+              <input type="text" id="cde-cfg-resp-dept" class="form-input w-full text-xs" placeholder="Ej: Contabilidad / Dirección" value="${(window as any).esc(respDept || 'Contabilidad')}">
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
@@ -2762,29 +3188,31 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
       const defPanel = document.getElementById('panel-cde-defaults');
       const rulesPanel = document.getElementById('panel-cde-rules');
 
-      if (tabIdx === 0) {
-        defTab?.classList.add('border-b-2');
-        defTab?.classList.remove('border-transparent', 'text-slate-500');
-        defTab?.setAttribute('style', 'border-color: #7C3AED; color: #7C3AED;');
+      const respTab = document.getElementById('tab-cde-responsible');
+      const respPanel = document.getElementById('panel-cde-responsible');
 
-        rulesTab?.classList.remove('border-b-2');
-        rulesTab?.classList.add('border-transparent', 'text-slate-500');
-        rulesTab?.removeAttribute('style');
+      const tabs = [defTab, rulesTab, respTab];
+      const panels = [defPanel, rulesPanel, respPanel];
 
-        defPanel?.classList.remove('hidden');
-        rulesPanel?.classList.add('hidden');
-      } else {
-        rulesTab?.classList.add('border-b-2');
-        rulesTab?.classList.remove('border-transparent', 'text-slate-500');
-        rulesTab?.setAttribute('style', 'border-color: #7C3AED; color: #7C3AED;');
+      tabs.forEach((t, i) => {
+        if (i === tabIdx) {
+          t?.classList.add('border-b-2');
+          t?.classList.remove('border-transparent', 'text-slate-500');
+          t?.setAttribute('style', 'border-color: #7C3AED; color: #7C3AED;');
+        } else {
+          t?.classList.remove('border-b-2');
+          t?.classList.add('border-transparent', 'text-slate-500');
+          t?.removeAttribute('style');
+        }
+      });
 
-        defTab?.classList.remove('border-b-2');
-        defTab?.classList.add('border-transparent', 'text-slate-500');
-        defTab?.removeAttribute('style');
-
-        rulesPanel?.classList.remove('hidden');
-        defPanel?.classList.add('hidden');
-      }
+      panels.forEach((p, i) => {
+        if (i === tabIdx) {
+          p?.classList.remove('hidden');
+        } else {
+          p?.classList.add('hidden');
+        }
+      });
     };
 
     (window as any).deleteCdeRule = async (ruleId: string) => {
@@ -2865,12 +3293,18 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
           (window as any).API.setSetting('cde_iva_19_account', iva19Val),
           (window as any).API.setSetting('cde_iva_5_account', iva5Val),
           (window as any).API.setSetting('cde_other_taxes_account', otherTaxesVal),
-          (window as any).API.setSetting('cde_immediate_posting', immediatePostingVal)
+          (window as any).API.setSetting('cde_immediate_posting', immediatePostingVal),
+          (window as any).API.setSetting('radian_responsible_dni', (document.getElementById('cde-cfg-resp-dni') as HTMLInputElement)?.value.trim() || ''),
+          (window as any).API.setSetting('radian_responsible_first_name', (document.getElementById('cde-cfg-resp-first-name') as HTMLInputElement)?.value.trim() || ''),
+          (window as any).API.setSetting('radian_responsible_last_name', (document.getElementById('cde-cfg-resp-last-name') as HTMLInputElement)?.value.trim() || ''),
+          (window as any).API.setSetting('radian_responsible_job_title', (document.getElementById('cde-cfg-resp-job-title') as HTMLInputElement)?.value.trim() || ''),
+          (window as any).API.setSetting('radian_responsible_department', (document.getElementById('cde-cfg-resp-dept') as HTMLInputElement)?.value.trim() || ''),
+          (window as any).API.setSetting('radian_responsible_email', (document.getElementById('cde-cfg-resp-email') as HTMLInputElement)?.value.trim() || '')
         ]);
 
         (window as any).showToast('Configuración del CDE guardada con éxito', 'success');
         (window as any).closeModal();
-        
+
         renderDocumentosElectronicos(parentContainer);
       } catch (saveErr: any) {
         (window as any).showToast(`Error al guardar configuración: ${saveErr.message}`, 'error');
@@ -2891,7 +3325,7 @@ async function approveCdeTx(docId: string, txId: string) {
 
   try {
     const tx = await (window as any).API.approveTx(txId);
-    
+
     // Si hay movimientos de inventario en borrador vinculados, aplicarlos
     const invMovs = await (window as any).pb.listAll('inventory_movements', {
       filter: `tx_id = "${txId}" && status = "draft"`
@@ -2924,7 +3358,13 @@ async function reverseDocContabilization(docId: string) {
   }
 
   try {
-    const d = await (window as any).pb.get('electronic_documents', docId);
+    const [d, respDni, respFn, respLn, respJob] = await Promise.all([
+      (window as any).pb.get('electronic_documents', docId),
+      (window as any).API.getSetting('radian_responsible_dni').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_first_name').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_last_name').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_job_title').catch(() => 'Representante Legal / Contador')
+    ]);
     if (!d.transaction_id) {
       return (window as any).showToast('El documento no tiene una transacción asociada.', 'warning');
     }
@@ -2953,7 +3393,7 @@ async function reverseDocContabilization(docId: string) {
     });
 
     (window as any).showToast('Contabilización reversada correctamente.', 'success');
-    
+
     renderDocumentosElectronicos();
   } catch (err: any) {
     (window as any).showToast(`Error al reversar: ${err.message}`, 'error');
@@ -3176,6 +3616,11 @@ async function openRadianEventModal(docId: string, code: '030' | '032' | '033') 
       }
     };
 
+    if (d.radian_030_status === 'not_applicable' || d.radian_030_status === 'contado' || (d.radian_last_response && d.radian_last_response.toLowerCase().includes('contado'))) {
+      (window as any).showToast('Esta factura fue emitida como Pago de Contado y no admite eventos RADIAN (Res. DIAN 000085/2022).', 'info');
+      return;
+    }
+
     const cfg = eventConfig[code] || eventConfig['030'];
 
     const htmlBody = `
@@ -3197,6 +3642,32 @@ async function openRadianEventModal(docId: string, code: '030' | '032' | '033') 
             <div><span class="text-slate-400">Total:</span> <strong class="font-bold text-indigo-700">${(window as any).fmt(d.total)}</strong></div>
             <div><span class="text-slate-400">Origen:</span> <span class="capitalize font-mono text-[11px]">${(window as any).esc(d.reception_source || 'XML')}</span></div>
           </div>
+        </div>
+
+        <div class="p-3 border rounded-xl bg-violet-50/70 border-violet-200">
+          <div class="font-bold text-violet-950 flex items-center justify-between mb-1">
+            <span class="flex items-center gap-1.5"><i class="fas fa-user-shield text-violet-600"></i> Firmante Responsable DIAN:</span>
+            ${respDni ? `<span class="badge bg-emerald-100 text-emerald-800 text-[10px] font-semibold">Configurado</span>` : `<span class="badge bg-amber-100 text-amber-800 text-[10px] font-semibold">Sin configurar</span>`}
+          </div>
+          ${respDni ? `
+            <div class="text-[11px] text-slate-700 leading-normal">
+              <strong>${(window as any).esc(respFn)} ${(window as any).esc(respLn)}</strong> — ${(window as any).esc(respJob)} (CC: <span class="font-mono font-bold">${(window as any).esc(respDni)}</span>)
+            </div>
+          ` : `
+            <div class="text-[11px] text-amber-800 leading-normal">
+              No ha definido el responsable de recepción en GRAVY. Ingréselo abajo para adjuntarlo al evento:
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-violet-200">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-600">Cédula (DNI) *</label>
+                <input id="quick-resp-dni" class="form-input w-full text-xs py-1" placeholder="Ej: 1130636393" value="">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-600">Nombre Completo *</label>
+                <input id="quick-resp-name" class="form-input w-full text-xs py-1" placeholder="Ej: Julian Espinosa" value="">
+              </div>
+            </div>
+          `}
         </div>
 
         <div>
@@ -3233,7 +3704,19 @@ async function openRadianEventModal(docId: string, code: '030' | '032' | '033') 
         btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1.5"></i>Transmitiendo a la DIAN...`;
       }
       (window as any).closeModal();
-      await sendRadianEvent(docId, code, undefined, notes, notifySupplier);
+      const quickDni = (document.getElementById('quick-resp-dni') as HTMLInputElement)?.value.trim();
+      const quickName = (document.getElementById('quick-resp-name') as HTMLInputElement)?.value.trim();
+      let quickPerson = undefined;
+      if (quickDni && quickName) {
+        const parts = quickName.split(' ');
+        quickPerson = {
+          dni: quickDni,
+          first_name: parts.slice(0, Math.ceil(parts.length / 2)).join(' '),
+          last_name: parts.slice(Math.ceil(parts.length / 2)).join(' ') || quickName,
+          job_title: 'Representante Legal / Contador'
+        };
+      }
+      await sendRadianEvent(docId, code, undefined, notes, notifySupplier, quickPerson);
     });
 
   } catch (err: any) {
@@ -3241,7 +3724,7 @@ async function openRadianEventModal(docId: string, code: '030' | '032' | '033') 
   }
 }
 
-async function sendRadianEvent(docId: string, code: '030' | '032' | '033' | '031', claimCode?: string, notes?: string, notifySupplier: boolean = false) {
+async function sendRadianEvent(docId: string, code: '030' | '032' | '033' | '031', claimCode?: string, notes?: string, notifySupplier: boolean = false, receptionPerson?: any) {
   const eventNames: Record<string, string> = {
     '030': 'DIAN - Evento 030 (Acuse de Recibo)',
     '032': 'DIAN - Evento 032 (Recibo del Bien o Servicio)',
@@ -3252,15 +3735,21 @@ async function sendRadianEvent(docId: string, code: '030' | '032' | '033' | '031
   (window as any).showToast(`Transmitiendo ${eventNames[code]} a la DIAN...`, 'info');
 
   try {
-    const res = await fetch('/api/radian/send-event', {
+    const baseUrl = (window as any).pb?.baseUrl || (window as any).PB_URL || window.location.origin;
+    const authToken = (window as any).pb?.authToken || '';
+    const res = await fetch(`${baseUrl}/api/radian/send-event`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+      },
       body: JSON.stringify({
         docId,
         code,
         claim_code: claimCode,
         notes,
-        notifySupplier
+        notifySupplier,
+        reception_person: receptionPerson
       })
     });
 

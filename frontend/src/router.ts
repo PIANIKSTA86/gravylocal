@@ -53,6 +53,7 @@ declare var renderRutasVisitas: any;
 declare var renderMisReservasVendedor: any;
 declare var renderOrdenesCompra: any;
 declare var renderDevoluciones: any;
+declare var renderLegalCenter: any;
 
 const MAX_TABS = 8;
 
@@ -148,6 +149,7 @@ const PAGE_TITLES: Record<string, string> = {
   'niif-impuesto':    'Impuesto Diferido NIIF',
   'niif-revelaciones':'Notas y Revelaciones NIIF',
   'niif-estados':     'Estados Financieros NIIF',
+  'centro-legal':     'Centro Legal & Compliance',
 };
 
 const PAGE_ICONS: Record<string, string> = {
@@ -236,7 +238,8 @@ const PAGE_ICONS: Record<string, string> = {
   usuarios: 'fa-user-gear',
   auditoria: 'fa-clipboard-list',
   configuracion: 'fa-sliders',
-  licencias: 'fa-key'
+  licencias: 'fa-key',
+  'centro-legal': 'fa-scale-balanced',
 };
 
 const MODULE_LICENSE: Record<string, string> = {
@@ -431,6 +434,7 @@ const PAGE_RENDERERS: Record<string, (container: HTMLElement) => void> = {
   'niif-impuesto':    (c) => typeof (window as any).renderNIIF === 'function' && (window as any).renderNIIF(c, 'impuesto'),
   'niif-revelaciones':(c) => typeof (window as any).renderNIIF === 'function' && (window as any).renderNIIF(c, 'revelaciones'),
   'niif-estados':     (c) => typeof (window as any).renderNIIF === 'function' && (window as any).renderNIIF(c, 'estados'),
+  'centro-legal':     (c) => typeof renderLegalCenter === 'function' && renderLegalCenter(c),
 };
 
 interface TabItem {

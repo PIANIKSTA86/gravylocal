@@ -311,7 +311,7 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
           page: state.page,
           perPage: state.perPage,
           filter: filterStr,
-          sort: '-date,-created'
+          sort: '-date,-id'
         });
 
         state.orders = res.items || [];

@@ -647,7 +647,7 @@ export async function renderDevoluciones(container?: HTMLElement) {
     </button>
   `;
 
-  (window as any).openModal('Asistente de Registro de Devolución', html, footer, false);
+  (window as any).openModal('Asistente de Registro de Devolución', html, footer, true);
 
   (window as any).__rwLinesData = [];
   (window as any).__rwCurrentInvoice = null;
@@ -1063,7 +1063,7 @@ let _rwDebounceTimer: any = null;
       ${(ret.origin_source === 'INVOICE_NC' && window.viewSalesInvoiceDetail) ? `<button class="btn btn-outline text-purple-700 border-purple-300" onclick="window.viewSalesInvoiceDetail('${ret.id}')"><i class="fas fa-receipt mr-1"></i> Ver Facturación</button>` : ''}
     `;
 
-    (window as any).openModal(`Detalle Devolución — ${ret.number}`, html, footer, false);
+    (window as any).openModal(`Detalle Devolución — ${ret.number}`, html, footer, true);
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al ver detalle', 'error');
   }

@@ -5,18 +5,20 @@
 
 'use strict';
 
+import PocketBase from 'pocketbase';
+
 /* -- Permisos por rol --------------------------------------- */
 const PERMISSIONS = {
-  superadmin:    { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
-  administrador: { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
-  admin:         { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
-  contador:      { canWrite: true,  canDelete: true,  canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: true,  canEditDocs: true  },
-  auxiliar:      { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: false, canEditDocs: false },
-  cajero:        { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: false, canEditDocs: false },
-  vendedor:      { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: false, canEditDocs: false },
-  auditor:       { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: true,  canExport: true,  canApprove: false, canEditDocs: false },
-  viewer:        { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: false, canEditDocs: false },
-  propietario:   { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: false, canEditDocs: false },
+  superadmin: { canWrite: true, canDelete: true, canManageUsers: true, canViewAudit: true, canExport: true, canApprove: true, canEditDocs: true },
+  administrador: { canWrite: true, canDelete: true, canManageUsers: true, canViewAudit: true, canExport: true, canApprove: true, canEditDocs: true },
+  admin: { canWrite: true, canDelete: true, canManageUsers: true, canViewAudit: true, canExport: true, canApprove: true, canEditDocs: true },
+  contador: { canWrite: true, canDelete: true, canManageUsers: false, canViewAudit: false, canExport: true, canApprove: true, canEditDocs: true },
+  auxiliar: { canWrite: true, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true, canApprove: false, canEditDocs: false },
+  cajero: { canWrite: true, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true, canApprove: false, canEditDocs: false },
+  vendedor: { canWrite: true, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true, canApprove: false, canEditDocs: false },
+  auditor: { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: true, canExport: true, canApprove: false, canEditDocs: false },
+  viewer: { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true, canApprove: false, canEditDocs: false },
+  propietario: { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true, canApprove: false, canEditDocs: false },
 };
 
 /* -- Licencias de módulos ----------------------------------- */
@@ -41,7 +43,7 @@ async function loadLicenses(): Promise<void> {
           localKeys = data.modules.map((m: any) => m.module_key);
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // Fusión inteligente: Si el HUB tiene módulos asignados, se unen con los locales
     // para que un tenant desactualizado no revoque permisos del HUB, ni el HUB ignore altas locales.
@@ -84,82 +86,84 @@ function hasModule(moduleKey: string): boolean {
 function applyModuleVisibility(): void {
   // Mapa de page → módulo requerido (undefined = siempre visible)
   const MODULE_OF_PAGE: Record<string, string> = {
-    'consulta-tx':      'contabilidad',
-    'nueva-tx':         'contabilidad',
-    'cierre':           'contabilidad',
+    'consulta-tx': 'contabilidad',
+    'nueva-tx': 'contabilidad',
+    'cierre': 'contabilidad',
     'facturacion-dian': 'contabilidad',
     'documentos-electronicos': 'contabilidad',
-    'doc-soporte':      'contabilidad',
-    'exogena':          'contabilidad',
-    'ventas':           'comercial',
-    'pedidos':          'comercial',
-    'mis-reservas':     'comercial',
-    'compras':          'inventarios',
-    'productos':        'inventarios',
-    'inventario':       'inventarios',
+    'doc-soporte': 'contabilidad',
+    'exogena': 'contabilidad',
+    'ventas': 'comercial',
+    'pedidos': 'comercial',
+    'mis-reservas': 'comercial',
+    'compras': 'inventarios',
+    'productos': 'inventarios',
+    'inventario': 'inventarios',
     'inventario-stock': 'inventarios',
     'inventario-lotes': 'inventarios',
     'inventario-pallets': 'logistica',
-    'embalaje':           'logistica',
+    'embalaje': 'logistica',
     'inventario-movimientos': 'inventarios',
     'inventario-kardex': 'inventarios',
     'inventario-bodegas': 'inventarios',
     'inventario-consignaciones': 'inventarios',
-    'compra-sugerida':  'inventarios',
-    'ordenes-compra':   'inventarios',
-    'pos':              'comercial',
-    'comisiones':       'comercial',
-    'spa':              'spa',
-    'spa-belleza':      'spa-belleza',
-    'recaudos':         'tesoreria',
-    'egresos':          'tesoreria',
+    'inventario-devoluciones': 'inventarios',
+    'devoluciones': 'inventarios',
+    'compra-sugerida': 'inventarios',
+    'ordenes-compra': 'inventarios',
+    'pos': 'comercial',
+    'comisiones': 'comercial',
+    'spa': 'spa',
+    'spa-belleza': 'spa-belleza',
+    'recaudos': 'tesoreria',
+    'egresos': 'tesoreria',
     'cuentas-bancarias': 'tesoreria',
-    'agenda-pagos':     'tesoreria',
-    'conciliacion':     'conciliacion',
-    'nomina':           'nomina',
+    'agenda-pagos': 'tesoreria',
+    'conciliacion': 'conciliacion',
+    'nomina': 'nomina',
     'nomina-empleados': 'nomina',
     'nomina-contratos': 'nomina',
-    'nomina-periodos':  'nomina',
+    'nomina-periodos': 'nomina',
     'nomina-novedades': 'nomina',
     'nomina-distribucion-dotacion': 'nomina',
-    'nomina-liquidacion':'nomina',
-    'nomina-liquidacion-definitiva':'nomina',
-    'nomina-electronica-p':'nomina',
-    'copro-facturacion':'copropiedades',
-    'copro-cartera':    'copropiedades',
-    'copro-presupuesto':'copropiedades',
-    'copro-unidades':   'copropiedades',
-    'copro-reservas':   'copropiedades',
-    'copro-pqrs':       'copropiedades',
-    'importaciones':      'importaciones',
-    'preliquidaciones':   'importaciones',
+    'nomina-liquidacion': 'nomina',
+    'nomina-liquidacion-definitiva': 'nomina',
+    'nomina-electronica-p': 'nomina',
+    'copro-facturacion': 'copropiedades',
+    'copro-cartera': 'copropiedades',
+    'copro-presupuesto': 'copropiedades',
+    'copro-unidades': 'copropiedades',
+    'copro-reservas': 'copropiedades',
+    'copro-pqrs': 'copropiedades',
+    'importaciones': 'importaciones',
+    'preliquidaciones': 'importaciones',
     'reservas-logistica': 'importaciones',
-    'inmobiliarias':    'inmobiliarias',
-    'inmo-contratos':   'inmobiliarias',
+    'inmobiliarias': 'inmobiliarias',
+    'inmo-contratos': 'inmobiliarias',
     'inmo-mantenimientos': 'inmobiliarias',
-    'inmo-expedientes':  'inmobiliarias',
-    'inmo-liquidacion':  'inmobiliarias',
-    'tienda-virtual':   'tienda-virtual',
-    'crm':              'crm',
-    'despachos':        'logistica',
-    'rutas-monitoreo':  'logistica',
-    'rutas-control':    'logistica',
-    'rutas-planificador':'logistica',
-    'mis-rutas':        'logistica',
-    'rutas-gestion':    'logistica',
+    'inmo-expedientes': 'inmobiliarias',
+    'inmo-liquidacion': 'inmobiliarias',
+    'tienda-virtual': 'tienda-virtual',
+    'crm': 'crm',
+    'despachos': 'logistica',
+    'rutas-monitoreo': 'logistica',
+    'rutas-control': 'logistica',
+    'rutas-planificador': 'logistica',
+    'mis-rutas': 'logistica',
+    'rutas-gestion': 'logistica',
     'rutas-vendedores': 'logistica',
-    'niif':             'niif',
+    'niif': 'niif',
     'niif-diagnostico': 'niif',
-    'niif-politicas':   'niif',
-    'niif-mapeo':       'niif',
-    'niif-arrendamientos':'niif',
+    'niif-politicas': 'niif',
+    'niif-mapeo': 'niif',
+    'niif-arrendamientos': 'niif',
     'fixed-assets-catalogo': 'activos_fijos',
     'fixed-assets-categorias': 'activos_fijos',
     'fixed-assets-depreciacion': 'activos_fijos',
     'fixed-assets-inventario': 'activos_fijos',
-    'niif-impuesto':    'niif',
-    'niif-revelaciones':'niif',
-    'niif-estados':     'niif',
+    'niif-impuesto': 'niif',
+    'niif-revelaciones': 'niif',
+    'niif-estados': 'niif',
   };
 
   const isSidebarCollapsed = $('#sidebar')?.classList.contains('collapsed');
@@ -176,8 +180,8 @@ function applyModuleVisibility(): void {
   const PROPIETARIO_PAGES = new Set(['copro-reservas', 'copro-pqrs', 'dashboard']);
 
   $$('#nav-menu .nav-item').forEach((item: any) => {
-    const page     = item.dataset.page as string;
-    const required = MODULE_OF_PAGE[page];
+    const page = item.dataset.page as string;
+    const required = MODULE_OF_PAGE[page] || item.dataset.module;
 
     // Cajero: acceso restringido solo a su conjunto de páginas
     if (isCajero) {
@@ -232,7 +236,7 @@ function applyModuleVisibility(): void {
     let allowed = hasLic;
     if (page === 'usuarios') allowed = true;
     if (page === 'auditoria') allowed = can('canViewAudit');
-    
+
     if (page === 'superadmin') allowed = (role === 'superadmin');
     if (page === 'licencias') allowed = ['admin', 'superadmin'].includes(role);
 
@@ -273,14 +277,14 @@ function applyModuleVisibility(): void {
             next = next.nextElementSibling;
             continue;
           }
-          const required = MODULE_OF_PAGE[page];
+          const required = MODULE_OF_PAGE[page] || next.dataset.module;
           const hasLic = required ? hasModule(required) : true;
           let allowed = hasLic;
           if (page === 'usuarios') allowed = can('canManageUsers');
           if (page === 'auditoria') allowed = can('canViewAudit');
           if (page === 'superadmin') allowed = (role === 'superadmin');
           if (page === 'licencias') allowed = (role === 'admin');
-          
+
           if (allowed) {
             hasVisibleItems = true;
             break;
@@ -291,18 +295,19 @@ function applyModuleVisibility(): void {
 
       if (hasVisibleItems) {
         el.style.display = '';
+        el.classList.remove('nav-section-hidden');
         // Si la sección es visible, verificar si está colapsada por el usuario
         const sectionId = el.dataset.section || el.textContent.trim().toLowerCase().replace(/\s+/g, '-');
         el.dataset.section = sectionId; // Asegurar dataset.section
-        
+
         // Por defecto, colapsada si no hay preferencia en localStorage
         if (localStorage.getItem(`section-collapsed-${sectionId}`) === null) {
           localStorage.setItem(`section-collapsed-${sectionId}`, '1');
         }
-        
+
         const collapsed = localStorage.getItem(`section-collapsed-${sectionId}`) === '1';
         currentSectionCollapsed = collapsed;
-        
+
         // Rotar el chevron
         const chevron = el.querySelector('.fa-chevron-down, .section-chevron');
         if (chevron) {
@@ -326,13 +331,14 @@ function applyModuleVisibility(): void {
           el.classList.remove('active-section');
         }
       } else {
-        el.style.display = 'none';
+        el.style.setProperty('display', 'none', 'important');
+        el.classList.add('nav-section-hidden');
         currentSectionCollapsed = false;
         el.classList.remove('active-section');
       }
     } else if (el.classList.contains('nav-item')) {
       // Si el item ya está oculto por licencia/rol, dejarlo oculto
-      if (el.style.display === 'none') return;
+      if (el.style.display === 'none' || el.classList.contains('nav-item-hidden')) return;
 
       // Si pertenece a una sección colapsada y el sidebar no está colapsado en desktop, ocultarlo
       if (currentSectionCollapsed && !isSidebarCollapsed) {
@@ -413,20 +419,20 @@ function resolveCompanyUrl(url: string): string {
         }
       }
     }
-  } catch (_) {}
+  } catch (_) { }
   return url;
 }
 
 interface CompanyAccess {
-  access_id:     string;
-  company_id:    string;
-  company_name:  string;
-  company_url:   string;
+  access_id: string;
+  company_id: string;
+  company_name: string;
+  company_url: string;
   company_color: string;
-  role:          string;
+  role: string;
   company_email: string;
-  company_pass:  string;
-  modules:       string[];
+  company_pass: string;
+  modules: string[];
 }
 
 let _isLoggingIn = false;
@@ -437,7 +443,7 @@ async function doLogin() {
   const rawPass = $('#login-pass')?.value ?? '';
   const errEl = $('#login-error');
   const errTxt = $('#login-error-text');
-  
+
   const showError = (msg: string) => {
     if (errTxt) errTxt.textContent = msg;
     else if (errEl) errEl.textContent = msg;
@@ -500,7 +506,7 @@ async function doLogin() {
     const resComp = await fetch(`${HUB_URL}/api/hub/my-companies`, {
       headers: { 'Authorization': `Bearer ${hubToken}` }
     });
-    
+
     if (!resComp.ok) throw new Error('Error al obtener la lista de empresas asignadas');
     const dataComp = await resComp.json();
     const companies: CompanyAccess[] = dataComp.companies || [];
@@ -517,6 +523,136 @@ async function doLogin() {
     _isLoggingIn = false;
     if (btn) btn.disabled = false;
     btn.innerHTML = `<i class="fas fa-arrow-right-to-bracket text-xs"></i> <span id="btn-login-label">Iniciar Sesión</span>`;
+  }
+}
+
+/**
+ * Autenticación federada directa con el motor de PocketBase mediante OAuth2 de Google.
+ */
+async function loginWithGoogle(): Promise<void> {
+  if (_isLoggingIn) return;
+  const btn = document.getElementById('btn-google-login') as HTMLButtonElement;
+  const originalHtml = btn ? btn.innerHTML : '';
+  const errEl = $('#login-error');
+  const errTxt = $('#login-error-text');
+
+  const showError = (msg: string) => {
+    if (errTxt) errTxt.textContent = msg;
+    else if (errEl) errEl.textContent = msg;
+    errEl?.classList.remove('hidden');
+  };
+
+  errEl?.classList.add('hidden');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `
+      <i class="fas fa-spinner fa-spin text-xs"></i>
+      <span>Conectando con Google (PocketBase)...</span>
+    `;
+  }
+
+  _isLoggingIn = true;
+
+  try {
+    // 1. Resolver el endpoint base de PocketBase
+    let targetUrl = (window as any).PB_URL || pb.baseUrl || window.location.origin;
+    const { port, hostname, protocol } = window.location;
+    if (port === '5173' || port === '3000') {
+      targetUrl = `${protocol}//${hostname}:8090`;
+    }
+
+    const client = new PocketBase(targetUrl);
+
+    // 2. Ejecutar authWithOAuth2 nativo de PocketBase
+    let authData: any = null;
+    try {
+      authData = await client.collection('users').authWithOAuth2({ provider: 'google' });
+    } catch (eUsers: any) {
+      if (eUsers?.status === 404 || String(eUsers?.message || '').toLowerCase().includes('collection')) {
+        authData = await client.collection('hub_users').authWithOAuth2({ provider: 'google' });
+      } else {
+        throw eUsers;
+      }
+    }
+
+    if (!authData || !authData.token) {
+      throw new Error('No se recibió la sesión OAuth2 desde PocketBase.');
+    }
+
+    // 3. Persistir sesión PocketBase en cliente global
+    pb.authToken = authData.token;
+    pb.currentUser = authData.record;
+    localStorage.setItem('pb_token', authData.token);
+    localStorage.setItem('pb_user', JSON.stringify(authData.record));
+
+    const userLabel = String(
+      authData.record.full_name ||
+      authData.record.name ||
+      authData.meta?.name ||
+      authData.record.username ||
+      authData.record.email ||
+      'Usuario Google'
+    ).trim();
+
+    localStorage.setItem('user_name', userLabel);
+    sessionStorage.setItem('user_name', userLabel);
+
+    // 4. Determinar si hay empresas asignadas (HUB) o sesión directa
+    let hasCompanySelector = false;
+    try {
+      const resComp = await fetch(`${targetUrl}/api/hub/my-companies`, {
+        headers: { 'Authorization': `Bearer ${authData.token}` }
+      });
+      if (resComp.ok) {
+        const dataComp = await resComp.json();
+        const companies: CompanyAccess[] = dataComp.companies || [];
+        if (companies.length > 0) {
+          localStorage.setItem('gravy_hub_token', authData.token);
+          renderCompanySelector(companies);
+          hasCompanySelector = true;
+        }
+      }
+    } catch (_) { }
+
+    if (!hasCompanySelector) {
+      let activeCo = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
+      if (!activeCo.company_name) {
+        activeCo = {
+          company_id: 'default',
+          company_name: 'GRAVY Core',
+          company_url: targetUrl,
+          role: authData.record.role || 'admin',
+          modules: ['core', 'contabilidad', 'comercial', 'inventarios', 'nomina']
+        };
+        localStorage.setItem('gravy_active_company', JSON.stringify(activeCo));
+      }
+
+      ENABLED_MODULES = new Set(['core', ...(activeCo.modules || ['contabilidad', 'comercial', 'inventarios'])]);
+      (window as any).ENABLED_MODULES = ENABLED_MODULES;
+
+      startInactivityTracker();
+      showApp();
+    }
+
+    if (typeof showToast === 'function') {
+      showToast(`Autenticado con éxito: ${userLabel}`, 'success');
+    }
+  } catch (err: any) {
+    console.error('[GRAVY Auth] Error en autenticación con Google:', err);
+    let msg = err?.message || 'Error inesperado durante la autenticación';
+    if (msg.includes('Failed to authenticate') || msg.includes('cancelled') || msg.includes('closed') || msg.includes('window')) {
+      msg = 'Autenticación con Google cancelada o ventana cerrada.';
+    } else if (msg.includes('Missing OAuth2') || msg.includes('not enabled') || msg.includes('disabled') || msg.includes('not configured')) {
+      msg = 'Google OAuth2 no está habilitado en PocketBase. Configúralo en PocketBase Admin > Settings > Auth providers > Google.';
+    }
+    showError(msg);
+  } finally {
+    _isLoggingIn = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
   }
 }
 
@@ -581,7 +717,7 @@ function renderCompanyCards(companiesToRender: CompanyAccess[]): string {
 function renderCompanySelector(companies: CompanyAccess[]) {
   _currentHubCompanies = companies;
   $$('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; });
-  
+
   let selectorScreen = $('#screen-company-select');
   if (!selectorScreen) {
     selectorScreen = document.createElement('div');
@@ -630,7 +766,7 @@ function renderCompanySelector(companies: CompanyAccess[]) {
       </div>
     </div>
   `;
-  
+
   selectorScreen.style.display = 'flex';
   selectorScreen.classList.add('active');
 
@@ -640,7 +776,7 @@ function renderCompanySelector(companies: CompanyAccess[]) {
   if (searchInp && gridEl) {
     searchInp.addEventListener('input', (e: any) => {
       const q = (e.target.value || '').toLowerCase().trim();
-      const filtered = _currentHubCompanies.filter(c => 
+      const filtered = _currentHubCompanies.filter(c =>
         (c.company_name || '').toLowerCase().includes(q) ||
         (c.role || '').toLowerCase().includes(q)
       );
@@ -744,7 +880,7 @@ async function selectCompany(co: CompanyAccess) {
     }
 
     const dataSso = await resSso.json();
-    
+
     // Guardar la sesión local en el cliente personalizado pb
     pb.authToken = dataSso.token;
     pb.currentUser = dataSso.record;
@@ -755,7 +891,7 @@ async function selectCompany(co: CompanyAccess) {
         sessionStorage.setItem('user_name', uLabel);
       }
     }
-    
+
     // Configurar el contexto local
     ENABLED_MODULES = new Set(['core', ...(co.modules || [])]);
     (window as any).ENABLED_MODULES = ENABLED_MODULES;
@@ -768,7 +904,7 @@ async function selectCompany(co: CompanyAccess) {
         companyAddress: (co as any).company_address || ''
       });
     }
-    
+
     // Registrar evento de LOGIN en la auditoría
     try {
       const userLabel = pb.currentUser?.name || pb.currentUser?.email || 'Usuario';
@@ -778,7 +914,7 @@ async function selectCompany(co: CompanyAccess) {
         pb.currentUser?.id || '',
         `Inicio de sesión exitoso en ${co.company_name} (${userLabel})`
       );
-    } catch (_) {}
+    } catch (_) { }
 
     // Iniciar monitoreo de inactividad
     startInactivityTracker();
@@ -800,7 +936,7 @@ async function doHubLogout() {
   if (pb.currentUser && pb.authToken) {
     try {
       await pb.logAudit('LOGOUT', 'sistema', pb.currentUser.id || '', 'Cierre de sesión global');
-    } catch (_) {}
+    } catch (_) { }
   }
   pb.logout();
   if (typeof (window as any).syncActiveCompanyCache === 'function') {
@@ -845,7 +981,7 @@ async function doLogout(reason: string | Event = 'Cierre de sesión manual') {
   if (pb.currentUser && pb.authToken) {
     try {
       await pb.logAudit('LOGOUT', 'sistema', pb.currentUser.id || '', reasonStr);
-    } catch (_) {}
+    } catch (_) { }
   }
   pb.logout();
   if (typeof (window as any).syncActiveCompanyCache === 'function') {
@@ -888,7 +1024,7 @@ async function doLogout(reason: string | Event = 'Cierre de sesión manual') {
           if (appSel) appSel.style.display = 'none';
           return;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
     // Hub token inválido o expirado — limpiar y pedir login
     localStorage.removeItem('gravy_hub_token');
@@ -997,7 +1133,7 @@ async function initGlobalBranchSelector() {
   try {
     // 1. Obtener todas las sucursales activas (ignoramos el filtro dinámico de sucursal en la query)
     const allBranches = await pb.listAll('branches', { filter: 'active=true', ignoreBranch: true });
-    
+
     // 2. Filtrar por allowed_branches si existe restricción
     let allowedBranches = allBranches;
     if (user.allowed_branches && user.allowed_branches.length > 0) {
@@ -1010,7 +1146,7 @@ async function initGlobalBranchSelector() {
     // Si no hay restricción de usuario (o es admin/superadmin/contador), se añade "TODAS"
     const hasRestriction = user.allowed_branches && user.allowed_branches.length > 0;
     const isAdmin = ['superadmin', 'admin', 'contador'].includes(user.role);
-    
+
     if (!hasRestriction || isAdmin) {
       const optAll = document.createElement('option');
       optAll.value = 'TODAS';
@@ -1027,7 +1163,7 @@ async function initGlobalBranchSelector() {
 
     // 4. Determinar selección activa
     let activeBranchId = localStorage.getItem('active_branch_id');
-    
+
     // Validar que la opción guardada sea válida
     const options = Array.from(selector.options).map(o => o.value);
     if (!activeBranchId || !options.includes(activeBranchId)) {
@@ -1046,7 +1182,7 @@ async function initGlobalBranchSelector() {
     selector.onchange = (e: any) => {
       const newVal = e.target.value;
       localStorage.setItem('active_branch_id', newVal);
-      
+
       // Recargar la pantalla actual para refrescar los datos bajo el nuevo filtro
       const curPage = (window as any).currentPage || 'dashboard';
       if (typeof (window as any).navigate === 'function') {
@@ -1147,13 +1283,13 @@ async function showApp() {
     if (decVal !== undefined && decVal !== '' && typeof (window as any).setDecimalPlaces === 'function') {
       (window as any).setDecimalPlaces(decVal);
     }
-  } catch (_) {}
+  } catch (_) { }
 
   // Actualizar navbar dropdown
   if ($('#navbar-username')) $('#navbar-username').textContent = user.full_name || user.email;
   if ($('#dropdown-username')) $('#dropdown-username').textContent = user.full_name || user.email;
-  if ($('#dropdown-role')) $('#dropdown-role').textContent     = roleLabel(user.role ?? 'viewer');
-  if ($('#navbar-avatar')) $('#navbar-avatar').textContent   = (user.full_name || user.email).charAt(0).toUpperCase();
+  if ($('#dropdown-role')) $('#dropdown-role').textContent = roleLabel(user.role ?? 'viewer');
+  if ($('#navbar-avatar')) $('#navbar-avatar').textContent = (user.full_name || user.email).charAt(0).toUpperCase();
 
   // El superadmin del tenant es superadmin del HUB
   if (activeCompany.role === 'admin' && user.email === 'admin@gravy.local') {
@@ -1170,7 +1306,7 @@ async function showApp() {
 
   // Topbar
   $('#topbar-company').textContent = activeCompany.company_name || 'GRAVY';
-  $('#topbar-date').textContent    = new Date().toLocaleDateString('es-CO', {
+  $('#topbar-date').textContent = new Date().toLocaleDateString('es-CO', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
 
@@ -1216,7 +1352,7 @@ async function showApp() {
       if (finalName && $('#topbar-company')) {
         $('#topbar-company').textContent = finalName;
       }
-    } catch (_) {}
+    } catch (_) { }
   })();
 
   // Apply user topbar color
@@ -1260,7 +1396,7 @@ async function showApp() {
 
 /* -- Toggle contraseña visible ----------------------------- */
 function togglePassVisibility() {
-  const inp  = $('#login-pass');
+  const inp = $('#login-pass');
   const icon = $('#btn-toggle-pass')?.querySelector('i');
   if (!inp) return;
   if (inp.type === 'password') {
@@ -1503,5 +1639,6 @@ function startConnCheck() {
 (window as any).stopInactivityTracker = stopInactivityTracker;
 (window as any).INACTIVITY_TIMEOUT_MS = INACTIVITY_TIMEOUT_MS;
 (window as any).showSessionDisplacedModal = showSessionDisplacedModal;
+(window as any).loginWithGoogle = loginWithGoogle;
 
 

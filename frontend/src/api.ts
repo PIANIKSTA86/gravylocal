@@ -7302,7 +7302,11 @@ const API = {
 
   /** Lista paginada de órdenes de compra */
   async getPurchaseOrders(opts: any = {}) {
-    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    let { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    // Sanitizar sort para evitar 400 si se envía un campo inexistente como 'created'
+    if (typeof sort === 'string' && sort.includes('created')) {
+      sort = sort.replace(/,?-?created,?/g, '').replace(/^,|,$/g, '') || '-date';
+    }
     return pb.list('purchase_orders', {
       page, perPage, filter, sort,
       expand: 'supplier_id,warehouse_id,invoice_id,user_id',
@@ -7342,7 +7346,7 @@ const API = {
     // Fallback: si el consecutivo es 1, verificar si ya existen órdenes para no colisionar
     if (nextNum === 1) {
       try {
-        const last = await pb.list('purchase_orders', { sort: '-created', perPage: 1 });
+        const last = await pb.list('purchase_orders', { sort: '-date,-id', perPage: 1 });
         if (last.items && last.items.length) {
           const numStr = String(last.items[0].number || '').replace(/\D/g, '');
           const parsed = parseInt(numStr || '0', 10);

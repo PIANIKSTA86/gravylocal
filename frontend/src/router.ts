@@ -266,6 +266,8 @@ const MODULE_LICENSE: Record<string, string> = {
   'inventario-kardex': 'inventarios',
   'inventario-bodegas': 'inventarios',
   'inventario-consignaciones': 'inventarios',
+  'inventario-devoluciones': 'inventarios',
+  'devoluciones':      'inventarios',
   'compra-sugerida':  'inventarios',
   'ordenes-compra':   'inventarios',
   'pos':              'comercial',

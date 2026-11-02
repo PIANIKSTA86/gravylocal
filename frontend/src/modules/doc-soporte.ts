@@ -1945,7 +1945,7 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
     </button>
   `;
 
-  openModal('Emitir Nota de Ajuste a Documento Soporte (NDS)', bodyHtml, footer, false);
+  openModal('Emitir Nota de Ajuste a Documento Soporte (NDS)', bodyHtml, footer, true);
 
   document.getElementById('btn-confirm-nds')?.addEventListener('click', async () => {
     const targetTxId = (document.getElementById('nds-target-ds') as HTMLSelectElement).value;

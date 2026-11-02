@@ -986,7 +986,7 @@ function filterSoTable() {
     <button class="btn btn-primary" onclick="window.continueToNoteForm('${(window as any).esc(inv.tx_id)}')">Continuar <i class="fas fa-arrow-right ml-1"></i></button>
   `;
 
-  (window as any).openModal('Asistente de Ajustes (Notas)', html, footer, false);
+  (window as any).openModal('Asistente de Ajustes (Notas)', html, footer, true);
 
   (window as any).updatePreNoteConceptHelp = (conceptVal: string) => {
     const helpEl = document.getElementById('pre-note-concept-help');

@@ -417,26 +417,35 @@ function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide: 
     overlay.className = 'tab-modal-overlay modal-overlay show';
     overlay.style.position = 'fixed';
     overlay.style.inset = '0';
-    overlay.style.background = 'rgba(5,8,20,.6)';
-    overlay.style.backdropFilter = 'blur(4px)';
+    overlay.style.background = 'rgba(15, 23, 42, 0.45)';
+    overlay.style.backdropFilter = 'blur(6px)';
     overlay.style.zIndex = '300';
     overlay.style.display = 'flex';
     overlay.style.alignItems = 'center';
     overlay.style.justifyContent = 'center';
-    overlay.style.padding = '16px';
+    overlay.style.padding = '24px 16px';
     overlay.style.overflowY = 'auto';
     activePane.appendChild(overlay);
   }
 
+  // Detección heurística de contenido ancho (tablas, detalles DIAN, balances, asistentes)
+  const bodyStr = typeof bodyHtml === 'string' ? bodyHtml : '';
+  const hasTableContent = bodyStr.includes('<table') || bodyStr.includes('grid-cols-') || bodyStr.includes('overflow-x-auto');
+  const isDocDetail = titleLower.includes('detalle') || titleLower.includes('asistente') || titleLower.includes('ajuste') || titleLower.includes('devolución') || titleLower.includes('devolucion') || titleLower.includes('comprobante') || titleLower.includes('arqueo') || titleLower.includes('cierre') || titleLower.includes('historial');
+  const effectiveWide = Boolean(wide || hasTableContent || isDocDetail);
+
+  const modalWidthClass = effectiveWide ? 'wide max-w-5xl xl:max-w-6xl' : 'max-w-3xl';
+  const modalWidthStyle = effectiveWide ? 'width: min(94vw, 1180px);' : 'width: min(90vw, 760px);';
+
   overlay.innerHTML = `
-    <div class="modal-box bg-white rounded-2xl p-4 sm:p-5 shadow-2xl ${wide ? 'wide max-w-4xl' : 'max-w-xl'} w-full border border-gray-200 anim-fade my-auto" style="border-color:#E2E8F0; max-height: calc(100vh - 36px); display: flex; flex-direction: column;">
+    <div class="modal-box bg-white rounded-2xl p-4 sm:p-5 shadow-2xl ${modalWidthClass} w-full border border-gray-200 anim-fade my-auto" style="border-color:#E2E8F0; ${modalWidthStyle} max-height: min(86vh, 820px); display: flex; flex-direction: column;">
       <div class="flex items-center justify-between pb-2.5 mb-2.5 border-b border-gray-200 flex-shrink-0">
         <h4 class="text-base font-bold text-gray-900">${esc(titleClean)}</h4>
         <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">
           <i class="fas fa-xmark"></i>
         </button>
       </div>
-      <div class="modal-body flex-1 overflow-y-auto py-1 pr-1" style="max-height: calc(100vh - 150px);">
+      <div class="modal-body flex-1 overflow-y-auto overflow-x-auto py-1 pr-1" style="max-height: calc(86vh - 140px);">
         ${bodyHtml}
       </div>
       <div class="modal-footer pt-3 mt-2.5 border-t border-gray-200 flex items-center justify-end gap-2 flex-shrink-0">

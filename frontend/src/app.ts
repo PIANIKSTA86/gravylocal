@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Botones de login ───────────────────────────────────────
   $('#form-login')?.addEventListener('submit', (e) => { e.preventDefault(); doLogin(); });
+  $('#btn-google-login')?.addEventListener('click', (e) => { e.preventDefault(); if (typeof (window as any).loginWithGoogle === 'function') (window as any).loginWithGoogle(); });
   $('#btn-login')?.addEventListener('click', (e) => { e.preventDefault(); doLogin(); });
   $('#btn-toggle-pass')?.addEventListener('click', togglePassVisibility);
   $('#login-pass')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
@@ -131,7 +132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const sectionId = section.dataset.section;
       if (!sectionId) return;
       const isCollapsed = localStorage.getItem(`section-collapsed-${sectionId}`) === '1';
-      
+
       if (!isCollapsed) {
         localStorage.setItem(`section-collapsed-${sectionId}`, '1');
       } else {
@@ -144,7 +145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         localStorage.setItem(`section-collapsed-${sectionId}`, '0');
       }
-      
+
       if (typeof (window as any).applyModuleVisibility === 'function') {
         (window as any).applyModuleVisibility();
       }
@@ -176,7 +177,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Toggle sidebar móvil ───────────────────────────────────
   // ── Toggle menú (colapso desktop ↔ overlay móvil) ──────────
-  const _sidebar   = $('#sidebar');
+  const _sidebar = $('#sidebar');
   const _screenApp = $('#screen-app');
 
   function setSidebarCollapsed(collapsed, animate = true) {
@@ -190,7 +191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     _sidebar.classList.toggle('collapsed', collapsed);
     _screenApp.classList.toggle('sidebar-collapsed', collapsed);
     localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
-    
+
     // Al colapsar/expandir el sidebar principal, reevaluar visibilidades
     if (typeof (window as any).applyModuleVisibility === 'function') {
       (window as any).applyModuleVisibility();
@@ -343,6 +344,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       const isSection = targetEl.classList.contains('nav-section');
 
       if (!isStandalone && !isSection) return;
+      if (targetEl.classList.contains('nav-section-hidden') || targetEl.style.display === 'none') {
+        flyout?.classList.remove('show');
+        return;
+      }
 
       if (isStandalone) {
         headerEl.className = 'sidebar-flyout-header standalone';
@@ -449,7 +454,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function initApp() {
   const loadMsg = $('#loading-msg');
-  const setMsg  = m => { if (loadMsg) loadMsg.textContent = m; };
+  const setMsg = m => { if (loadMsg) loadMsg.textContent = m; };
 
   // Configurar la URL de PocketBase según la empresa activa antes de verificar sesión y servidor
   try {
@@ -598,7 +603,7 @@ async function checkUpcomingVencimientos() {
     if (alerts.length > 0) {
       if (badge) badge.style.display = 'block';
       if (countEl) countEl.innerText = `${alerts.length} Alertas`;
-      
+
       if (listEl) {
         listEl.innerHTML = alerts.map((a: any) => {
           const typeIcons: Record<string, string> = {
@@ -682,8 +687,8 @@ function initOmniSearch() {
 
   function renderResults(query: string) {
     const q = query.toLowerCase().trim();
-    const filtered = quickLinks.filter(l => 
-      l.title.toLowerCase().includes(q) || 
+    const filtered = quickLinks.filter(l =>
+      l.title.toLowerCase().includes(q) ||
       l.category.toLowerCase().includes(q) ||
       l.page.toLowerCase().includes(q)
     );

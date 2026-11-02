@@ -2487,7 +2487,7 @@ function poKpi(label: string, value: any, icon: string, color: string, bg: strin
     <button class="btn btn-primary" onclick="window.continueToPurchaseNoteForm('${(window as any).esc(inv.id)}')">Continuar <i class="fas fa-arrow-right ml-1"></i></button>
   `;
 
-  (window as any).openModal('Asistente de Ajustes de Compras (Notas)', html, footer, false);
+  (window as any).openModal('Asistente de Ajustes de Compras (Notas)', html, footer, true);
 
   (window as any).updatePurchasePreNoteResolutions = async (type: string) => {
     const sel = document.getElementById('pre-note-resolution') as HTMLSelectElement;

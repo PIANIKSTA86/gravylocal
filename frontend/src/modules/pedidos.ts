@@ -1396,7 +1396,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
         <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
       </div>
     `;
-    (window as any).openModal(`Detalle del Pedido: ${ord.number}`, detailHtml, footer, false);
+    (window as any).openModal(`Detalle del Pedido: ${ord.number}`, detailHtml, footer, true);
   } catch (err: any) {
     (window as any).showToast('Error al cargar detalle del pedido: ' + err.message, 'error');
   }

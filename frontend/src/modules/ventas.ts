@@ -834,20 +834,24 @@ function renderSoRow(inv: any) {
           ${inv.cost_corrected ? `<span class="badge badge-blue text-[10px]" title="Costo de ventas corregido el ${(window as any).esc(inv.cost_corrected_at || '')} mediante Recálculo y Revalorización de Costos"><i class="fas fa-rotate mr-1"></i>Costo corregido</span>` : ''}
         </div>
       </td>
-      <td>
-        <div class="flex gap-1">
-          <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewSalesInvoiceDetail('${(window as any).esc(inv.id)}')"><i class="fas fa-eye"></i></button>
-          <button class="btn btn-outline btn-sm text-teal-600" title="Duplicar Factura (Crear borrador)" onclick="window.duplicateSalesInvoice('${(window as any).esc(inv.id)}')"><i class="fas fa-clone"></i></button>
+      <td class="text-right">
+        <div class="inline-flex items-center gap-1.5 justify-end">
           ${inv.status === 'draft' ? `
-            <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#7C3AED;color:#7C3AED" onclick="window.editSalesInvoice('${(window as any).esc(inv.id)}')"><i class="fas fa-pen"></i></button>
-            <button class="btn btn-primary btn-sm" title="${isFirmar ? 'Firmar y Contabilizar' : 'Contabilizar'}" onclick="window.contabilizarVenta('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}', ${isFirmar})"><i class="${isFirmar ? 'fas fa-paper-plane' : 'fas fa-check'}"></i> ${isFirmar ? 'Firmar y Contabilizar' : 'Contabilizar'}</button>
-            <button class="btn btn-danger btn-sm" title="Eliminar Borrador" onclick="window.deleteSalesInvoiceDraft('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}')"><i class="fas fa-trash"></i></button>
-          ` : ''}
-          ${inv.status === 'posted' ? `
-            <button class="btn btn-outline btn-sm" title="Generar Ajuste / Nota DIAN" style="border-color:#8B5CF6;color:#8B5CF6" onclick="window.openSalesNotePreModal('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}')"><i class="fas fa-file-invoice-dollar"></i></button>
-            <button class="btn btn-danger btn-sm" title="Anular Factura" onclick="window.voidSalesInvoiceDirect('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}')"><i class="fas fa-ban"></i></button>
-            ${inv.tx_id ? `<button class="btn btn-outline btn-sm text-purple-600" style="border-color:#7C3AED;color:#7C3AED" title="Ver comprobante" onclick="window.seeSalesTxDetail('${(window as any).esc(inv.tx_id)}')"><i class="fas fa-book-open"></i></button>` : ''}
-          ` : ''}
+            <button type="button" class="btn btn-outline btn-sm px-2 text-purple-700 border-purple-200 hover:bg-purple-50" title="Editar Borrador" onclick="window.editSalesInvoice('${(window as any).esc(inv.id)}')">
+              <i class="fas fa-pen mr-1"></i>Editar
+            </button>
+            <button type="button" class="btn btn-primary btn-sm px-2 text-xs" title="${isFirmar ? 'Firmar y Contabilizar' : 'Contabilizar'}" onclick="window.contabilizarVenta('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}', ${isFirmar})">
+              <i class="${isFirmar ? 'fas fa-paper-plane' : 'fas fa-check'} mr-1"></i>${isFirmar ? 'Firmar' : 'Contabilizar'}
+            </button>
+          ` : `
+            <button type="button" class="btn btn-outline btn-sm px-2.5 text-gray-700 hover:text-purple-700 hover:border-purple-300 transition-all inline-flex items-center gap-1.5 shadow-2xs" title="Ver detalle de documento" onclick="window.viewSalesInvoiceDetail('${(window as any).esc(inv.id)}')">
+              <i class="fas fa-eye text-xs text-purple-600"></i>
+              <span class="text-xs font-semibold">Ver</span>
+            </button>
+          `}
+          <button type="button" class="btn btn-outline btn-sm px-2 text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-300 shadow-2xs transition-colors" title="Más opciones" onclick="window.openSoActionMenu(event, { id: '${(window as any).esc(inv.id)}', number: '${(window as any).esc(inv.number)}', status: '${(window as any).esc(inv.status)}', tx_id: '${(window as any).esc(inv.tx_id || '')}', isNC: ${prefix === 'NCFE' || prefix === 'NC'} })">
+            <i class="fas fa-ellipsis-vertical text-xs"></i>
+          </button>
         </div>
       </td>
     </tr>
@@ -4606,7 +4610,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
     const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id,pos_shift_id,seller_id,sales_order_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
-    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compDept, compCountry, logoBase64, customFooterText] = await Promise.all([
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compDept, compCountry, logoBase64, customFooterText, customHeaderText] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
       (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
@@ -4617,6 +4621,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
       (window as any).API.getSetting('company_country').catch(() => ''),
       (window as any).API.getSetting('company_logo').catch(() => ''),
       (window as any).API.getSetting('invoice_footer_text').catch(() => ''),
+      (window as any).API.getSetting('invoice_header_text').catch(() => ''),
     ]);
 
     // --- DIAN Resolution & CUFE / Signature Lookup ---
@@ -5155,6 +5160,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
                 ${compCityDeptStr ? `Ciudad / Depto: ${(window as any).esc(compCityDeptStr)}<br>` : ''}
                 ${compPhone ? `Teléfono: ${(window as any).esc(compPhone)}<br>` : ''}
                 ${compEmail ? `Email: ${(window as any).esc(compEmail)}<br>` : ''}
+                ${customHeaderText ? `<div style="margin-top:6px; font-weight:500; color:#475569; font-size:11px; line-height:1.4;">${(window as any).esc(customHeaderText).replace(/\n/g, '<br>')}</div>` : ''}
               </div>
             </div>
             <div class="hdr-right">
@@ -5243,8 +5249,11 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
           <!-- Footer legal -->
           <div class="legal-footer">
             <p style="margin: 4px 0; font-weight: 600; color: #475569;">${resolutionStr}</p>
-            <p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
-            <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: soporte@gravy.com</p>
+            ${customFooterText 
+              ? `<div style="margin: 6px 0; color: #64748b; font-size: 10.5px; line-height: 1.5;">${(window as any).esc(customFooterText).replace(/\n/g, '<br>')}</div>` 
+              : `<p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
+                 <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: ${(window as any).esc(compEmail || 'soporte@gravy.com')}</p>`
+            }
           </div>
 
           <script>
@@ -5294,6 +5303,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
                 ${compCityDeptStr ? `<div>Ciudad / Depto: ${(window as any).esc(compCityDeptStr)}</div>` : ''}
                 ${compPhone ? `<div>Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
                 ${compEmail ? `<div>Email: ${(window as any).esc(compEmail)}</div>` : ''}
+                ${customHeaderText ? `<div style="margin-top:4px; font-size:9.5px; color:#475569; line-height:1.35;">${(window as any).esc(customHeaderText).replace(/\n/g, '<br>')}</div>` : ''}
               </td>
               <td class="hdr-right">
                 <div class="invoice-title">${(window as any).esc(docTitle.toUpperCase())}</div>
@@ -5386,8 +5396,11 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
           <div class="footer">
             ${inv.notes ? `<p><strong>Observaciones:</strong> ${(window as any).esc(inv.notes)}</p>` : ''}
             <p style="margin: 4px 0; font-weight: bold; color: #475569;">${resolutionStr}</p>
-            <p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
-            <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: soporte@gravy.com</p>
+            ${customFooterText 
+              ? `<div style="margin: 4px 0; color: #64748b; font-size: 9.5px; line-height: 1.4;">${(window as any).esc(customFooterText).replace(/\n/g, '<br>')}</div>` 
+              : `<p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
+                 <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado.</p>`
+            }
           </div>
 
           <script>
@@ -5466,6 +5479,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
                   ${compPhone ? `Tel: ${(window as any).esc(compPhone)}` : ''}
                   ${compEmail ? ` | E-mail: ${(window as any).esc(compEmail)}` : ''}
                 </div>
+                ${customHeaderText ? `<div style="font-size:8.5px; color:#475569; font-weight:600; margin-top:3px; line-height:1.3;">${(window as any).esc(customHeaderText).replace(/\n/g, '<br>')}</div>` : ''}
               </td>
               <!-- Código QR -->
               <td style="width:25%; vertical-align:middle; text-align:right;">
@@ -5608,9 +5622,11 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
               </div>
             </div>
 
-            <p style="margin:4px 0; text-align:justify; font-size:9px; color:#333;">
-              ${customFooterText ? (window as any).esc(customFooterText) : `Esta factura es un título valor según el Artículo 774 del Código de Comercio colombiano. Factura de venta generada por Software ERP GRAVY v2.0 (UBL 2.1 DIAN). Autoriza ${(window as any).esc(compName)} / NIT.${(window as any).esc(compNit)}. Para transferencias por favor hacer su pago en la cuenta bancaria de ahorros autorizada de ${(window as any).esc(compName)}.`}
-            </p>
+            <div style="margin:4px 0; text-align:justify; font-size:9px; color:#333; line-height:1.4;">
+              ${customFooterText 
+                ? (window as any).esc(customFooterText).replace(/\n/g, '<br>') 
+                : `Esta factura es un título valor según el Artículo 774 del Código de Comercio colombiano. Factura de venta generada por Software ERP GRAVY v2.0 (UBL 2.1 DIAN). Autoriza ${(window as any).esc(compName)} / NIT.${(window as any).esc(compNit)}.`}
+            </div>
 
             <p style="margin:4px 0; font-size:8.5px; color:#475569; font-weight:semibold;">
               ${resolutionStr}
@@ -5736,6 +5752,17 @@ window.viewSalesInvoiceDetail = async function(id: string) {
 
     const isNC = (inv.number && String(inv.number).startsWith('NC')) || inv.type === 'NC' || inv.expand?.tx_type_id?.code === 'NC';
 
+    let isDianSent = false;
+    if (inv.tx_id) {
+      try {
+        const einv = await (window as any).pb.list('einvoice_docs', {
+          filter: `tx_id="${(window as any).pb.escapeFilterValue(inv.tx_id)}" && (status="enviada" || status="aceptada")`,
+          perPage: 1
+        });
+        isDianSent = Boolean(einv && einv.items && einv.items.length > 0);
+      } catch (_) {}
+    }
+
     const auditHtml = history.length ? `
       <div class="mt-5 rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
         <h4 class="font-bold text-gray-800 mb-2"><i class="fas fa-clock-rotate-left mr-2"></i>Historial de Auditoría</h4>
@@ -5844,30 +5871,108 @@ window.viewSalesInvoiceDetail = async function(id: string) {
     `;
 
     const footer = `
-      <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
-      <button class="btn btn-primary" onclick="window.printInvoiceCarta('${inv.id}')"><i class="fas fa-print"></i> Imprimir Carta</button>
-      <button class="btn btn-outline" onclick="window.showThermalTicketReceipt('${inv.id}', 0, 0)"><i class="fas fa-receipt mr-1"></i> Imprimir Tirilla</button>
-      <button class="btn btn-outline" style="border-color:#0D9488;color:#0D9488" onclick="closeModal(); window.duplicateSalesInvoice('${inv.id}')"><i class="fas fa-clone mr-1"></i> Duplicar</button>
-      ${inv.status === 'draft' ? `
-        <button class="btn btn-primary" onclick="closeModal(); window.editSalesInvoice('${inv.id}')"><i class="fas fa-pen"></i> Editar</button>
-        ${(soConfig.operational.dian_dependent_posting && inv.is_electronic) ? `
-          <button class="btn btn-primary" onclick="closeModal(); window.contabilizarVenta('${inv.id}', '${inv.number}', true)"><i class="fas fa-paper-plane mr-1"></i> Firmar y Contabilizar</button>
-        ` : `
-          <button class="btn btn-primary" onclick="closeModal(); window.contabilizarVenta('${inv.id}', '${inv.number}', false)"><i class="fas fa-check-double mr-1"></i> Contabilizar</button>
-        `}
-      ` : ''}
-      ${inv.status === 'posted' ? `
-        <button class="btn btn-secondary" onclick="window.emitInvoiceToDian('${inv.tx_id}', '${inv.number}')"><i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN</button>
-        ${inv.tx_id ? `
-          <button class="btn btn-outline" style="border-color:#6366F1;color:#4F46E5" onclick="window.showDianLogsModal('${inv.tx_id}', '${inv.number}')"><i class="fas fa-list-check mr-1"></i> Ver Log DIAN</button>
-        ` : ''}
-        ${((window as any).can('canWrite') && !isNC) ? `
-          <button class="btn btn-outline" style="border-color:#10B981;color:#10B981" onclick="window.openChangePaymentMethodModal('${inv.id}', '${inv.number}')"><i class="fas fa-credit-card mr-1"></i> Cambiar Pago</button>
-        ` : ''}
-        ${!isNC ? `
-          <button class="btn btn-danger" onclick="closeModal(); window.voidSalesInvoiceDirect('${inv.id}', '${inv.number}')"><i class="fas fa-ban"></i> Anular Factura</button>
-        ` : ''}
-      ` : ''}
+      <div class="w-full flex flex-wrap items-center justify-between gap-3 pt-1">
+        <!-- Zona Izquierda: Salida -->
+        <div class="flex items-center gap-2">
+          <button type="button" class="btn btn-outline" onclick="closeModal()">
+            <i class="fas fa-xmark mr-1"></i> Cerrar
+          </button>
+        </div>
+
+        <!-- Zona Derecha: Impresión, Flujo DIAN y Menú Más Acciones -->
+        <div class="flex items-center gap-2 flex-wrap">
+          <!-- Grupo de Impresión Rápida -->
+          <div class="inline-flex rounded-xl shadow-2xs border border-purple-200 overflow-hidden bg-white">
+            <button type="button" class="btn btn-primary btn-sm px-3 rounded-none border-0 flex items-center gap-1.5" onclick="window.printInvoiceCarta('${inv.id}')" title="Imprimir Formato Carta / PDF">
+              <i class="fas fa-print"></i>
+              <span>Imprimir Carta</span>
+            </button>
+            <button type="button" class="px-2.5 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors border-l border-purple-200 text-xs font-semibold flex items-center gap-1" onclick="window.showThermalTicketReceipt('${inv.id}', 0, 0)" title="Imprimir Tirilla POS 80mm">
+              <i class="fas fa-receipt"></i>
+              <span>Tirilla</span>
+            </button>
+          </div>
+
+          <!-- Si es Borrador -->
+          ${inv.status === 'draft' ? `
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal(); window.editSalesInvoice('${inv.id}')">
+              <i class="fas fa-pen mr-1"></i> Editar
+            </button>
+            ${(soConfig.operational.dian_dependent_posting && inv.is_electronic) ? `
+              <button type="button" class="btn btn-primary btn-sm" onclick="closeModal(); window.contabilizarVenta('${inv.id}', '${inv.number}', true)">
+                <i class="fas fa-paper-plane mr-1"></i> Firmar y Contabilizar
+              </button>
+            ` : `
+              <button type="button" class="btn btn-primary btn-sm" onclick="closeModal(); window.contabilizarVenta('${inv.id}', '${inv.number}', false)">
+                <i class="fas fa-check-double mr-1"></i> Contabilizar
+              </button>
+            `}
+          ` : ''}
+
+          <!-- Si es Contabilizada y tiene TX para DIAN -->
+          ${(inv.status === 'posted' && inv.tx_id) ? `
+            <button type="button" class="btn btn-secondary btn-sm" onclick="window.emitInvoiceToDian('${inv.tx_id}', '${inv.number}')">
+              <i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN
+            </button>
+          ` : ''}
+
+          <!-- Dropdown Más Acciones -->
+          <div class="relative inline-block text-left" id="so-modal-more-actions-wrap">
+            <button type="button" class="btn btn-outline btn-sm flex items-center gap-1.5 text-gray-700 hover:bg-gray-50 border-gray-300 shadow-2xs" onclick="window.toggleSoModalActionDropdown(event)">
+              <span>Más acciones</span>
+              <i class="fas fa-chevron-down text-[10px] text-gray-500"></i>
+            </button>
+            <div id="so-modal-action-menu" class="hidden absolute right-0 bottom-full mb-2 w-56 rounded-2xl bg-white shadow-xl border border-gray-200/90 py-1.5 z-50">
+              ${inv.status === 'posted' && ((window as any).can('canWrite') && !isNC) ? `
+                <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="closeModal(); window.openChangePaymentMethodModal('${inv.id}', '${inv.number}')">
+                  <i class="fas fa-credit-card text-emerald-600 w-4"></i>
+                  <span>Cambiar forma de pago</span>
+                </button>
+              ` : ''}
+              ${inv.status === 'posted' && inv.tx_id ? `
+                <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="window.showDianLogsModal('${inv.tx_id}', '${inv.number}')">
+                  <i class="fas fa-list-check text-indigo-600 w-4"></i>
+                  <span>Ver Log DIAN</span>
+                </button>
+                <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="closeModal(); window.seeSalesTxDetail('${inv.tx_id}')">
+                  <i class="fas fa-book-open text-purple-600 w-4"></i>
+                  <span>Ver asiento contable</span>
+                </button>
+              ` : ''}
+              ${inv.status === 'posted' ? `
+                <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="closeModal(); window.openSalesNotePreModal('${inv.id}', '${inv.number}')">
+                  <i class="fas fa-file-invoice-dollar text-violet-600 w-4"></i>
+                  <span>Generar Nota / Ajuste DIAN</span>
+                </button>
+              ` : ''}
+              <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="closeModal(); window.duplicateSalesInvoice('${inv.id}')">
+                <i class="fas fa-clone text-teal-600 w-4"></i>
+                <span>Duplicar Factura</span>
+              </button>
+              ${(inv.status === 'posted' && !isNC && !isDianSent && (window as any).can('canWrite')) ? `
+                <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-amber-800 hover:bg-amber-50 flex items-center gap-2.5 transition-colors font-medium" onclick="closeModal(); window.revertSalesInvoiceToDraftDirect('${inv.id}', '${inv.number}')">
+                  <i class="fas fa-rotate-left text-amber-600 w-4"></i>
+                  <span>Volver a Borrador</span>
+                </button>
+              ` : ''}
+              ${inv.status === 'draft' ? `
+                <div class="my-1 border-t border-gray-100"></div>
+                <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-rose-700 hover:bg-rose-50 flex items-center gap-2.5 transition-colors font-medium" onclick="closeModal(); window.deleteSalesInvoiceDraft('${inv.id}', '${inv.number}')">
+                  <i class="fas fa-trash text-rose-600 w-4"></i>
+                  <span>Eliminar Borrador</span>
+                </button>
+              ` : ''}
+              ${(inv.status === 'posted' && !isNC) ? `
+                <div class="my-1 border-t border-gray-100"></div>
+                <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-rose-700 hover:bg-rose-50 flex items-center gap-2.5 transition-colors font-medium" onclick="closeModal(); window.voidSalesInvoiceDirect('${inv.id}', '${inv.number}')">
+                  <i class="fas fa-ban text-rose-600 w-4"></i>
+                  <span>Anular Factura</span>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
     `;
 
     (window as any).openModal(`Detalle de Documento Comercial`, bodyHtml, footer, true);
@@ -6228,12 +6333,190 @@ window.voidSalesInvoiceDirect = function(id: string, number: string) {
   );
 };
 
+window.revertSalesInvoiceToDraftDirect = function(id: string, number: string) {
+  (window as any).openSalesReasonDialog(
+    {
+      title: 'Volver Factura a Borrador',
+      messageHtml: `<p>Se devolverá la factura contabilizada <strong>${(window as any).esc(number)}</strong> a estado <strong>Borrador</strong> conservando su consecutivo.</p>
+                    <div class="mt-2.5 p-3 rounded-xl bg-amber-50/60 border border-amber-200/80 text-xs text-amber-900 space-y-1.5">
+                      <div class="font-bold flex items-center gap-1.5"><i class="fas fa-triangle-exclamation text-amber-600"></i> Efectos de la reversión contable:</div>
+                      <div>• Se anulará el asiento contable diario vinculado (Cuentas 13 / 41 / 24).</div>
+                      <div>• Se revertirá el Kardex de inventario reingresando los productos a bodega.</div>
+                      <div>• Podrás editar clientes, cantidades, precios o productos y volver a contabilizarla.</div>
+                    </div>`,
+      actionLabel: 'Confirmar y Volver a Borrador',
+      actionClass: 'btn-warning',
+      placeholder: 'Escribe el motivo detallado de la reversión a borrador (mínimo 8 caracteres)...',
+    },
+    async (reason: string) => {
+      try {
+        await (window as any).API.revertInvoiceToDraft(id, reason);
+        (window as any).showToast(`Factura ${number} devuelta a borrador exitosamente. Asiento contable e inventario revertidos.`, 'success');
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('ventas');
+        } else {
+          renderVentas();
+        }
+      } catch (err: any) {
+        (window as any).showToast(err.message || 'Error al devolver factura a borrador', 'error');
+      }
+    }
+  );
+};
+
 window.seeSalesTxDetail = function(txId: string) {
   if (typeof (window as any).seeTxDetail === 'function') {
     (window as any).seeTxDetail(txId);
   } else {
     (window as any).showToast('Modulo de transacciones contables no disponible', 'warning');
   }
+};
+
+window.toggleSoModalActionDropdown = function(e: MouseEvent) {
+  e.stopPropagation();
+  const menu = document.getElementById('so-modal-action-menu');
+  if (!menu) return;
+  const isHidden = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden', !isHidden);
+
+  if (isHidden) {
+    const onDocClick = (ev: MouseEvent) => {
+      if (!menu.contains(ev.target as Node)) {
+        menu.classList.add('hidden');
+        document.removeEventListener('click', onDocClick);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', onDocClick), 20);
+  }
+};
+
+window.openSoActionMenu = function(e: MouseEvent, invData: any) {
+  e.stopPropagation();
+  const oldMenu = document.getElementById('so-row-action-floating-menu');
+  if (oldMenu) oldMenu.remove();
+
+  const btn = (e.currentTarget || e.target) as HTMLElement;
+  const targetBtn = btn.closest('button') || btn;
+  const rect = targetBtn.getBoundingClientRect();
+
+  const menu = document.createElement('div');
+  menu.id = 'so-row-action-floating-menu';
+  menu.className = 'fixed z-50 bg-white rounded-2xl shadow-xl border border-gray-200/90 py-1.5 min-w-[210px] text-xs animate-in fade-in zoom-in-95 duration-100';
+
+  const isPosted = invData.status === 'posted';
+  const isDraft = invData.status === 'draft';
+  const isNC = !!invData.isNC;
+
+  let itemsHtml = `
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.viewSalesInvoiceDetail('${invData.id}')">
+      <i class="fas fa-eye text-gray-500 w-4"></i>
+      <span>Ver detalle completo</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.printInvoiceCarta('${invData.id}')">
+      <i class="fas fa-print text-gray-500 w-4"></i>
+      <span>Imprimir Formato Carta</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.showThermalTicketReceipt('${invData.id}', 0, 0)">
+      <i class="fas fa-receipt text-gray-500 w-4"></i>
+      <span>Imprimir Tirilla POS</span>
+    </button>
+  `;
+
+  if (isPosted) {
+    if (invData.tx_id) {
+      itemsHtml += `
+        <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.seeSalesTxDetail('${invData.tx_id}')">
+          <i class="fas fa-book-open text-purple-600 w-4"></i>
+          <span>Ver comprobante contable</span>
+        </button>
+      `;
+    }
+    itemsHtml += `
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.openSalesNotePreModal('${invData.id}', '${invData.number}')">
+        <i class="fas fa-file-invoice-dollar text-violet-600 w-4"></i>
+        <span>Generar Nota / Ajuste DIAN</span>
+      </button>
+    `;
+    if ((window as any).can('canWrite') && !isNC) {
+      itemsHtml += `
+        <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.openChangePaymentMethodModal('${invData.id}', '${invData.number}')">
+          <i class="fas fa-credit-card text-emerald-600 w-4"></i>
+          <span>Cambiar forma de pago</span>
+        </button>
+      `;
+    }
+  }
+
+  itemsHtml += `
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.duplicateSalesInvoice('${invData.id}')">
+      <i class="fas fa-clone text-teal-600 w-4"></i>
+      <span>Duplicar Factura</span>
+    </button>
+  `;
+
+  if (isPosted && !isNC && (window as any).can('canWrite')) {
+    itemsHtml += `
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-amber-800 hover:bg-amber-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.revertSalesInvoiceToDraftDirect('${invData.id}', '${invData.number}')">
+        <i class="fas fa-rotate-left text-amber-600 w-4"></i>
+        <span>Volver a Borrador</span>
+      </button>
+    `;
+  }
+
+  if (isDraft) {
+    itemsHtml += `
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-rose-700 hover:bg-rose-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.deleteSalesInvoiceDraft('${invData.id}', '${invData.number}')">
+        <i class="fas fa-trash text-rose-600 w-4"></i>
+        <span>Eliminar Borrador</span>
+      </button>
+    `;
+  } else if (isPosted && !isNC) {
+    itemsHtml += `
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-rose-700 hover:bg-rose-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.voidSalesInvoiceDirect('${invData.id}', '${invData.number}')">
+        <i class="fas fa-ban text-rose-600 w-4"></i>
+        <span>Anular Factura</span>
+      </button>
+    `;
+  }
+
+  menu.innerHTML = itemsHtml;
+  document.body.appendChild(menu);
+
+  const menuWidth = 210;
+  const menuHeight = menu.offsetHeight || 220;
+  let top = rect.bottom + 4;
+  let left = rect.right - menuWidth;
+
+  if (left < 10) left = 10;
+  if (top + menuHeight > window.innerHeight - 10) {
+    top = Math.max(10, rect.top - menuHeight - 4);
+  }
+
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+
+  const onDocClick = (ev: MouseEvent) => {
+    if (!menu.contains(ev.target as Node) && ev.target !== targetBtn && !targetBtn.contains(ev.target as Node)) {
+      menu.remove();
+      document.removeEventListener('click', onDocClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    }
+  };
+  const onScroll = () => {
+    menu.remove();
+    document.removeEventListener('click', onDocClick);
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', onScroll);
+  };
+
+  setTimeout(() => {
+    document.addEventListener('click', onDocClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+  }, 10);
 };
 
 (window as any).openChangePaymentMethodModal = async function(id: string, number: string) {

@@ -122,7 +122,7 @@ if /i "!MODE!" == "portable" (
 
 :: 5. Iniciar Empresa Principal (!PORT_MAIN!) y Empresas Registradas
 echo  [4/5] Iniciando Empresa Principal (!BIND_IP!:!PORT_MAIN!)...
-start "Gravy Empresa Principal" cmd /k "pocketbase.exe serve --http=!BIND_IP!:!PORT_MAIN! --dir="%ROOT%\pb_data" --publicDir="%ROOT%\pb_public" --hooksDir="%ROOT%\pb_hooks""
+start "Gravy Empresa Principal" cmd /k "pocketbase.exe serve --http=!BIND_IP!:!PORT_MAIN! --dir="%ROOT%\pb_data" --publicDir="%ROOT%\pb_public" --hooksDir="%ROOT%\pb_hooks" --migrationsDir="%ROOT%\pb_migrations""
 echo    - El Orquestador auto-arranca y supervisa todas las sub-empresas en 'empresas\'...
 
 :: 6. Si es modo Cloud, iniciar Cloudflare Tunnel

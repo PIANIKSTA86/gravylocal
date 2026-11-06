@@ -28,7 +28,7 @@ function syncSmtpSettings() {
       const pass = String(getSetting("smtp_password", "")).replace(/\s+/g, "");
       const senderName = getSetting("smtp_sender_name", "");
       const senderAddr = getSetting("smtp_sender_address", "");
-      
+
       pbSettings.smtp.enabled = true;
       pbSettings.smtp.host = host;
       pbSettings.smtp.port = port;
@@ -52,12 +52,12 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     if (!docRecord) {
       throw new Error("Documento de facturación no encontrado para esta transacción.");
     }
-    
+
     const xmlContent = docRecord.getString("xml_content");
     if (!xmlContent) {
       throw new Error("El documento no posee contenido XML firmado para reenviar.");
     }
-    
+
     const tx = $app.findRecordById("transactions", txId);
     $app.expandRecord(tx, ["third_party_id", "tx_type_id"], null);
     const customer = tx.expandedOne("third_party_id");
@@ -68,7 +68,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     if (!custEmail) {
       throw new Error("Debe configurar un correo en la ficha del tercero.");
     }
-    
+
     const companyName = getSetting("company_name", "GRAVY S.A.S");
     const companyEmail = getSetting("company_email", "noreply@gravy.com");
     const docNumber = tx.getString("number") || "Documento";
@@ -142,14 +142,14 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         const purRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
         totalVal = purRec.getFloat("total") || 0;
         isPurchase = true;
-      } catch (_2) {}
+      } catch (_2) { }
     }
     const fmtTotal = "$ " + Math.round(totalVal).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
     const companyNitRaw = getSetting("company_nit", "900123456");
     const companyNit = companyNitRaw.split('-')[0].replace(/[^0-9]/g, '');
     const commercialName = getSetting("company_name", "GRAVY S.A.S");
-    
+
     // Formato obligatorio DIAN: NitEmisor;NombreEmisor;NumDoc;TipoDoc;NombreComercial;
     const emailSubject = `${companyNit};${companyName};${docNumber};${docTypeCode};${commercialName};`;
 
@@ -169,7 +169,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       } catch (_) {
         try {
           invRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
-        } catch (_2) {}
+        } catch (_2) { }
       }
 
       if (invRec) {
@@ -179,7 +179,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         } else {
           linesList = $app.findRecordsByFilter("purchase_invoice_lines", "invoice_id = '" + invRec.id + "'");
         }
-        
+
         $app.expandRecords(linesList, ["product_id"], null);
         const linesData = [];
         for (let i = 0; i < linesList.length; i++) {
@@ -218,7 +218,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
             if (user) {
               cajeroName = user.getString("name") || user.getString("email") || "Admin";
             }
-          } catch (_) {}
+          } catch (_) { }
         }
 
         let resName = docTitle;
@@ -229,13 +229,13 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         let resFrom = "";
         let resTo = "";
         let resPrefix = "";
-        
+
         let prefix = "";
         if (docNumber.includes('-')) {
           prefix = docNumber.split('-')[0].trim().toUpperCase();
         }
         let docTypeResolution = invRec.getString("pos_shift_id") ? "POS" : (isSupportDoc ? "DS" : "FV");
-        
+
         try {
           const registerId = invRec.getString("pos_shift_id") ? ($app.findRecordById("pos_shifts", invRec.getString("pos_shift_id")).getString("pos_register_id") || "") : "";
           let filter = "document_type=\"" + docTypeResolution + "\" && active=true";
@@ -274,7 +274,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
               resPrefix = resolution.getString("prefix") || "";
             }
           }
-        } catch (_) {}
+        } catch (_) { }
 
         invoiceData = {
           docId: docNumber,
@@ -336,7 +336,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     } catch (err) {
       console.error("[GRAVY HOOK] Error al generar ZIP en el orquestador:", err);
     }
-    
+
     const fromAddr = getSetting("smtp_sender_address", "") || getSetting("smtp_username", "") || companyEmail;
     const fromName = getSetting("smtp_sender_name", "") || companyName;
 
@@ -428,7 +428,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         </div>
       `,
     });
-    
+
     const attachments = {};
     if (zipPath) {
       try {
@@ -467,13 +467,13 @@ function sendInvoiceEmailHelper(txId, customEmail) {
           console.log("[GRAVY HOOK] Logo inline embebido con éxito desde:", candidateLogoPaths[i]);
           break;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (Object.keys(inlineAttachments).length > 0) {
       message.inlineAttachments = inlineAttachments;
     }
-    
+
     $app.newMailClient().send(message);
     console.log("[GRAVY HOOK] Correo enviado exitosamente a:", custEmail);
     return true;
@@ -483,10 +483,210 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   }
 }
 
+
+function formatNumeroALetras(num) {
+  const tempNum = parseFloat(String(num || 0)).toFixed(2).split('.');
+  const entero = parseInt(tempNum[0], 10);
+  const centavos = tempNum[1];
+  if (entero === 0) return 'CERO PESOS M/CTE CON ' + centavos + '/100';
+
+  function letras(n) {
+    if (n < 10) return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n];
+    if (n < 20) return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10];
+    if (n < 30) return n === 20 ? 'Veinte' : 'Veinti' + letras(n - 20).toLowerCase();
+    if (n < 100) {
+      const u = n % 10;
+      const d = Math.floor(n / 10);
+      const decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
+      return decenas[d] + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
+    }
+    if (n < 1000) {
+      const d_u = n % 100;
+      const c = Math.floor(n / 100);
+      const centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
+      if (n === 100) return 'Cien';
+      if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
+      return centenas[c] + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
+    }
+    if (n < 1000000) {
+      const mil = Math.floor(n / 1000);
+      const resto = n % 1000;
+      const t = mil === 1 ? 'Mil' : letras(mil) + ' mil';
+      return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+    }
+    if (n < 1000000000) {
+      const millon = Math.floor(n / 1000000);
+      const resto = n % 1000000;
+      const t = millon === 1 ? 'Un millón' : letras(millon) + ' millones';
+      return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+    }
+    return String(n);
+  }
+
+  return (letras(entero) + ' PESOS M/CTE CON ' + centavos + '/100').toUpperCase();
+}
+
+function buildNominaPayrollPayload(rec) {
+  const prefijo = rec.getString("prefijo") || "NOM";
+  const consecutivo = rec.getInt("consecutivo") || 1;
+  const docNumber = `${prefijo}-${consecutivo}`;
+  const cune = rec.getString("cufe") || "—";
+  const xmlGenerado = rec.getString("xml_generado") || "";
+  const totalDevengos = rec.getFloat("total_devengos") || 0;
+  const totalDeducciones = rec.getFloat("total_deducciones") || 0;
+  const totalNeto = rec.getFloat("total_neto") || (totalDevengos - totalDeducciones);
+
+  let emp = null;
+  const empId = rec.getString("employee_id");
+  if (empId) {
+    try { emp = $app.findRecordById("third_parties", empId); } catch (_) { }
+    if (!emp) {
+      try { emp = $app.findRecordById("employees", empId); } catch (_) { }
+    }
+  }
+
+  let empRule = {};
+  if (emp) {
+    try {
+      const parts = $app.findRecordsByFilter("settings", "key ~ 'payroll_accounting_config_v1_employee_rules'");
+      if (parts && parts.length > 0) {
+        let allRulesJson = "";
+        parts.forEach((p) => { allRulesJson += (p.getString("value") || ""); });
+        const parsedRules = JSON.parse(allRulesJson);
+        const found = parsedRules.find((r) => r.employee_id === emp.id);
+        if (found) empRule = found;
+      }
+    } catch (_) { }
+  }
+
+    const formatPaymentMethod = function(m) {
+    const str = String(m || '').trim();
+    const code = (str.match(/\d+/) || [str])[0];
+    const methods = {
+      '10': '10 - Efectivo',
+      '42': '42 - Consignación Bancaria',
+      '30': '30 - Transferencia ACH',
+      '47': '47 - Transferencia Débito Bancaria',
+      '20': '20 - Cheque',
+      '48': '48 - Tarjeta Crédito',
+      '49': '49 - Tarjeta Débito',
+      '1': '01 - Instrumento no definido'
+    };
+    if (methods[code]) return methods[code];
+    if (str.length > 3) return str;
+    return str ? (str + ' - Transferencia Bancaria') : '42 - Consignación Bancaria';
+  };
+
+  const resolveThirdName = (id) => {
+    if (!id) return "";
+    try {
+      const t = $app.findRecordById("third_parties", id);
+      return t ? (t.getString("name") || t.getString("commercial_name") || "") : "";
+    } catch (_) {
+      return "";
+    }
+  };
+
+  const epsName = resolveThirdName(empRule.tercero_salud_id);
+  const afpName = resolveThirdName(empRule.tercero_pension_id);
+  const arlName = resolveThirdName(empRule.tercero_arl_id);
+  const cajaName = resolveThirdName(empRule.tercero_caja_id);
+
+  const arlRates = { 1: "0.522%", 2: "1.044%", 3: "2.436%", 4: "4.350%", 5: "6.960%" };
+  const arlRiskLevel = empRule.arl_risk_level || 1;
+  const arlRate = arlRates[arlRiskLevel] || "0.522%";
+
+  let empName = "";
+  let empDoc = "";
+  let empAddress = "";
+  let empCityDept = "";
+  let empPhone = "";
+  let empEmail = "";
+
+  if (emp) {
+    const fName = (emp.getString("first_name") || "").trim();
+    const lName = (emp.getString("last_name") || "").trim();
+    empName = (fName && lName) ? `${fName} ${lName}` : (emp.getString("name") || emp.getString("commercial_name") || "Colaborador");
+    empDoc = emp.getString("doc_number") || "";
+    empAddress = emp.getString("address") || "";
+    const city = emp.getString("city") || "";
+    const dept = emp.getString("department") || "";
+    empCityDept = (city && dept) ? `${city}, ${dept}` : (city || dept || "");
+    empPhone = emp.getString("phone") || emp.getString("phone2") || emp.getString("contact_phone") || "";
+    empEmail = emp.getString("email") || emp.getString("email2") || "";
+  }
+
+  if (!empName) {
+    const mPName = (xmlGenerado.match(/PrimerNombre="([^"]*)"/i) || [])[1] || "";
+    const mSName = (xmlGenerado.match(/SegundoNombre="([^"]*)"/i) || [])[1] || "";
+    const mPApellido = (xmlGenerado.match(/PrimerApellido="([^"]*)"/i) || [])[1] || "";
+    const mSApellido = (xmlGenerado.match(/SegundoApellido="([^"]*)"/i) || [])[1] || "";
+    const full = [mPName, mSName, mPApellido, mSApellido].filter(Boolean).join(" ");
+    empName = full || "Colaborador";
+  }
+  if (!empDoc) {
+    empDoc = (xmlGenerado.match(/NumeroDocumento="([^"]*)"/i) || [])[1] || "";
+  }
+  if (!empAddress) {
+    empAddress = (xmlGenerado.match(/LugarTrabajoDireccion="([^"]*)"/i) || [])[1] || "";
+  }
+
+  const fIngreso = empRule.start_date || (xmlGenerado.match(/FechaIngreso="([^"]*)"/i) || [])[1] || (emp ? (emp.getString("date_hired") || emp.getString("hire_date")) : "") || "";
+
+  let fRetiro = empRule.end_date || empRule.retirement_date || (xmlGenerado.match(/FechaRetiro="([^"]*)"/i) || [])[1] || "";
+  if (!fRetiro && emp) {
+    try {
+      const sett = $app.findFirstRecordByFilter("payroll_settlements", "employee_id = '" + emp.id + "'");
+      if (sett) {
+        fRetiro = sett.getString("settlement_date") || "";
+      }
+    } catch (_) { }
+  }
+
+  const cargo = empRule.position || (emp ? (emp.getString("cargo") || emp.getString("notes") || "") : "") || "Colaborador";
+
+  return {
+    companyName: getSetting("company_name", "DOMESTIKO SAS"),
+    companyNit: getSetting("company_nit", "901428834"),
+    companyAddress: getSetting("company_address", ""),
+    empName: empName,
+    empDoc: empDoc,
+    empAddress: empAddress,
+    empCityDept: empCityDept,
+    empPhone: empPhone,
+    empEmail: empEmail,
+    cargo: cargo,
+    costCenter: emp ? (emp.getString("cost_center") || "General / Colaboradores") : "General / Colaboradores",
+    basicSalary: empRule.basic_salary || (emp ? emp.getFloat("salary_base") : 0) || 1750905,
+    bankName: emp ? (emp.getString("bank_name") || "Bancolombia") : "Bancolombia",
+    bankAccountType: emp ? (emp.getString("bank_account_type") || "Ahorros") : "Ahorros",
+    bankAccount: emp ? (emp.getString("bank_account") || "06185364532") : "06185364532",
+    dateHired: fIngreso,
+    startDate: fIngreso,
+    fIngreso: fIngreso,
+    dateEnd: fRetiro,
+    retirementDate: fRetiro,
+    paymentMethod: formatPaymentMethod(emp ? emp.getString("payment_method") : "42"),
+    healthEntity: epsName || (emp ? emp.getString("eps") : "") || "EPS SURA",
+    pensionEntity: afpName || (empRule.is_pensioner ? "Pensionado (Exento)" : (emp ? emp.getString("afp") : "")) || "Pensionado (Exento)",
+    arlEntity: arlName ? `${arlName} - Riesgo ${arlRiskLevel} (${arlRate})` : ((emp ? emp.getString("arl") : "") || "ARL SURA - Riesgo 1 (0.522%)"),
+    cajaEntity: cajaName || (emp ? emp.getString("caja_compensacion") : "") || "CCF COMFENALCO DEL VALLE DEL CAUCA - COMFENALCO VALLE",
+    fechasPago: "2026-09-30",
+    issueDate: rec.getString("fecha_envio") || "2026-10-09 15:42:03 12:00:00-05:00",
+    cune: cune,
+    totalDevengos: totalDevengos,
+    totalDeducciones: totalDeducciones,
+    totalNeto: totalNeto,
+    valorEnLetras: formatNumeroALetras(totalNeto)
+  };
+}
+
 module.exports = {
   sanitizeName,
   getSetting,
   syncSmtpSettings,
-  sendInvoiceEmailHelper
+  sendInvoiceEmailHelper,
+  formatNumeroALetras,
+  buildNominaPayrollPayload
 };
 

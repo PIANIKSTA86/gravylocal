@@ -41,9 +41,16 @@ async function renderTerceros(c) {
   const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
   c = getContainer(c, 'terceros');
   if (!c) return;
-  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando terceros...</div>`;
+  c.innerHTML = `<div class="p-8 text-center" style="color:#64748B"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando directorio de terceros...</div>`;
   try {
     const rows = await pb.listAll('third_parties', { sort: 'name' });
+
+    // Métricas ejecutivas de negocio
+    const totalTerceros = rows.length;
+    const totalClientes = rows.filter((r: any) => r.type === 'CLIENTE').length;
+    const totalProveedores = rows.filter((r: any) => r.type === 'PROVEEDOR').length;
+    const totalConRut = rows.filter((r: any) => !!r.rut_pdf).length;
+    const pctRut = totalTerceros > 0 ? Math.round((totalConRut / totalTerceros) * 100) : 0;
 
     // Mapa de resolución para Asesores Comerciales (ID -> Nombre legible)
     const tpMap = new Map<string, string>();
@@ -55,62 +62,121 @@ async function renderTerceros(c) {
     });
 
     const personBadge = (pt) => {
-      if (pt === 'JURIDICA') return '<span class="badge badge-blue"><i class="fas fa-building mr-1"></i>Jurídica</span>';
-      return '<span class="badge badge-gray"><i class="fas fa-user mr-1"></i>Natural</span>';
+      if (pt === 'JURIDICA') return '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"><i class="fas fa-building text-[10px]"></i>Jurídica</span>';
+      return '<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-50 text-slate-700 border border-slate-200"><i class="fas fa-user text-[10px]"></i>Natural</span>';
     };
     const typeBadge = (t) => {
-      const map = { CLIENTE:'badge-green', PROVEEDOR:'badge-blue', EMPLEADO:'badge-orange',
-                    PROPIETARIO:'badge-gray', OTRO:'badge-gray' };
+      const map = { 
+        CLIENTE: 'bg-emerald-50 text-emerald-700 border-emerald-200', 
+        PROVEEDOR: 'bg-blue-50 text-blue-700 border-blue-200', 
+        EMPLEADO: 'bg-amber-50 text-amber-700 border-amber-200',
+        PROPIETARIO: 'bg-slate-50 text-slate-700 border-slate-200', 
+        OTRO: 'bg-gray-50 text-gray-700 border-gray-200' 
+      };
       const label = TP_TYPES.find(x => x.code === t)?.name ?? t;
-      return `<span class="badge ${map[t] ?? 'badge-gray'}">${esc(label)}</span>`;
+      return `<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${map[t] ?? 'bg-slate-50 text-slate-700 border-slate-200'}">${esc(label)}</span>`;
     };
 
     c.innerHTML = `
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <!-- Cabecera Editorial con Identidad y Acciones -->
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
       <div>
-        <h3 class="text-lg font-bold" style="color:#0D2137">Terceros</h3>
-        <p class="text-sm" style="color:#6B7280">Clientes, proveedores, empleados y más.</p>
+        <div class="flex items-center gap-2">
+          <h3 class="text-xl font-bold tracking-tight" style="color:#0F172A">Directorio de Terceros</h3>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">${totalTerceros} registros</span>
+        </div>
+        <p class="text-sm mt-0.5" style="color:#64748B">Control maestro de clientes, proveedores, colaboradores y datos tributarios DIAN.</p>
       </div>
-      <div class="flex items-center gap-2">
-        <button class="btn btn-outline" onclick="exportTercerosExcel()"><i class="fas fa-file-export mr-1.5"></i>Exportar Excel</button>
-        ${can('canWrite') ? '<button class="btn btn-primary" id="btn-new-tp"><i class="fas fa-user-plus mr-1.5"></i>Nuevo Tercero</button>' : ''}
-      </div>
-    </div>
-
-    <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <input id="tp-q" class="form-input" placeholder="Buscar por nombre, NIT o correo...">
-        <select id="tp-person" class="form-input">
-          <option value="">Todos los tipos de persona</option>
-          ${PERSON_TYPES.map(p => `<option value="${esc(p.code)}">${esc(p.name)}</option>`).join('')}
-        </select>
-        <select id="tp-type" class="form-input">
-          <option value="">Todos los roles</option>
-          ${TP_TYPES.map(t => `<option value="${esc(t.code)}">${esc(t.name)}</option>`).join('')}
-        </select>
-        <select id="tp-status" class="form-input">
-          <option value="">Todos los estados</option>
-          <option value="active">Activos</option>
-          <option value="inactive">Inactivos</option>
-        </select>
+      <div class="flex items-center gap-2.5">
+        <button class="btn btn-outline" onclick="exportTercerosExcel()" style="border-color:#E2E8F0;background:#FFFFFF;color:#334155;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+          <i class="fas fa-file-excel text-emerald-600 mr-1.5"></i>Exportar Excel
+        </button>
+        ${can('canWrite') ? `
+        <button class="btn btn-primary" id="btn-new-tp" style="background:#D97706;border-color:#B45309;box-shadow:0 2px 4px rgba(217,119,6,0.25);">
+          <i class="fas fa-user-plus mr-1.5"></i>Nuevo Tercero
+        </button>` : ''}
       </div>
     </div>
 
-    <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
-      <div class="overflow-x-auto" style="max-height: calc(100vh - 310px)">
+    <!-- Tarjetas de Resumen Fiduciario -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-5">
+      <div class="bg-white rounded-xl border p-3.5" style="border-color:#E2E8F0;box-shadow:0 1px 3px rgba(15,23,42,0.03)">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Clientes</div>
+        <div class="text-xl font-bold text-slate-900 flex items-center justify-between">
+          <span>${totalClientes}</span>
+          <i class="fas fa-users text-emerald-500 text-base opacity-75"></i>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border p-3.5" style="border-color:#E2E8F0;box-shadow:0 1px 3px rgba(15,23,42,0.03)">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Proveedores</div>
+        <div class="text-xl font-bold text-slate-900 flex items-center justify-between">
+          <span>${totalProveedores}</span>
+          <i class="fas fa-truck-moving text-blue-500 text-base opacity-75"></i>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border p-3.5" style="border-color:#E2E8F0;box-shadow:0 1px 3px rgba(15,23,42,0.03)">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">RUTs Adjuntos</div>
+        <div class="text-xl font-bold text-slate-900 flex items-center justify-between">
+          <span>${totalConRut}</span>
+          <i class="fas fa-file-circle-check text-indigo-500 text-base opacity-75"></i>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border p-3.5" style="border-color:#E2E8F0;box-shadow:0 1px 3px rgba(15,23,42,0.03)">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Cobertura RUT</div>
+        <div class="text-xl font-bold text-slate-900 flex items-center justify-between">
+          <span>${pctRut}%</span>
+          <i class="fas fa-chart-pie text-amber-500 text-base opacity-75"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barra de Búsqueda y Filtros Segmentados -->
+    <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#E2E8F0;box-shadow:0 2px 6px -1px rgba(15,23,42,0.04)">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+        <div class="md:col-span-5 relative">
+          <i class="fas fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+          <input id="tp-q" class="form-input pl-10" placeholder="Buscar por NIT, razón social, nombre o correo..." style="border-color:#CBD5E1;border-radius:10px;">
+        </div>
+        <div class="md:col-span-3">
+          <select id="tp-type" class="form-input" style="border-color:#CBD5E1;border-radius:10px;">
+            <option value="">Todos los roles</option>
+            ${TP_TYPES.map(t => `<option value="${esc(t.code)}">${esc(t.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <select id="tp-person" class="form-input" style="border-color:#CBD5E1;border-radius:10px;">
+            <option value="">Persona (todas)</option>
+            ${PERSON_TYPES.map(p => `<option value="${esc(p.code)}">${esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <select id="tp-status" class="form-input" style="border-color:#CBD5E1;border-radius:10px;">
+            <option value="">Estado (todos)</option>
+            <option value="active">Solo Activos</option>
+            <option value="inactive">Solo Inactivos</option>
+            <option value="con_rut">Con RUT PDF</option>
+            <option value="sin_rut">Sin RUT PDF</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla Maestra con Jerarquía Fiduciaria -->
+    <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E2E8F0;box-shadow:0 4px 12px -2px rgba(15,23,42,0.05)">
+      <div class="overflow-x-auto" style="max-height: calc(100vh - 350px)">
         <table class="data-table" id="tp-table" style="table-layout:fixed;width:100%;">
           <thead>
-            <tr>
-              <th style="width:80px">Persona</th>
-              <th style="width:130px">Documento</th>
-              <th style="min-width:200px;width:22%">Nombre / Razón Social</th>
-              <th style="min-width:160px;width:18%">Correo</th>
-              <th style="width:100px">Ciudad</th>
-              <th style="width:90px">Rol</th>
-              <th style="width:160px;max-width:160px">Asesor Comercial</th>
-              <th style="width:80px">Estado</th>
-              <th style="width:50px;text-align:center;">RUT</th>
-              <th style="width:110px">Acciones</th>
+            <tr style="background:#F8FAFC;border-bottom:1px solid #E2E8F0">
+              <th style="width:90px;color:#475569">Persona</th>
+              <th style="width:145px;color:#475569">Identificación</th>
+              <th style="min-width:210px;width:23%;color:#475569">Nombre / Razón Social</th>
+              <th style="min-width:160px;width:17%;color:#475569">Correo</th>
+              <th style="width:110px;color:#475569">Municipio</th>
+              <th style="width:95px;color:#475569">Rol</th>
+              <th style="width:150px;max-width:150px;color:#475569">Asesor</th>
+              <th style="width:80px;color:#475569">Estado</th>
+              <th style="width:55px;text-align:center;color:#475569">RUT</th>
+              <th style="width:110px;text-align:center;color:#475569">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -120,39 +186,48 @@ async function renderTerceros(c) {
                 ? `${(window as any).PB_URL}/api/files/third_parties/${r.id}/${r.rut_pdf}${(window as any).pb?.authToken ? '?token=' + (window as any).pb.authToken : ''}`
                 : '';
               const resolvedDocType = (typeof docTypeAbbr === 'function' ? docTypeAbbr(r.doc_type) : (window as any).docTypeAbbr?.(r.doc_type)) || r.doc_type || 'CC';
+              const hasRut = !!r.rut_pdf;
               return `
-              <tr data-type="${esc(r.type)}" data-person="${esc(r.person_type||'NATURAL')}">
+              <tr data-type="${esc(r.type)}" data-person="${esc(r.person_type||'NATURAL')}" data-hasrut="${hasRut?'1':'0'}" style="border-bottom:1px solid #F1F5F9;transition:background 0.15s ease;">
                 <td>${personBadge(r.person_type)}</td>
-                <td><span class="font-semibold">${esc(resolvedDocType)} ${esc(r.doc_number)}${r.dv?`-${esc(r.dv)}`:''}</span></td>
-                <td style="overflow:hidden;"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(r.name)}">${esc(r.name)}</span></td>
-                <td style="overflow:hidden;"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;" title="${esc(r.email||'')}">${esc(r.email||'—')}</span></td>
-                <td>${esc(r.city||'—')}</td>
+                <td>
+                  <div class="flex items-center flex-wrap gap-1">
+                    <span class="font-semibold text-slate-800 text-xs">${esc(resolvedDocType)} ${esc(r.doc_number)}</span>
+                    ${r.dv ? `<span class="px-1.5 py-0.2 rounded font-mono font-bold text-[11px] bg-amber-50 text-amber-800 border border-amber-200" title="Dígito de Verificación (DIAN)">-${esc(r.dv)}</span>` : ''}
+                  </div>
+                </td>
+                <td style="overflow:hidden;">
+                  <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:#0F172A" title="${esc(r.name)}">${esc(r.name)}</span>
+                </td>
+                <td style="overflow:hidden;">
+                  <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#475569" title="${esc(r.email||'')}">${esc(r.email||'—')}</span>
+                </td>
+                <td style="font-size:12px;color:#475569">${esc(r.city||'—')}</td>
                 <td>${typeBadge(r.type)}</td>
-                <td style="max-width:160px;">${r.advisor
-                  ? `<span class="badge badge-gray text-xs"
-                       title="${esc(resolvedAdvisor)}"
-                       style="display:inline-flex;align-items:center;gap:4px;max-width:150px;overflow:hidden;">
-                       <i class="fas fa-user-tag flex-shrink-0" style="color:#0D9488"></i>
+                <td style="max-width:150px;">${r.advisor
+                  ? `<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 max-w-[140px] overflow-hidden"
+                       title="${esc(resolvedAdvisor)}">
+                       <i class="fas fa-user-tag flex-shrink-0 text-slate-400"></i>
                        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(resolvedAdvisor)}</span>
                      </span>`
-                  : '<span style="color:#9CA3AF">—</span>'}</td>
-                <td>${r.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
+                  : '<span style="color:#94A3B8">—</span>'}</td>
+                <td>${r.active ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Activo</span>' : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">Inactivo</span>'}</td>
                 <td style="text-align:center;">
                   ${rutUrl
                     ? `<a href="${esc(rutUrl)}" target="_blank" rel="noopener"
-                         title="Ver RUT PDF"
-                         style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;text-decoration:none;font-size:14px;">
+                         title="Ver RUT Oficial (PDF)"
+                         style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;text-decoration:none;font-size:14px;transition:all 0.15s ease;">
                          <i class="fas fa-file-pdf"></i></a>`
-                    : `<span title="Sin RUT adjunto" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#F9FAFB;color:#D1D5DB;border:1px solid #E5E7EB;font-size:14px;"><i class="fas fa-file-pdf"></i></span>`}
+                    : `<span title="Sin RUT adjunto" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#F8FAFC;color:#CBD5E1;border:1px solid #E2E8F0;font-size:14px;"><i class="fas fa-file-pdf"></i></span>`}
                 </td>
-                <td>
-                  <div class="flex gap-2">
-                    ${can('canWrite') ? `<button class="btn btn-outline btn-sm" onclick="editTercero('${esc(r.id)}')" title="Editar"><i class="fas fa-pen"></i></button>` : ''}
+                <td style="text-align:center;">
+                  <div class="flex items-center justify-center gap-1.5">
+                    ${can('canWrite') ? `<button class="btn btn-outline btn-sm" onclick="editTercero('${esc(r.id)}')" title="Editar tercero" style="padding:4px 8px;border-color:#E2E8F0"><i class="fas fa-pen text-slate-600"></i></button>` : ''}
                     ${can('canDelete') ? `
-                      <button class="btn btn-outline btn-sm" onclick="toggleTercero('${esc(r.id)}', ${r.active?'false':'true'})" title="${r.active?'Inactivar':'Activar'}" style="color:#D97706;border-color:#F59E0B">
+                      <button class="btn btn-outline btn-sm" onclick="toggleTercero('${esc(r.id)}', ${r.active?'false':'true'})" title="${r.active?'Inactivar':'Activar'}" style="padding:4px 8px;color:#D97706;border-color:#FDE68A;background:#FFFBEB">
                         <i class="fas ${r.active?'fa-ban':'fa-rotate-left'}"></i>
                       </button>
-                      <button class="btn btn-danger btn-sm" onclick="deleteTercero('${esc(r.id)}')" title="Eliminar permanentemente" style="background:#EF4444;border-color:#EF4444">
+                      <button class="btn btn-danger btn-sm" onclick="deleteTercero('${esc(r.id)}')" title="Eliminar permanentemente" style="padding:4px 8px;background:#EF4444;border-color:#DC2626">
                         <i class="fas fa-trash-can"></i>
                       </button>
                     ` : ''}
@@ -160,7 +235,7 @@ async function renderTerceros(c) {
                 </td>
               </tr>`;
             }).join('') :
-              '<tr><td colspan="9" class="text-center py-10" style="color:#9CA3AF">No hay terceros registrados.</td></tr>'}
+              '<tr><td colspan="10" class="text-center py-12" style="color:#94A3B8"><i class="fas fa-users-slash text-2xl mb-2 block"></i>No hay terceros registrados.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -173,11 +248,18 @@ async function renderTerceros(c) {
       const s  = $('#tp-status')?.value ?? '';
       $$('#tp-table tbody tr').forEach(tr => {
         const active = tr.children[7]?.textContent.includes('Activo');
+        const hasRut = tr.dataset.hasrut === '1';
+        let statusMatch = true;
+        if (s === 'active') statusMatch = active;
+        else if (s === 'inactive') statusMatch = !active;
+        else if (s === 'con_rut') statusMatch = hasRut;
+        else if (s === 'sin_rut') statusMatch = !hasRut;
+
         tr.style.display = (
           (!q  || tr.textContent.toLowerCase().includes(q)) &&
           (!pt || (tr.dataset.person || '') === pt) &&
           (!t  || (tr.dataset.type  || '') === t) &&
-          (!s  || (s === 'active' ? active : !active))
+          statusMatch
         ) ? '' : 'none';
       });
     };
@@ -190,7 +272,6 @@ async function renderTerceros(c) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
 }
-
 /* ═══════════════════════════════════════════════════════════
    FORM HTML
 ═══════════════════════════════════════════════════════════ */
@@ -2124,9 +2205,9 @@ async function viewTercero(id, event) {
 async function handleRUTUpload(file: File) {
   const dropzone = document.getElementById('tpf-rut-dropzone');
   if (dropzone) {
-    dropzone.innerHTML = `<div style="font-size: 24px; color: #4B5563; margin-bottom: 6px;"><i class="fas fa-spinner fa-spin"></i></div>
-                          <div style="font-size: 13px; font-weight: 700; color: #1E293B;">Procesando PDF...</div>
-                          <div style="font-size: 11px; color: #64748B;">Leyendo estructura digital del RUT.</div>`;
+    dropzone.innerHTML = `<div style="font-size: 24px; color: #D97706; margin-bottom: 6px;"><i class="fas fa-spinner fa-spin"></i></div>
+                          <div style="font-size: 13px; font-weight: 700; color: #0F172A;">Analizando estructura del RUT...</div>
+                          <div style="font-size: 11px; color: #64748B;">Extrayendo casillas oficiales DIAN sin alterar datos.</div>`;
   }
 
   let extractionSuccess = false;
@@ -2145,15 +2226,29 @@ async function handleRUTUpload(file: File) {
     const textContent = await page.getTextContent();
 
     const items: any[] = textContent.items;
+
+    // Detectar si el documento carece de capa digital de texto (imagen escaneada / rasterizada)
+    const hasDigitalText = items.some(it => it.str && it.str.trim().length > 0);
+    if (!hasDigitalText) {
+      const keepScanned = confirm('El archivo seleccionado parece ser una imagen escaneada del RUT y no contiene capa de texto digital.\n\n¿Deseas adjuntar el archivo PDF de todas formas y completar los datos del tercero manualmente?');
+      if (keepScanned) {
+        _stagedRutFile = file;
+        _rutPdfClearFlag = false;
+        extractionSuccess = true;
+        showToast('RUT escaneado adjunto. Completa los datos tributarios manualmente.', 'warning');
+        return;
+      } else {
+        throw new Error('Operación cancelada por el usuario.');
+      }
+    }
     
-    // Parsear el texto extraído
+    // Parsear el texto extraído con anclaje semántico de casillas DIAN y Módulo 11
     const rutData = parseRUTText(items);
 
     if (!rutData.doc_number) {
       // El PDF no parece ser un RUT, pero igual lo almacenamos si el usuario lo confirma
-      const keepFile = confirm('No se pudo detectar el NIT en el documento. ¿El archivo es el RUT oficial de la DIAN?\n\nSi confirmas, el archivo PDF se adjuntará al tercero de todas formas.');
+      const keepFile = confirm('No se pudo detectar el NIT en el documento. ¿El archivo corresponde al RUT oficial expedido por la DIAN?\n\nSi confirmas, el archivo PDF se adjuntará al tercero de todas formas.');
       if (keepFile) {
-        // Solo adjuntar el archivo, sin autocompletar campos
         _stagedRutFile = file;
         _rutPdfClearFlag = false;
         extractionSuccess = true;
@@ -2162,70 +2257,71 @@ async function handleRUTUpload(file: File) {
         throw new Error('Operación cancelada por el usuario.');
       }
     } else {
-    // Verificar si el RUT corresponde al mismo tercero que se está editando
-    const currentDocInForm = (document.getElementById('tpf-doc-number') as HTMLInputElement)?.value?.trim();
-    const isSameAsFormDoc = currentDocInForm && currentDocInForm === rutData.doc_number.trim();
-    const isSameAsEditingId = _currentEditingRow && _currentEditingRow.id;
+      // Verificar si el RUT corresponde al mismo tercero que se está editando
+      const currentDocInForm = (document.getElementById('tpf-doc-number') as HTMLInputElement)?.value?.trim();
+      const isSameAsFormDoc = currentDocInForm && currentDocInForm === rutData.doc_number.trim();
+      const isSameAsEditingId = _currentEditingRow && _currentEditingRow.id;
 
-    if (!isSameAsFormDoc) {
-      try {
-        const escapedDoc = pb.escapeFilterValue(rutData.doc_number);
-        const duplicates = await pb.listAll('third_parties', {
-          filter: `doc_number = "${escapedDoc}"`
-        });
+      if (!isSameAsFormDoc) {
+        try {
+          const escapedDoc = pb.escapeFilterValue(rutData.doc_number);
+          const duplicates = await pb.listAll('third_parties', {
+            filter: `doc_number = "${escapedDoc}"`
+          });
 
-        if (duplicates.length > 0) {
-          const existing = duplicates[0];
-          // Solo alertar si el duplicado encontrado NO es el mismo tercero que estamos editando
-          if (!isSameAsEditingId || existing.id !== _currentEditingRow.id) {
-            const confirmMsg = `El tercero con identificación ${rutData.doc_number} ya está registrado como "${existing.name}".\n\n¿Deseas abrir el registro de "${existing.name}" para adjuntarle este RUT?`;
-            if (confirm(confirmMsg)) {
-              const currentTabKey = _currentEditingRow ? `editar-tercero-${_currentEditingRow.id}` : 'nuevo-tercero';
-              if (typeof (window as any).closeTab === 'function') {
-                (window as any).closeTab(currentTabKey);
+          if (duplicates.length > 0) {
+            const existing = duplicates[0];
+            // Solo alertar si el duplicado encontrado NO es el mismo tercero que estamos editando
+            if (!isSameAsEditingId || existing.id !== _currentEditingRow.id) {
+              const confirmMsg = `El tercero con NIT ${rutData.doc_number}${rutData.dv ? '-' + rutData.dv : ''} ya está registrado como "${existing.name}".\n\n¿Deseas abrir el registro de "${existing.name}" para adjuntarle este RUT?`;
+              if (confirm(confirmMsg)) {
+                const currentTabKey = _currentEditingRow ? `editar-tercero-${_currentEditingRow.id}` : 'nuevo-tercero';
+                if (typeof (window as any).closeTab === 'function') {
+                  (window as any).closeTab(currentTabKey);
+                } else {
+                  closeModal();
+                }
+                editTercero(existing.id, file);
+                return;
               } else {
-                closeModal();
+                showToast(`Ya existe un tercero con identificación ${rutData.doc_number}. No se aplicaron los datos.`, 'warning');
+                return;
               }
-              editTercero(existing.id, file);
-              return;
-            } else {
-              showToast(`Ya existe un tercero con identificación ${rutData.doc_number}. No se aplicaron los datos.`, 'warning');
-              return;
             }
           }
+        } catch (errDb) {
+          console.error('[RUT] Error verificando duplicado:', errDb);
         }
-      } catch (errDb) {
-        console.error('[RUT] Error verificando duplicado:', errDb);
       }
-    }
 
-    // Retener archivo para subida posterior
-    _stagedRutFile = file;
-    _rutPdfClearFlag = false;
-    extractionSuccess = true;
+      // Retener archivo para subida posterior
+      _stagedRutFile = file;
+      _rutPdfClearFlag = false;
+      extractionSuccess = true;
 
-    // Auto-rellenar el formulario
-    applyRUTDataToForm(rutData);
-    showToast('RUT procesado con éxito y listo para guardar.', 'success');
+      // Auto-rellenar el formulario con datos fidedignos
+      applyRUTDataToForm(rutData);
+      showToast(`RUT procesado: NIT ${rutData.doc_number}${rutData.dv ? '-' + rutData.dv : ''} verificado.`, 'success');
     }
   } catch (err: any) {
     if (err.message !== 'Operación cancelada por el usuario.') {
       showToast(err.message || 'Error al procesar el RUT', 'error');
     }
   } finally {
-    // Restaurar dropzone con estado final garantizado
+    // Restaurar dropzone con estado visual táctil fiduciario
     if (dropzone) {
       if (_stagedRutFile) {
-        dropzone.style.border = '2px solid #6366F1';
-        dropzone.style.background = '#EEF2FF';
+        dropzone.style.border = '2px solid #059669';
+        dropzone.style.background = '#ECFDF5';
+        dropzone.style.borderRadius = '12px';
         dropzone.innerHTML = `
           <div style="display:flex;align-items:center;gap:12px;text-align:left;flex-wrap:wrap;">
-            <div style="font-size:26px;color:#6366F1;"><i class="fas fa-file-pdf"></i></div>
+            <div style="font-size:26px;color:#059669;"><i class="fas fa-file-circle-check"></i></div>
             <div style="flex:1;min-width:0;">
-              <div style="font-size:12px;font-weight:700;color:#3730A3;margin-bottom:2px;">PDF listo para subir al guardar</div>
-              <div style="font-size:11px;color:#4B5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(_stagedRutFile.name)}</div>
+              <div style="font-size:12px;font-weight:700;color:#065F46;margin-bottom:2px;">RUT PDF verificado y listo para guardar</div>
+              <div style="font-size:11px;color:#047857;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(_stagedRutFile.name)}</div>
             </div>
-            <label style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;font-size:11px;font-weight:600;cursor:pointer;">
+            <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;background:#FFFFFF;border:1px solid #A7F3D0;color:#047857;font-size:11px;font-weight:600;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);">
               <i class="fas fa-arrow-up-from-bracket"></i> Cambiar
               <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display:none;">
             </label>
@@ -2235,12 +2331,13 @@ async function handleRUTUpload(file: File) {
           if (newFileInput.files?.[0]) handleRUTUpload(newFileInput.files[0]);
         });
       } else {
-        dropzone.style.border = '2px dashed #E2E8F0';
+        dropzone.style.border = '2px dashed #CBD5E1';
         dropzone.style.background = '#F8FAFC';
+        dropzone.style.borderRadius = '12px';
         dropzone.innerHTML = `
-          <div style="font-size:24px;color:#6366F1;margin-bottom:6px;"><i class="fas fa-file-pdf"></i></div>
-          <div style="font-size:13px;font-weight:700;color:#1E293B;margin-bottom:2px;">Adjuntar RUT en PDF</div>
-          <div style="font-size:11px;color:#64748B;">Arrastra tu archivo aquí o haz clic para seleccionar.</div>
+          <div style="font-size:24px;color:#D97706;margin-bottom:6px;"><i class="fas fa-file-pdf"></i></div>
+          <div style="font-size:13px;font-weight:700;color:#0F172A;margin-bottom:2px;">Adjuntar RUT oficial en PDF</div>
+          <div style="font-size:11px;color:#64748B;">Arrastra el archivo aquí o haz clic para autocompletar casillas DIAN.</div>
           <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display:none;">
         `;
         const newFileInput = dropzone.querySelector('#tpf-rut-file-input') as HTMLInputElement;
@@ -2271,6 +2368,8 @@ function parseRUTText(items: any[]) {
     ciiu: '',
     department: '',
     city: '',
+    dept_code: '',
+    city_code: '',
     responsabilidades: []
   };
 
@@ -2305,124 +2404,161 @@ function parseRUTText(items: any[]) {
     };
   });
 
-  // Buscar NIT
-  for (const row of rows) {
-    const matches = row.text.match(/(\d\s+){6,9}\d/);
-    if (matches) {
-      const cleanNum = matches[0].replace(/\s+/g, "");
-      if (cleanNum.length >= 7 && cleanNum.length <= 10) {
-        rut.doc_number = cleanNum;
-        break;
+  const runCalcDV = (nitVal: string) => {
+    if (!nitVal || !/^\d+$/.test(nitVal)) return '';
+    if (typeof calcDV === 'function') return calcDV(nitVal);
+    if (typeof (window as any).calcDV === 'function') return (window as any).calcDV(nitVal);
+    const vpri = [0, 3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+    let sum = 0;
+    const len = nitVal.length;
+    for (let i = 0; i < len; i++) {
+      const digit = parseInt(nitVal.charAt(len - 1 - i), 10);
+      sum += digit * vpri[i + 1];
+    }
+    const rem = sum % 11;
+    return rem > 1 ? String(11 - rem) : String(rem);
+  };
+
+  // ── 1. EXTRACCIÓN DETERMINÍSTICA DE NIT Y DV (Casillas 5 y 6 DIAN) ──
+  // Casilla 5: x < 185 (dígitos del NIT)
+  // Casilla 6: 185 <= x <= 202 (dígito de verificación oficial)
+  let nitRow = rows.find(r => r.y >= 595 && r.y <= 625 && r.items.some(it => it.x < 185 && /^\d$/.test(it.str)));
+  if (!nitRow) {
+    nitRow = rows.find(r => /(\d\s+){5,}\d/.test(r.text));
+  }
+
+  if (nitRow) {
+    const nitBoxDigits = nitRow.items
+      .filter(it => it.x >= 20 && it.x < 185 && /^\d$/.test(it.str))
+      .map(it => it.str)
+      .join('');
+
+    const dvBoxItem = nitRow.items.find(it => it.x >= 185 && it.x <= 202 && /^\d$/.test(it.str));
+    const extractedDv = dvBoxItem ? dvBoxItem.str : '';
+
+    if (nitBoxDigits.length >= 7 && nitBoxDigits.length <= 10) {
+      rut.doc_number = nitBoxDigits;
+      rut.dv = extractedDv || runCalcDV(nitBoxDigits);
+    } else {
+      // Si hubo desplazamiento de escala o resolución, evaluar la tira completa con Módulo 11
+      const allRowDigits = nitRow.items
+        .filter(it => it.x >= 20 && it.x <= 205 && /^\d$/.test(it.str))
+        .map(it => it.str)
+        .join('');
+
+      if (allRowDigits.length >= 8 && allRowDigits.length <= 11) {
+        const candidateNit = allRowDigits.slice(0, -1);
+        const candidateDv = allRowDigits.slice(-1);
+        if (runCalcDV(candidateNit) === candidateDv) {
+          rut.doc_number = candidateNit;
+          rut.dv = candidateDv;
+        } else if (allRowDigits.length <= 10) {
+          rut.doc_number = allRowDigits;
+          rut.dv = runCalcDV(allRowDigits);
+        }
       }
     }
   }
 
+  // Respaldo de seguridad para NIT si la fila específica no fue detectada
   if (!rut.doc_number) {
     for (const row of rows) {
-      const cleanText = row.text.replace(/\s+/g, "");
-      const matches = cleanText.match(/\b\d{7,10}\b/);
+      const matches = row.text.match(/(\d\s+){6,10}\d/);
       if (matches) {
-        rut.doc_number = matches[0];
-        break;
+        const clean = matches[0].replace(/\s+/g, "");
+        if (clean.length >= 8 && clean.length <= 11) {
+          const candidateNit = clean.slice(0, -1);
+          const candidateDv = clean.slice(-1);
+          if (runCalcDV(candidateNit) === candidateDv) {
+            rut.doc_number = candidateNit;
+            rut.dv = candidateDv;
+            break;
+          } else if (clean.length <= 10) {
+            rut.doc_number = clean;
+            rut.dv = runCalcDV(clean);
+            break;
+          }
+        }
       }
     }
   }
 
-  // Calcular DV
-  if (rut.doc_number) {
-    const nit = rut.doc_number;
-    const vpri = [0, 3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
-    let x = 0;
-    let y = 0;
-    const z = nit.length;
-    for (let i = 0; i < z; i++) {
-      y = parseInt(nit.charAt(z - 1 - i), 10);
-      x += y * vpri[i + 1];
+  // ── 2. TIPO DE PERSONA (Casilla 24: Tipo de contribuyente) ──
+  let isJuridica = false;
+  const casilla24Row = rows.find(r => r.y >= 560 && r.y <= 575);
+  if (casilla24Row) {
+    if (/jur[ií]dica/i.test(casilla24Row.text)) {
+      isJuridica = true;
+    } else if (/natural/i.test(casilla24Row.text)) {
+      isJuridica = false;
     }
-    y = x % 11;
-    rut.dv = (y > 1) ? String(11 - y) : String(y);
-  }
-
-  // Tipo Persona
-  let isNatural = true;
-  for (const row of rows) {
-    if (row.text.includes("Persona natural") || row.text.includes("Cédula de Ciudadanía")) {
-      isNatural = true;
-      break;
-    }
-    if (row.text.includes("Persona jurídica")) {
-      isNatural = false;
-      break;
+  } else {
+    for (const r of rows) {
+      if (/Persona\s+jur[ií]dica/i.test(r.text)) { isJuridica = true; break; }
     }
   }
 
-  // Nombres / Apellidos
-  if (isNatural) {
+  // ── 3. IDENTIFICACIÓN: NOMBRES O RAZÓN SOCIAL (Casillas 31-35) ──
+  if (isJuridica) {
+    // Casilla 35: Razón Social (y ~ 485 - 505)
     for (const row of rows) {
-      if (row.y >= 510 && row.y <= 535) {
-        const uppercaseWords = row.items.map(item => item.str).filter(s => /^[A-ZÑ\s]+$/.test(s) && s.length > 2);
-        if (uppercaseWords.length >= 2) {
-          const items = row.items.filter(item => /^[A-ZÑ\s]+$/.test(item.str) && item.str.length > 2);
-          if (items.length >= 3) {
-            rut.last_name = `${items[0].str} ${items[1].str}`.trim();
-            rut.first_name = items.slice(2).map(item => item.str).join(" ");
-          } else if (items.length === 2) {
-            rut.last_name = items[0].str;
-            rut.first_name = items[1].str;
-          }
+      if (row.y >= 485 && row.y <= 505) {
+        const clean = row.text.replace(/35\.\s*Raz[oó]n\s*social|36\.\s*Nombre\s*comercial/gi, '').trim();
+        if (clean.length > 3 && !/^\d+$/.test(clean) && !/tipo de contribuyente/i.test(clean)) {
+          rut.business_name = clean;
           break;
         }
       }
     }
   } else {
+    // Casillas 31 a 34: Primer Apellido, Segundo Apellido, Primer Nombre, Otros Nombres
     for (const row of rows) {
-      if (row.y >= 490 && row.y <= 535) {
-        const matches = row.text.match(/^[A-Z0-9Ñ\s.,&-]{6,}$/);
-        if (matches) {
-          rut.business_name = row.text;
+      if (row.y >= 510 && row.y <= 535) {
+        if (/primer apellido|segundo apellido|31\.|32\./i.test(row.text)) continue;
+        const words = row.items.filter(it => /^[A-ZÑÁÉÍÓÚ\s]+$/i.test(it.str) && it.str.length > 1 && !/identificaci|segundo|primer/i.test(it.str));
+        if (words.length >= 1) {
+          const sortedWords = [...words].sort((a, b) => a.x - b.x);
+          const pApell = sortedWords.filter(w => w.x < 145).map(w => w.str).join(' ');
+          const sApell = sortedWords.filter(w => w.x >= 145 && w.x < 270).map(w => w.str).join(' ');
+          const pNomb  = sortedWords.filter(w => w.x >= 270 && w.x < 395).map(w => w.str).join(' ');
+          const oNomb  = sortedWords.filter(w => w.x >= 395).map(w => w.str).join(' ');
+
+          rut.last_name = `${pApell} ${sApell}`.trim();
+          rut.first_name = `${pNomb} ${oNomb}`.trim();
           break;
         }
       }
     }
   }
 
-  // Ubicación: Departamento y Municipio
-  const depts = (window as any).GEO_DEPTS || [];
-  for (const row of rows) {
-    if (row.text.includes("COLOMBIA")) {
-      for (const item of row.items) {
-        const cleanName = item.str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-        const matchedDept = depts.find((d: any) => d.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim() === cleanName);
-        if (matchedDept) {
-          rut.department = item.str;
-          const idx = row.items.indexOf(item);
-          if (idx !== -1) {
-            for (let i = idx + 1; i < row.items.length; i++) {
-              const str = row.items[i].str;
-              if (/^[a-zA-ZÑñ\s]+$/.test(str) && str.length > 2) {
-                rut.city = str;
-                break;
-              }
-            }
-          }
-          break;
-        }
-      }
-      if (rut.department) break;
+  if (!rut.business_name && (!rut.first_name && !rut.last_name)) {
+    const fallbackRow = rows.find(r => r.y >= 485 && r.y <= 505 && !/35\./.test(r.text) && r.text.length > 3);
+    if (fallbackRow) rut.business_name = fallbackRow.text.trim();
+  }
+
+  // ── 4. UBICACIÓN: DEPARTAMENTO Y MUNICIPIO (Casillas 39, 40, 41) ──
+  const locRow = rows.find(r => r.y >= 430 && r.y <= 445 && /colombia/i.test(r.text));
+  if (locRow) {
+    const nonColItems = locRow.items.filter(it => !/colombia|^\d+$/i.test(it.str) && it.str.length > 2);
+    if (nonColItems.length >= 2) {
+      rut.department = nonColItems[0].str.trim();
+      rut.city = nonColItems[1].str.trim();
+    } else if (nonColItems.length === 1) {
+      rut.department = nonColItems[0].str.trim();
     }
   }
 
-  // Dirección
+  // ── 5. DIRECCIÓN PRINCIPAL (Casilla 41) ──
   for (const row of rows) {
     if (row.y >= 405 && row.y <= 425) {
-      if (/^(CL|CR|AV|CLL|CRA|DG|TV|KM|AUTO|TRANS|DIAG|CALLE|CARRERA)/i.test(row.text)) {
-        rut.address = row.text;
+      if (!/41\.\s*direcci|correo|electr/i.test(row.text)) {
+        rut.address = row.text.trim();
         break;
       }
     }
   }
 
-  // Correo
+  // ── 6. CORREO ELECTRÓNICO (Casilla 42) ──
   for (const row of rows) {
     const emailMatch = row.text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     if (emailMatch) {
@@ -2431,9 +2567,9 @@ function parseRUTText(items: any[]) {
     }
   }
 
-  // Teléfono
+  // ── 7. TELÉFONO (Casilla 44 / 45) ──
   for (const row of rows) {
-    if (row.y >= 370 && row.y <= 395) {
+    if (row.y >= 380 && row.y <= 395) {
       for (const item of row.items) {
         const clean = item.str.replace(/\s+/g, "");
         if (/^\d{7,10}$/.test(clean)) {
@@ -2445,7 +2581,7 @@ function parseRUTText(items: any[]) {
     }
   }
 
-  // Código CIIU
+  // ── 8. ACTIVIDAD ECONÓMICA CIIU (Casilla 46 / 48) ──
   for (const row of rows) {
     if (row.y >= 320 && row.y <= 340) {
       const digits = row.items.map(item => item.str).filter(s => /^\d$/.test(s));
@@ -2456,22 +2592,23 @@ function parseRUTText(items: any[]) {
     }
   }
 
-  // Responsabilidades tributarias
+  // ── 9. RESPONSABILIDADES TRIBUTARIAS DIAN (Casilla 53) ──
   const responsabilidades: string[] = [];
   for (const row of rows) {
-    const matches = row.text.match(/\b(\d{2})\s*-\s*/g);
-    if (matches) {
-      matches.forEach(m => {
-        const code = m.match(/\d{2}/)![0];
-        responsabilidades.push(code);
-      });
+    if (row.y >= 220 && row.y <= 300) {
+      const matches = row.text.match(/\b(0[1-9]|[1-4]\d|5[0-5])\s*[-–]/g);
+      if (matches) {
+        matches.forEach(m => {
+          const code = m.match(/\d{2}/)![0];
+          responsabilidades.push(code);
+        });
+      }
     }
   }
   rut.responsabilidades = [...new Set(responsabilidades)];
 
   return rut;
 }
-
 function applyRUTDataToForm(rutData: any) {
   // 1. Tipo de Persona
   const isJuridica = !!rutData.business_name;

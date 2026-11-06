@@ -447,7 +447,7 @@ async function getMonthlyAccumulatedPayrollData(employeeId: string, currentPerio
         try {
           const parsed = JSON.parse(l.notes);
           lineIbc = Number(parsed?.payroll_meta?.ibc || 0);
-        } catch (_) {}
+        } catch (_) { }
       }
 
       if (!lineIbc) {
@@ -837,7 +837,7 @@ async function upsertSettingByKey(key, value) {
       return await pb.update('settings', found.id, { value });
     } catch (err) {
       if (err?.status !== 400) throw err;
-      await pb.delete('settings', found.id).catch(() => {});
+      await pb.delete('settings', found.id).catch(() => { });
       return pb.create('settings', { key, value });
     }
   }
@@ -852,7 +852,7 @@ async function writeSettingJsonMaybeChunked(baseKey, data) {
   if (text.length <= NOMINA_CONFIG_VALUE_MAX_CHARS) {
     await upsertSettingByKey(baseKey, text);
     for (const row of existingChunkRows) {
-      await pb.delete('settings', row.id).catch(() => {});
+      await pb.delete('settings', row.id).catch(() => { });
     }
     return;
   }
@@ -864,10 +864,10 @@ async function writeSettingJsonMaybeChunked(baseKey, data) {
 
   for (let i = chunks.length; i < existingChunkRows.length; i++) {
     const staleKey = settingChunkKey(baseKey, i);
-    await deleteSettingByKey(staleKey).catch(() => {});
+    await deleteSettingByKey(staleKey).catch(() => { });
   }
 
-  await deleteSettingByKey(baseKey).catch(() => {});
+  await deleteSettingByKey(baseKey).catch(() => { });
 }
 
 async function saveNominaConfig(config, rowId = '') {
@@ -904,7 +904,7 @@ function getNominaLineMeta(payLine) {
     if (parsed && typeof parsed === 'object' && parsed.payroll_meta && typeof parsed.payroll_meta === 'object') {
       return parsed.payroll_meta;
     }
-  } catch (_) {}
+  } catch (_) { }
   return {};
 }
 
@@ -1414,22 +1414,22 @@ async function openNominaAccountingSettings(employees = []) {
           <div class="form-group">
             <label class="form-label">Jornada laboral semanal (Ley 2101/2021)</label>
             <select id="nom-weekly-hours" class="form-input">
-              <option value="48" ${(local.config.company_rules.weekly_hours||44) === 48 ? 'selected' : ''}>48 h/sem (antes Jul 2023)</option>
-              <option value="47" ${(local.config.company_rules.weekly_hours||44) === 47 ? 'selected' : ''}>47 h/sem (Jul 2023 – Jun 2024)</option>
-              <option value="46" ${(local.config.company_rules.weekly_hours||44) === 46 ? 'selected' : ''}>46 h/sem (Jul 2024 – Jun 2025)</option>
-              <option value="44" ${(local.config.company_rules.weekly_hours||44) === 44 ? 'selected' : ''}>44 h/sem (Jul 2025 – Jun 2026)</option>
-              <option value="42" ${(local.config.company_rules.weekly_hours||44) === 42 ? 'selected' : ''}>42 h/sem (desde Jul 2026)</option>
+              <option value="48" ${(local.config.company_rules.weekly_hours || 44) === 48 ? 'selected' : ''}>48 h/sem (antes Jul 2023)</option>
+              <option value="47" ${(local.config.company_rules.weekly_hours || 44) === 47 ? 'selected' : ''}>47 h/sem (Jul 2023 – Jun 2024)</option>
+              <option value="46" ${(local.config.company_rules.weekly_hours || 44) === 46 ? 'selected' : ''}>46 h/sem (Jul 2024 – Jun 2025)</option>
+              <option value="44" ${(local.config.company_rules.weekly_hours || 44) === 44 ? 'selected' : ''}>44 h/sem (Jul 2025 – Jun 2026)</option>
+              <option value="42" ${(local.config.company_rules.weekly_hours || 44) === 42 ? 'selected' : ''}>42 h/sem (desde Jul 2026)</option>
             </select>
             <p class="text-xs mt-1" style="color:#6B7280">Define el valor hora base.</p>
           </div>
           <div class="form-group">
             <label class="form-label">Frecuencia de Pago de Nómina *</label>
             <select id="nom-period-type" class="form-input">
-              <option value="MENSUAL" ${(local.config.company_rules.period_type||'MENSUAL') === 'MENSUAL' ? 'selected' : ''}>Mensual (30 días)</option>
-              <option value="QUINCENAL" ${(local.config.company_rules.period_type||'MENSUAL') === 'QUINCENAL' ? 'selected' : ''}>Quincenal (15 días)</option>
-              <option value="CATORCENA" ${(local.config.company_rules.period_type||'MENSUAL') === 'CATORCENA' ? 'selected' : ''}>Catorcenal (14 días)</option>
-              <option value="SEMANAL" ${(local.config.company_rules.period_type||'MENSUAL') === 'SEMANAL' ? 'selected' : ''}>Semanal (7 días)</option>
-              <option value="JORNAL" ${(local.config.company_rules.period_type||'MENSUAL') === 'JORNAL' ? 'selected' : ''}>Jornal (Diario)</option>
+              <option value="MENSUAL" ${(local.config.company_rules.period_type || 'MENSUAL') === 'MENSUAL' ? 'selected' : ''}>Mensual (30 días)</option>
+              <option value="QUINCENAL" ${(local.config.company_rules.period_type || 'MENSUAL') === 'QUINCENAL' ? 'selected' : ''}>Quincenal (15 días)</option>
+              <option value="CATORCENA" ${(local.config.company_rules.period_type || 'MENSUAL') === 'CATORCENA' ? 'selected' : ''}>Catorcenal (14 días)</option>
+              <option value="SEMANAL" ${(local.config.company_rules.period_type || 'MENSUAL') === 'SEMANAL' ? 'selected' : ''}>Semanal (7 días)</option>
+              <option value="JORNAL" ${(local.config.company_rules.period_type || 'MENSUAL') === 'JORNAL' ? 'selected' : ''}>Jornal (Diario)</option>
             </select>
             <p class="text-xs mt-1" style="color:#6B7280">Determina el cálculo de períodos.</p>
           </div>
@@ -2238,7 +2238,7 @@ async function liquidarPeriodoMasivo(periodId) {
 
     showToast('Generando liquidaciones masivas...', 'info');
 
-// Obtener las liquidaciones existentes en este periodo
+    // Obtener las liquidaciones existentes en este periodo
     const existingLines = await pb.listAll('payroll_lines', { filter: `period_id="${pb.escapeFilterValue(periodId)}"` });
 
     // Limpiar PRIMERO las liquidaciones previas de empleados que NO sean elegibles en este periodo
@@ -2247,7 +2247,7 @@ async function liquidarPeriodoMasivo(periodId) {
       if (!stillEligible) {
         try {
           await pb.delete('payroll_lines', line.id);
-        } catch (_) {}
+        } catch (_) { }
       }
     }
 
@@ -2282,7 +2282,7 @@ async function liquidarPeriodoMasivo(periodId) {
           try {
             const parsed = JSON.parse(l.notes);
             lineIbc = Number(parsed?.payroll_meta?.ibc || 0);
-          } catch (_) {}
+          } catch (_) { }
         }
         if (!lineIbc) {
           const healthDed = Number(l.deduction_health || 0);
@@ -2510,8 +2510,8 @@ async function liquidarPeriodoMasivo(periodId) {
       const effectiveRate = retencionPorcentajeNovedad > 0
         ? retencionPorcentajeNovedad
         : ((empRule.apply_withholding_tax !== false && (empRule.withholding_rate || 0) > 0)
-            ? (empRule.withholding_rate as number)
-            : 0);
+          ? (empRule.withholding_rate as number)
+          : 0);
       const withholdingTax = (empRule.apply_withholding_tax !== false)
         ? calculateWithholdingTax(totalEarnings, deductionHealth, deductionPension, solidarityFund, UVT_VIGENTE, effectiveRate)
         : 0;
@@ -2547,7 +2547,7 @@ async function liquidarPeriodoMasivo(periodId) {
       const diasPrestPeriodo = isRetiroNov ? daysWorked : diasPeriodoBase;
       const salaryPrestPeriodo = round2((salary / 30) * diasPrestPeriodo);
       const transportPrestPeriodo = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? round2((AUX_TRANSPORTE_VIGENTE / 30) * diasPrestPeriodo) : 0;
-      
+
       // 1. Prima de servicios y Cesantías (con auxilio de transporte según Art. 7 Ley 1 de 1963)
       const basePrestacionesPeriodo = (isIntegralSalary || isAprendiz)
         ? 0
@@ -2612,7 +2612,7 @@ async function liquidarPeriodoMasivo(periodId) {
           company_exempt_sena_icbf: !!config.company_rules.exempt_sena_icbf,
           overtime_breakdown: {
             hourly_rate: hourlyRate,
-            total_hours: Object.values(otHours).reduce((a,b)=>a+b, 0),
+            total_hours: Object.values(otHours).reduce((a, b) => a + b, 0),
             total_amount: otAmount,
             ...overtimeBreakdown
           },
@@ -2666,7 +2666,7 @@ async function liquidarPeriodoMasivo(periodId) {
       }
     }
 
-// Huérfanos ya depurados al inicio del proceso
+    // Huérfanos ya depurados al inicio del proceso
 
     const omittedNotice = omittedEmployeesCount > 0 ? ` (${omittedEmployeesCount} empleados omitidos por contrato no vigente en este periodo)` : '';
     showToast(`Liquidacion completada. Creadas: ${creadas}, Actualizadas: ${actualizadas}.${omittedNotice}`, 'success');
@@ -2722,8 +2722,8 @@ async function renderNominaPeriodos(c, periods, lines, periodTotals, loadErrors,
           <thead><tr><th>Nombre</th><th>Desde</th><th>Hasta</th><th>Empleados</th><th>Devengado</th><th>Parafiscales</th><th>Neto Pago</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody>
             ${periods.length ? periods.map(p => {
-              const t = periodTotals[p.id] || { devengado:0, deducciones:0, neto:0, parafiscales:0, count:0 };
-              return `<tr>
+    const t = periodTotals[p.id] || { devengado: 0, deducciones: 0, neto: 0, parafiscales: 0, count: 0 };
+    return `<tr>
                 <td class="font-semibold">${esc(p.name)}</td>
                 <td>${esc(p.date_from)}</td><td>${esc(p.date_to)}</td>
                 <td class="text-center">${t.count}</td>
@@ -2745,7 +2745,7 @@ async function renderNominaPeriodos(c, periods, lines, periodTotals, loadErrors,
                   </div>
                 </td>
               </tr>`;
-             }).join('') : '<tr><td colspan="9" class="text-center py-8" style="color:#9CA3AF">Sin períodos de nómina.</td></tr>'}
+  }).join('') : '<tr><td colspan="9" class="text-center py-8" style="color:#9CA3AF">Sin períodos de nómina.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -2795,7 +2795,7 @@ async function renderNominaEmpleados(c) {
   try {
     const employees = await pb.listAll('third_parties', { filter: 'type="EMPLEADO"', sort: 'name' });
     const { config } = await getNominaConfigWithRow();
-    
+
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
@@ -2828,17 +2828,17 @@ async function renderNominaEmpleados(c) {
             </thead>
             <tbody>
               ${employees.length ? employees.map(emp => {
-                const rule = getEmployeePayrollRule(config, emp.id);
-                const groupName = config.employee_groups?.find(g => g.id === rule.group_id)?.name || 'Sin grupo';
-                const arlText = `Nivel ${rule.arl_risk_level}`;
-                const bankDisplay = emp.bank_account
-                  ? `<div>
+      const rule = getEmployeePayrollRule(config, emp.id);
+      const groupName = config.employee_groups?.find(g => g.id === rule.group_id)?.name || 'Sin grupo';
+      const arlText = `Nivel ${rule.arl_risk_level}`;
+      const bankDisplay = emp.bank_account
+        ? `<div>
                        <span class="text-xs font-semibold text-emerald-800"><i class="fas fa-building-columns mr-1 text-emerald-600"></i>${esc(emp.bank_name || 'Banco')}</span>
                        <div class="text-[11px] text-gray-500 font-mono">${esc(emp.bank_account_type || 'Ahorros')}: ${esc(emp.bank_account)}</div>
                      </div>`
-                  : `<span class="badge text-xs" style="background:#F3F4F6;color:#6B7280"><i class="fas fa-money-bill-wave mr-1"></i>Efectivo (10)</span>`;
-                
-                return `
+        : `<span class="badge text-xs" style="background:#F3F4F6;color:#6B7280"><i class="fas fa-money-bill-wave mr-1"></i>Efectivo (10)</span>`;
+
+      return `
                   <tr>
                     <td class="font-semibold">${esc(emp.name)}</td>
                     <td>${esc(emp.doc_type || 'CC')} ${esc(emp.doc_number || '')}</td>
@@ -2863,7 +2863,7 @@ async function renderNominaEmpleados(c) {
                     </td>
                   </tr>
                 `;
-              }).join('') : '<tr><td colspan="9" class="text-center py-8 text-gray-400">No se encontraron empleados registrados.</td></tr>'}
+    }).join('') : '<tr><td colspan="9" class="text-center py-8 text-gray-400">No se encontraron empleados registrados.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -2959,28 +2959,28 @@ async function renderNominaContratos(c) {
             </thead>
             <tbody>
               ${employees.length ? employees.map(emp => {
-                const rule = getEmployeePayrollRule(config, emp.id);
-                const contractType = rule.contract_type || 'INDEFINIDO';
-                const contractTypeLabel = {
-                  INDEFINIDO: 'Término Indefinido',
-                  TERMINADO_FIJO: 'Término Fijo',
-                  OBRA_LABOR: 'Obra o Labor',
-                  APRENDIZAJE: 'Aprendizaje',
-                  PRACTICA: 'Práctica'
-                }[contractType] || contractType;
-                
-                const weeklyHours = config.company_rules?.weekly_hours || 44;
-                const workdayTypeLabel = {
-                  COMPLETA: `Tiempo Completo (${weeklyHours}h/sem)`,
-                  MEDIA: 'Medio Tiempo',
-                  PARCIAL: 'Tiempo Parcial / Horas',
-                  OTRO: 'Otro'
-                }[rule.workday_type || ''] || rule.workday_type || `Tiempo Completo (${weeklyHours}h/sem)`;
-                
-                const startDate = rule.start_date || '—';
-                const endDate = rule.end_date || '—';
-                
-                return `
+      const rule = getEmployeePayrollRule(config, emp.id);
+      const contractType = rule.contract_type || 'INDEFINIDO';
+      const contractTypeLabel = {
+        INDEFINIDO: 'Término Indefinido',
+        TERMINADO_FIJO: 'Término Fijo',
+        OBRA_LABOR: 'Obra o Labor',
+        APRENDIZAJE: 'Aprendizaje',
+        PRACTICA: 'Práctica'
+      }[contractType] || contractType;
+
+      const weeklyHours = config.company_rules?.weekly_hours || 44;
+      const workdayTypeLabel = {
+        COMPLETA: `Tiempo Completo (${weeklyHours}h/sem)`,
+        MEDIA: 'Medio Tiempo',
+        PARCIAL: 'Tiempo Parcial / Horas',
+        OTRO: 'Otro'
+      }[rule.workday_type || ''] || rule.workday_type || `Tiempo Completo (${weeklyHours}h/sem)`;
+
+      const startDate = rule.start_date || '—';
+      const endDate = rule.end_date || '—';
+
+      return `
                   <tr>
                     <td class="font-semibold">${esc(emp.name)}</td>
                     <td>${esc(emp.doc_number || '')}</td>
@@ -3005,7 +3005,7 @@ async function renderNominaContratos(c) {
                     </td>
                   </tr>
                 `;
-              }).join('') : '<tr><td colspan="10" class="text-center py-8 text-gray-400">No se encontraron empleados registrados.</td></tr>'}
+    }).join('') : '<tr><td colspan="10" class="text-center py-8 text-gray-400">No se encontraron empleados registrados.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -3186,7 +3186,7 @@ async function openContractForm(employees, employeeId) {
       if (!tbody) return;
       tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-gray-400"><i class="fas fa-spinner fa-spin mr-1"></i>Cargando...</td></tr>';
       try {
-        const docs = await pb.listAll('payroll_documents', { 
+        const docs = await pb.listAll('payroll_documents', {
           filter: `employee_id = "${pb.escapeFilterValue(employeeId)}"`,
           sort: '-created'
         });
@@ -3361,7 +3361,7 @@ async function renderNominaPeriodosPage(c) {
 
     const wrap = document.createElement('div');
     c.appendChild(wrap);
-    
+
     await renderNominaPeriodos(wrap, periods, lines, periodTotals, loadErrors, employees.length === 0, periods.length === 0);
 
     $('#btn-new-period-pg')?.addEventListener('click', () => openPeriodForm());
@@ -3376,7 +3376,7 @@ async function renderNominaNovedadesPage(c) {
   try {
     const periods = await pb.listAll('payroll_periods', { sort: '-date_from' });
     const employees = await pb.listAll('third_parties', { filter: 'type="EMPLEADO" && active=true', sort: 'name' });
-    
+
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
@@ -3399,7 +3399,7 @@ async function renderNominaLiquidacionPage(c) {
   try {
     const periods = await pb.listAll('payroll_periods', { sort: '-date_from' });
     const employees = await pb.listAll('third_parties', { filter: 'type="EMPLEADO" && active=true', sort: 'name' });
-    
+
     const draftPeriods = periods.filter(p => p.status === 'draft' || !p.status);
     const periodOptions = draftPeriods.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
 
@@ -3455,10 +3455,10 @@ async function renderNominaLiquidacionPage(c) {
           return;
         }
 
-        const totDev = lines.reduce((s,l) => s + getNominaDevengadoTotal(l), 0);
-        const totNeto = lines.reduce((s,l) => s + (l.net_pay||0), 0);
-        const totPara = lines.reduce((s,l) => s + (l.employer_health||0)+(l.employer_pension||0)+(l.employer_arl||0)+(l.sena||0)+(l.icbf||0)+(l.caja_comp||0), 0);
-        const totProv = lines.reduce((s,l) => s + (l.cesantias||0)+(l.intereses_ces||0)+(l.prima||0)+(l.vacaciones||0), 0);
+        const totDev = lines.reduce((s, l) => s + getNominaDevengadoTotal(l), 0);
+        const totNeto = lines.reduce((s, l) => s + (l.net_pay || 0), 0);
+        const totPara = lines.reduce((s, l) => s + (l.employer_health || 0) + (l.employer_pension || 0) + (l.employer_arl || 0) + (l.sena || 0) + (l.icbf || 0) + (l.caja_comp || 0), 0);
+        const totProv = lines.reduce((s, l) => s + (l.cesantias || 0) + (l.intereses_ces || 0) + (l.prima || 0) + (l.vacaciones || 0), 0);
 
         const isUserAdminOrSuperadmin = ['superadmin', 'administrador', 'admin', 'propietario', 'gerente'].includes(String(pb.currentUser?.role || '').toLowerCase()) || can('canDelete');
 
@@ -3490,10 +3490,10 @@ async function renderNominaLiquidacionPage(c) {
                 ${lines.map(l => `<tr>
                   <td class="font-semibold">${esc(l.expand?.employee_id?.name || '?')}</td>
                   <td class="text-center">${(l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? l.days_worked : 30}</td>
-                  <td>${fmt(l.salary_base||0)}</td>
+                  <td>${fmt(l.salary_base || 0)}</td>
                   <td>${fmt(getNominaDevengadoTotal(l))}</td>
                   <td>${fmt(getNominaDeduccionesTotal(l))}</td>
-                  <td class="font-semibold text-emerald-800">${fmt(l.net_pay||0)}</td>
+                  <td class="font-semibold text-emerald-800">${fmt(l.net_pay || 0)}</td>
                   <td class="text-right">
                     <div class="flex gap-1 justify-end">
                       <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="viewPayrollLineDetail('${esc(l.id)}')"><i class="fas fa-eye"></i></button>
@@ -3530,17 +3530,17 @@ async function renderNominaLiquidacionPage(c) {
     };
 
     $('#liq-period-select')?.addEventListener('change', loadLiquidacionesPeriodo);
-    
+
     $('#btn-liq-masiva-pg')?.addEventListener('click', async () => {
       const periodId = getSelectVal('liq-period-select');
       if (!periodId) return showToast('Selecciona un período', 'warning');
-      
+
       const btn = $('#btn-liq-masiva-pg');
       if (btn) {
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Liquidando...';
       }
-      
+
       try {
         await window.liquidarPeriodoMasivo(periodId);
         loadLiquidacionesPeriodo();
@@ -3569,7 +3569,7 @@ async function renderNominaElectronicaPage(c) {
   c.innerHTML = `<div class="p-8 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando nómina electrónica...</div>`;
   try {
     const periods = await pb.listAll('payroll_periods', { sort: '-date_from' });
-    
+
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
@@ -3702,9 +3702,9 @@ async function renderNominaNovedades(c, periods, employees) {
             </td>
             <td>${esc(periodName)}</td>
             <td>
-              ${isRetiro 
-                ? `<span class="badge" style="background:#FEE2E2;color:#991B1B;font-weight:600"><i class="fas fa-user-minus mr-1"></i>${esc(labelForType(n.type))}</span>`
-                : esc(labelForType(n.type))}
+              ${isRetiro
+            ? `<span class="badge" style="background:#FEE2E2;color:#991B1B;font-weight:600"><i class="fas fa-user-minus mr-1"></i>${esc(labelForType(n.type))}</span>`
+            : esc(labelForType(n.type))}
             </td>
             <td>${esc(n.date_from)}</td>
             <td>${esc(n.date_to || '—')}</td>
@@ -4204,7 +4204,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       const days = (line.days_worked !== undefined && line.days_worked !== null && !isNaN(Number(line.days_worked))) ? Number(line.days_worked) : 30;
 
       // Fondo de solidaridad y meta de nómina: campo directo o desde notes
-      const pilaNotesObj = (() => { try { const n = JSON.parse(line.notes || '{}'); return n.payroll_meta || {}; } catch(_) { return {}; } })();
+      const pilaNotesObj = (() => { try { const n = JSON.parse(line.notes || '{}'); return n.payroll_meta || {}; } catch (_) { return {}; } })();
       if (Number(pilaNotesObj.dias_licencia_no_rem || 0) > 0) {
         hasSlnNovelty = true;
         slnDays = Math.max(slnDays, Number(pilaNotesObj.dias_licencia_no_rem));
@@ -4291,7 +4291,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       acc.aporteMinisterio += 0;
       acc.fondoSolidaridad += fsp;
       // Retención desde campo directo, fallback a notes
-      const pilaRet = (() => { try { const n = JSON.parse(line.notes || '{}'); return n.payroll_meta?.withholding_tax || 0; } catch(_) { return 0; } })();
+      const pilaRet = (() => { try { const n = JSON.parse(line.notes || '{}'); return n.payroll_meta?.withholding_tax || 0; } catch (_) { return 0; } })();
       acc.retencionFuente += round2((line.withholding_tax || 0) || pilaRet);
       acc.totalAportesEmpleado += round2(saludTrab + penTrab + fsp);
     }
@@ -4305,8 +4305,8 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       acc.comisionesMonto = round2(acc.comisionesMonto);
 
       const uniqueOt = Array.from(new Set(acc.otDetalleParts as string[]));
-      acc.horasExtrasDetalle = uniqueOt.length > 0 
-        ? uniqueOt.join(' | ') 
+      acc.horasExtrasDetalle = uniqueOt.length > 0
+        ? uniqueOt.join(' | ')
         : (acc.horasExtrasHoras > 0 ? `${acc.horasExtrasHoras} hrs ($${fmt(acc.horasExtrasMonto)})` : '—');
 
       acc.diasLaborados = Math.min(30, acc.diasLaborados);
@@ -4383,7 +4383,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         const valObj = typeof companySetting.value === 'string' ? JSON.parse(companySetting.value) : companySetting.value;
         companyName = valObj.name || valObj.razon_social || companyName;
         companyNit = valObj.nit || companyNit;
-      } catch (_) {}
+      } catch (_) { }
     }
     const nameS = settingsList.find((s: any) => s.key === 'company_name');
     const nitS = settingsList.find((s: any) => s.key === 'company_nit');
@@ -5034,7 +5034,7 @@ async function renderDetailedPayrollReport(year: number, month: number) {
         const valObj = typeof companySetting.value === 'string' ? JSON.parse(companySetting.value) : companySetting.value;
         companyName = valObj.name || valObj.razon_social || companyName;
         companyNit = valObj.nit || companyNit;
-      } catch (_) {}
+      } catch (_) { }
     }
     const nameS = settingsList.find((s: any) => s.key === 'company_name');
     const nitS = settingsList.find((s: any) => s.key === 'company_nit');
@@ -5865,46 +5865,50 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
                 </thead>
                 <tbody>
                   ${records.map((r: any) => {
-                    const emp = r.expand?.employee_id || {};
-                    const name = emp.name || 'Empleado';
-                    const doc = emp.doc_number || '—';
-                    const numSec = `${r.prefijo || 'NOM'}-${r.consecutivo || '0'}`;
-                    const badgeColor = {
-                      PENDIENTE: 'background:#FFF3CD;color:#856404',
-                      EN_PROCESO: 'background:#DBEAFE;color:#1E40AF',
-                      EN_COLA: 'background:#E0E7FF;color:#3730A3',
-                      SIMULADO: 'background:#EDE9FE;color:#5B21B6',
-                      APROBADO: 'background:#D4EDDA;color:#155724',
-                      RECHAZADO: 'background:#F8D7DA;color:#721C24'
-                    }[r.estado_dian || 'PENDIENTE'] || 'background:#E2E8F0;color:#334155';
+          const emp = r.expand?.employee_id || {};
+          const name = emp.name || 'Empleado';
+          const doc = emp.doc_number || '—';
+          const numSec = `${r.prefijo || 'NOM'}-${r.consecutivo || '0'}`;
+          const isAjuste = (r.xml_generado && r.xml_generado.includes('NominaIndividualDeAjuste')) || (r.prefijo && (r.prefijo.startsWith('NA') || r.prefijo.includes('AJUS')));
+          const badgeColor = {
+            PENDIENTE: 'background:#FFF3CD;color:#856404',
+            EN_PROCESO: 'background:#DBEAFE;color:#1E40AF',
+            EN_COLA: 'background:#E0E7FF;color:#3730A3',
+            SIMULADO: 'background:#EDE9FE;color:#5B21B6',
+            APROBADO: 'background:#D4EDDA;color:#155724',
+            RECHAZADO: 'background:#F8D7DA;color:#721C24'
+          }[r.estado_dian || 'PENDIENTE'] || 'background:#E2E8F0;color:#334155';
 
-                    let cuneDisplayHtml = '<span class="text-gray-400 text-3xs italic">Pendiente de firma</span>';
-                    const cuneVal = r.cufe || '';
-                    const cuneSnippet = cuneVal ? (cuneVal.slice(0, 10) + '...' + cuneVal.slice(-6)) : '—';
+          let cuneDisplayHtml = '<span class="text-gray-400 text-3xs italic">Pendiente de firma</span>';
+          const cuneVal = r.cufe || '';
+          const cuneSnippet = cuneVal ? (cuneVal.slice(0, 10) + '...' + cuneVal.slice(-6)) : '—';
 
-                    if (r.estado_dian === 'APROBADO' && cuneVal) {
-                      cuneDisplayHtml = `
+          if (r.estado_dian === 'APROBADO' && cuneVal) {
+            cuneDisplayHtml = `
                         <div class="flex items-center gap-1">
                           <span class="font-mono text-3xs text-emerald-800 font-bold" title="${esc(cuneVal)}">${esc(cuneSnippet)}</span>
                           <button class="text-gray-400 hover:text-emerald-700 p-0.5" title="Copiar CUNE Oficial DIAN" onclick="navigator.clipboard.writeText('${esc(cuneVal)}'); showToast('CUNE Oficial copiado al portapapeles', 'success');"><i class="fas fa-copy text-3xs"></i></button>
                         </div>
                       `;
-                    } else if (r.estado_dian === 'EN_PROCESO' || r.estado_dian === 'EN_COLA') {
-                      cuneDisplayHtml = `<span class="text-blue-600 font-medium text-3xs flex items-center gap-1"><i class="fas fa-spinner fa-spin"></i>En firma DIAN...</span>`;
-                    } else if (r.estado_dian === 'SIMULADO' && cuneVal) {
-                      cuneDisplayHtml = `
+          } else if (r.estado_dian === 'EN_PROCESO' || r.estado_dian === 'EN_COLA') {
+            cuneDisplayHtml = `<span class="text-blue-600 font-medium text-3xs flex items-center gap-1"><i class="fas fa-spinner fa-spin"></i>En firma DIAN...</span>`;
+          } else if (r.estado_dian === 'SIMULADO' && cuneVal) {
+            cuneDisplayHtml = `
                         <div class="flex items-center gap-1">
                           <span class="font-mono text-3xs text-purple-700 font-medium" title="Hash Simulado (No registrado en DIAN)">${esc(cuneSnippet)}</span>
                           <span class="badge" style="background:#EDE9FE;color:#5B21B6;font-size:9px;padding:1px 4px">Simulado</span>
                         </div>
                       `;
-                    } else if (r.estado_dian === 'RECHAZADO') {
-                      cuneDisplayHtml = `<span class="text-red-500 text-3xs italic font-medium">Rechazado por DIAN</span>`;
-                    }
+          } else if (r.estado_dian === 'RECHAZADO') {
+            cuneDisplayHtml = `<span class="text-red-500 text-3xs italic font-medium">Rechazado por DIAN</span>`;
+          }
 
-                    return `
+          return `
                       <tr>
-                        <td class="font-mono font-bold text-gray-700">${esc(numSec)}</td>
+                        <td class="font-mono font-bold text-gray-700">
+                          ${esc(numSec)}
+                          ${isAjuste ? '<span class="inline-block ml-1 px-1.5 py-0.5 rounded text-3xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">Ajuste</span>' : ''}
+                        </td>
                         <td>
                           <div class="font-semibold text-gray-900">${esc(name)}</div>
                           <div class="text-gray-400 text-3xs">${esc(emp.notes || 'Colaborador')}</div>
@@ -5923,6 +5927,9 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
                           <div class="flex gap-1 justify-end">
                             <button class="btn btn-outline btn-sm p-1.5 border-gray-300 hover:bg-gray-100" title="Ver Detalle y XML UBL 2.1" onclick="window.openNominaWorkerDetailModal('${esc(r.id)}')"><i class="fas fa-eye text-gray-600"></i></button>
                             <button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Firmar y Transmitir ante la DIAN" onclick="window.emitNominaElectronicaDian('${esc(r.id)}')"><i class="fas fa-paper-plane text-emerald-600"></i></button>
+                            ${(r.estado_dian === 'APROBADO' || r.cufe) ? `
+                            <button class="btn btn-outline btn-sm p-1.5 border-amber-600 hover:bg-amber-50 text-amber-700" title="Emitir Nota de Ajuste DIAN (Reemplazar o Eliminar)" onclick="window.openNominaAjusteModal('${esc(r.id)}')"><i class="fas fa-file-pen text-amber-600"></i></button>
+                            ` : ''}
                             <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado DIAN" onclick="window.checkNominaFtechStatus('${esc(r.id)}')"><i class="fas fa-arrows-rotate text-blue-600"></i></button>
                             <button class="btn btn-outline btn-sm p-1.5 border-purple-500 hover:bg-purple-50" title="Descargar PDF (Desprendible con CUNE)" onclick="window.downloadNominaPdf('${esc(r.id)}')"><i class="fas fa-file-pdf text-purple-600"></i></button>
                             <button class="btn btn-outline btn-sm p-1.5 border-amber-500 hover:bg-amber-50" title="Descargar XML UBL 2.1 Individual" onclick="window.downloadNominaXml('${esc(r.id)}')"><i class="fas fa-file-code text-amber-600"></i></button>
@@ -5931,7 +5938,7 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
                         </td>
                       </tr>
                     `;
-                  }).join('')}
+        }).join('')}
                 </tbody>
               </table>
             </div>
@@ -6035,22 +6042,71 @@ function calcNitDV(nit: string): string {
   return String(remainder < 2 ? remainder : 11 - remainder);
 }
 
-function buildSingleWorkerUblXml(
+function buildNominaIndividualDeAjusteXml(
   emp: any,
   company: any,
+  consecutivo: number,
+  tipoAjuste: '1' | '2', // '1': Reemplazar, '2': Eliminar
+  predecessor: {
+    prefijo: string;
+    consecutivo: number;
+    cune: string;
+    fechaGen: string;
+  },
   year: number,
   month: number,
-  consecutivo: number,
   periodStart: string,
   periodEnd: string,
-  cune: string,
   fechaGen: string,
   horaGen: string
 ) {
   const ymPrefix = `${year}-${String(month).padStart(2, '0')}`;
-  const numSec = `${company.prefijo || 'NOM'}${consecutivo}`;
+  const numSec = `${company.prefijo || 'NANE'}${consecutivo}`;
   const docNum = emp.numeroDocumento || '00000000';
-  
+
+  const cleanCompanyNit = String(company.companyNit || '').split('-')[0].replace(/[^0-9]/g, '') || '900000000';
+  let cleanCompanyDv = String(company.companyDv || '').replace(/[^0-9]/g, '');
+  if (!cleanCompanyDv || cleanCompanyDv === '0') {
+    cleanCompanyDv = calcNitDV(cleanCompanyNit);
+  }
+  const deptCode = esc(company.deptCode || '76');
+  const cityCode = esc(company.cityCode || '76001');
+
+  const predNum = `${predecessor.prefijo || 'NOM'}${predecessor.consecutivo}`;
+  const predCune = predecessor.cune || '';
+  const predFechaGen = predecessor.fechaGen || periodStart || `${year}-01-01`;
+
+  if (tipoAjuste === '2') {
+    // Tipo 2: Eliminar documento soporte previo
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<!--Version #1.0-->
+<NominaIndividualDeAjuste xmlns="dian:gov:co:facturaelectronica:NominaIndividualDeAjuste"
+ xmlns:xs="http://www.w3.org/2001/XMLSchema-instance"
+ xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
+ xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+ xmlns:xades="http://uri.etsi.org/01903/v1.3.2#"
+ xmlns:xades141="http://uri.etsi.org/01903/v1.4.1#"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ SchemaLocation=""
+ xsi:schemaLocation="dian:gov:co:facturaelectronica:NominaIndividualDeAjuste NominaIndividualDeAjusteElectronicaXSD.xsd">
+<ext:UBLExtensions>
+</ext:UBLExtensions>
+<TipoNota>2</TipoNota>
+<Eliminando>
+  <Eliminar>
+    <NumeroSecuenciaXML CodigoTrabajador="${esc(docNum)}" Prefijo="${esc(predecessor.prefijo || 'NOM')}" Consecutivo="${predecessor.consecutivo}" Numero="${esc(predNum)}" />
+    <CUNEPred>${esc(predCune)}</CUNEPred>
+    <FechaGenPred>${esc(predFechaGen)}</FechaGenPred>
+  </Eliminar>
+</Eliminando>
+<NumeroSecuenciaXML CodigoTrabajador="${esc(docNum)}" Prefijo="${esc(company.prefijo || 'NANE')}" Consecutivo="${consecutivo}" Numero="${esc(numSec)}" />
+<LugarGeneracionXML Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Idioma="es" />
+<InformacionGeneral Version="V1.0: Nota de Ajuste de Documento Soporte de Pago de Nómina Electrónica" Ambiente="${company.ambienteDian || '1'}" CUNE="" EncripCUNE="CUNE-SHA384" FechaGen="${fechaGen}" HoraGen="${horaGen}" TipoXML="103" PeriodoNomina="5" TipoMoneda="COP" TRM="1.00"/>
+<Empleador RazonSocial="${esc(company.companyName)}" NIT="${esc(cleanCompanyNit)}" DV="${esc(cleanCompanyDv)}" Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Direccion="${esc(company.companyDir)}" />
+</NominaIndividualDeAjuste>`;
+  }
+
+  // Tipo 1: Reemplazar documento soporte previo
   const sueldoBasico = round2(emp.sueldoBasico || 0).toFixed(2);
   const devengos = round2(emp.totalDevengos || 0).toFixed(2);
   const deducciones = round2(emp.totalDeducciones || 0).toFixed(2);
@@ -6066,8 +6122,196 @@ function buildSingleWorkerUblXml(
 
   const fechaLiqInicio = periodStart || `${ymPrefix}-01`;
   const fechaLiqFin = periodEnd || `${ymPrefix}-30`;
-  const fechaIngreso = emp.fechaIngreso || `${year}-01-01`;
-  const fechaRetiroXml = emp.fechaRetiro ? ` FechaRetiro="${emp.fechaRetiro}"` : '';
+  const fechaIngreso = (emp.fechaIngreso || periodStart || `${ymPrefix}-01`).trim();
+  const fechaRetiroXml = emp.fechaRetiro ? ` FechaRetiro="${emp.fechaRetiro.trim()}"` : '';
+
+  let otNodesXml = '';
+  if (emp.otBreakdownMap && Object.keys(emp.otBreakdownMap).length > 0) {
+    const map = emp.otBreakdownMap;
+    if (map.hed && map.hed.amount > 0) otNodesXml += `  <HEDs><HED Cantidad="${map.hed.hours}" Porcentaje="25.00" Pago="${round2(map.hed.amount).toFixed(2)}" /></HEDs>\n`;
+    if (map.hen && map.hen.amount > 0) otNodesXml += `  <HENs><HEN Cantidad="${map.hen.hours}" Porcentaje="75.00" Pago="${round2(map.hen.amount).toFixed(2)}" /></HENs>\n`;
+    if (map.rno && map.rno.amount > 0) otNodesXml += `  <HRNs><HRN Cantidad="${map.rno.hours}" Porcentaje="35.00" Pago="${round2(map.rno.amount).toFixed(2)}" /></HRNs>\n`;
+    if (map.heddf && map.heddf.amount > 0) otNodesXml += `  <HEDDFs><HEDDF Cantidad="${map.heddf.hours}" Porcentaje="100.00" Pago="${round2(map.heddf.amount).toFixed(2)}" /></HEDDFs>\n`;
+    if (map.rdfd && map.rdfd.amount > 0) otNodesXml += `  <HRDDFs><HRDDF Cantidad="${map.rdfd.hours}" Porcentaje="75.00" Pago="${round2(map.rdfd.amount).toFixed(2)}" /></HRDDFs>\n`;
+    if (map.hendf && map.hendf.amount > 0) otNodesXml += `  <HENDFs><HENDF Cantidad="${map.hendf.hours}" Porcentaje="150.00" Pago="${round2(map.hendf.amount).toFixed(2)}" /></HENDFs>\n`;
+    if (map.hrndf && map.hrndf.amount > 0) otNodesXml += `  <HRNDFs><HRNDF Cantidad="${map.hrndf.hours}" Porcentaje="110.00" Pago="${round2(map.hrndf.amount).toFixed(2)}" /></HRNDFs>\n`;
+  } else if ((emp.horasExtrasMonto || 0) > 0) {
+    otNodesXml = `  <HEDs><HED Cantidad="1" Porcentaje="25.00" Pago="${round2(emp.horasExtrasMonto).toFixed(2)}" /></HEDs>\n`;
+  }
+
+  let devengadosXml = `  <Basico DiasTrabajados="${emp.diasLaborados || 30}" SueldoTrabajado="${sueldoBasico}" />\n`;
+  if ((emp.auxilioTransporte || 0) > 0) {
+    devengadosXml += `  <Transporte AuxilioTransporte="${round2(emp.auxilioTransporte).toFixed(2)}" ViaticoManuAlojS="0.00" ViaticoManuAlojNS="0.00" />\n`;
+  }
+  if (otNodesXml) devengadosXml += otNodesXml;
+  if ((emp.vacacionesMonto || 0) > 0) {
+    devengadosXml += `  <Vacaciones><VacacionesComunes Cantidad="${emp.vacacionesDias || 1}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" /></Vacaciones>\n`;
+  }
+  if ((emp.primaMonto || 0) > 0) {
+    devengadosXml += `  <Primas Cantidad="${emp.primaDias || 180}" Pago="${round2(emp.primaMonto).toFixed(2)}" />\n`;
+  }
+  if ((emp.cesantiasMonto || 0) > 0) {
+    const intCes = round2(emp.interesesCesantiasMonto || 0);
+    const pctInt = emp.cesantiasMonto > 0 ? round2((intCes / emp.cesantiasMonto) * 100).toFixed(2) : "12.00";
+    devengadosXml += `  <Cesantias Pago="${round2(emp.cesantiasMonto).toFixed(2)}" Porcentaje="${pctInt}" PagoIntereses="${intCes.toFixed(2)}" />\n`;
+  }
+  if ((emp.incapacidadesMonto || 0) > 0) {
+    devengadosXml += `  <Incapacidades><Incapacidad Tipo="1" Cantidad="${emp.incapacidadesDias || 1}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
+  }
+  if ((emp.licenciasMonto || 0) > 0 || (emp.licenciasNRDias || 0) > 0) {
+    let licContent = '';
+    if ((emp.licenciasMonto || 0) > 0) {
+      licContent += `<LicenciaR Cantidad="${emp.licenciasDias || 1}" Pago="${round2(emp.licenciasMonto).toFixed(2)}" />`;
+    }
+    if ((emp.licenciasNRDias || 0) > 0) {
+      const fIni = emp.licenciasNRInicio || `${ymPrefix}-01`;
+      const fFin = emp.licenciasNRFin || fIni;
+      licContent += `<LicenciaNR Cantidad="${emp.licenciasNRDias}" FechaInicio="${fIni}" FechaFin="${fFin}" />`;
+    }
+    devengadosXml += `  <Licencias>${licContent}</Licencias>\n`;
+  }
+  if ((emp.bonificacionesMonto || 0) > 0) {
+    devengadosXml += `  <Bonificaciones><Bonificacion BonificacionS="${round2(emp.bonificacionesMonto).toFixed(2)}" BonificacionNS="0.00" /></Bonificaciones>\n`;
+  }
+  const auxNS = round2((emp.rodamientoMonto || 0) + (emp.auxNoSalarialesMonto || 0) + (emp.alimentacionMonto || 0));
+  if (auxNS > 0) {
+    devengadosXml += `  <Auxilios><Auxilio AuxilioS="0.00" AuxilioNS="${auxNS.toFixed(2)}" /></Auxilios>\n`;
+  }
+  let otrosConceptosInner = '';
+  if ((emp.otrosIngresosMonto || 0) > 0) {
+    otrosConceptosInner += `<OtroConcepto DescripcionConcepto="Otros Conceptos" ConceptoS="${round2(emp.otrosIngresosMonto).toFixed(2)}" ConceptoNS="0.00" />`;
+  }
+  if ((emp.gastosRepresentacionMonto || 0) > 0) {
+    otrosConceptosInner += `<OtroConcepto DescripcionConcepto="Gasto de representacion" ConceptoS="0.00" ConceptoNS="${round2(emp.gastosRepresentacionMonto).toFixed(2)}" />`;
+  }
+  if ((emp.compensatoriosMonto || 0) > 0) {
+    otrosConceptosInner += `<OtroConcepto DescripcionConcepto="Compensatorios" ConceptoS="${round2(emp.compensatoriosMonto).toFixed(2)}" ConceptoNS="0.00" />`;
+  }
+  if (otrosConceptosInner) {
+    devengadosXml += `  <OtrosConceptos>${otrosConceptosInner}</OtrosConceptos>\n`;
+  }
+  if ((emp.comisionesMonto || 0) > 0) {
+    devengadosXml += `  <Comisiones><Comision>${round2(emp.comisionesMonto).toFixed(2)}</Comision></Comisiones>\n`;
+  }
+  if ((emp.dotacionMonto || 0) > 0) {
+    devengadosXml += `  <PagosTerceros><PagoTercero>${round2(emp.dotacionMonto).toFixed(2)}</PagoTercero></PagosTerceros>\n`;
+  }
+
+  let deduccionesAdicionalesXml = '';
+  const dedSaludVal = round2(emp.saludDeduccion || 0).toFixed(2);
+  const dedPensionVal = round2(emp.pensionDeduccion || 0).toFixed(2);
+  deduccionesAdicionalesXml += `  <Salud Porcentaje="4.00" Deduccion="${dedSaludVal}" />\n`;
+  deduccionesAdicionalesXml += `  <FondoPension Porcentaje="4.00" Deduccion="${dedPensionVal}" />\n`;
+  if ((emp.solidaridadDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <FondoSP Porcentaje="1.00" DeduccionSP="${round2(emp.solidaridadDeduccion).toFixed(2)}" DeduccionSub="0.00" />\n`;
+  }
+  if ((emp.sindicatoDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Sindicatos><Sindicato Porcentaje="1.00" Deduccion="${round2(emp.sindicatoDeduccion).toFixed(2)}" /></Sindicatos>\n`;
+  }
+  if ((emp.libranzaDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Libranzas><Libranza Descripcion="Deducción Libranza" Deduccion="${round2(emp.libranzaDeduccion).toFixed(2)}" /></Libranzas>\n`;
+  }
+  if ((emp.anticipoDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Anticipos><Anticipo>${round2(emp.anticipoDeduccion).toFixed(2)}</Anticipo></Anticipos>\n`;
+  }
+  if ((emp.retencionDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <RetencionFuente>${round2(emp.retencionDeduccion).toFixed(2)}</RetencionFuente>\n`;
+  }
+  if ((emp.embargoDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <EmbargoFiscal>${round2(emp.embargoDeduccion).toFixed(2)}</EmbargoFiscal>\n`;
+  }
+  const totalDeuda = round2((emp.deudaDeduccion || 0) + (emp.otrasDeducciones || 0));
+  if (totalDeuda > 0) {
+    deduccionesAdicionalesXml += `  <Deuda>${totalDeuda.toFixed(2)}</Deuda>\n`;
+  }
+
+  let pagoXml = '';
+  if (emp.metodoPagoCode === '10' || emp.metodoPago === 'EFECTIVO' || emp.formaPago === '10') {
+    pagoXml = `  <Pago Forma="1" Metodo="10" />`;
+  } else {
+    const bancoNombre = esc(emp.banco || company.bancoDefault || 'Entidad Bancaria');
+    const tipoCuenta = esc(emp.tipoCuenta || 'Ahorros');
+    const numCuenta = esc(emp.numeroCuenta || '0000000000');
+    pagoXml = `  <Pago Forma="1" Metodo="${emp.metodoPagoCode || '30'}" Banco="${bancoNombre}" TipoCuenta="${tipoCuenta}" NumeroCuenta="${numCuenta}" />`;
+  }
+
+  const segundoApellidoAttr = (emp.segundoApellido && String(emp.segundoApellido).trim() !== '') ? ` SegundoApellido="${esc(emp.segundoApellido)}"` : '';
+  const otrosNombresAttr = (emp.otrosNombres && String(emp.otrosNombres).trim() !== '') ? ` OtrosNombres="${esc(emp.otrosNombres)}"` : '';
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!--Version #1.0-->
+<NominaIndividualDeAjuste xmlns="dian:gov:co:facturaelectronica:NominaIndividualDeAjuste"
+ xmlns:xs="http://www.w3.org/2001/XMLSchema-instance"
+ xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
+ xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+ xmlns:xades="http://uri.etsi.org/01903/v1.3.2#"
+ xmlns:xades141="http://uri.etsi.org/01903/v1.4.1#"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ SchemaLocation=""
+ xsi:schemaLocation="dian:gov:co:facturaelectronica:NominaIndividualDeAjuste NominaIndividualDeAjusteElectronicaXSD.xsd">
+<ext:UBLExtensions>
+</ext:UBLExtensions>
+<TipoNota>1</TipoNota>
+<Reemplazando>
+  <Reemplazar>
+    <NumeroSecuenciaXML CodigoTrabajador="${esc(docNum)}" Prefijo="${esc(predecessor.prefijo || 'NOM')}" Consecutivo="${predecessor.consecutivo}" Numero="${esc(predNum)}" />
+    <CUNEPred>${esc(predCune)}</CUNEPred>
+    <FechaGenPred>${esc(predFechaGen)}</FechaGenPred>
+  </Reemplazar>
+</Reemplazando>
+<Periodo FechaIngreso="${fechaIngreso}"${fechaRetiroXml} TiempoLaborado="${emp.diasLaborados || 30}" FechaLiquidacionInicio="${fechaLiqInicio}" FechaLiquidacionFin="${fechaLiqFin}" FechaGen="${fechaGen}"/>
+<NumeroSecuenciaXML CodigoTrabajador="${esc(docNum)}" Prefijo="${esc(company.prefijo || 'NANE')}" Consecutivo="${consecutivo}" Numero="${esc(numSec)}" />
+<LugarGeneracionXML Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Idioma="es" />
+<InformacionGeneral Version="V1.0: Nota de Ajuste de Documento Soporte de Pago de Nómina Electrónica" Ambiente="${company.ambienteDian || '1'}" CUNE="" EncripCUNE="CUNE-SHA384" FechaGen="${fechaGen}" HoraGen="${horaGen}" TipoXML="103" PeriodoNomina="5" TipoMoneda="COP" TRM="1.00"/>
+<Empleador RazonSocial="${esc(company.companyName)}" NIT="${esc(cleanCompanyNit)}" DV="${esc(cleanCompanyDv)}" Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Direccion="${esc(company.companyDir)}" />
+<Trabajador TipoTrabajador="${esc(emp.tipoTrabajador || '01')}" SubTipoTrabajador="${esc(emp.subTipoTrabajador || '00')}" AltoRiesgoPension="${emp.altoRiesgo ? 'true' : 'false'}" TipoDocumento="${esc(tipoDocCode)}" NumeroDocumento="${esc(docNum)}" PrimerApellido="${esc(emp.primerApellido)}"${segundoApellidoAttr} PrimerNombre="${esc(emp.primerNombre)}"${otrosNombresAttr} LugarTrabajoPais="CO" LugarTrabajoDepartamentoEstado="${esc(emp.deptCode || deptCode)}" LugarTrabajoMunicipioCiudad="${esc(emp.cityCode || cityCode)}" LugarTrabajoDireccion="${esc(emp.direccion || company.companyDir)}" SalarioIntegral="${emp.salarioIntegral ? 'true' : 'false'}" TipoContrato="${esc(emp.tipoContratoCode || '2')}" Sueldo="${sueldoBasico}" CodigoTrabajador="${esc(docNum)}" />
+${pagoXml}
+<FechasPagos>
+<FechaPago>${fechaLiqFin}</FechaPago>
+</FechasPagos>
+<Devengados>
+${devengadosXml}</Devengados>
+<Deducciones>
+${deduccionesAdicionalesXml}</Deducciones>
+<DevengadosTotal>${devengos}</DevengadosTotal>
+<DeduccionesTotal>${deducciones}</DeduccionesTotal>
+<ComprobanteTotal>${neto}</ComprobanteTotal>
+</NominaIndividualDeAjuste>`;
+}
+
+function buildSingleWorkerUblXml(
+  emp: any,
+  company: any,
+  year: number,
+  month: number,
+  consecutivo: number,
+  periodStart: string,
+  periodEnd: string,
+  cune: string,
+  fechaGen: string,
+  horaGen: string
+) {
+  const ymPrefix = `${year}-${String(month).padStart(2, '0')}`;
+  const numSec = `${company.prefijo || 'NOM'}${consecutivo}`;
+  const docNum = emp.numeroDocumento || '00000000';
+
+  const sueldoBasico = round2(emp.sueldoBasico || 0).toFixed(2);
+  const devengos = round2(emp.totalDevengos || 0).toFixed(2);
+  const deducciones = round2(emp.totalDeducciones || 0).toFixed(2);
+  const neto = round2(emp.netoPagar || 0).toFixed(2);
+
+  let tipoDocCode = '13';
+  const rawDocType = (emp.tipoDocumento || '').toUpperCase();
+  if (rawDocType === 'CE') tipoDocCode = '22';
+  else if (rawDocType === 'NIT') tipoDocCode = '31';
+  else if (rawDocType === 'PASAPORTE' || rawDocType === 'PAS') tipoDocCode = '41';
+  else if (rawDocType === 'PEP' || rawDocType === 'DIE') tipoDocCode = '42';
+  else if (rawDocType === 'NUIP') tipoDocCode = '91';
+
+  const fechaLiqInicio = periodStart || `${ymPrefix}-01`;
+  const fechaLiqFin = periodEnd || `${ymPrefix}-30`;
+  const fechaIngreso = (emp.fechaIngreso || periodStart || `${ymPrefix}-01`).trim();
+  const fechaRetiroXml = emp.fechaRetiro ? ` FechaRetiro="${emp.fechaRetiro.trim()}"` : '';
 
   let otNodesXml = '';
   if (emp.otBreakdownMap && Object.keys(emp.otBreakdownMap).length > 0) {
@@ -6233,7 +6477,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
 
   try {
     const ymPrefix = `${year}-${String(month).padStart(2, '0')}`;
-    const periods = await pb.listAll('payroll_periods', { 
+    const periods = await pb.listAll('payroll_periods', {
       filter: `date_from ~ "${ymPrefix}" || date_to ~ "${ymPrefix}"`,
       sort: 'date_from'
     });
@@ -6276,7 +6520,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         companyDir = valObj.address || companyDir;
         companyDeptCode = valObj.dept_code || valObj.state_code || companyDeptCode;
         companyCityCode = valObj.city_code || companyCityCode;
-      } catch(_) {}
+      } catch (_) { }
     } else {
       const nameS = settingsList.find((s: any) => s.key === 'company_name');
       const nitS = settingsList.find((s: any) => s.key === 'company_nit');
@@ -6318,6 +6562,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
     }
 
     const acumuladosPorEmpleado = new Map();
+    const { config: nomConfig } = await getNominaConfigWithRow().catch(() => ({ config: null }));
 
     const periodNovs = await pb.listAll('payroll_novelties', { filter: filterExpr }).catch(() => []);
     const novsByEmp = new Map<string, any[]>();
@@ -6332,6 +6577,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       const emp = l.expand?.employee_id;
       if (!emp) return;
       const empId = emp.id;
+      const empRule = nomConfig ? getEmployeePayrollRule(nomConfig, empId) : null;
 
       const empNovs = novsByEmp.get(empId) || [];
       const nrLics = empNovs.filter((n: any) => n.type === 'LICENCIA_NO_REMUNERADA' || n.type === 'PERMISO_NO_REMUNERADO' || n.type === 'SUSPENSION');
@@ -6340,7 +6586,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       const licNRFin = nrLics[0]?.date_to || licNRIni;
 
       const retiroNov = empNovs.find((n: any) => n.type === 'RETIRO');
-      const fechaRetiro = retiroNov ? (retiroNov.date_from || (retiroNov as any).date || '') : '';
+      const fechaRetiro = (retiroNov ? (retiroNov.date_from || (retiroNov as any).date || '') : (empRule?.end_date || '')).trim();
 
       const days = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
       const proportionalSalary = round2(((l.salary_base || 0) / 30) * days);
@@ -6495,11 +6741,16 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           });
         }
 
+        const cType = empRule?.contract_type || emp.contract_type || 'INDEFINIDO';
         let tipoContratoCode = '2';
-        if (emp.contract_type === 'FIJO') tipoContratoCode = '1';
-        else if (emp.contract_type === 'OBRA_LABOR') tipoContratoCode = '3';
-        else if (emp.contract_type === 'APRENDIZAJE') tipoContratoCode = '4';
-        else if (emp.contract_type === 'PRACTICAS') tipoContratoCode = '5';
+        if (cType === 'TERMINADO_FIJO' || cType === 'FIJO') tipoContratoCode = '1';
+        else if (cType === 'INDEFINIDO') tipoContratoCode = '2';
+        else if (cType === 'OBRA_LABOR') tipoContratoCode = '3';
+        else if (cType === 'APRENDIZAJE') tipoContratoCode = '4';
+        else if (cType === 'PRACTICA' || cType === 'PRACTICAS') tipoContratoCode = '5';
+
+        const contractStartDate = (empRule?.start_date || emp.date_hired || emp.hire_date || emp.fecha_ingreso || '').trim();
+        const fechaIngresoFinal = contractStartDate || periodStart || `${ymPrefix}-01`;
 
         acumuladosPorEmpleado.set(empId, {
           empId: empId,
@@ -6510,14 +6761,14 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           segundoApellido,
           tipoDocumento: emp.doc_type || 'CC',
           numeroDocumento: emp.doc_number || '00000000',
-          cargo: emp.notes || 'Colaborador',
+          cargo: empRule?.position || emp.notes || 'Colaborador',
           email: emp.email || '',
           banco: (emp.bank_name || '').trim(),
           numeroCuenta: (emp.bank_account || '').trim(),
           tipoCuenta: emp.bank_account_type || 'Ahorros',
           metodoPago: (emp.payment_method === '10' || (!emp.bank_account && emp.payment_method !== '30' && emp.payment_method !== '47' && emp.payment_method !== '42')) ? 'EFECTIVO' : 'TRANSFERENCIA',
           metodoPagoCode: emp.payment_method || (emp.bank_account ? '30' : '10'),
-          fechaIngreso: emp.hire_date || `${year}-01-01`,
+          fechaIngreso: fechaIngresoFinal,
           fechaRetiro,
           tipoTrabajador: '01',
           subTipoTrabajador: '00',
@@ -6577,7 +6828,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
 
     for (let i = 0; i < empleadosList.length; i++) {
       const e = empleadosList[i];
-      
+
       const existentes = await pb.listAll('electronic_payrolls', {
         filter: `ano=${year} && mes=${month} && (employee_id="${e.empId}" || (xml_generado ~ "${e.numeroDocumento}"))`
       });
@@ -6598,8 +6849,8 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         newConsecutivesCount++;
       }
 
-      const companyData = { 
-        companyName, companyNit, companyDv, companyDir, 
+      const companyData = {
+        companyName, companyNit, companyDv, companyDir,
         deptCode: companyDeptCode, cityCode: companyCityCode,
         prefijo: recordPrefix, ambienteDian
       };
@@ -6668,7 +6919,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
 
 // ── Global Handlers para Acciones de Nómina Electrónica Individual ────────────
 
-(window as any).openNominaWorkerDetailModal = async function(recId) {
+(window as any).openNominaWorkerDetailModal = async function (recId) {
   try {
     const rec = await pb.get('electronic_payrolls', recId, { expand: 'employee_id' });
     const emp = rec.expand?.employee_id || {};
@@ -6677,29 +6928,55 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
 
     let cuneDetailLabel = '— (Se asignará y sellará digitalmente tras la firma y validación DIAN)';
     if (rec.estado_dian === 'APROBADO' && rec.cufe) {
-      cuneDetailLabel = `${esc(rec.cufe)} <span class="badge badge-green ml-2 font-bold">Oficial DIAN</span>`;
+      if (rec.cufe.startsWith('SIM-')) {
+        cuneDetailLabel = `${esc(rec.cufe)} <span class="badge ml-2 font-bold" style="background:#FEF3C7;color:#92400E">Simulación Local</span>`;
+      } else {
+        cuneDetailLabel = `${esc(rec.cufe)} <span class="badge badge-green ml-2 font-bold">Oficial DIAN</span>`;
+      }
     } else if (rec.estado_dian === 'SIMULADO' && rec.cufe) {
       cuneDetailLabel = `${esc(rec.cufe)} <span class="badge ml-2 font-bold" style="background:#EDE9FE;color:#5B21B6">Simulación Local</span>`;
     } else if (rec.estado_dian === 'EN_PROCESO' || rec.estado_dian === 'EN_COLA') {
       cuneDetailLabel = `<span class="text-blue-600 font-semibold"><i class="fas fa-spinner fa-spin mr-1"></i>En proceso de firma y validación DIAN...</span>`;
     }
 
+    const isAjuste = (rec.prefijo && (rec.prefijo.startsWith('NA') || rec.prefijo.startsWith('AJ'))) || (xml.includes('NominaIndividualDeAjuste'));
+    const isEliminacion = isAjuste && (xml.includes('<TipoNota>2</TipoNota>') || xml.includes('<Eliminando>'));
+    const isReemplazo = isAjuste && !isEliminacion;
+    const predMatch = xml.match(/Numero\s*=\s*"([^"]*)"/i);
+    const predNumero = predMatch ? predMatch[1] : '';
+
+    const docTitle = isEliminacion
+      ? 'Nota de Ajuste de Nómina Electrónica — Eliminación (Tipo 2)'
+      : (isReemplazo ? 'Nota de Ajuste de Nómina Electrónica — Reemplazo (Tipo 1)' : 'Volante Individual de Nómina Electrónica — DIAN');
+
     const bodyHtml = `
       <div class="space-y-4 text-left text-xs">
         <div class="bg-gray-50 p-3 rounded-xl border flex justify-between items-center">
           <div>
-            <div class="font-bold text-sm text-gray-800">Volante Individual de Nómina Electrónica — DIAN</div>
+            <div class="font-bold text-sm text-gray-800">${esc(docTitle)}</div>
             <div class="text-gray-500">Empleado: <strong>${esc(emp.name || 'Empleado')}</strong> | Documento: <strong class="font-mono">${esc(emp.doc_number || '—')}</strong></div>
-            <div class="text-gray-400 text-3xs mt-0.5">Consecutivo: <strong>${esc(rec.prefijo || 'NOM')}-${esc(rec.consecutivo || '0')}</strong></div>
+            <div class="text-gray-400 text-3xs mt-0.5">Consecutivo: <strong>${esc(rec.prefijo || 'NOM')}-${esc(rec.consecutivo || '0')}</strong>${predNumero ? ` | Predecesor: <strong class="text-amber-700">${esc(predNumero)}</strong>` : ''}</div>
           </div>
           <span class="badge font-bold ${rec.estado_dian === 'APROBADO' ? 'badge-green' : (rec.estado_dian === 'RECHAZADO' ? 'badge-red' : (rec.estado_dian === 'EN_PROCESO' ? 'badge-blue' : 'badge-amber'))}">${rec.estado_dian || 'PENDIENTE'}</span>
         </div>
 
-        <div class="grid grid-cols-3 gap-2 text-center bg-blue-50 p-3 rounded-xl border border-blue-100">
-          <div><div class="text-gray-400 text-3xs">TOTAL DEVENGOS</div><div class="font-bold text-blue-900">${fmt(rec.total_devengos || 0)}</div></div>
-          <div><div class="text-gray-400 text-3xs">TOTAL DEDUCCIONES</div><div class="font-bold text-red-900">${fmt(rec.total_deducciones || 0)}</div></div>
-          <div><div class="text-gray-400 text-3xs">NETO A PAGAR</div><div class="font-bold text-emerald-800 text-sm">${fmt(rec.total_neto || 0)}</div></div>
-        </div>
+        ${isEliminacion ? `
+          <div class="bg-red-50 border border-red-200 text-red-900 p-3 rounded-xl flex items-start gap-3">
+            <i class="fas fa-ban text-red-500 mt-1 text-base"></i>
+            <div>
+              <strong class="font-bold text-xs text-red-950">Comprobante de Anulación Fiscal (Tipo 2 — Eliminar)</strong>
+              <p class="text-3xs text-red-800 mt-0.5 leading-relaxed">
+                Este documento anula formalmente ante la DIAN el comprobante previo <strong>${esc(predNumero || 'predecesor')}</strong>. Por directriz técnica DIAN (Resolución 000013/2021), una nota de eliminación no contiene devengos ni deducciones y su valor nominal es $0,00 para extinguir los efectos tributarios del documento original.
+              </p>
+            </div>
+          </div>
+        ` : `
+          <div class="grid grid-cols-3 gap-2 text-center bg-blue-50 p-3 rounded-xl border border-blue-100">
+            <div><div class="text-gray-400 text-3xs">TOTAL DEVENGOS</div><div class="font-bold text-blue-900">${fmt(rec.total_devengos || 0)}</div></div>
+            <div><div class="text-gray-400 text-3xs">TOTAL DEDUCCIONES</div><div class="font-bold text-red-900">${fmt(rec.total_deducciones || 0)}</div></div>
+            <div><div class="text-gray-400 text-3xs">NETO A PAGAR</div><div class="font-bold text-emerald-800 text-sm">${fmt(rec.total_neto || 0)}</div></div>
+          </div>
+        `}
 
         <div class="border rounded-xl p-3 bg-white space-y-1 text-3xs">
           <div class="flex justify-between items-center"><span class="text-gray-400">CUNE:</span><span class="font-mono text-gray-700 font-bold break-all">${cuneDetailLabel}</span></div>
@@ -6720,7 +6997,20 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       </div>
     `;
 
-    openModal(`Detalle Nómina Individual — ${emp.name || 'Empleado'} (${rec.prefijo || 'NOM'}-${rec.consecutivo || '0'})`, bodyHtml, `<button class="btn btn-primary" onclick="closeModal()">Cerrar</button>`, true);
+    const modalFooter = `
+      <div class="flex justify-between items-center w-full">
+        <div>
+          ${(rec.estado_dian === 'APROBADO' || rec.cufe) ? `
+            <button class="btn btn-outline border-amber-600 text-amber-700 hover:bg-amber-50" onclick="closeModal(); window.openNominaAjusteModal('${esc(rec.id)}')">
+              <i class="fas fa-file-pen mr-1 text-amber-600"></i>Emitir Nota de Ajuste DIAN
+            </button>
+          ` : ''}
+        </div>
+        <button class="btn btn-primary" onclick="closeModal()">Cerrar</button>
+      </div>
+    `;
+
+    openModal(`Detalle Nómina Individual — ${emp.name || 'Empleado'} (${rec.prefijo || 'NOM'}-${rec.consecutivo || '0'})`, bodyHtml, modalFooter, true);
   } catch (err) {
     showToast('Error al abrir detalle: ' + err.message, 'error');
   }
@@ -6755,22 +7045,25 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
   }
 }
 
-(window as any).emitNominaElectronicaDian = async function(id: string) {
+(window as any).emitNominaElectronicaDian = async function (id: string) {
   try {
     const rec = await pb.get('electronic_payrolls', id);
     const currNum = `${rec.prefijo || 'NOM'}-${rec.consecutivo || '0'}`;
 
     if (rec.estado_dian === 'RECHAZADO') {
-      // Obtener el siguiente consecutivo de la resolución NE activa para mostrarlo al usuario
-      const neResolutions = await pb.listAll('dian_resolutions', { filter: 'document_type="NE" && active=true' }).catch(() => []);
-      const activeRes = neResolutions[0] || null;
+      // Obtener el siguiente consecutivo de la resolución activa (NE o NANE) para mostrarlo al usuario
+      const isAjuste = (rec.prefijo && (rec.prefijo.startsWith('NA') || rec.prefijo.startsWith('AJ'))) || (rec.xml_generado && rec.xml_generado.includes('NominaIndividualDeAjuste'));
+      const targetDocType = isAjuste ? 'NANE' : 'NE';
+      const resolutions = await pb.listAll('dian_resolutions', { filter: `document_type="${targetDocType}" && active=true` }).catch(() => []);
+      const activeRes = resolutions[0] || null;
       let nextNum = 1;
-      let pfx = rec.prefijo || 'NOM';
+      let pfx = rec.prefijo || (isAjuste ? 'NANE' : 'NOM');
       if (activeRes) {
         pfx = (activeRes.prefix || pfx).trim();
         nextNum = Number(activeRes.current_number || 1);
       } else {
-        const prev = await pb.listAll('electronic_payrolls', { sort: '-consecutivo', perPage: 1 }).catch(() => []);
+        const filterPrev = isAjuste ? 'prefijo ~ "NANE" || prefijo ~ "NA"' : 'prefijo ~ "NOM"';
+        const prev = await pb.listAll('electronic_payrolls', { filter: filterPrev, sort: '-consecutivo', perPage: 1 }).catch(() => []);
         nextNum = (prev[0]?.consecutivo || 0) + 1;
       }
       const nextConsecutiveStr = `${pfx}-${nextNum}`;
@@ -6823,8 +7116,8 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
     }
 
     // Si el comprobante está PENDIENTE o nuevo, confirmación estándar
-    confirmDialog('Transmitir Volante Individual a la DIAN', 
-      `¿Confirmas el firmado digital y emisión del volante <strong>${esc(currNum)}</strong> ante la DIAN?`, 
+    confirmDialog('Transmitir Volante Individual a la DIAN',
+      `¿Confirmas el firmado digital y emisión del volante <strong>${esc(currNum)}</strong> ante la DIAN?`,
       async () => {
         await doEmitNomina(id, false);
       }
@@ -6834,7 +7127,487 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
   }
 };
 
-(window as any).checkNominaFtechStatus = async function(id: string) {
+(window as any).openNominaAjusteModal = async function (recordId: string) {
+  try {
+    const rec = await pb.get('electronic_payrolls', recordId, { expand: 'employee_id' });
+    const emp = rec.expand?.employee_id || {};
+    const empName = emp.name || 'Empleado';
+    const empDoc = emp.doc_number || '—';
+    const docOrig = `${rec.prefijo || 'NOM'}-${rec.consecutivo || '0'}`;
+    const cuneOrig = rec.cufe || '';
+    const ano = rec.ano;
+    const mes = rec.mes;
+
+    if (!cuneOrig) {
+      return showToast('El comprobante original no tiene CUNE registrado. Debe estar APROBADO por la DIAN.', 'warning');
+    }
+
+    // Buscar resoluciones activas para Notas de Ajuste (NANE o prefijo NA / AJUS)
+    const naneResList = await pb.listAll('dian_resolutions', {
+      filter: 'active=true && (document_type="NANE" || prefix ~ "NANE" || prefix ~ "NA" || prefix ~ "AJ")'
+    }).catch(() => []);
+    const activeNaneRes = naneResList.find((r: any) => r.document_type === 'NANE' || r.prefix === 'NANE') || naneResList[0] || null;
+
+    let pfxAjuste = activeNaneRes ? (activeNaneRes.prefix || 'NANE').trim() : 'NANE';
+    let nextNumAjuste = activeNaneRes ? Number(activeNaneRes.current_number || 1) : 1;
+    if (!activeNaneRes) {
+      const prevAjustes = await pb.listAll('electronic_payrolls', {
+        filter: 'prefijo ~ "NANE" || prefijo ~ "NA" || prefijo ~ "AJ"',
+        sort: '-consecutivo',
+        perPage: 1
+      }).catch(() => []);
+      if (prevAjustes.length > 0) nextNumAjuste = (prevAjustes[0].consecutivo || 0) + 1;
+    }
+
+    // Consultar datos actuales de liquidación ordinaria de este empleado para el mes
+    const ymPrefix = `${ano}-${String(mes).padStart(2, '0')}`;
+    const periods = await pb.listAll('payroll_periods', {
+      filter: `date_from ~ "${ymPrefix}" || date_to ~ "${ymPrefix}"`,
+      sort: 'date_from'
+    }).catch(() => []);
+    const pIds = periods.map((p: any) => p.id);
+    let currentOrdDev = 0;
+    let currentOrdDed = 0;
+    let currentOrdNet = 0;
+
+    if (pIds.length > 0) {
+      const filterExpr = pIds.map((id: string) => `period_id = "${id}"`).join(' || ');
+      const lines = await pb.listAll('payroll_lines', {
+        filter: `employee_id = "${rec.employee_id}" && (${filterExpr})`
+      }).catch(() => []);
+      lines.forEach((l: any) => {
+        const d = getNominaDevengadoTotal(l);
+        const dd = getNominaDeduccionesTotal(l);
+        currentOrdDev += d;
+        currentOrdDed += dd;
+        currentOrdNet += (d - dd);
+      });
+    }
+
+    const modalHtml = `
+      <div class="space-y-4 text-xs text-left">
+        <div class="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl flex items-start gap-2">
+          <i class="fas fa-file-pen text-amber-600 mt-0.5 text-base"></i>
+          <div>
+            <strong class="font-bold">Estructurar Nota de Ajuste de Nómina Electrónica (DIAN TipoXML 103)</strong>
+            <p class="text-3xs mt-1 text-amber-800 leading-relaxed">
+              Corrige o anula el soporte de pago electrónico de <strong>${esc(empName)}</strong> (${esc(empDoc)}) correspondiente a <strong>${mes}/${ano}</strong>.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded-xl border text-xs">
+          <div>
+            <span class="text-gray-400 block text-3xs">Comprobante Predecesor:</span>
+            <span class="font-mono font-bold text-gray-800">${esc(docOrig)}</span>
+          </div>
+          <div>
+            <span class="text-gray-400 block text-3xs">CUNE Predecesor:</span>
+            <span class="font-mono text-3xs text-emerald-800 truncate block font-bold" title="${esc(cuneOrig)}">${esc(cuneOrig.slice(0, 14))}...${esc(cuneOrig.slice(-8))}</span>
+          </div>
+        </div>
+
+        <div class="border rounded-xl p-3 bg-white space-y-3">
+          <label class="block font-semibold text-gray-700">Tipo de Nota de Ajuste (Resolución 000013/2021):</label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="border p-2.5 rounded-lg flex items-start gap-2 cursor-pointer hover:bg-gray-50 border-indigo-300 bg-indigo-50/30">
+              <input type="radio" name="na-tipo-ajuste" value="1" checked class="mt-0.5">
+              <div>
+                <strong class="text-indigo-900 block text-xs">Tipo 1 — Reemplazar</strong>
+                <span class="text-3xs text-gray-500">Sustituye devengos, deducciones o retenciones por los valores actuales calculados en nómina ordinaria.</span>
+              </div>
+            </label>
+            <label class="border p-2.5 rounded-lg flex items-start gap-2 cursor-pointer hover:bg-gray-50">
+              <input type="radio" name="na-tipo-ajuste" value="2" class="mt-0.5">
+              <div>
+                <strong class="text-red-900 block text-xs">Tipo 2 — Eliminar</strong>
+                <span class="text-3xs text-gray-500">Anula y deja sin efectos tributarios el documento previo (trabajador no laboró o duplicidad).</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div id="na-preview-container" class="border rounded-xl p-3 bg-gray-50 space-y-2">
+          <div class="font-semibold text-gray-700 flex justify-between">
+            <span>Valores a Reportar en la Nota de Ajuste</span>
+            <span class="badge badge-blue font-mono font-bold">Consecutivo: ${esc(pfxAjuste)}-${nextNumAjuste}</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 text-center pt-1">
+            <div class="bg-white p-2 rounded-lg border">
+              <div class="text-3xs text-gray-400">Total Devengos</div>
+              <div class="font-bold text-xs text-blue-900" id="na-val-dev">${fmt(currentOrdDev || rec.total_devengos || 0)}</div>
+            </div>
+            <div class="bg-white p-2 rounded-lg border">
+              <div class="text-3xs text-gray-400">Total Deducciones</div>
+              <div class="font-bold text-xs text-red-900" id="na-val-ded">${fmt(currentOrdDed || rec.total_deducciones || 0)}</div>
+            </div>
+            <div class="bg-white p-2 rounded-lg border">
+              <div class="text-3xs text-gray-400">Neto Ajustado</div>
+              <div class="font-bold text-xs text-emerald-800" id="na-val-net">${fmt(currentOrdNet || rec.total_neto || 0)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <label class="block font-semibold text-gray-700">Prefijo y Consecutivo de Nota de Ajuste:</label>
+          <div class="flex gap-2">
+            <input type="text" id="na-input-pfx" value="${esc(pfxAjuste)}" class="input input-sm w-24 font-mono font-bold text-center" placeholder="Prefijo">
+            <input type="number" id="na-input-num" value="${nextNumAjuste}" class="input input-sm w-32 font-mono font-bold text-center" placeholder="Número">
+            <span class="text-3xs text-gray-400 flex items-center italic">Resolución: ${activeNaneRes ? esc(activeNaneRes.resolution_number || 'S/N') : 'Prefijo Libre'}</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const footerHtml = `
+      <div class="flex flex-wrap gap-2 justify-end">
+        <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-primary btn-sm bg-amber-600 hover:bg-amber-700" id="btn-confirm-emit-na"><i class="fas fa-paper-plane mr-1"></i>Generar y Emitir Nota de Ajuste DIAN</button>
+      </div>
+    `;
+
+    openModal(`Nota de Ajuste — ${esc(empName)} (${esc(docOrig)})`, modalHtml, footerHtml, false);
+
+    // Dinámica entre Tipo 1 (Reemplazar) y Tipo 2 (Eliminar)
+    const radios = document.querySelectorAll('input[name="na-tipo-ajuste"]');
+    radios.forEach((r: any) => {
+      r.addEventListener('change', () => {
+        const val = (document.querySelector('input[name="na-tipo-ajuste"]:checked') as HTMLInputElement)?.value;
+        const prevBox = document.getElementById('na-preview-container');
+        if (val === '2') {
+          if (prevBox) prevBox.style.display = 'none';
+        } else {
+          if (prevBox) prevBox.style.display = 'block';
+        }
+      });
+    });
+
+    document.getElementById('btn-confirm-emit-na')?.addEventListener('click', async () => {
+      const tipoAjuste = ((document.querySelector('input[name="na-tipo-ajuste"]:checked') as HTMLInputElement)?.value || '1') as '1' | '2';
+      const inputPfx = ($('#na-input-pfx') as HTMLInputElement)?.value.trim() || 'NA';
+      const inputNum = parseInt(($('#na-input-num') as HTMLInputElement)?.value || '1', 10);
+
+      const btn = document.getElementById('btn-confirm-emit-na') as HTMLButtonElement;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Estructurando XML Tipo 103...';
+      }
+
+      try {
+        // Cargar acumulados del mes del empleado
+        const filterExpr = pIds.map((id: string) => `period_id = "${id}"`).join(' || ');
+        const lines = await pb.listAll('payroll_lines', {
+          filter: `employee_id = "${rec.employee_id}" && (${filterExpr})`,
+          expand: 'employee_id,period_id'
+        });
+
+        const settingsList = await pb.listAll('settings', { filter: 'key="company_rules" || key="company" || key="company_name" || key="company_nit" || key="company_address" || key="company_dv" || key="ftech_software_pin" || key="ftech_environment"' }).catch(() => []);
+        let companyName = 'Empresa S.A.S.';
+        let companyNit = '900000000';
+        let companyDv = '0';
+        let companyDir = 'Calle Principal';
+        let companyDeptCode = '76';
+        let companyCityCode = '76001';
+        let ambienteDian = '1';
+
+        const companySetting = settingsList.find((s: any) => s.key === 'company');
+        if (companySetting) {
+          try {
+            const valObj = typeof companySetting.value === 'string' ? JSON.parse(companySetting.value) : companySetting.value;
+            companyName = valObj.name || valObj.razon_social || companyName;
+            companyNit = valObj.nit || companyNit;
+            companyDv = valObj.dv || companyDv;
+            companyDir = valObj.address || companyDir;
+            companyDeptCode = valObj.dept_code || valObj.state_code || companyDeptCode;
+            companyCityCode = valObj.city_code || companyCityCode;
+          } catch (_) { }
+        } else {
+          const nameS = settingsList.find((s: any) => s.key === 'company_name');
+          const nitS = settingsList.find((s: any) => s.key === 'company_nit');
+          const dirS = settingsList.find((s: any) => s.key === 'company_address');
+          const dvS = settingsList.find((s: any) => s.key === 'company_dv');
+          if (nameS) companyName = nameS.value;
+          if (nitS) companyNit = nitS.value;
+          if (dirS) companyDir = dirS.value;
+          if (dvS && dvS.value) companyDv = dvS.value;
+        }
+
+        const envS = settingsList.find((s: any) => s.key === 'ftech_environment');
+        if (envS && (envS.value === 'demo' || envS.value === '2' || envS.value === 'pruebas')) {
+          ambienteDian = '2';
+        }
+
+        companyNit = String(companyNit).split('-')[0].replace(/[^0-9]/g, '') || '900000000';
+        companyDv = String(companyDv).replace(/[^0-9]/g, '');
+        if (!companyDv || companyDv === '0') companyDv = calcNitDV(companyNit);
+
+        // Estructurar objeto acumulado del trabajador
+        const { config: nomConfig } = await getNominaConfigWithRow().catch(() => ({ config: null }));
+        const empRule = nomConfig ? getEmployeePayrollRule(nomConfig, rec.employee_id) : null;
+
+        const periodNovs = await pb.listAll('payroll_novelties', { filter: filterExpr }).catch(() => []);
+        const empNovs = periodNovs.filter((nv: any) => nv.employee_id === rec.employee_id);
+        const nrLics = empNovs.filter((n: any) => n.type === 'LICENCIA_NO_REMUNERADA' || n.type === 'PERMISO_NO_REMUNERADO' || n.type === 'SUSPENSION');
+        const licNRQty = nrLics.reduce((sum: number, n: any) => sum + (n.qty || 0), 0);
+        const licNRIni = nrLics[0]?.date_from || '';
+        const licNRFin = nrLics[0]?.date_to || licNRIni;
+        const retiroNov = empNovs.find((n: any) => n.type === 'RETIRO');
+        const fechaRetiro = (retiroNov ? (retiroNov.date_from || (retiroNov as any).date || '') : (empRule?.end_date || '')).trim();
+
+        const cType = empRule?.contract_type || emp.contract_type || 'INDEFINIDO';
+        let tipoContratoCode = '2';
+        if (cType === 'TERMINADO_FIJO' || cType === 'FIJO') tipoContratoCode = '1';
+        else if (cType === 'INDEFINIDO') tipoContratoCode = '2';
+        else if (cType === 'OBRA_LABOR') tipoContratoCode = '3';
+        else if (cType === 'APRENDIZAJE') tipoContratoCode = '4';
+        else if (cType === 'PRACTICA' || cType === 'PRACTICAS') tipoContratoCode = '5';
+
+        const contractStartDate = (empRule?.start_date || emp.date_hired || emp.hire_date || emp.fecha_ingreso || '').trim();
+        const fechaIngresoFinal = contractStartDate || periodStart || `${ymPrefix}-01`;
+
+        let accumEmp: any = null;
+        lines.forEach((l: any) => {
+          const days = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
+          const proportionalSalary = round2(((l.salary_base || 0) / 30) * days);
+          const otMeta = getNominaOvertimeMetaFromLine(l);
+          const otAmount = otMeta.total_amount || round2(l.overtime || 0);
+          const ca = getNominaConceptAmountsFromLine(l);
+          const comisiones = round2(Number(ca.comisiones || 0));
+          const bonificaciones = round2(Number(ca.bonificacion || 0));
+          const ajusteSalarial = round2(Number(ca.ajuste_salarial || 0));
+          const incapacidades = round2(Number(ca.incapacidades || 0));
+          const licencias = round2(Number(ca.licencias || 0));
+          const vacacionesDisfrutadas = round2(Number(ca.vacaciones_disfrutadas || 0));
+          const dotacion = round2(Number(ca.dotaciones || 0));
+          const otrosIngresos = round2(Number(ca.otros_ingresos || 0));
+          const gastosRepresentacion = round2(Number(ca.gastos_representacion || 0));
+          const rodamiento = round2(Number(ca.rodamiento || 0));
+          const auxNoSalariales = round2(Number(ca.aux_no_salariales || 0));
+          const alimentacion = round2(Number(ca.alimentacion || 0));
+          const compensatorios = round2(Number(ca.compensatorios || 0));
+          const primaPagada = round2(Number(ca.prima_servicios || ca.prima_pagada || (ca as any).prima || 0));
+          const cesantiasPagadas = round2(Number(ca.cesantias_pagadas || (ca as any).cesantias || 0));
+          const interesesCesPagados = round2(Number(ca.intereses_cesantias || ca.intereses_cesantias_pagados || 0));
+          const saludDeduccion = l.deduction_health || 0;
+          const pensionDeduccion = l.deduction_pension || 0;
+          const solidaridad = l.solidarity_fund || 0;
+          const retencion = l.withholding_tax || 0;
+          const cxc = round2(Number(ca.cxc || 0));
+          const otrasDeducciones = round2(Number(l.deduction_other || 0) + cxc);
+
+          const dev = getNominaDevengadoTotal(l);
+          const ded = getNominaDeduccionesTotal(l);
+          const net = round2(dev - ded);
+          const costEmp = dev + (l.employer_health || 0) + (l.employer_pension || 0) + (l.employer_arl || 0) + (l.sena || 0) + (l.icbf || 0) + (l.caja_comp || 0);
+
+          if (!accumEmp) {
+            const rawName = (emp.first_name && emp.last_name) ? `${emp.first_name} ${emp.last_name}` : (emp.name || 'Empleado');
+            let primerNombre = emp.first_name || 'Empleado';
+            let primerApellido = emp.last_name || 'Apellido';
+            let otrosNombres = '';
+            let segundoApellido = '';
+            const nParts = rawName.split(/\s+/).filter(Boolean);
+            if (nParts.length >= 2) {
+              primerNombre = nParts[0];
+              primerApellido = nParts[1];
+              if (nParts.length >= 3) segundoApellido = nParts[2];
+            }
+
+            accumEmp = {
+              empId: rec.employee_id,
+              nombreCompleto: rawName,
+              primerNombre,
+              otrosNombres,
+              primerApellido,
+              segundoApellido,
+              tipoDocumento: emp.doc_type || 'CC',
+              numeroDocumento: emp.doc_number || '00000000',
+              cargo: empRule?.position || emp.notes || 'Colaborador',
+              banco: (emp.bank_name || '').trim(),
+              numeroCuenta: (emp.bank_account || '').trim(),
+              tipoCuenta: emp.bank_account_type || 'Ahorros',
+              metodoPago: emp.payment_method || (emp.bank_account ? '30' : '10'),
+              metodoPagoCode: emp.payment_method || (emp.bank_account ? '30' : '10'),
+              fechaIngreso: fechaIngresoFinal,
+              fechaRetiro,
+              tipoTrabajador: '01',
+              subTipoTrabajador: '00',
+              tipoContratoCode,
+              salarioIntegral: false,
+              altoRiesgo: false,
+              deptCode: emp.dept_code || companyDeptCode,
+              cityCode: emp.city_code || companyCityCode,
+              direccion: emp.address || companyDir,
+              sueldoBasico: proportionalSalary,
+              totalDevengos: dev,
+              totalDeducciones: ded,
+              netoPagar: net,
+              totalEmpleador: costEmp,
+              diasLaborados: days,
+              auxilioTransporte: l.transport_allowance || 0,
+              horasExtrasMonto: otAmount,
+              otBreakdownMap: {},
+              comisionesMonto: comisiones,
+              bonificacionesMonto: bonificaciones,
+              incapacidadesMonto: incapacidades,
+              licenciasMonto: licencias,
+              vacacionesMonto: vacacionesDisfrutadas,
+              primaMonto: primaPagada,
+              cesantiasMonto: cesantiasPagadas,
+              interesesCesantiasMonto: interesesCesPagados,
+              dotacionMonto: dotacion,
+              otrosIngresosMonto: otrosIngresos + ajusteSalarial,
+              gastosRepresentacionMonto: gastosRepresentacion,
+              rodamientoMonto: rodamiento,
+              auxNoSalarialesMonto: auxNoSalariales,
+              alimentacionMonto: alimentacion,
+              compensatoriosMonto: compensatorios,
+              saludDeduccion,
+              pensionDeduccion,
+              solidaridadDeduccion: solidaridad,
+              retencionDeduccion: retencion,
+              sindicatoDeduccion: 0,
+              libranzaDeduccion: 0,
+              anticipoDeduccion: 0,
+              embargoDeduccion: 0,
+              deudaDeduccion: 0,
+              otrasDeducciones,
+              licenciasNRDias: licNRQty,
+              licenciasNRInicio: licNRIni,
+              licenciasNRFin: licNRFin
+            };
+          } else {
+            accumEmp.sueldoBasico += proportionalSalary;
+            accumEmp.totalDevengos += dev;
+            accumEmp.totalDeducciones += ded;
+            accumEmp.netoPagar += net;
+            accumEmp.totalEmpleador += costEmp;
+            accumEmp.diasLaborados += days;
+            accumEmp.auxilioTransporte += (l.transport_allowance || 0);
+            accumEmp.horasExtrasMonto += otAmount;
+            accumEmp.comisionesMonto += comisiones;
+            accumEmp.bonificacionesMonto += bonificaciones;
+            accumEmp.incapacidadesMonto += incapacidades;
+            accumEmp.licenciasMonto += licencias;
+            accumEmp.vacacionesMonto += vacacionesDisfrutadas;
+            accumEmp.primaMonto += primaPagada;
+            accumEmp.cesantiasMonto += cesantiasPagadas;
+            accumEmp.interesesCesantiasMonto += interesesCesPagados;
+            accumEmp.dotacionMonto += dotacion;
+            accumEmp.otrosIngresosMonto += (otrosIngresos + ajusteSalarial);
+            accumEmp.gastosRepresentacionMonto += gastosRepresentacion;
+            accumEmp.rodamientoMonto += rodamiento;
+            accumEmp.auxNoSalarialesMonto += auxNoSalariales;
+            accumEmp.alimentacionMonto += alimentacion;
+            accumEmp.compensatoriosMonto += compensatorios;
+            accumEmp.saludDeduccion += saludDeduccion;
+            accumEmp.pensionDeduccion += pensionDeduccion;
+            accumEmp.solidaridadDeduccion += solidaridad;
+            accumEmp.retencionDeduccion += retencion;
+            accumEmp.otrasDeducciones += otrasDeducciones;
+          }
+        });
+
+        if (!accumEmp) {
+          accumEmp = {
+            empId: rec.employee_id,
+            nombreCompleto: empName,
+            primerNombre: 'Empleado',
+            primerApellido: 'Apellido',
+            tipoDocumento: emp.doc_type || 'CC',
+            numeroDocumento: empDoc,
+            sueldoBasico: rec.total_devengos || 0,
+            totalDevengos: rec.total_devengos || 0,
+            totalDeducciones: rec.total_deducciones || 0,
+            netoPagar: rec.total_neto || 0,
+            totalEmpleador: 0,
+            diasLaborados: 30
+          };
+        }
+
+        const now = new Date();
+        const fechaGen = now.toISOString().slice(0, 10);
+        const horaGen = now.toTimeString().slice(0, 8) + "-05:00";
+        const periodStart = periods[0]?.date_from || `${ymPrefix}-01`;
+        const periodEnd = periods[periods.length - 1]?.date_to || `${ymPrefix}-30`;
+
+        const companyData = {
+          companyName, companyNit, companyDv, companyDir,
+          deptCode: companyDeptCode, cityCode: companyCityCode,
+          prefijo: inputPfx, ambienteDian
+        };
+
+        const predecessorData = {
+          prefijo: rec.prefijo || 'NOM',
+          consecutivo: rec.consecutivo || 1,
+          cune: cuneOrig,
+          fechaGen: (rec.fecha_envio || rec.created || fechaGen).slice(0, 10)
+        };
+
+        const ajusteXml = buildNominaIndividualDeAjusteXml(
+          accumEmp,
+          companyData,
+          inputNum,
+          tipoAjuste,
+          predecessorData,
+          ano,
+          mes,
+          periodStart,
+          periodEnd,
+          fechaGen,
+          horaGen
+        );
+
+        // Crear el registro de la nota de ajuste en electronic_payrolls
+        const nuevoRegistroPayload = {
+          periodo_id: rec.periodo_id || periods[0]?.id || undefined,
+          employee_id: rec.employee_id,
+          ano: ano,
+          mes: mes,
+          consecutivo: inputNum,
+          prefijo: inputPfx,
+          total_devengos: tipoAjuste === '2' ? 0 : round2(accumEmp.totalDevengos),
+          total_deducciones: tipoAjuste === '2' ? 0 : round2(accumEmp.totalDeducciones),
+          total_neto: tipoAjuste === '2' ? 0 : round2(accumEmp.netoPagar),
+          total_empleador: tipoAjuste === '2' ? 0 : round2(accumEmp.totalEmpleador),
+          total_empleados: 1,
+          xml_generado: ajusteXml,
+          estado_dian: 'PENDIENTE',
+          numero_envio: (rec.numero_envio || 1) + 1,
+          fecha_envio: todayStr(),
+          cufe: ''
+        };
+
+        const nuevoRec = await pb.create('electronic_payrolls', nuevoRegistroPayload);
+
+        // Actualizar consecutivo en dian_resolutions si aplica
+        if (activeNaneRes) {
+          await pb.update('dian_resolutions', activeNaneRes.id, {
+            current_number: inputNum + 1
+          }).catch(() => { });
+        }
+
+        closeModal();
+        showToast(`Nota de Ajuste ${inputPfx}-${inputNum} generada exitosamente. Transmitiendo ante la DIAN...`, 'info');
+
+        // Disparar emisión de la Nota de Ajuste de inmediato
+        await doEmitNomina(nuevoRec.id, false);
+
+      } catch (err: any) {
+        showToast('Error al generar Nota de Ajuste: ' + err.message, 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Generar y Emitir Nota de Ajuste DIAN';
+        }
+      }
+    });
+
+  } catch (err: any) {
+    showToast('Error al preparar Nota de Ajuste: ' + err.message, 'error');
+  }
+};
+
+(window as any).checkNominaFtechStatus = async function (id: string) {
   try {
     showToast('Consultando estado en la DIAN...', 'info');
     const res = await pb.send('/api/dian/nomina/check-status', {
@@ -6853,9 +7626,9 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
   }
 };
 
-(window as any).emitAllNominaElectronicaDian = async function(year: number, month: number) {
-  confirmDialog('Transmitir Nómina Electrónica en Lote (Segundo Plano)', 
-    `¿Confirmas iniciar el proceso de firmado digital y transmisión de los volantes de nómina del período ${month}/${year} ante la DIAN? El proceso se ejecutará en segundo plano en el servidor sin bloquear el sistema.`, 
+(window as any).emitAllNominaElectronicaDian = async function (year: number, month: number) {
+  confirmDialog('Transmitir Nómina Electrónica en Lote (Segundo Plano)',
+    `¿Confirmas iniciar el proceso de firmado digital y transmisión de los volantes de nómina del período ${month}/${year} ante la DIAN? El proceso se ejecutará en segundo plano en el servidor sin bloquear el sistema.`,
     async () => {
       try {
         showToast('Encolando transmisión masiva...', 'info');
@@ -6968,7 +7741,7 @@ function openNominaBatchProgressModal(year: number, month: number) {
           sMsg.innerHTML = `<i class="fas fa-sync fa-spin mr-1 text-indigo-500"></i>Procesando en segundo plano... (${st.procesados} de ${st.total} procesados)`;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
   };
 
   updateStatus();
@@ -6981,7 +7754,7 @@ function openNominaBatchProgressModal(year: number, month: number) {
   });
 }
 
-(window as any).checkNominaFtechStatus = async function(id) {
+(window as any).checkNominaFtechStatus = async function (id) {
   try {
     showToast('Consultando estado en la DIAN...', 'info');
     const res = await pb.send('/api/dian/nomina/check-status', {
@@ -7101,11 +7874,11 @@ function parseNominaXmlConcepts(xmlStr: string) {
           const cant = node.getAttribute('Cantidad') || '1';
           const porc = node.getAttribute('Porcentaje') || '';
           if (val > 0) {
-            devengos.push({ 
-              code: otTypes[tag].code, 
-              name: otTypes[tag].name, 
-              qty: `${cant} hrs${porc ? ` (${porc}%)` : ''}`, 
-              value: val 
+            devengos.push({
+              code: otTypes[tag].code,
+              name: otTypes[tag].name,
+              qty: `${cant} hrs${porc ? ` (${porc}%)` : ''}`,
+              value: val
             });
           }
         });
@@ -7293,7 +8066,41 @@ function parseNominaXmlConcepts(xmlStr: string) {
   return { devengos, deducciones };
 }
 
-(window as any).downloadNominaPdf = async function(id: string) {
+(window as any).downloadNominaPdf = async function (id: string) {
+  try {
+    showToast('Generando Representación Gráfica oficial en PDF...', 'info');
+    const res: any = await pb.send('/api/dian/nomina/download-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+
+    if (res && res.success && res.pdfBase64) {
+      const byteCharacters = atob(res.pdfBase64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.filename || `NominaIndividual_${id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Representación Gráfica PDF descargada exitosamente.', 'success');
+    } else {
+      throw new Error(res?.message || 'No se pudo generar el archivo PDF.');
+    }
+  } catch (err: any) {
+    showToast('Error al descargar PDF: ' + (err.message || String(err)), 'error');
+  }
+};
+
+(window as any).previewNominaModal = async function (id: string) {
   try {
     const rec = await pb.get('electronic_payrolls', id, { expand: 'employee_id' });
     const emp = rec.expand?.employee_id || {};
@@ -7343,7 +8150,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
           numeroCuentaXml = pagoNode.getAttribute('NumeroCuenta') || '';
           metodoPagoXml = pagoNode.getAttribute('Metodo') || '';
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Si la empresa no venía explícita en el XML, consultar la tabla de configuraciones settings
@@ -7356,7 +8163,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
           if (!companyName) companyName = valObj.name || valObj.razon_social || '';
           if (!companyNit) companyNit = valObj.nit ? `${valObj.nit}-${valObj.dv || ''}` : '';
           if (!companyDir) companyDir = valObj.address || '';
-        } catch (_) {}
+        } catch (_) { }
       }
       if (!companyName) {
         const nameS = settingsList.find((s: any) => s.key === 'company_name');
@@ -7391,7 +8198,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
       if (nomConfig && emp.id) {
         empRule = getEmployeePayrollRule(nomConfig, emp.id);
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const thirdIdsToResolve = [
       empRule?.tercero_salud_id,
@@ -7408,7 +8215,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
         thirds.forEach((t: any) => {
           resolvedThirdsMap.set(t.id, t.name || t.razon_social || '');
         });
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Parsear conceptos reales del XML oficial UBL 2.1
@@ -7476,10 +8283,27 @@ function parseNominaXmlConcepts(xmlStr: string) {
     const tipoCuentaXmlDesc = tipoCuentaXml || emp.bank_account_type || 'Ahorros';
     const numeroCuenta = numeroCuentaXml || emp.bank_account || '';
     const cuentaBancariaLabel = numeroCuenta ? `${bancoNombre || 'Banco'} · ${tipoCuentaXmlDesc}: ${numeroCuenta}` : 'Efectivo / Sin cuenta';
-    const metodoPagoLabel = metodoPagoXml === '10' ? '10 - Efectivo' : (metodoPagoXml === '30' ? '30 - Transferencia Débito Interbancaria (ACH)' : (metodoPagoXml === '47' ? '47 - Transferencia Débito Bancaria (Mismo Banco)' : (metodoPagoXml === '42' ? '42 - Consignación Bancaria' : (metodoPagoXml ? `${metodoPagoXml} - Transferencia Bancaria` : '30 - Transferencia ACH'))));
-    const fechaIngresoLabel = fechaIngresoXml || emp.date_hired || emp.fecha_ingreso || '01/01/2020';
+    const pmRaw = metodoPagoXml || emp.payment_method || '42';
+    const pmCode = (String(pmRaw).match(/\d+/) || [pmRaw])[0];
+    const pmMap: Record<string, string> = {
+      '10': '10 - Efectivo',
+      '42': '42 - Consignación Bancaria',
+      '30': '30 - Transferencia ACH',
+      '47': '47 - Transferencia Débito Bancaria',
+      '20': '20 - Cheque',
+      '48': '48 - Tarjeta Crédito',
+      '49': '49 - Tarjeta Débito'
+    };
+    const metodoPagoLabel = pmMap[pmCode] || (String(pmRaw).length > 3 ? String(pmRaw) : `${pmRaw} - Transferencia Bancaria`);
+    const fechaIngresoLabel = empRule?.start_date || emp.date_hired || emp.hire_date || emp.fecha_ingreso || fechaIngresoXml || '—';
+    const fechaRetiroRaw = empRule?.end_date || (xml.match(/FechaRetiro="([^"]*)"/i) || [])[1] || empRule?.retirement_date || '';
+    const fechaRetiroLabel = fechaRetiroRaw ? `${fechaRetiroRaw} (Cese de Contrato)` : 'Vigente (Sin Retiro)';
     const fechaPagoLabel = fechaLiqFinXml || `${rec.ano}-${String(rec.mes).padStart(2, '0')}-30`;
     const centroCostoLabel = emp.cost_center || emp.centro_costo || 'General / Colaboradores';
+    const direccionLabel = emp.address || '—';
+    const ciudadDeptoLabel = (emp.city && emp.department) ? `${emp.city}, ${emp.department}` : (emp.city || emp.department || '—');
+    const telefonoLabel = emp.phone || emp.phone2 || emp.contact_phone || '—';
+    const correoLabel = emp.email || emp.email2 || '—';
 
     // Resolver nombres reales de entidades de seguridad social
     const epsName = empRule?.tercero_salud_id ? resolvedThirdsMap.get(empRule.tercero_salud_id) : '';
@@ -7547,11 +8371,18 @@ function parseNominaXmlConcepts(xmlStr: string) {
             <td style="width:32%" class="font-mono text-gray-800">${esc(doc)}</td>
           </tr>
           <tr>
-            <td class="font-bold bg-gray-50">Cargo:</td>
-            <td>${esc(cargo)}</td>
-            <td class="font-bold bg-gray-50">Centro de Costos:</td>
-            <td>${esc(centroCostoLabel)}</td>
+            <td class="font-bold bg-gray-50">Dirección:</td>
+            <td>${esc(direccionLabel)}</td>
+            <td class="font-bold bg-gray-50">Ciudad / Depto:</td>
+            <td>${esc(ciudadDeptoLabel)}</td>
           </tr>
+          <tr>
+            <td class="font-bold bg-gray-50">Teléfono:</td>
+            <td class="font-mono">${esc(telefonoLabel)}</td>
+            <td class="font-bold bg-gray-50">Correo Electrónico:</td>
+            <td>${esc(correoLabel)}</td>
+          </tr>
+
           <tr>
             <td class="font-bold bg-gray-50">Sueldo Base:</td>
             <td class="font-bold text-blue-900">${fmt(sueldoBaseVal)}</td>
@@ -7561,8 +8392,14 @@ function parseNominaXmlConcepts(xmlStr: string) {
           <tr>
             <td class="font-bold bg-gray-50">Fecha Ingreso:</td>
             <td>${esc(fechaIngresoLabel)}</td>
+            <td class="font-bold bg-gray-50">Fecha Retiro:</td>
+            <td class="${fechaRetiroRaw ? 'font-bold text-red-700' : ''}">${esc(fechaRetiroLabel)}</td>
+          </tr>
+          <tr>
             <td class="font-bold bg-gray-50">Método de Pago:</td>
             <td>${esc(metodoPagoLabel)}</td>
+            <td class="font-bold bg-gray-50">Fechas de Pago:</td>
+            <td class="font-mono">${esc(fechaPagoLabel)}</td>
           </tr>
           <tr>
             <td class="font-bold bg-gray-50">Entidad Salud:</td>
@@ -7575,10 +8412,6 @@ function parseNominaXmlConcepts(xmlStr: string) {
             <td>${esc(arlLabel)}</td>
             <td class="font-bold bg-gray-50">Entidad Caja:</td>
             <td>${esc(cajaLabel)}</td>
-          </tr>
-          <tr>
-            <td class="font-bold bg-gray-50">Fechas de Pago:</td>
-            <td colspan="3" class="font-mono">${esc(fechaPagoLabel)}</td>
           </tr>
         </table>
 
@@ -7640,7 +8473,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
   }
 };
 
-(window as any).downloadNominaXml = async function(id: string) {
+(window as any).downloadNominaXml = async function (id: string) {
   try {
     showToast('Obteniendo XML oficial de respuesta DIAN...', 'info');
     const res = await pb.send('/api/dian/nomina/download-xml', {
@@ -7666,7 +8499,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
   }
 };
 
-(window as any).resendNominaEmail = async function(id) {
+(window as any).resendNominaEmail = async function (id) {
   try {
     showToast('Consultando información del comprobante...', 'info');
     const rec = await pb.get('electronic_payrolls', id, { expand: 'employee_id' });
@@ -7726,7 +8559,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
     btnSend?.addEventListener('click', async () => {
       const emailInput = (document.getElementById('resend-nomina-email-input') as HTMLInputElement)?.value || '';
       const cleanEmail = emailInput.trim();
-      
+
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!cleanEmail || !emailRegex.test(cleanEmail)) {
         return showToast('Por favor ingrese un correo electrónico válido (ej: nombre@dominio.com).', 'warning');
@@ -7882,10 +8715,10 @@ async function viewPeriodLines(periodId, periodName, periodStatus = 'draft') {
   try {
     const lines = await pb.listAll('payroll_lines', { filter: `period_id="${periodId}"`, expand: 'employee_id,period_id', sort: 'id' });
     if (!lines.length) return showToast('Este período no tiene liquidaciones', 'info');
-    const totDev = lines.reduce((s,l) => s + getNominaDevengadoTotal(l), 0);
-    const totNeto = lines.reduce((s,l) => s + (l.net_pay||0), 0);
-    const totPara = lines.reduce((s,l) => s + (l.employer_health||0)+(l.employer_pension||0)+(l.employer_arl||0)+(l.sena||0)+(l.icbf||0)+(l.caja_comp||0), 0);
-    const totProv = lines.reduce((s,l) => s + getNominaConceptAmount(l, 'cesantias') + getNominaConceptAmount(l, 'intereses_ces') + getNominaConceptAmount(l, 'prima') + (l.vacaciones||0), 0);
+    const totDev = lines.reduce((s, l) => s + getNominaDevengadoTotal(l), 0);
+    const totNeto = lines.reduce((s, l) => s + (l.net_pay || 0), 0);
+    const totPara = lines.reduce((s, l) => s + (l.employer_health || 0) + (l.employer_pension || 0) + (l.employer_arl || 0) + (l.sena || 0) + (l.icbf || 0) + (l.caja_comp || 0), 0);
+    const totProv = lines.reduce((s, l) => s + getNominaConceptAmount(l, 'cesantias') + getNominaConceptAmount(l, 'intereses_ces') + getNominaConceptAmount(l, 'prima') + (l.vacaciones || 0), 0);
     openModal(
       `Liquidaciones — ${esc(periodName)}`,
       `<div class="space-y-4">
@@ -7911,10 +8744,10 @@ async function viewPeriodLines(periodId, periodName, periodStatus = 'draft') {
               ${lines.map(l => `<tr>
                 <td>${esc(l.expand?.employee_id?.name || '?')}</td>
                 <td class="text-center">${(l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? l.days_worked : 30}</td>
-                <td>${fmt(l.salary_base||0)}</td>
+                <td>${fmt(l.salary_base || 0)}</td>
                 <td>${fmt(getNominaDevengadoTotal(l))}</td>
                 <td>${fmt(getNominaDeduccionesTotal(l))}</td>
-                <td class="font-semibold">${fmt(l.net_pay||0)}</td>
+                <td class="font-semibold">${fmt(l.net_pay || 0)}</td>
                 <td>
                   <div class="flex gap-1 justify-end">
                     <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="viewPayrollLineDetail('${esc(l.id)}')"><i class="fas fa-eye"></i></button>
@@ -7959,7 +8792,7 @@ async function viewPayrollLineDetail(id) {
     const conceptAmounts = conceptTotals.conceptAmounts;
     const dev = getNominaDevengadoTotal(l);
     const ded = getNominaDeduccionesTotal(l);
-    const para = (l.employer_health||0) + (l.employer_pension||0) + (l.employer_arl||0) + (l.sena||0) + (l.icbf||0) + (l.caja_comp||0);
+    const para = (l.employer_health || 0) + (l.employer_pension || 0) + (l.employer_arl || 0) + (l.sena || 0) + (l.icbf || 0) + (l.caja_comp || 0);
     const provCes = getNominaConceptAmount(l, 'cesantias');
     const provInt = getNominaConceptAmount(l, 'intereses_ces');
     const provPrima = getNominaConceptAmount(l, 'prima');
@@ -7977,7 +8810,7 @@ async function viewPayrollLineDetail(id) {
 
     const overtimeRows = overtimeMeta.hasBreakdown
       ? overtimeMeta.breakdown.map((item) => row(`${item.label} (${item.hours} h)`, item.amount || 0)).join('')
-      : row('Horas extra / recargos', l.overtime||0);
+      : row('Horas extra / recargos', l.overtime || 0);
 
     const extraEarningRows = NOMINA_EXTRA_EARNING_KEYS
       .filter((key) => (conceptAmounts[key] || 0) > 0)
@@ -7994,35 +8827,35 @@ async function viewPayrollLineDetail(id) {
       `<div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
         <div>
           <p class="font-semibold mb-2" style="color:#0D2137">Devengos</p>
-           ${row('Salario base (30 días)', l.salary_base||0)}
+           ${row('Salario base (30 días)', l.salary_base || 0)}
            ${row('Días trabajados ordinarios', String(effectiveDays))}
            ${(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones) ? row('Días de vacaciones', String(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones)) : ''}
-           ${row('Salario proporcional ordinario', (l.salary_base||0)/30*effectiveDays)}
+           ${row('Salario proporcional ordinario', (l.salary_base || 0) / 30 * effectiveDays)}
           ${overtimeRows}
           ${row('Días auxilio transporte', String(transportDays))}
-          ${row('Aux. transporte', l.transport_allowance||0)}
+          ${row('Aux. transporte', l.transport_allowance || 0)}
           ${extraEarningRows}
           ${row('TOTAL DEVENGADO', dev, true)}
         </div>
         <div>
           <p class="font-semibold mb-2" style="color:#0D2137">Deducciones Trabajador</p>
-          ${row('Salud (4%)', l.deduction_health||0)}
-           ${row('Pensión (4%)', l.deduction_pension||0)}
-          ${row('Fondo solidaridad', extraDed.solidarity||0)}
-          ${row('Retención en la fuente', extraDed.withholding||0)}
-          ${row('Otras deducciones', l.deduction_other||0)}
+          ${row('Salud (4%)', l.deduction_health || 0)}
+           ${row('Pensión (4%)', l.deduction_pension || 0)}
+          ${row('Fondo solidaridad', extraDed.solidarity || 0)}
+          ${row('Retención en la fuente', extraDed.withholding || 0)}
+          ${row('Otras deducciones', l.deduction_other || 0)}
           ${extraDeductionRows}
           ${row('TOTAL DEDUCCIONES', ded, true)}
           <p class="font-bold mt-3 py-2 px-3 rounded-lg text-base" style="background:#F0FFF4;color:#15803D">Neto a pagar: ${fmt(round2(dev - ded))}</p>
         </div>
         <div>
           <p class="font-semibold mb-2" style="color:#0D2137">Aportes Empleador</p>
-          ${row('Salud (8.5%)', l.employer_health||0)}
-           ${row('Pensión (12%)', l.employer_pension||0)}
-          ${row(`ARL (${arlRate}%)`, l.employer_arl||0)}
-          ${row('SENA (2%)', l.sena||0)}
-          ${row('ICBF (3%)', l.icbf||0)}
-           ${row('Caja de Compensación (4%)', l.caja_comp||0)}
+          ${row('Salud (8.5%)', l.employer_health || 0)}
+           ${row('Pensión (12%)', l.employer_pension || 0)}
+          ${row(`ARL (${arlRate}%)`, l.employer_arl || 0)}
+          ${row('SENA (2%)', l.sena || 0)}
+          ${row('ICBF (3%)', l.icbf || 0)}
+           ${row('Caja de Compensación (4%)', l.caja_comp || 0)}
           ${row('TOTAL PARAFISCALES', para, true)}
         </div>
         <div>
@@ -8055,20 +8888,34 @@ async function printPayrollSlip(id) {
     const effectiveDays = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
     const transportDays = Number(meta.transport_days !== undefined && meta.transport_days !== null && !isNaN(Number(meta.transport_days)) ? meta.transport_days : effectiveDays);
 
-    const [companyName, companyNit, companyAddress] = await Promise.all([
+    const [companyName, companyNit, companyAddress, nomConfigRes] = await Promise.all([
       API.getSetting('company_name').catch(() => ''),
       API.getSetting('company_nit').catch(() => ''),
       API.getSetting('company_address').catch(() => ''),
+      getNominaConfigWithRow().catch(() => ({ config: null }))
     ]);
+    const nomConfig = nomConfigRes?.config || null;
+    const empRule = nomConfig && l.employee_id ? getEmployeePayrollRule(nomConfig, l.employee_id) : null;
+    const empContractStart = (empRule?.start_date || l.expand?.employee_id?.date_hired || l.expand?.employee_id?.hire_date || l.expand?.employee_id?.fecha_ingreso || '').trim();
+    const empContractEnd = (empRule?.end_date || '').trim();
+    const empContractType = empRule?.contract_type || 'INDEFINIDO';
+    const contractTypeLabel = {
+      INDEFINIDO: 'Término Indefinido',
+      TERMINADO_FIJO: 'Término Fijo',
+      OBRA_LABOR: 'Obra o Labor',
+      APRENDIZAJE: 'Aprendizaje',
+      PRACTICA: 'Práctica'
+    }[empContractType] || empContractType;
+    const resolvedCargo = empRule?.position || empCargo || 'Colaborador';
 
-    const empName  = l.expand?.employee_id?.name  || '';
-    const empDoc   = l.expand?.employee_id?.doc_number || '';
+    const empName = l.expand?.employee_id?.name || '';
+    const empDoc = l.expand?.employee_id?.doc_number || '';
     const empDocType = l.expand?.employee_id?.doc_type || 'CC';
     const empCargo = l.expand?.employee_id?.notes || '';
     const periodRec = l.expand?.period_id || {};
-    const period   = periodRec?.name  || '';
+    const period = periodRec?.name || '';
     const dateFrom = periodRec?.date_from || '';
-    const dateTo   = periodRec?.date_to   || '';
+    const dateTo = periodRec?.date_to || '';
     const periodStatus = periodRec?.status || 'draft';
     const lqdNumber = 'LQD-' + (l.id || '').toUpperCase();
 
@@ -8173,7 +9020,10 @@ async function printPayrollSlip(id) {
   <div class="emp-card">
     <div class="emp-field"><label>Empleado</label><span>${empName}</span></div>
     <div class="emp-field"><label>Identificación</label><span>${empDocType} ${empDoc || '—'}</span></div>
-    ${empCargo ? `<div class="emp-field"><label>Cargo / Puesto</label><span>${empCargo}</span></div>` : ''}
+    <div class="emp-field"><label>Cargo / Puesto</label><span>${resolvedCargo}</span></div>
+    <div class="emp-field"><label>Tipo Contrato</label><span>${contractTypeLabel}</span></div>
+    <div class="emp-field"><label>Inicio Contrato</label><span>${empContractStart || '—'}</span></div>
+    ${empContractEnd ? `<div class="emp-field"><label>Fin Contrato</label><span>${empContractEnd}</span></div>` : ''}
     <div class="emp-field"><label>Días trabajados</label><span>${effectiveDays}</span></div>
     ${(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones) ? `<div class="emp-field"><label>Días vacaciones</label><span>${meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones}</span></div>` : ''}
     <div class="emp-field"><label>Días aux. transporte</label><span>${transportDays}</span></div>
@@ -8273,11 +9123,13 @@ async function printConsolidatedPayrollSlips(periodId: string) {
       return nameA.localeCompare(nameB);
     });
 
-    const [companyName, companyNit, companyAddress] = await Promise.all([
+    const [companyName, companyNit, companyAddress, nomConfigRes] = await Promise.all([
       API.getSetting('company_name').catch(() => ''),
       API.getSetting('company_nit').catch(() => ''),
       API.getSetting('company_address').catch(() => ''),
+      getNominaConfigWithRow().catch(() => ({ config: null }))
     ]);
+    const nomConfig = nomConfigRes?.config || null;
 
     // Mapear transacciones contables del período para auditoría
     const periodTxId = periodRec?.tx_id || lines[0]?.expand?.period_id?.tx_id;
@@ -8321,13 +9173,25 @@ async function printConsolidatedPayrollSlips(periodId: string) {
       const effectiveDays = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
       const transportDays = Number(meta.transport_days !== undefined && meta.transport_days !== null && !isNaN(Number(meta.transport_days)) ? meta.transport_days : effectiveDays);
 
-      const empName  = l.expand?.employee_id?.name  || 'Empleado sin nombre';
-      const empDoc   = l.expand?.employee_id?.doc_number || '';
+      const empName = l.expand?.employee_id?.name || 'Empleado sin nombre';
+      const empDoc = l.expand?.employee_id?.doc_number || '';
       const empDocType = l.expand?.employee_id?.doc_type || 'CC';
       const empCargo = l.expand?.employee_id?.notes || '';
-      const period   = l.expand?.period_id?.name  || periodRec?.name || '';
+      const empRule = nomConfig && l.employee_id ? getEmployeePayrollRule(nomConfig, l.employee_id) : null;
+      const empContractStart = (empRule?.start_date || l.expand?.employee_id?.date_hired || l.expand?.employee_id?.hire_date || l.expand?.employee_id?.fecha_ingreso || '').trim();
+      const empContractEnd = (empRule?.end_date || '').trim();
+      const empContractType = empRule?.contract_type || 'INDEFINIDO';
+      const contractTypeLabel = {
+        INDEFINIDO: 'Término Indefinido',
+        TERMINADO_FIJO: 'Término Fijo',
+        OBRA_LABOR: 'Obra o Labor',
+        APRENDIZAJE: 'Aprendizaje',
+        PRACTICA: 'Práctica'
+      }[empContractType] || empContractType;
+      const resolvedCargo = empRule?.position || empCargo || 'Colaborador';
+      const period = l.expand?.period_id?.name || periodRec?.name || '';
       const dateFrom = l.expand?.period_id?.date_from || periodRec?.date_from || '';
-      const dateTo   = l.expand?.period_id?.date_to   || periodRec?.date_to || '';
+      const dateTo = l.expand?.period_id?.date_to || periodRec?.date_to || '';
       const lqdNumber = 'LQD-' + (l.id || '').toUpperCase();
       const txNumber = txMapByEmployee.get(l.employee_id) || fallbackTxNumber || '';
 
@@ -8364,7 +9228,10 @@ async function printConsolidatedPayrollSlips(periodId: string) {
           <div class="emp-card">
             <div class="emp-field"><label>Empleado</label><span>${empName}</span></div>
             <div class="emp-field"><label>Identificación</label><span>${empDocType} ${empDoc || '—'}</span></div>
-            ${empCargo ? `<div class="emp-field"><label>Cargo / Notas</label><span>${empCargo}</span></div>` : ''}
+            <div class="emp-field"><label>Cargo / Puesto</label><span>${resolvedCargo}</span></div>
+            <div class="emp-field"><label>Tipo de Contrato</label><span>${contractTypeLabel}</span></div>
+            <div class="emp-field"><label>Inicio Contrato</label><span>${empContractStart || '—'}</span></div>
+            ${empContractEnd ? `<div class="emp-field"><label>Fin Contrato</label><span>${empContractEnd}</span></div>` : ''}
             <div class="emp-field"><label>Días trabajados</label><span>${effectiveDays}</span></div>
             ${(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones) ? `<div class="emp-field"><label>Días vacaciones</label><span>${meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones}</span></div>` : ''}
             <div class="emp-field"><label>Días aux. transporte</label><span>${transportDays}</span></div>
@@ -8509,15 +9376,17 @@ async function printConsolidatedPayrollSummary(periodId: string) {
       return nameA.localeCompare(nameB);
     });
 
-    const [companyName, companyNit, companyAddress] = await Promise.all([
+    const [companyName, companyNit, companyAddress, nomConfigRes] = await Promise.all([
       API.getSetting('company_name').catch(() => ''),
       API.getSetting('company_nit').catch(() => ''),
       API.getSetting('company_address').catch(() => ''),
+      getNominaConfigWithRow().catch(() => ({ config: null }))
     ]);
+    const nomConfig = nomConfigRes?.config || null;
 
     const periodName = period?.name || lines[0]?.expand?.period_id?.name || 'Período';
-    const dateFrom   = period?.date_from || lines[0]?.expand?.period_id?.date_from || '';
-    const dateTo     = period?.date_to   || lines[0]?.expand?.period_id?.date_to || '';
+    const dateFrom = period?.date_from || lines[0]?.expand?.period_id?.date_from || '';
+    const dateTo = period?.date_to || lines[0]?.expand?.period_id?.date_to || '';
     const statusText = {
       draft: 'Borrador',
       approved: 'Aprobada',
@@ -8603,7 +9472,7 @@ async function printConsolidatedPayrollSummary(periodId: string) {
     }).join('');
 
     const totalParafiscales = totalEmployerHealth + totalEmployerPension + totalEmployerArl + totalSena + totalIcbf + totalCaja;
-    const totalProvisiones  = totalCesantias + totalInteresesCes + totalPrima + totalVacaciones;
+    const totalProvisiones = totalCesantias + totalInteresesCes + totalPrima + totalVacaciones;
 
     const html = `<!DOCTYPE html>
 <html lang="es">
@@ -9230,7 +10099,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
 
     // Base prestaciones sociales del período (Cesantías, Intereses, Prima y Vacaciones sobre diasPeriodoBase):
     const monthlyAuxTransport = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? (companyRules.transport_allowance || 162000) : 0;
-    
+
     // Provisiones sobre días del período completo (diasPeriodoBase) sin incluir pagos de prestaciones
     const salPrest = round2((salary / 30) * diasPeriodoBase);
     const auxPrest = round2((monthlyAuxTransport / 30) * diasPeriodoBase);
@@ -9275,10 +10144,10 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
   const loadEmployeeNovelties = async (periodId, employeeId) => {
     if (!periodId || !employeeId) return;
     try {
-      const novelties = await pb.listAll('payroll_novelties', { 
-        filter: `period_id="${pb.escapeFilterValue(periodId)}" && employee_id="${pb.escapeFilterValue(employeeId)}"` 
+      const novelties = await pb.listAll('payroll_novelties', {
+        filter: `period_id="${pb.escapeFilterValue(periodId)}" && employee_id="${pb.escapeFilterValue(employeeId)}"`
       });
-      
+
       // Resetear inputs de horas extra a 0
       NOMINA_OVERTIME_TYPES.forEach(t => {
         if ($('#pl-ot-' + t.key)) setInputVal('pl-ot-' + t.key, '0');
@@ -9618,7 +10487,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       // ─── Base para Prestaciones Sociales del Período (Cesantías, Intereses y Prima de Servicios) ───
       // En contrato vigente, la empresa provisiona sobre el período completo liquidado (diasPeriodoBase)
       const monthlyAuxPrest = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? (companyRules.transport_allowance || 162000) : 0;
-      
+
       const salPrestPeriodo = round2((salary / 30) * diasPeriodoBase);
       const auxPrestPeriodo = round2((monthlyAuxPrest / 30) * diasPeriodoBase);
       const salarialesExtra = round2((conceptAmounts.comisiones || 0) + (conceptAmounts.ajuste_salarial || 0));
@@ -9832,7 +10701,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
   try {
     const period = await pb.get('payroll_periods', periodId);
     let warningMsg = '¿Estás totalmente seguro de eliminar TODAS las liquidaciones generadas para este período? Esta acción no se puede deshacer y borrará las colillas calculadas.';
-    
+
     if (period.status === 'approved' || period.status === 'paid') {
       warningMsg = `¡ATENCIÓN! Este período se encuentra en estado ${period.status.toUpperCase()}. Al reversar, se borrarán de forma definitiva todas las colillas calculadas, se eliminará el comprobante contable del diario y se restablecerá el período a Borrador. ¿Estás seguro de proceder?`;
     } else if (period.tx_id && (Array.isArray(period.tx_id) ? period.tx_id.length > 0 : period.tx_id)) {
@@ -9842,7 +10711,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     if (!confirm(warningMsg)) return;
 
     const lines = await pb.listAll('payroll_lines', { filter: `period_id="${pb.escapeFilterValue(periodId)}"` });
-    
+
     // 1. Borrar todas las líneas de colillas de pago
     for (const line of lines) {
       await pb.delete('payroll_lines', line.id);
@@ -9896,7 +10765,7 @@ async function openPayPayrollNominaModal(periodId: string) {
     }
 
     const { config } = await getNominaConfigWithRow();
-    
+
     const grouped = [];
     let grandTotal = 0;
     const periodYYYYMM = (period.date_from || period.date_to || '').slice(0, 7).replace('-', '');
@@ -9922,7 +10791,7 @@ async function openPayPayrollNominaModal(periodId: string) {
         crossDocRef: crossDocRef,
         amount: netPayAmount
       });
-      
+
       grandTotal = round2(grandTotal + netPayAmount);
     }
 
@@ -9987,7 +10856,7 @@ async function resolveCompanyThirdPartyId(fallbackEmpId: string): Promise<string
       const matchingTp = await pb.listAll('third_parties', { filter: filterExpr });
       if (matchingTp.length > 0) return matchingTp[0].id;
     }
-  } catch (_) {}
+  } catch (_) { }
   return fallbackEmpId;
 }
 
@@ -10064,7 +10933,7 @@ async function savePayPayroll() {
         const periodRec = await pb.get('payroll_periods', data.periodId);
         payrollBranchId = periodRec?.branch_id || null;
       }
-    } catch (_) {}
+    } catch (_) { }
     if (!payrollBranchId) {
       const activeBranchId = localStorage.getItem('active_branch_id');
       const currentUser = pb.currentUser;
@@ -10299,7 +11168,7 @@ async function savePayPlanilla() {
         const periodRec = await pb.get('payroll_periods', data.periodId);
         planillaBranchId = periodRec?.branch_id || null;
       }
-    } catch (_) {}
+    } catch (_) { }
     if (!planillaBranchId) {
       const activeBranchId = localStorage.getItem('active_branch_id');
       const currentUser = pb.currentUser;
@@ -10501,7 +11370,7 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
     // Cambiar proveedor -> Cargar facturas en cascada
     selectSupplier?.addEventListener('change', async () => {
       const supplierId = selectSupplier.value;
-      
+
       // Resetear campos dependientes
       selectInvoice.innerHTML = '<option value="">-- Selecciona una factura --</option>';
       selectInvoice.disabled = true;
@@ -10515,16 +11384,16 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
 
       selectInvoice.innerHTML = '<option value="">Cargando facturas...</option>';
       try {
-        const invoices = await pb.listAll('purchase_invoices', { 
-          filter: `supplier_id = "${pb.escapeFilterValue(supplierId)}"`, 
-          sort: '-date' 
+        const invoices = await pb.listAll('purchase_invoices', {
+          filter: `supplier_id = "${pb.escapeFilterValue(supplierId)}"`,
+          sort: '-date'
         });
 
         if (invoices.length === 0) {
           selectInvoice.innerHTML = '<option value="">Sin facturas registradas para este proveedor</option>';
           selectInvoice.disabled = true;
         } else {
-          selectInvoice.innerHTML = '<option value="">-- Selecciona una factura --</option>' + 
+          selectInvoice.innerHTML = '<option value="">-- Selecciona una factura --</option>' +
             invoices.map(inv => `<option value="${esc(inv.id)}" data-total="${inv.total || 0}" data-number="${inv.number}">${esc(inv.number)} - Total: ${fmt(inv.total || 0)} (${inv.date?.slice(0, 10) || ''})</option>`).join('');
           selectInvoice.disabled = false;
         }
@@ -10896,7 +11765,7 @@ async function getAccumulatedProvisions(
           }
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     return {
       cesantias: cesantiasFromLines,
@@ -11000,10 +11869,10 @@ function buildSettlementAccountingLines(
   }
 
   // ─── Prestaciones: cruce automático contra provisiones acumuladas ─────
-  crossProvision('cesantias',    calc.cesantias || 0,    provisions.cesantias || 0,    'Cesantías');
+  crossProvision('cesantias', calc.cesantias || 0, provisions.cesantias || 0, 'Cesantías');
   crossProvision('intereses_ces', calc.interesesCes || 0, provisions.intereses_ces || 0, 'Intereses Cesantías');
-  crossProvision('prima',        calc.prima || 0,        provisions.prima || 0,        'Prima de Servicios');
-  crossProvision('vacaciones',   calc.vacaciones || 0,   provisions.vacaciones || 0,   'Vacaciones');
+  crossProvision('prima', calc.prima || 0, provisions.prima || 0, 'Prima de Servicios');
+  crossProvision('vacaciones', calc.vacaciones || 0, provisions.vacaciones || 0, 'Vacaciones');
 
   // ─── Indemnización (gasto directo, sin provisión) ─────────────────────
   if ((calc.indemnity || 0) > 0) {
@@ -11056,7 +11925,7 @@ async function _printSettlementActa(settlementOrId: any) {
     if (!emp && rec.employee_id && typeof rec.employee_id === 'string') {
       try {
         emp = await pb.get('third_parties', rec.employee_id);
-      } catch (_) {}
+      } catch (_) { }
     }
     emp = emp || (typeof rec.employee_id === 'object' ? rec.employee_id : {});
     const empName = emp.name || rec.employee_name || 'Empleado';
@@ -11242,8 +12111,8 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
       const isSettled = settledEmpIds.has(preselectedId);
       const warningMsg = closedEmp
         ? (isSettled
-            ? `El empleado ${closedEmp.name} ya cuenta con una liquidación definitiva aprobada. El proceso solo se realiza una vez.`
-            : `El contrato de ${closedEmp.name} ya está cerrado (empleado inactivo).`)
+          ? `El empleado ${closedEmp.name} ya cuenta con una liquidación definitiva aprobada. El proceso solo se realiza una vez.`
+          : `El contrato de ${closedEmp.name} ya está cerrado (empleado inactivo).`)
         : 'El empleado seleccionado no está disponible para liquidación.';
       setTimeout(() => showToast(warningMsg, 'warning'), 150);
     }
@@ -11268,8 +12137,8 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
               <select id="sld-employee" class="w-full form-input text-sm">
                 <option value="">${employees.length > 0 ? '-- Selecciona un empleado activo --' : '-- No hay empleados activos pendientes de liquidar --'}</option>
                 ${employees.map((e: any) =>
-                  `<option value="${esc(e.id)}" ${e.id === preselectedId ? 'selected' : ''}>${esc(e.name)} (${esc(e.doc_number || '')})</option>`
-                ).join('')}
+      `<option value="${esc(e.id)}" ${e.id === preselectedId ? 'selected' : ''}>${esc(e.name)} (${esc(e.doc_number || '')})</option>`
+    ).join('')}
               </select>
               <div class="flex justify-between items-center mt-1 text-xs text-gray-500">
                 <span><i class="fas fa-shield-alt mr-1 text-emerald-600"></i>Solo empleados activos sin liquidación previa.</span>
@@ -11463,7 +12332,7 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
           const dbTaken = novelties.reduce((sum: number, n: any) => sum + (Number(n.qty) || 0), 0);
           takenDays = dbTaken;
           if (vacTakenInput) vacTakenInput.value = String(takenDays);
-        } catch (_) {}
+        } catch (_) { }
       }
 
       const pendingDays = Math.max(0, Math.round((earnedDays - takenDays) * 100) / 100);
@@ -11525,7 +12394,7 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
             takenDays = 0;
             if (primaTakenInput) primaTakenInput.value = '0';
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       const pendingDays = Math.max(0, earnedDays - takenDays);
@@ -11545,9 +12414,13 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
         empSelect.value = '';
         return;
       }
-      if (emp?.hire_date) hireDateInput.value = emp.hire_date;
       const rule = getEmployeePayrollRule(config, empId);
+      const contractStartDate = rule.start_date || emp.hire_date || emp.date_hired || emp.fecha_ingreso || '';
+      if (contractStartDate) hireDateInput.value = contractStartDate;
       if (rule.contract_type) reasonSelect.value = rule.contract_type === 'TERMINADO_FIJO' ? 'VENCIMIENTO_CONTRATO' : 'RENUNCIA_VOLUNTARIA';
+      if (rule.end_date && settlementDateInput && !settlementDateInput.value) {
+        settlementDateInput.value = rule.end_date;
+      }
 
       // Revisar si existe novedad de RETIRO registrada para este empleado
       const pendingDaysInput = document.getElementById('sld-pending-days') as HTMLInputElement;
@@ -11615,7 +12488,7 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
         } else if (pendingDaysHint) {
           pendingDaysHint.innerHTML = '<span class="text-xs text-gray-400">Días laborados del mes en curso no liquidados previamente</span>';
         }
-      } catch (_) {}
+      } catch (_) { }
 
       await updateVacationCalculations(true);
       await updatePrimaCalculations(true);
@@ -11743,8 +12616,8 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
         const uniqueAccountIds = [...new Set(txLines.map((l: any) => l.account_id).filter(Boolean))];
         const accountsUsed = uniqueAccountIds.length
           ? await pb.listAll('accounts', {
-              filter: uniqueAccountIds.map((id: string) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
-            }).catch(() => [] as any[])
+            filter: uniqueAccountIds.map((id: string) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
+          }).catch(() => [] as any[])
           : [];
         const acctById = new Map<string, any>(accountsUsed.map((a: any) => [a.id, a]));
 
@@ -11908,8 +12781,8 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
                 </div>
                 <div>
                   ${isBalanced
-                    ? `<span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Asiento Cuadrado</span>`
-                    : `<span class="badge badge-red"><i class="fas fa-exclamation-triangle mr-1"></i>Descuadre ${fmt(Math.abs(totalD - totalC))}</span>`}
+            ? `<span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Asiento Cuadrado</span>`
+            : `<span class="badge badge-red"><i class="fas fa-exclamation-triangle mr-1"></i>Descuadre ${fmt(Math.abs(totalD - totalC))}</span>`}
                 </div>
               </div>
 
@@ -11932,8 +12805,8 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
                   </thead>
                   <tbody>
                     ${txLines.length > 0 ? txLines.map((l: any) => {
-                      const acct = acctById.get(l.account_id);
-                      return `
+              const acct = acctById.get(l.account_id);
+              return `
                         <tr class="border-b hover:bg-gray-50">
                           <td class="p-2">
                             <span class="font-bold text-indigo-700">${esc(acct?.code || l.account_id)}</span>
@@ -11942,14 +12815,14 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
                           <td class="p-2 text-gray-700 font-sans">${esc(l.description)}</td>
                           <td class="p-2 font-mono">
                             ${l.cross_doc_ref
-                              ? `<span class="badge" style="background:#EDE9FE;color:#7C3AED;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
-                              : '<span class="text-gray-300">—</span>'}
+                  ? `<span class="badge" style="background:#EDE9FE;color:#7C3AED;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
+                  : '<span class="text-gray-300">—</span>'}
                           </td>
                           <td class="p-2 text-right ${l.debit > 0 ? 'font-bold text-blue-900' : 'text-gray-300'}">${l.debit > 0 ? fmt(l.debit) : '—'}</td>
                           <td class="p-2 text-right ${l.credit > 0 ? 'font-bold text-green-900' : 'text-gray-300'}">${l.credit > 0 ? fmt(l.credit) : '—'}</td>
                         </tr>
                       `;
-                    }).join('') : `<tr><td colspan="5" class="p-4 text-center text-red-500 font-sans">No se generaron líneas contables. Verifica los mapeos en Configuración de Nómina.</td></tr>`}
+            }).join('') : `<tr><td colspan="5" class="p-4 text-center text-red-500 font-sans">No se generaron líneas contables. Verifica los mapeos en Configuración de Nómina.</td></tr>`}
                   </tbody>
                   <tfoot>
                     <tr class="bg-gray-50 font-bold">
@@ -12161,8 +13034,8 @@ async function loadSettlementHistory() {
               <td>${statusLabel(r.status || 'draft')}</td>
               <td>
                 ${r.tx_id
-                  ? `<span class="text-xs font-mono font-bold text-indigo-700"><i class="fas fa-receipt mr-1"></i>Asiento Contable</span>`
-                  : `<span class="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Sin Contabilizar</span>`}
+        ? `<span class="text-xs font-mono font-bold text-indigo-700"><i class="fas fa-receipt mr-1"></i>Asiento Contable</span>`
+        : `<span class="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Sin Contabilizar</span>`}
               </td>
               <td class="text-right whitespace-nowrap">
                 <div class="flex items-center justify-end gap-1.5">
@@ -12205,7 +13078,7 @@ async function loadSettlementHistory() {
 }
 
 // ── Función global para reversión directa de finiquito ──────────────────
-(window as any)._reverseSettlementDirect = async function(settlementId: string, empName: string) {
+(window as any)._reverseSettlementDirect = async function (settlementId: string, empName: string) {
   confirmDialog(
     'Reversar Liquidación Definitiva',
     `¿Confirmas anular la liquidación definitiva de ${empName}? Se anulará el comprobante contable si existe, el empleado será reactivado en el sistema y sus novedades de retiro volverán a estado pendiente.`,
@@ -12213,7 +13086,7 @@ async function loadSettlementHistory() {
       try {
         const rec = await pb.get('payroll_settlements', settlementId);
         if (rec.tx_id) {
-          try { await API.deleteTransaction(rec.tx_id); } catch (_) {}
+          try { await API.deleteTransaction(rec.tx_id); } catch (_) { }
         }
         await pb.update('third_parties', rec.employee_id, { active: true });
         await pb.delete('payroll_settlements', rec.id);
@@ -12221,7 +13094,7 @@ async function loadSettlementHistory() {
           filter: `employee_id="${pb.escapeFilterValue(rec.employee_id)}" && type="RETIRO"`
         }).catch(() => []);
         for (const rn of retNovs) {
-          await pb.update('payroll_novelties', rn.id, { status: 'draft' }).catch(() => {});
+          await pb.update('payroll_novelties', rn.id, { status: 'draft' }).catch(() => { });
         }
         showToast(`Liquidación definitiva de ${empName} anulada y empleado reactivado exitosamente.`, 'success');
         await loadSettlementHistory();
@@ -12238,7 +13111,7 @@ async function loadSettlementHistory() {
 };
 
 // ── Modal de detalle contable de una liquidación definitiva ──────────────
-(window as any)._openSettlementDetail = async function(settlementId: string, txId: string, empName: string) {
+(window as any)._openSettlementDetail = async function (settlementId: string, txId: string, empName: string) {
   try {
     // Cargar registro de liquidación
     const rec = await pb.get('payroll_settlements', settlementId, { expand: 'employee_id' });
@@ -12258,7 +13131,7 @@ async function loadSettlementHistory() {
           pb.get('transactions', txId, { expand: 'tx_type_id' }),
           pb.listAll('tx_lines', { filter: `tx_id="${pb.escapeFilterValue(txId)}"`, expand: 'account_id,third_party_id' }),
         ]);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Si está en borrador o no tiene tx_lines guardadas, reconstruir/simular las líneas con la configuración contable
@@ -12287,8 +13160,8 @@ async function loadSettlementHistory() {
       const uniqueAccountIds = [...new Set(rawLines.map((l: any) => l.account_id).filter(Boolean))];
       const accountsUsed = uniqueAccountIds.length
         ? await pb.listAll('accounts', {
-            filter: uniqueAccountIds.map((id: string) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
-          }).catch(() => [] as any[])
+          filter: uniqueAccountIds.map((id: string) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
+        }).catch(() => [] as any[])
         : [];
       acctById = new Map<string, any>(accountsUsed.map((a: any) => [a.id, a]));
 
@@ -12339,8 +13212,8 @@ async function loadSettlementHistory() {
                 <td class="p-2 text-gray-600 font-sans" style="font-size:10px;max-width:180px">${esc(l.description || '—')}</td>
                 <td class="p-2 font-mono">
                   ${l.cross_doc_ref
-                    ? `<span class="badge" style="background:#EDE9FE;color:#7C3AED;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
-                    : '<span class="text-gray-300">—</span>'}
+          ? `<span class="badge" style="background:#EDE9FE;color:#7C3AED;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
+          : '<span class="text-gray-300">—</span>'}
                 </td>
                 <td class="p-2 text-right ${l.debit > 0 ? 'font-bold text-blue-800' : 'text-gray-300'}">${l.debit > 0 ? fmt(l.debit) : '—'}</td>
                 <td class="p-2 text-right ${l.credit > 0 ? 'font-bold text-green-800' : 'text-gray-300'}">${l.credit > 0 ? fmt(l.credit) : '—'}</td>
@@ -12400,22 +13273,22 @@ async function loadSettlementHistory() {
         <!-- Conceptos resumidos -->
         <div class="grid grid-cols-2 gap-2 mb-4 text-xs">
           ${[
-            ['Salario pendiente', rec.pending_salary_amount],
-            ['Aux. Transporte pend.', rec.pending_transport_amount],
-            ['Cesantías', rec.severance_amount],
-            ['Int. Cesantías', rec.severance_interest_amount],
-            ['Prima', rec.bonus_amount],
-            ['Vacaciones comp.', rec.vacation_amount],
-            ['Indemnización', rec.indemnity_amount],
-            ['Deducción Salud', rec.health_deduction],
-            ['Deducción Pensión', rec.pension_deduction],
-            ['Otras Deducciones', rec.other_deductions],
-          ].filter(([, v]) => Number(v) > 0).map(([label, val]) =>
-            `<div class="flex justify-between p-2 rounded" style="background:#F9FAFB;border:1px solid #F3F4F6">
+        ['Salario pendiente', rec.pending_salary_amount],
+        ['Aux. Transporte pend.', rec.pending_transport_amount],
+        ['Cesantías', rec.severance_amount],
+        ['Int. Cesantías', rec.severance_interest_amount],
+        ['Prima', rec.bonus_amount],
+        ['Vacaciones comp.', rec.vacation_amount],
+        ['Indemnización', rec.indemnity_amount],
+        ['Deducción Salud', rec.health_deduction],
+        ['Deducción Pensión', rec.pension_deduction],
+        ['Otras Deducciones', rec.other_deductions],
+      ].filter(([, v]) => Number(v) > 0).map(([label, val]) =>
+        `<div class="flex justify-between p-2 rounded" style="background:#F9FAFB;border:1px solid #F3F4F6">
               <span class="text-gray-600">${label}</span>
               <span class="font-bold text-gray-900">${fmt(Number(val))}</span>
             </div>`
-          ).join('')}
+      ).join('')}
         </div>
 
         <!-- Documento contable -->
@@ -12521,7 +13394,7 @@ async function loadSettlementHistory() {
           }, cleanLines);
 
           await pb.update('payroll_settlements', rec.id, { tx_id: tx.id, status: 'approved' });
-          await pb.update('third_parties', rec.employee_id, { active: false }).catch(() => {});
+          await pb.update('third_parties', rec.employee_id, { active: false }).catch(() => { });
 
           showToast('Liquidación contabilizada exitosamente.', 'success');
           closeModal();
@@ -12571,9 +13444,9 @@ async function loadSettlementHistory() {
                   filter: `employee_id="${pb.escapeFilterValue(rec.employee_id)}" && type="RETIRO"`
                 });
                 for (const rn of retNovs) {
-                  await pb.update('payroll_novelties', rn.id, { status: 'draft' }).catch(() => {});
+                  await pb.update('payroll_novelties', rn.id, { status: 'draft' }).catch(() => { });
                 }
-              } catch (_) {}
+              } catch (_) { }
 
               showToast(`Liquidación definitiva de ${empName} anulada. Empleado reactivado correctamente.`, 'success');
               closeModal();

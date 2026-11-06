@@ -507,43 +507,77 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
 };
 
 async function buildDianInvoiceDataPayload(txId: string, number: string) {
-  const docs = await pb.listAll('einvoice_docs', {
-    filter: `tx_id = "${pb.escapeFilterValue(txId)}"`
+  // 1. Resolve signed document from einvoice_docs
+  let docs = await pb.listAll('einvoice_docs', {
+    filter: `tx_id = "${pb.escapeFilterValue(txId)}" || id = "${pb.escapeFilterValue(txId)}"${number ? ` || document_number = "${pb.escapeFilterValue(number)}"` : ''}`
   });
+  if ((!docs.length || !docs[0].xml_content) && number) {
+    docs = await pb.listAll('einvoice_docs', {
+      filter: `document_number = "${pb.escapeFilterValue(number)}"`
+    });
+  }
   if (!docs.length || !docs[0].xml_content) {
     throw new Error('No hay XML firmado disponible para este documento.');
   }
   const doc = docs[0];
   const xmlContent = doc.xml_content;
 
-  const tx = await pb.get('transactions', txId, { expand: 'third_party_id,tx_type_id' });
-  const customer = tx.expand?.third_party_id;
-
-  let invoices = await pb.listAll('invoices', { filter: `tx_id = "${pb.escapeFilterValue(txId)}"` });
-  let isPurchase = false;
-  let invoice = invoices[0];
-  if (!invoice) {
-    invoices = await pb.listAll('purchase_invoices', { filter: `tx_id = "${pb.escapeFilterValue(txId)}"` });
-    invoice = invoices[0];
-    isPurchase = true;
+  // 2. Resolve support document if applicable
+  let supportDoc: any = null;
+  const suppDocs = await pb.listAll('support_documents', {
+    filter: `id = "${pb.escapeFilterValue(txId)}" || tx_id = "${pb.escapeFilterValue(txId)}"${number ? ` || number = "${pb.escapeFilterValue(number)}"` : ''}`,
+    expand: 'supplier_id,dian_resolution_id,tx_type_id'
+  });
+  if (suppDocs.length > 0) {
+    supportDoc = suppDocs[0];
   }
 
-  const txTypeCode = String(tx.expand?.tx_type_id?.code || '').toUpperCase();
-  const txTypePrefix = String(tx.expand?.tx_type_id?.prefix || '').toUpperCase();
-  const txNumUpper = String(tx.number || number || '').toUpperCase();
+  // 3. Resolve transaction
+  const realTxId = supportDoc?.tx_id || txId;
+  let tx: any = null;
+  try {
+    tx = await pb.get('transactions', realTxId, { expand: 'third_party_id,tx_type_id' });
+  } catch (_) {}
 
-  const isNDS = txTypeCode === 'NDS' || txTypePrefix.includes('NDS') || txNumUpper.includes('NDS') || txNumUpper.includes('NDSE');
+  // 4. Resolve invoices / purchase_invoices if not a support_document
+  let invoices: any[] = [];
+  let isPurchase = false;
+  let invoice: any = null;
+  if (!supportDoc) {
+    invoices = await pb.listAll('invoices', { filter: `tx_id = "${pb.escapeFilterValue(realTxId)}"` });
+    invoice = invoices[0];
+    if (!invoice) {
+      invoices = await pb.listAll('purchase_invoices', { filter: `tx_id = "${pb.escapeFilterValue(realTxId)}"` });
+      invoice = invoices[0];
+      isPurchase = true;
+    }
+  }
+
+  const txTypeCode = String(supportDoc?.expand?.tx_type_id?.code || tx?.expand?.tx_type_id?.code || supportDoc?.doc_type || '').toUpperCase();
+  const txTypePrefix = String(supportDoc?.expand?.tx_type_id?.prefix || tx?.expand?.tx_type_id?.prefix || '').toUpperCase();
+  const docNumberUpper = String(supportDoc?.number || tx?.number || number || '').toUpperCase();
+
+  const isNDS = supportDoc?.doc_type === 'NDS' || txTypeCode === 'NDS' || txTypePrefix.includes('NDS') || docNumberUpper.includes('NDS') || docNumberUpper.includes('NDSE');
   const isDS = !isNDS && (
+    supportDoc != null ||
     txTypeCode === 'DS' || 
     txTypePrefix.includes('DS') || 
-    txNumUpper.includes('DS') || 
-    txNumUpper.includes('DSE') || 
+    docNumberUpper.includes('DS') || 
+    docNumberUpper.includes('DSE') || 
     isPurchase
   );
 
-  let linesList = [];
+  // 5. Resolve lines
+  let linesList: any[] = [];
   let isPOSFallback = false;
-  if (invoice) {
+
+  if (supportDoc) {
+    linesList = await pb.listAll('support_document_lines', {
+      filter: `document_id = "${supportDoc.id}"`,
+      sort: 'line_order',
+      expand: 'product_id,account_id'
+    });
+  } else if (invoice) {
     if (!isPurchase) {
       linesList = await pb.listAll('invoice_lines', {
         filter: `invoice_id = "${invoice.id}"`,
@@ -555,16 +589,49 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
         expand: 'product_id,account_id'
       });
     }
-  } else {
+  } else if (realTxId) {
     linesList = await pb.listAll('tx_lines', {
-      filter: `tx_id = "${pb.escapeFilterValue(txId)}"`,
+      filter: `tx_id = "${pb.escapeFilterValue(realTxId)}"`,
       expand: 'account_id'
     });
     isPOSFallback = true;
   }
 
-  const linesData = isPOSFallback
-    ? linesList.filter((l: any) => (l.debit || 0) > 0 || (l.credit || 0) > 0).map((l: any) => {
+  let linesData: any[] = [];
+  if (supportDoc) {
+    linesData = linesList.map((line: any) => {
+      const directDesc = (line.description || '').trim();
+      const prodName = line.expand?.product_id?.name;
+      const accDesc = line.expand?.account_id ? `${line.expand.account_id.code} - ${line.expand.account_id.name}` : '';
+      const finalDesc = directDesc || prodName || accDesc || 'Servicio / Concepto No Obligado';
+      const finalCode = line.expand?.product_id?.code || line.expand?.account_id?.code || '—';
+      const qty = line.qty != null ? line.qty : 1;
+      const unitPrice = line.unit_price || 0;
+      const lineTotal = line.total != null ? line.total : (line.subtotal != null ? line.subtotal : (qty * unitPrice));
+      return {
+        desc: finalDesc,
+        code: finalCode,
+        qty: qty,
+        unitPrice: unitPrice,
+        lineTotal: lineTotal,
+        ivaRate: 0,
+        taxName: '—',
+        taxVal: 0,
+        um: 'EA'
+      };
+    });
+  } else if (isPOSFallback) {
+    linesData = linesList
+      .filter((l: any) => {
+        if (isDS || isPurchase) {
+          const accCode = String(l.expand?.account_id?.code || '');
+          return (l.debit || 0) > 0 && !accCode.startsWith('22') && !accCode.startsWith('23');
+        } else {
+          const accCode = String(l.expand?.account_id?.code || '');
+          return (l.credit || 0) > 0 && !accCode.startsWith('13') && !accCode.startsWith('11');
+        }
+      })
+      .map((l: any) => {
         const amount = (l.debit || 0) > 0 ? (l.debit || 0) : (l.credit || 0);
         const directDesc = (l.description || '').trim();
         const accDesc = l.expand?.account_id ? `${l.expand.account_id.code} - ${l.expand.account_id.name}` : '';
@@ -574,35 +641,74 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
           qty: 1,
           unitPrice: amount,
           lineTotal: amount,
-          ivaRate: 0
-        };
-      })
-    : linesList.map((line: any) => {
-        const directDesc = (line.description || '').trim();
-        const prodName = line.expand?.product_id?.name;
-        const accDesc = line.expand?.account_id ? `${line.expand.account_id.code} - ${line.expand.account_id.name}` : '';
-        const finalDesc = directDesc || prodName || accDesc || (isDS ? 'Servicio / Concepto No Obligado' : 'Producto');
-        const finalCode = line.expand?.product_id?.code || line.expand?.account_id?.code || '—';
-        return {
-          desc: finalDesc,
-          code: finalCode,
-          qty: line.qty || 1,
-          unitPrice: line.unit_price || 0,
-          lineTotal: line.total || (line.subtotal || 0),
-          ivaRate: line.iva_rate || 0,
-          um: line.expand?.product_id?.unit || '94'
+          ivaRate: 0,
+          taxName: '—',
+          taxVal: 0
         };
       });
+  } else {
+    linesData = linesList.map((line: any) => {
+      const directDesc = (line.description || '').trim();
+      const prodName = line.expand?.product_id?.name;
+      const accDesc = line.expand?.account_id ? `${line.expand.account_id.code} - ${line.expand.account_id.name}` : '';
+      const finalDesc = directDesc || prodName || accDesc || (isDS ? 'Servicio / Concepto No Obligado' : 'Producto');
+      const finalCode = line.expand?.product_id?.code || line.expand?.account_id?.code || '—';
+      return {
+        desc: finalDesc,
+        code: finalCode,
+        qty: line.qty || 1,
+        unitPrice: line.unit_price || 0,
+        lineTotal: line.total || (line.subtotal || 0),
+        ivaRate: line.iva_rate || 0,
+        um: line.expand?.product_id?.unit || '94'
+      };
+    });
+  }
 
-  const totalFromLines = linesData.reduce((acc: number, cur: any) => acc + cur.lineTotal, 0);
-  const payableAmount = invoice?.total || totalFromLines || tx.amount || 0;
+  // 6. Withholdings array for support documents
+  const withholdings: any[] = [];
+  if (supportDoc) {
+    let hasLineWithholdings = false;
+    linesList.forEach((line: any) => {
+      if ((line.ret_renta_amount || 0) > 0) {
+        hasLineWithholdings = true;
+        withholdings.push({
+          name: 'ReteRenta',
+          rate: line.ret_renta_rate || 0,
+          base: line.subtotal || line.total || 0,
+          amount: line.ret_renta_amount || 0
+        });
+      }
+      if ((line.ret_ica_amount || 0) > 0) {
+        hasLineWithholdings = true;
+        withholdings.push({
+          name: 'ReteICA',
+          rate: line.ret_ica_rate || 0,
+          base: line.subtotal || line.total || 0,
+          amount: line.ret_ica_amount || 0
+        });
+      }
+    });
+    if (!hasLineWithholdings && (supportDoc.ret_total || 0) > 0) {
+      withholdings.push({
+        name: 'ReteRenta',
+        rate: 0,
+        base: supportDoc.subtotal || supportDoc.total || 0,
+        amount: supportDoc.ret_total || 0
+      });
+    }
+  }
+
+  const totalFromLines = linesData.reduce((acc: number, cur: any) => acc + (cur.lineTotal || 0), 0);
+  const payableAmount = supportDoc?.payable_total || supportDoc?.total || invoice?.total || totalFromLines || tx?.amount || 0;
+  const subtotal = supportDoc?.subtotal || supportDoc?.total || invoice?.subtotal || totalFromLines || payableAmount;
 
   const settingsList = await pb.listAll('settings');
   const settingsMap = new Map<string, string>();
   settingsList.forEach((s: any) => settingsMap.set(s.key, s.value));
 
   let cashierName = 'Admin';
-  const posShiftId = invoice?.pos_shift_id || tx.pos_shift_id;
+  const posShiftId = invoice?.pos_shift_id || tx?.pos_shift_id;
   if (posShiftId) {
     try {
       const shift = await pb.get('pos_shifts', posShiftId, { expand: 'user_id' });
@@ -627,47 +733,62 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
   let resPrefix = isNDS ? "NDS" : isDS ? "DS" : "";
 
   let prefix = "";
-  if (tx.number && tx.number.includes('-')) {
-    prefix = tx.number.split('-')[0].trim().toUpperCase();
+  const docNumberToInspect = supportDoc?.number || tx?.number || number || '';
+  if (docNumberToInspect && docNumberToInspect.includes('-')) {
+    prefix = docNumberToInspect.split('-')[0].trim().toUpperCase();
   }
-  let docType = (invoice?.pos_shift_id || tx.pos_shift_id) 
+  let docType = (invoice?.pos_shift_id || tx?.pos_shift_id) 
     ? "POS" 
     : (isNDS ? "NDS" : isDS ? "DS" : "FV");
 
   try {
-    const registerId = (invoice?.pos_shift_id || tx.pos_shift_id) 
-      ? (await pb.get('pos_shifts', invoice?.pos_shift_id || tx.pos_shift_id).then((s: any) => s.pos_register_id || ''))
-      : '';
-    const resRecords = await pb.listAll('dian_resolutions', { filter: 'active = true' });
-    let resolution = null;
-    if (resRecords.length > 0) {
-      if (docType === 'POS' && registerId) {
-        resolution = resRecords.find((r: any) => r.pos_register_id === registerId && r.document_type === 'POS');
-      }
-      if (!resolution && prefix) {
-        resolution = resRecords.find((r: any) => (r.prefix || '').trim().toUpperCase() === prefix);
-      }
-      if (!resolution) {
-        resolution = resRecords.find((r: any) => r.document_type === docType);
-      }
-      if (!resolution && !isDS && !isNDS) {
-        resolution = resRecords[0];
-      }
-      if (resolution) {
-        resName = isNDS
-          ? "Nota de Ajuste al Documento Soporte Electrónico"
-          : isDS
-          ? "Documento electrónico de soporte para no obligados a facturar"
-          : (resolution.name || "Factura Electrónica de Venta");
-        resDesc = resolution.description || "";
-        resNum = resolution.resolution_number || "";
-        resDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : "";
-        resExpiry = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : "";
-        resFrom = resolution.number_from || "";
-        resTo = resolution.number_to || "";
-        resPrefix = resolution.prefix || prefix || (isNDS ? "NDS" : isDS ? "DS" : "");
-      } else if (prefix) {
-        resPrefix = prefix;
+    if (supportDoc?.expand?.dian_resolution_id) {
+      const r = supportDoc.expand.dian_resolution_id;
+      resName = isNDS
+        ? "Nota de Ajuste al Documento Soporte Electrónico"
+        : "Documento electrónico de soporte para no obligados a facturar";
+      resDesc = r.description || "";
+      resNum = r.resolution_number || "";
+      resDate = r.resolution_date ? r.resolution_date.slice(0, 10) : "";
+      resExpiry = r.expiration_date ? r.expiration_date.slice(0, 10) : "";
+      resFrom = r.number_from || "";
+      resTo = r.number_to || "";
+      resPrefix = r.prefix || "";
+    } else {
+      const registerId = (invoice?.pos_shift_id || tx?.pos_shift_id) 
+        ? (await pb.get('pos_shifts', invoice?.pos_shift_id || tx?.pos_shift_id).then((s: any) => s.pos_register_id || ''))
+        : '';
+      const resRecords = await pb.listAll('dian_resolutions', { filter: 'active = true' });
+      let resolution = null;
+      if (resRecords.length > 0) {
+        if (docType === 'POS' && registerId) {
+          resolution = resRecords.find((r: any) => r.pos_register_id === registerId && r.document_type === 'POS');
+        }
+        if (!resolution && prefix) {
+          resolution = resRecords.find((r: any) => (r.prefix || '').trim().toUpperCase() === prefix);
+        }
+        if (!resolution) {
+          resolution = resRecords.find((r: any) => r.document_type === docType);
+        }
+        if (!resolution && !isDS && !isNDS) {
+          resolution = resRecords[0];
+        }
+        if (resolution) {
+          resName = isNDS
+            ? "Nota de Ajuste al Documento Soporte Electrónico"
+            : isDS
+            ? "Documento electrónico de soporte para no obligados a facturar"
+            : (resolution.name || "Factura Electrónica de Venta");
+          resDesc = resolution.description || "";
+          resNum = resolution.resolution_number || "";
+          resDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : "";
+          resExpiry = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : "";
+          resFrom = resolution.number_from || "";
+          resTo = resolution.number_to || "";
+          resPrefix = resolution.prefix || prefix || (isNDS ? "NDS" : isDS ? "DS" : "");
+        } else if (prefix) {
+          resPrefix = prefix;
+        }
       }
     }
   } catch (_) {}
@@ -678,6 +799,7 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
   const companyPhone = settingsMap.get('company_phone') || '';
   const companyEmail = settingsMap.get('company_email') || '';
 
+  const customer = supportDoc?.expand?.supplier_id || tx?.expand?.third_party_id;
   const vendorName = customer?.name || 'Proveedor / Vendedor No Obligado';
   const vendorNit = customer?.doc_number || '222222222';
   const vendorAddr = customer?.address || '';
@@ -689,10 +811,10 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
   const custCity = customer?.city || 'Cali';
   const custDept = customer?.department || 'Valle del Cauca';
 
-  const docNotes = (invoice?.notes || tx.description || '').trim();
+  const docNotes = (supportDoc?.notes || invoice?.notes || tx?.description || '').trim();
 
-  const invDateStr = (invoice?.date || tx.date || '').slice(0, 10);
-  const dueDateStr = invoice?.due_date ? invoice.due_date.slice(0, 10) : '';
+  const invDateStr = (supportDoc?.date || invoice?.date || tx?.date || '').slice(0, 10);
+  const dueDateStr = (supportDoc?.due_date || invoice?.due_date) ? (supportDoc?.due_date || invoice?.due_date).slice(0, 10) : '';
   let creditDays = 0;
   if (dueDateStr && invDateStr) {
     try {
@@ -708,14 +830,14 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
   }
 
   const invoiceData = {
-    docId: tx.number,
-    issueDate: tx.date,
-    dueDate: dueDateStr || tx.date,
+    docId: supportDoc?.number || tx?.number || number,
+    issueDate: supportDoc?.date || tx?.date,
+    dueDate: dueDateStr || supportDoc?.date || tx?.date,
     creditDays: creditDays,
     issueTime: doc.sent_at ? doc.sent_at.split(' ')[1] || '12:00:00' : '12:00:00',
     cufe: doc.cufe || 'N/A',
     payableAmount: payableAmount,
-    subtotal: invoice?.subtotal || totalFromLines || payableAmount,
+    subtotal: subtotal,
     isDS: isDS,
     isNDS: isNDS,
     docType: isNDS ? 'NDS' : isDS ? 'DS' : docType,
@@ -736,12 +858,13 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
     customerEmail: isDS ? companyEmail : vendorEmail,
 
     lines: linesData,
+    withholdings: withholdings,
     notes: docNotes,
     companyLogo: settingsMap.get('company_logo') || '',
     cajero: cashierName,
-    paymentMethod: invoice?.payment_method || 'EFECTIVO',
-    paymentForm: invoice?.payment_form || (invoice?.payment_method === 'CREDITO' ? 'CREDITO' : 'CONTADO'),
-    paymentDianCode: invoice?.payment_dian_code || '',
+    paymentMethod: supportDoc?.payment_method || invoice?.payment_method || 'EFECTIVO',
+    paymentForm: supportDoc?.payment_form || invoice?.payment_form || ((supportDoc?.payment_method || invoice?.payment_method) === 'CREDITO' ? 'CREDITO' : 'CONTADO'),
+    paymentDianCode: supportDoc?.payment_dian_code || invoice?.payment_dian_code || '',
     received: 0,
     change: 0,
     resolutionName: resName,
@@ -754,7 +877,7 @@ async function buildDianInvoiceDataPayload(txId: string, number: string) {
     resolutionPrefix: resPrefix
   };
 
-  const filename = doc.zip_filename || number || tx.number || 'documento_dian';
+  const filename = doc.zip_filename || number || supportDoc?.number || tx?.number || 'documento_dian';
 
   return { xmlContent, filename, invoiceData };
 }

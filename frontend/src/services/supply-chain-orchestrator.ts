@@ -420,6 +420,12 @@ export class SupplyChainOrchestrator {
             fulfillment_status: 'ENTREGADO',
           }).catch(() => {});
         }
+      } else if (newStatus === 'DESPACHADO' || newStatus === 'PENDIENTE') {
+        if (delivery.sales_order_id) {
+          await this.pb.update('sales_orders', delivery.sales_order_id, {
+            fulfillment_status: 'EN_DESPACHO',
+          }).catch(() => {});
+        }
       }
     } catch (err: any) {
       console.warn('Error en handleDeliveryStatusChange:', err);

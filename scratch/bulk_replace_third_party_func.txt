@@ -1,0 +1,512 @@
+/* ══════════════════════════════════════════════════════════
+   REASIGNACIÓN MASIVA DE TERCEROS EN MOVIMIENTOS CONTABLES
+   Con Doble Confirmación de Seguridad y Desglose por Cuentas
+══════════════════════════════════════════════════════════ */
+async function _openBulkReplaceThirdPartyModal() {
+  const isAdmin = requireRole('admin') || requireRole('superadmin');
+  if (!isAdmin) {
+    showToast('Acceso denegado: Se requiere rol Administrador o Superadmin.', 'error');
+    return;
+  }
+
+  openModal(
+    '<i class="fas fa-user-pen mr-2" style="color:#4F46E5"></i>Reasignación masiva de terceros',
+    `
+      <div class="space-y-4 text-sm" style="color:#374151">
+        <p class="text-xs" style="color:#4B5563;line-height:1.6">
+          Transfiere masivamente todos o parte de los asientos contables y comprobantes causados
+          por error a un <strong>tercero origen</strong> hacia el <strong>tercero destino</strong> correcto.
+        </p>
+
+        <!-- ── Buscadores Reactivos de Terceros ── -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Tercero Origen -->
+          <div class="form-group relative">
+            <label class="form-label font-semibold text-xs" style="color:#DC2626">
+              <i class="fas fa-user-minus mr-1"></i>Tercero Origen (A sustituir) *
+            </label>
+            <input id="bulk-tp-old-search" class="form-input" placeholder="Buscar por NIT o Nombre..." autocomplete="off">
+            <input type="hidden" id="bulk-tp-old-id">
+            <div id="bulk-tp-old-dropdown" class="hidden absolute left-0 right-0 z-50 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-xs"></div>
+            <div id="bulk-tp-old-selected" class="hidden mt-1 p-2 rounded-lg text-xs flex justify-between items-center" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B">
+              <span id="bulk-tp-old-text" class="font-medium"></span>
+              <button type="button" id="btn-bulk-tp-old-clear" class="text-xs underline hover:text-red-900">Cambiar</button>
+            </div>
+          </div>
+
+          <!-- Tercero Destino -->
+          <div class="form-group relative">
+            <label class="form-label font-semibold text-xs" style="color:#16A34A">
+              <i class="fas fa-user-check mr-1"></i>Tercero Destino (El correcto) *
+            </label>
+            <input id="bulk-tp-new-search" class="form-input" placeholder="Buscar por NIT o Nombre..." autocomplete="off">
+            <input type="hidden" id="bulk-tp-new-id">
+            <div id="bulk-tp-new-dropdown" class="hidden absolute left-0 right-0 z-50 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto text-xs"></div>
+            <div id="bulk-tp-new-selected" class="hidden mt-1 p-2 rounded-lg text-xs flex justify-between items-center" style="background:#F0FDF4;border:1px solid #BBF7D0;color:#166534">
+              <span id="bulk-tp-new-text" class="font-medium"></span>
+              <button type="button" id="btn-bulk-tp-new-clear" class="text-xs underline hover:text-green-900">Cambiar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Rango de Fechas y Opción de Encabezados ── -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="form-group">
+            <label class="form-label font-semibold text-xs">Fecha Desde *</label>
+            <input id="bulk-tp-date-from" type="date" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label font-semibold text-xs">Fecha Hasta *</label>
+            <input id="bulk-tp-date-to" type="date" class="form-input">
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 p-2.5 rounded-lg border text-xs" style="background:#F9FAFB;border-color:#E5E7EB">
+          <input type="checkbox" id="bulk-tp-update-headers" checked style="accent-color:#4F46E5;width:15px;height:15px">
+          <label for="bulk-tp-update-headers" class="cursor-pointer select-none font-medium" style="color:#374151">
+            Actualizar también el tercero en el encabezado de los comprobantes (<span class="font-mono text-[11px]">transactions</span>)
+          </label>
+        </div>
+
+        <!-- ── Botón de Análisis / Preview ── -->
+        <div class="flex items-center gap-3">
+          <button id="btn-bulk-tp-analyze" class="btn btn-outline btn-sm" style="border-color:#4F46E5;color:#4F46E5">
+            <i class="fas fa-magnifying-glass-chart mr-1"></i> Analizar movimientos del tercero
+          </button>
+          <span id="bulk-tp-analyze-status" class="text-xs" style="color:#6B7280"></span>
+        </div>
+
+        <!-- ── Resultado del Análisis (Resumen + Tabla) ── -->
+        <div id="bulk-tp-analysis-wrap" class="hidden space-y-3">
+          <!-- Alerta DIAN si aplica -->
+          <div id="bulk-tp-dian-alert" class="hidden p-3 rounded-lg text-xs flex gap-2 items-start" style="background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF">
+            <i class="fas fa-circle-info mt-0.5 text-sm" style="color:#2563EB"></i>
+            <div>
+              <strong>Aviso de Documentos Electrónicos DIAN:</strong>
+              Se detectaron <span id="bulk-tp-dian-count" class="font-bold">0</span> documento(s) con transmisión electrónica para este tercero en el período.
+              Los documentos electrónicos emitidos formalmente ante la DIAN no se alteran para proteger la validez legal tributaria.
+            </div>
+          </div>
+
+          <!-- Resumen de Métricas -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div class="p-2.5 rounded-xl border text-center" style="background:#F8FAFC;border-color:#E2E8F0">
+              <span class="block text-[10px] uppercase font-semibold text-gray-500">Cuentas</span>
+              <span id="bulk-tp-stat-accounts" class="text-base font-bold text-gray-800">0</span>
+            </div>
+            <div class="p-2.5 rounded-xl border text-center" style="background:#F8FAFC;border-color:#E2E8F0">
+              <span class="block text-[10px] uppercase font-semibold text-gray-500">Líneas contables</span>
+              <span id="bulk-tp-stat-lines" class="text-base font-bold text-indigo-600">0</span>
+            </div>
+            <div class="p-2.5 rounded-xl border text-center" style="background:#F8FAFC;border-color:#E2E8F0">
+              <span class="block text-[10px] uppercase font-semibold text-gray-500">Comprobantes</span>
+              <span id="bulk-tp-stat-headers" class="text-base font-bold text-gray-800">0</span>
+            </div>
+            <div class="p-2.5 rounded-xl border text-center" style="background:#F8FAFC;border-color:#E2E8F0">
+              <span class="block text-[10px] uppercase font-semibold text-gray-500">Total Débitos</span>
+              <span id="bulk-tp-stat-debit" class="text-xs font-bold text-emerald-600">$0</span>
+            </div>
+          </div>
+
+          <!-- Tabla de Cuentas Afectadas -->
+          <div class="rounded-xl border overflow-hidden" style="max-height:220px;overflow-y:auto;border-color:#E5E7EB">
+            <table class="data-table text-xs w-full">
+              <thead>
+                <tr>
+                  <th style="width:36px;text-align:center">
+                    <input type="checkbox" id="bulk-tp-select-all-acc" title="Seleccionar todas" style="accent-color:#4F46E5;cursor:pointer">
+                  </th>
+                  <th>Cuenta Contable</th>
+                  <th style="text-align:right"># Líneas</th>
+                  <th style="text-align:right">Débito</th>
+                  <th style="text-align:right">Crédito</th>
+                </tr>
+              </thead>
+              <tbody id="bulk-tp-accounts-tbody"></tbody>
+            </table>
+          </div>
+          <p id="bulk-tp-acc-sel-count" class="text-[11px]" style="color:#4F46E5"></p>
+        </div>
+
+        <!-- ── Advertencia de Riesgo ── -->
+        <div class="p-3 rounded-xl text-xs flex gap-2 items-start" style="background:#FFFBEB;border:1px solid #FDE68A;color:#B45309">
+          <i class="fas fa-triangle-exclamation mt-0.5 text-sm"></i>
+          <div>
+            <strong>Operación de alto impacto contable:</strong> Esta acción modificará permanentemente los registros históricos en la base de datos.
+            Se aplicará un proceso de <strong>doble confirmación con código de seguridad</strong> antes de ejecutar.
+          </div>
+        </div>
+      </div>
+    `,
+    `
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-bulk-tp-execute" style="background:#4F46E5;border-color:#4F46E5;color:#fff" disabled>
+        <i class="fas fa-shuffle mr-1"></i> Proceder a Reasignar
+      </button>
+    `,
+    false
+  );
+
+  /* ── Elementos del Modal ── */
+  const oldSearchInput = $('#bulk-tp-old-search') as HTMLInputElement | null;
+  const oldIdInput     = $('#bulk-tp-old-id')     as HTMLInputElement | null;
+  const oldDropdown    = $('#bulk-tp-old-dropdown');
+  const oldSelectedBox = $('#bulk-tp-old-selected');
+  const oldSelectedTxt = $('#bulk-tp-old-text');
+  const oldClearBtn    = $('#btn-bulk-tp-old-clear');
+
+  const newSearchInput = $('#bulk-tp-new-search') as HTMLInputElement | null;
+  const newIdInput     = $('#bulk-tp-new-id')     as HTMLInputElement | null;
+  const newDropdown    = $('#bulk-tp-new-dropdown');
+  const newSelectedBox = $('#bulk-tp-new-selected');
+  const newSelectedTxt = $('#bulk-tp-new-text');
+  const newClearBtn    = $('#btn-bulk-tp-new-clear');
+
+  const dateFromInput  = $('#bulk-tp-date-from')   as HTMLInputElement | null;
+  const dateToInput    = $('#bulk-tp-date-to')     as HTMLInputElement | null;
+  const headersCb      = $('#bulk-tp-update-headers') as HTMLInputElement | null;
+
+  const analyzeBtn     = $('#btn-bulk-tp-analyze');
+  const analyzeStatus  = $('#bulk-tp-analyze-status');
+  const analysisWrap   = $('#bulk-tp-analysis-wrap');
+  const dianAlert      = $('#bulk-tp-dian-alert');
+  const dianCountSpan  = $('#bulk-tp-dian-count');
+
+  const statAccounts   = $('#bulk-tp-stat-accounts');
+  const statLines      = $('#bulk-tp-stat-lines');
+  const statHeaders    = $('#bulk-tp-stat-headers');
+  const statDebit      = $('#bulk-tp-stat-debit');
+
+  const accountsTbody  = $('#bulk-tp-accounts-tbody');
+  const selectAllAccCb = $('#bulk-tp-select-all-acc') as HTMLInputElement | null;
+  const accSelCountTxt = $('#bulk-tp-acc-sel-count');
+  const executeBtn     = $('#btn-bulk-tp-execute') as HTMLButtonElement | null;
+
+  // Cache en memoria de terceros para búsqueda instantánea
+  let tercerosCache: any[] = [];
+  try {
+    tercerosCache = await API.getTerceros({});
+  } catch (_) {
+    try { tercerosCache = await pb.listAll('third_parties', {}); } catch (__) {}
+  }
+
+  // Helper de búsqueda reactiva
+  const _setupThirdPartySearch = (
+    searchInput: HTMLInputElement | null,
+    idInput: HTMLInputElement | null,
+    dropdown: HTMLElement | null,
+    selectedBox: HTMLElement | null,
+    selectedTxt: HTMLElement | null,
+    clearBtn: HTMLElement | null,
+    isTarget: boolean
+  ) => {
+    if (!searchInput || !idInput || !dropdown || !selectedBox || !selectedTxt) return;
+
+    let debounceTimer: any = null;
+
+    searchInput.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const query = searchInput.value.trim().toLowerCase();
+        if (query.length < 2) {
+          dropdown.classList.add('hidden');
+          dropdown.innerHTML = '';
+          return;
+        }
+
+        const currentOtherId = isTarget ? oldIdInput?.value : newIdInput?.value;
+        const matches = tercerosCache.filter(t => {
+          if (t.id === currentOtherId) return false;
+          const name = String(t.name || '').toLowerCase();
+          const doc  = String(t.doc_number || '').toLowerCase();
+          return name.includes(query) || doc.includes(query);
+        }).slice(0, 15);
+
+        if (!matches.length) {
+          dropdown.innerHTML = '<div class="p-2.5 text-gray-400 text-center">No se encontraron terceros</div>';
+          dropdown.classList.remove('hidden');
+          return;
+        }
+
+        dropdown.innerHTML = matches.map(t => `
+          <div class="bulk-tp-item p-2 hover:bg-indigo-50 cursor-pointer border-b last:border-0 border-gray-100 flex items-center justify-between"
+               data-id="${esc(t.id)}" data-doc="${esc(t.doc_number || '')}" data-name="${esc(t.name || '')}">
+            <div>
+              <span class="font-semibold text-gray-800">${esc(t.name || 'Sin nombre')}</span>
+              <span class="block text-[11px] text-gray-500 font-mono">NIT/Doc: ${esc(t.doc_number || '—')}</span>
+            </div>
+            <i class="fas fa-check text-indigo-600 text-xs opacity-0 hover:opacity-100"></i>
+          </div>
+        `).join('');
+        dropdown.classList.remove('hidden');
+
+        dropdown.querySelectorAll('.bulk-tp-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const id   = el.getAttribute('data-id') || '';
+            const doc  = el.getAttribute('data-doc') || '';
+            const name = el.getAttribute('data-name') || '';
+
+            idInput.value = id;
+            selectedTxt.textContent = `[${doc}] ${name}`;
+            searchInput.classList.add('hidden');
+            dropdown.classList.add('hidden');
+            selectedBox.classList.remove('hidden');
+            _resetAnalysis();
+          });
+        });
+      }, 200);
+    });
+
+    clearBtn?.addEventListener('click', () => {
+      idInput.value = '';
+      searchInput.value = '';
+      selectedBox.classList.add('hidden');
+      searchInput.classList.remove('hidden');
+      searchInput.focus();
+      _resetAnalysis();
+    });
+  };
+
+  _setupThirdPartySearch(oldSearchInput, oldIdInput, oldDropdown, oldSelectedBox, oldSelectedTxt, oldClearBtn, false);
+  _setupThirdPartySearch(newSearchInput, newIdInput, newDropdown, newSelectedBox, newSelectedTxt, newClearBtn, true);
+
+  // Cerrar dropdowns si se hace clic fuera
+  document.addEventListener('click', (ev: MouseEvent) => {
+    if (!oldDropdown?.contains(ev.target as Node) && ev.target !== oldSearchInput) {
+      oldDropdown?.classList.add('hidden');
+    }
+    if (!newDropdown?.contains(ev.target as Node) && ev.target !== newSearchInput) {
+      newDropdown?.classList.add('hidden');
+    }
+  });
+
+  const _resetAnalysis = () => {
+    analysisWrap?.classList.add('hidden');
+    if (analyzeStatus) analyzeStatus.textContent = '';
+    if (accountsTbody) accountsTbody.innerHTML = '';
+    if (executeBtn) executeBtn.disabled = true;
+  };
+
+  dateFromInput?.addEventListener('change', _resetAnalysis);
+  dateToInput?.addEventListener('change', _resetAnalysis);
+
+  // Helper de contador de selección de cuentas
+  const _updateAccSelCount = () => {
+    const total   = document.querySelectorAll<HTMLInputElement>('.bulk-tp-acc-check').length;
+    const checked = document.querySelectorAll<HTMLInputElement>('.bulk-tp-acc-check:checked').length;
+    if (accSelCountTxt) {
+      accSelCountTxt.textContent = `${checked} de ${total} cuenta(s) seleccionada(s) para reasignar`;
+    }
+    if (selectAllAccCb) selectAllAccCb.indeterminate = checked > 0 && checked < total;
+    if (executeBtn) executeBtn.disabled = (checked === 0);
+  };
+
+  /* ── Analizar Movimientos ── */
+  analyzeBtn?.addEventListener('click', async () => {
+    const oldId     = oldIdInput?.value || '';
+    const newId     = newIdInput?.value || '';
+    const startDate = dateFromInput?.value || '';
+    const endDate   = dateToInput?.value || '';
+
+    if (!oldId) return showToast('Selecciona el tercero de origen', 'warning');
+    if (!newId) return showToast('Selecciona el tercero de destino', 'warning');
+    if (oldId === newId) return showToast('El tercero origen y destino no pueden ser el mismo', 'warning');
+    if (!startDate || !endDate) return showToast('Especifica el rango de fechas a analizar', 'warning');
+
+    if (analyzeStatus) analyzeStatus.textContent = 'Analizando movimientos...';
+    _resetAnalysis();
+
+    try {
+      const res = await pb.send(
+        `/api/gravy/bulk-replace-third-party/preview?oldThirdPartyId=${encodeURIComponent(oldId)}&startDate=${startDate}&endDate=${endDate}`,
+        { method: 'GET' }
+      );
+
+      if (!res?.success) {
+        if (analyzeStatus) analyzeStatus.textContent = res?.message || 'Error al analizar movimientos.';
+        return;
+      }
+
+      const sum = res.summary || {};
+      if (statAccounts) statAccounts.textContent = String(sum.total_accounts || 0);
+      if (statLines)    statLines.textContent    = String(sum.total_lines || 0);
+      if (statHeaders)  statHeaders.textContent  = String(sum.header_transactions || 0);
+      if (statDebit)    statDebit.textContent    = fmt(sum.total_debit || 0);
+
+      if (sum.electronic_dian_docs > 0) {
+        if (dianCountSpan) dianCountSpan.textContent = String(sum.electronic_dian_docs);
+        dianAlert?.classList.remove('hidden');
+      } else {
+        dianAlert?.classList.add('hidden');
+      }
+
+      if (!res.accounts?.length && !sum.header_transactions) {
+        if (analyzeStatus) analyzeStatus.textContent = 'El tercero no tiene movimientos contables en el período indicado.';
+        return;
+      }
+
+      // Renderizar tabla de cuentas
+      if (accountsTbody) {
+        accountsTbody.innerHTML = (res.accounts as any[]).map(a => `
+          <tr>
+            <td style="text-align:center">
+              <input type="checkbox" class="bulk-tp-acc-check" value="${esc(a.id)}" checked style="accent-color:#4F46E5;cursor:pointer">
+            </td>
+            <td>
+              <span class="font-mono font-semibold text-gray-800">${esc(a.code)}</span> — ${esc(a.name)}
+            </td>
+            <td style="text-align:right" class="font-semibold">${a.line_count}</td>
+            <td style="text-align:right;color:#059669">${fmt(a.total_debit)}</td>
+            <td style="text-align:right;color:#DC2626">${fmt(a.total_credit)}</td>
+          </tr>
+        `).join('');
+
+        accountsTbody.querySelectorAll<HTMLInputElement>('.bulk-tp-acc-check').forEach(cb => {
+          cb.addEventListener('change', () => {
+            const all   = accountsTbody!.querySelectorAll<HTMLInputElement>('.bulk-tp-acc-check');
+            const chk   = accountsTbody!.querySelectorAll<HTMLInputElement>('.bulk-tp-acc-check:checked');
+            if (selectAllAccCb) {
+              selectAllAccCb.checked       = chk.length === all.length;
+              selectAllAccCb.indeterminate = chk.length > 0 && chk.length < all.length;
+            }
+            _updateAccSelCount();
+          });
+        });
+      }
+
+      if (selectAllAccCb) { selectAllAccCb.checked = true; selectAllAccCb.indeterminate = false; }
+      analysisWrap?.classList.remove('hidden');
+      if (analyzeStatus) analyzeStatus.textContent = 'Análisis completado. Revisa las cuentas antes de continuar.';
+      _updateAccSelCount();
+
+    } catch (err: any) {
+      if (analyzeStatus) analyzeStatus.textContent = `Error: ${err.message}`;
+      showToast('No se pudo analizar los movimientos del tercero', 'error');
+    }
+  });
+
+  selectAllAccCb?.addEventListener('change', () => {
+    const shouldCheck = selectAllAccCb.checked;
+    document.querySelectorAll<HTMLInputElement>('.bulk-tp-acc-check')
+      .forEach(cb => { cb.checked = shouldCheck; });
+    _updateAccSelCount();
+  });
+
+  /* ── Proceder a Reasignar con DOBLE CONFIRMACIÓN DE SEGURIDAD ── */
+  executeBtn?.addEventListener('click', () => {
+    const oldId     = oldIdInput?.value || '';
+    const newId     = newIdInput?.value || '';
+    const startDate = dateFromInput?.value || '';
+    const endDate   = dateToInput?.value || '';
+    const updateHdr = headersCb?.checked ?? true;
+
+    const selectedAccIds = Array.from(
+      document.querySelectorAll<HTMLInputElement>('.bulk-tp-acc-check:checked')
+    ).map(cb => cb.value).filter(v => v);
+
+    if (!selectedAccIds.length) {
+      return showToast('Debes seleccionar al menos una cuenta contable', 'warning');
+    }
+
+    const oldLabel = oldSelectedTxt?.textContent || 'Tercero Origen';
+    const newLabel = newSelectedTxt?.textContent || 'Tercero Destino';
+
+    // Generar código de seguridad de 4 dígitos
+    const securityCode = String(Math.floor(1000 + Math.random() * 9000));
+
+    // ── MODAL DE DOBLE CONFIRMACIÓN CRÍTICA ──
+    openModal(
+      '<i class="fas fa-shield-halved mr-2" style="color:#DC2626"></i>Doble confirmación de seguridad requerida',
+      `
+        <div class="space-y-4 text-sm" style="color:#374151">
+          <div class="p-3 rounded-xl border flex items-start gap-3" style="background:#FEF2F2;border-color:#FCA5A5;color:#991B1B">
+            <i class="fas fa-triangle-exclamation text-lg mt-0.5 text-red-600"></i>
+            <div>
+              <p class="font-bold text-sm mb-1">¡Esta acción modificará asientos contables históricos!</p>
+              <p class="text-xs leading-relaxed">
+                Estás a punto de transferir los movimientos contables de manera definitiva.
+                Esta modificación se registrará en el log de auditoría del sistema con tu usuario.
+              </p>
+            </div>
+          </div>
+
+          <div class="p-3 rounded-xl border text-xs space-y-1.5" style="background:#F9FAFB;border-color:#E5E7EB">
+            <div><strong class="text-red-700">Origen a sustituir:</strong> ${esc(oldLabel)}</div>
+            <div><strong class="text-green-700">Destino correcto:</strong> ${esc(newLabel)}</div>
+            <div><strong>Período contable:</strong> del ${startDate} al ${endDate}</div>
+            <div><strong>Cuentas seleccionadas:</strong> ${selectedAccIds.length} cuenta(s) contable(s)</div>
+            <div><strong>Actualizar comprobantes (encabezados):</strong> ${updateHdr ? 'SÍ' : 'NO'}</div>
+          </div>
+
+          <div class="p-3 rounded-xl border text-xs space-y-2" style="background:#FFFBEB;border-color:#FDE68A;color:#92400E">
+            <p class="font-semibold">
+              Para desbloquear el botón de confirmación, digita el siguiente código de seguridad:
+              <span class="font-mono text-sm px-2 py-0.5 rounded font-bold ml-1" style="background:#FEF3C7;color:#B45309">${securityCode}</span>
+            </p>
+            <input id="bulk-tp-security-code-input" class="form-input text-center font-mono font-bold text-base" placeholder="Escribe el código aquí..." maxlength="4" autocomplete="off">
+          </div>
+        </div>
+      `,
+      `
+        <button class="btn btn-outline" onclick="closeModal()">Cancelar y Volver</button>
+        <button class="btn btn-danger" id="btn-bulk-tp-final-confirm" style="background:#DC2626;border-color:#DC2626;color:#fff" disabled>
+          <i class="fas fa-lock mr-1"></i> Confirmar y Reasignar Definitivamente
+        </button>
+      `,
+      false
+    );
+
+    const codeInput = $('#bulk-tp-security-code-input') as HTMLInputElement | null;
+    const finalBtn  = $('#btn-bulk-tp-final-confirm')  as HTMLButtonElement | null;
+
+    codeInput?.addEventListener('input', () => {
+      const isMatch = (codeInput.value.trim() === securityCode);
+      if (finalBtn) {
+        finalBtn.disabled = !isMatch;
+        if (isMatch) {
+          finalBtn.innerHTML = '<i class="fas fa-unlock mr-1"></i> Confirmar y Reasignar Definitivamente';
+        } else {
+          finalBtn.innerHTML = '<i class="fas fa-lock mr-1"></i> Confirmar y Reasignar Definitivamente';
+        }
+      }
+    });
+
+    finalBtn?.addEventListener('click', async () => {
+      if (codeInput?.value.trim() !== securityCode) {
+        return showToast('El código de seguridad no coincide', 'error');
+      }
+
+      finalBtn.disabled = true;
+      finalBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Reasignando movimientos...';
+
+      try {
+        const payload = {
+          oldThirdPartyId: oldId,
+          newThirdPartyId: newId,
+          startDate: startDate,
+          endDate: endDate,
+          accountIds: selectedAccIds,
+          updateHeaders: updateHdr
+        };
+
+        const res = await pb.send('/api/gravy/bulk-replace-third-party', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (res?.success) {
+          closeModal();
+          showToast(res.message || 'Reasignación de terceros completada con éxito', 'success', 6000);
+        } else {
+          showToast(res.message || 'Ocurrió un error en la reasignación', 'error');
+          if (finalBtn) finalBtn.disabled = false;
+        }
+      } catch (err: any) {
+        showToast(err.message || 'Error al ejecutar la reasignación', 'error');
+        if (finalBtn) finalBtn.disabled = false;
+      }
+    });
+  });
+}
+

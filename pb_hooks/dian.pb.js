@@ -14,6 +14,34 @@ function getSetting(key, defaultValue) {
 }
 globalThis.getSetting = getSetting;
 
+function ensureDianLogsTable() {
+  try {
+    $app.db().newQuery(`
+      CREATE TABLE IF NOT EXISTS dian_logs (
+        id TEXT PRIMARY KEY,
+        created TEXT,
+        updated TEXT,
+        tx_id TEXT,
+        document_number TEXT,
+        document_type TEXT,
+        provider TEXT DEFAULT 'MATIAS',
+        endpoint TEXT,
+        status_code INTEGER DEFAULT 0,
+        success INTEGER DEFAULT 0,
+        request_payload TEXT,
+        response_payload TEXT,
+        error_message TEXT,
+        cufe TEXT,
+        duration_ms INTEGER DEFAULT 0
+      )
+    `).execute();
+    $app.db().newQuery(`CREATE INDEX IF NOT EXISTS idx_dian_logs_tx ON dian_logs(tx_id)`).execute();
+    $app.db().newQuery(`CREATE INDEX IF NOT EXISTS idx_dian_logs_doc ON dian_logs(document_number)`).execute();
+  } catch (_) {}
+}
+globalThis.ensureDianLogsTable = ensureDianLogsTable;
+ensureDianLogsTable();
+
 function saveDianLog(logData) {
   try {
     const logId = 'dlg_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -2492,6 +2520,10 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       paymentMethod = invMethod || (paymentForm === "2" ? "CREDITO" : "EFECTIVO");
     }
 
+    if (body.payment_dian_code) paymentDianCode = body.payment_dian_code;
+    if (body.payment_form) paymentForm = body.payment_form;
+    if (body.payment_method) paymentMethod = body.payment_method;
+
     const invDateStr = (invoice ? invoice.getString("date") : "") || (tx ? tx.getString("date") : "") || issueDate;
     if (paymentForm === "2" && dueDate) {
       try {
@@ -2933,15 +2965,28 @@ routerAdd('POST', '/api/dian/emit', (e) => {
         matiasOperationTypeId = 9;
       }
 
-      // Mapear tipo documento identificación del cliente para MATIAS API
-      // 1=RC, 2=TI, 3=CC, 4=TE, 5=Pasaporte, 6=NIT
-      let matiasIdDocType = 3;
-      if (custDIANDocType === "31") matiasIdDocType = 6;
-      else if (custDIANDocType === "13") matiasIdDocType = 3;
-      else if (custDIANDocType === "22" || custDIANDocType === "21") matiasIdDocType = 4;
-      else if (custDIANDocType === "41") matiasIdDocType = 5;
-      else if (custDIANDocType === "12") matiasIdDocType = 2;
-      else if (custDIANDocType === "11") matiasIdDocType = 1;
+      // Mapeo oficial contra catálogo MATIAS API (GET /api/ubl2.1/identity-documents)
+      const DIAN_TO_MATIAS_DOC_MAP = {
+        "13": 1,  // Cédula de Ciudadanía
+        "22": 2,  // Cédula de Extranjería
+        "31": 3,  // NIT
+        "11": 6,  // Registro Civil
+        "12": 7,  // Tarjeta de Identidad
+        "21": 8,  // Tarjeta de Extranjería
+        "41": 9,  // Pasaporte
+        "42": 10, // Doc. Extranjero
+        "50": 11, // NIT de otro país
+        "91": 12, // NUIP
+        "48": 13, // PPT
+        "47": 14  // PEP
+      };
+      const rawCustDocType = String(custDIANDocType || "").trim();
+      let matiasIdDocType = DIAN_TO_MATIAS_DOC_MAP[rawCustDocType];
+      if (!matiasIdDocType) {
+        // Fallback inteligente según tipo de persona
+        const isJuridica = customer && (customer.getString("person_type") === 'JURIDICA' || customer.getString("type") === 'JURIDICA');
+        matiasIdDocType = isJuridica ? 3 : 1; // 3 = NIT, 1 = Cédula de Ciudadanía
+      }
 
       // Sanear teléfono para reglas estrictas de MATIAS API (numérico entre 7 y 15 dígitos)
       const rawPhone = String(custPhone || "").replace(/[^0-9]/g, "");
@@ -3003,15 +3048,12 @@ routerAdd('POST', '/api/dian/emit', (e) => {
         return lineObj;
       });
 
-      let resNum = resolution ? resolution.getString("resolution_number") : getSetting("dian_resolution_number", "18760000001");
-      if (isNC || isND || isNDS) {
+      let resNum = (resolution && resolution.getString("resolution_number")) ? resolution.getString("resolution_number") : getSetting("dian_resolution_number", "18760000001");
+      if ((isNC || isND || isNDS) && !resNum) {
         resNum = "18760000001";
       }
       const cleanDocNum = String(folio || tx.getInt("number") || "1");
-      let cleanPrefix = prefix || "";
-      if (isNC && (!cleanPrefix || cleanPrefix === "NCFE")) {
-        cleanPrefix = "NC";
-      }
+      let cleanPrefix = prefix || (resolution ? resolution.getString("prefix") : "") || (isNC ? "NCFE" : "");
 
       // Catálogo oficial DANE a ID interno de municipio en MATIAS API (1.122 municipios)
       const MATIAS_DANE_CITIES = {"11001":149,"13001":150,"13006":151,"13030":152,"13042":153,"13052":154,"13062":155,"13074":156,"13140":157,"13160":158,"13188":159,"13212":160,"13222":161,"13244":162,"13248":163,"13268":164,"13300":165,"13430":166,"13433":167,"13440":168,"13442":169,"13458":170,"13468":171,"13473":172,"13490":173,"13549":174,"13580":175,"13600":176,"13620":177,"13647":178,"13650":179,"13654":180,"13655":181,"13657":182,"13667":183,"13670":184,"13673":185,"13683":186,"13688":187,"13744":188,"13760":189,"13780":190,"13810":191,"13836":192,"13838":193,"13873":194,"13894":195,"15001":196,"15022":197,"15047":198,"15051":199,"15087":200,"15090":201,"15092":202,"15097":203,"15104":204,"15106":205,"15109":206,"15114":207,"15131":208,"15135":209,"15162":210,"15172":211,"15176":212,"15180":213,"15183":214,"15185":215,"15187":216,"15189":217,"15204":218,"15212":219,"15215":220,"15218":221,"15223":222,"15224":223,"15226":224,"15232":225,"15236":226,"15238":227,"15244":228,"15248":229,"15272":230,"15276":231,"15293":232,"15296":233,"15299":234,"15317":235,"15322":236,"15325":237,"15332":238,"15362":239,"15367":240,"15368":241,"15377":242,"15380":243,"15401":244,"15403":245,"15407":246,"15425":247,"15442":248,"15455":249,"15464":250,"15466":251,"15469":252,"15476":253,"15480":254,"15491":255,"15494":256,"15500":257,"15507":258,"15511":259,"15514":260,"15516":261,"15518":262,"15522":263,"15531":264,"15533":265,"15537":266,"15542":267,"15550":268,"15572":269,"15580":270,"15599":271,"15600":272,"15621":273,"15632":274,"15638":275,"15646":276,"15660":277,"15664":278,"15667":279,"15673":280,"15676":281,"15681":282,"15686":283,"15690":284,"15693":285,"15696":286,"15720":287,"15723":288,"15740":289,"15753":290,"15755":291,"15757":292,"15759":293,"15761":294,"15762":295,"15763":296,"15764":297,"15774":298,"15776":299,"15778":300,"15790":301,"15798":302,"15804":303,"15806":304,"15808":305,"15810":306,"15814":307,"15816":308,"15820":309,"15822":310,"15832":311,"15835":312,"15837":313,"15839":314,"15842":315,"15861":316,"15879":317,"15897":318,"17001":319,"17013":320,"17042":321,"17050":322,"17088":323,"17174":324,"17272":325,"17380":326,"17388":327,"17433":328,"17442":329,"17444":330,"17446":331,"17486":332,"17495":333,"17513":334,"17524":335,"17541":336,"17614":337,"17616":338,"17653":339,"17662":340,"17665":341,"17777":342,"17867":343,"17873":344,"17877":345,"18001":346,"18029":347,"18094":348,"18150":349,"18205":350,"18247":351,"18256":352,"18410":353,"18460":354,"18479":355,"18592":356,"18610":357,"18753":358,"18756":359,"18785":360,"18860":361,"19001":362,"19022":363,"19050":364,"19075":365,"19100":366,"19110":367,"19130":368,"19137":369,"19142":370,"19212":371,"19256":372,"19290":373,"19300":374,"19318":375,"19355":376,"19364":377,"19392":378,"19397":379,"19418":380,"19450":381,"19455":382,"19473":383,"19513":384,"19517":385,"19532":386,"19533":387,"19548":388,"19573":389,"19585":390,"19622":391,"19693":392,"19698":393,"19701":394,"19743":395,"19760":396,"19780":397,"19785":398,"19807":399,"19809":400,"19821":401,"19824":402,"19845":403,"20001":404,"20011":405,"20013":406,"20032":407,"20045":408,"20060":409,"20175":410,"20178":411,"20228":412,"20238":413,"20250":414,"20295":415,"20310":416,"20383":417,"20400":418,"20443":419,"20517":420,"20550":421,"20570":422,"20614":423,"20621":424,"20710":425,"20750":426,"20770":427,"20787":428,"23001":429,"23068":430,"23079":431,"23090":432,"23162":433,"23168":434,"23182":435,"23189":436,"23300":437,"23350":438,"23417":439,"23419":440,"23464":441,"23466":442,"23500":443,"23555":444,"23570":445,"23574":446,"23580":447,"23586":448,"23660":449,"23670":450,"23672":451,"23675":452,"23678":453,"23682":454,"23686":455,"23807":456,"23815":457,"23855":458,"25001":459,"25019":460,"25035":461,"25040":462,"25053":463,"25086":464,"25095":465,"25099":466,"25120":467,"25123":468,"25126":469,"25148":470,"25151":471,"25154":472,"25168":473,"25175":474,"25178":475,"25181":476,"25183":477,"25200":478,"25214":479,"25224":480,"25245":481,"25258":482,"25260":483,"25269":484,"25279":485,"25281":486,"25286":487,"25288":488,"25290":489,"25293":490,"25295":491,"25297":492,"25299":493,"25307":494,"25312":495,"25317":496,"25320":497,"25322":498,"25324":499,"25326":500,"25328":501,"25335":502,"25339":503,"25368":504,"25372":505,"25377":506,"25386":507,"25394":508,"25398":509,"25402":510,"25407":511,"25426":512,"25430":513,"25436":514,"25438":515,"25473":516,"25483":517,"25486":518,"25488":519,"25489":520,"25491":521,"25506":522,"25513":523,"25518":524,"25524":525,"25530":526,"25535":527,"25572":528,"25580":529,"25592":530,"25594":531,"25596":532,"25599":533,"25612":534,"25645":535,"25649":536,"25653":537,"25658":538,"25662":539,"25718":540,"25736":541,"25740":542,"25743":543,"25745":544,"25754":545,"25758":546,"25769":547,"25772":548,"25777":549,"25779":550,"25781":551,"25785":552,"25793":553,"25797":554,"25799":555,"25805":556,"25807":557,"25815":558,"25817":559,"25823":560,"25839":561,"25841":562,"25843":563,"25845":564,"25851":565,"25862":566,"25867":567,"25871":568,"25873":569,"25875":570,"25878":571,"25885":572,"25898":573,"25899":574,"27001":575,"27006":576,"27025":577,"27050":578,"27073":579,"27075":580,"27077":581,"27099":582,"27135":583,"27150":584,"27160":585,"27205":586,"27245":587,"27250":588,"27361":589,"27372":590,"27413":591,"27425":592,"27430":593,"27450":594,"27491":595,"27495":596,"27580":597,"27600":598,"27615":599,"27660":600,"27745":601,"27787":602,"27800":603,"27810":604,"41001":605,"41006":606,"41013":607,"41016":608,"41020":609,"41026":610,"41078":611,"41132":612,"41206":613,"41244":614,"41298":615,"41306":616,"41319":617,"41349":618,"41357":619,"41359":620,"41378":621,"41396":622,"41483":623,"41503":624,"41518":625,"41524":626,"41530":627,"41548":628,"41551":629,"41615":630,"41660":631,"41668":632,"41676":633,"41770":634,"41791":635,"41797":636,"41799":637,"41801":638,"41807":639,"41872":640,"41885":641,"44001":642,"44035":643,"44078":644,"44090":645,"44098":646,"44110":647,"44279":648,"44378":649,"44420":650,"44430":651,"44560":652,"44650":653,"44847":654,"44855":655,"44874":656,"47001":657,"47030":658,"47053":659,"47058":660,"47161":661,"47170":662,"47189":663,"47205":664,"47245":665,"47258":666,"47268":667,"47288":668,"47318":669,"47460":670,"47541":671,"47545":672,"47551":673,"47555":674,"47570":675,"47605":676,"47660":677,"47675":678,"47692":679,"47703":680,"47707":681,"47720":682,"47745":683,"47798":684,"47960":685,"47980":686,"50001":687,"50006":688,"50110":689,"50124":690,"50150":691,"50223":692,"50226":693,"50245":694,"50251":695,"50270":696,"50287":697,"50313":698,"50318":699,"50325":700,"50330":701,"50350":702,"50370":703,"50400":704,"50450":705,"50568":706,"50573":707,"50577":708,"50590":709,"50606":710,"50680":711,"50683":712,"50686":713,"50689":714,"50711":715,"52001":716,"52019":717,"52022":718,"52036":719,"52051":720,"52079":721,"52083":722,"52110":723,"52203":724,"52207":725,"52210":726,"52215":727,"52224":728,"52227":729,"52233":730,"52240":731,"52250":732,"52254":733,"52256":734,"52258":735,"52260":736,"52287":737,"52317":738,"52320":739,"52323":740,"52352":741,"52354":742,"52356":743,"52378":744,"52381":745,"52385":746,"52390":747,"52399":748,"52405":749,"52411":750,"52418":751,"52427":752,"52435":753,"52473":754,"52480":755,"52490":756,"52506":757,"52520":758,"52540":759,"52560":760,"52565":761,"52573":762,"52585":763,"52612":764,"52621":765,"52678":766,"52683":767,"52685":768,"52687":769,"52693":770,"52694":771,"52696":772,"52699":773,"52720":774,"52786":775,"52788":776,"52835":777,"52838":778,"52885":779,"54001":780,"54003":781,"54051":782,"54099":783,"54109":784,"54125":785,"54128":786,"54172":787,"54174":788,"54206":789,"54223":790,"54239":791,"54245":792,"54250":793,"54261":794,"54313":795,"54344":796,"54347":797,"54377":798,"54385":799,"54398":800,"54405":801,"54418":802,"54480":803,"54498":804,"54518":805,"54520":806,"54553":807,"54599":808,"54660":809,"54670":810,"54673":811,"54680":812,"54720":813,"54743":814,"54800":815,"54810":816,"54820":817,"54871":818,"54874":819,"63001":820,"63111":821,"63130":822,"63190":823,"63212":824,"63272":825,"63302":826,"63401":827,"63470":828,"63548":829,"63594":830,"63690":831,"66001":832,"66045":833,"66075":834,"66088":835,"66170":836,"66318":837,"66383":838,"66400":839,"66440":840,"66456":841,"66572":842,"66594":843,"66682":844,"66687":845,"68001":846,"68013":847,"68020":848,"68051":849,"68077":850,"68079":851,"68081":852,"68092":853,"68101":854,"68121":855,"68132":856,"68147":857,"68152":858,"68160":859,"68162":860,"68167":861,"68169":862,"68176":863,"68179":864,"68190":865,"68207":866,"68209":867,"68211":868,"68217":869,"68229":870,"68235":871,"68245":872,"68250":873,"68255":874,"68264":875,"68266":876,"68271":877,"68276":878,"68296":879,"68298":880,"68307":881,"68318":882,"68320":883,"68322":884,"68324":885,"68327":886,"68344":887,"68368":888,"68370":889,"68377":890,"68385":891,"68397":892,"68406":893,"68418":894,"68425":895,"68432":896,"68444":897,"68464":898,"68468":899,"68498":900,"68500":901,"68502":902,"68522":903,"68524":904,"68533":905,"68547":906,"68549":907,"68572":908,"68573":909,"68575":910,"68615":911,"68655":912,"68669":913,"68673":914,"68679":915,"68682":916,"68684":917,"68686":918,"68689":919,"68705":920,"68720":921,"68745":922,"68755":923,"68770":924,"68773":925,"68780":926,"68820":927,"68855":928,"68861":929,"68867":930,"68872":931,"68895":932,"70001":933,"70110":934,"70124":935,"70204":936,"70215":937,"70221":938,"70230":939,"70233":940,"70235":941,"70265":942,"70400":943,"70418":944,"70429":945,"70473":946,"70508":947,"70523":948,"70670":949,"70678":950,"70702":951,"70708":952,"70713":953,"70717":954,"70742":955,"70771":956,"70820":957,"70823":958,"73001":959,"73024":960,"73026":961,"73030":962,"73043":963,"73055":964,"73067":965,"73124":966,"73148":967,"73152":968,"73168":969,"73200":970,"73217":971,"73226":972,"73236":973,"73268":974,"73270":975,"73275":976,"73283":977,"73319":978,"73347":979,"73349":980,"73352":981,"73408":982,"73411":983,"73443":984,"73449":985,"73461":986,"73483":987,"73504":988,"73520":989,"73547":990,"73555":991,"73563":992,"73585":993,"73616":994,"73622":995,"73624":996,"73671":997,"73675":998,"73678":999,"73686":1000,"73770":1001,"73854":1002,"73861":1003,"73870":1004,"73873":1005,"76001":1006,"76020":1007,"76036":1008,"76041":1009,"76054":1010,"76100":1011,"76109":1012,"76111":1013,"76113":1014,"76122":1015,"76126":1016,"76130":1017,"76147":1018,"76233":1019,"76243":1020,"76246":1021,"76248":1022,"76250":1023,"76275":1024,"76306":1025,"76318":1026,"76364":1027,"76377":1028,"76400":1029,"76403":1030,"76497":1031,"76520":1032,"76563":1033,"76606":1034,"76616":1035,"76622":1036,"76670":1037,"76736":1038,"76823":1039,"76828":1040,"76834":1041,"76845":1042,"76863":1043,"76869":1044,"76890":1045,"76892":1046,"76895":1047,"81001":1048,"81065":1049,"81220":1050,"81300":1051,"81591":1052,"81736":1053,"81794":1054,"85001":1055,"85010":1056,"85015":1057,"85125":1058,"85136":1059,"85139":1060,"85162":1061,"85225":1062,"85230":1063,"85250":1064,"85263":1065,"85279":1066,"85300":1067,"85315":1068,"85325":1069,"85400":1070,"85410":1071,"85430":1072,"85440":1073,"86001":1074,"86219":1075,"86320":1076,"86568":1077,"86569":1078,"86571":1079,"86573":1080,"86749":1081,"86755":1082,"86757":1083,"86760":1084,"86865":1085,"86885":1086,"88001":1087,"88564":1088,"91001":1089,"91263":1090,"91405":1091,"91407":1092,"91430":1093,"91460":1094,"91530":1095,"91536":1096,"91540":1097,"91669":1098,"91798":1099,"94001":1100,"94343":1101,"94663":1102,"94883":1103,"94884":1104,"94885":1105,"94886":1106,"94887":1107,"94888":1108,"95001":1109,"95015":1110,"95025":1111,"95200":1112,"97001":1113,"97161":1114,"97511":1115,"97666":1116,"97777":1117,"97889":1118,"99001":1119,"99524":1120,"99624":1121,"99773":1122,"05001":1,"05002":2,"05004":3,"05021":4,"05030":5,"05031":6,"05034":7,"05036":8,"05038":9,"05040":10,"05042":11,"05044":12,"05045":13,"05051":14,"05055":15,"05059":16,"05079":17,"05086":18,"05088":19,"05091":20,"05093":21,"05101":22,"05107":23,"05113":24,"05120":25,"05125":26,"05129":27,"05134":28,"05138":29,"05142":30,"05145":31,"05147":32,"05148":33,"05150":34,"05154":35,"05172":36,"05190":37,"05197":38,"05206":39,"05209":40,"05212":41,"05234":42,"05237":43,"05240":44,"05250":45,"05264":46,"05266":47,"05282":48,"05284":49,"05306":50,"05308":51,"05310":52,"05313":53,"05315":54,"05318":55,"05321":56,"05347":57,"05353":58,"05360":59,"05361":60,"05364":61,"05368":62,"05376":63,"05380":64,"05390":65,"05400":66,"05411":67,"05425":68,"05440":69,"05467":70,"05475":71,"05480":72,"05483":73,"05490":74,"05495":75,"05501":76,"05541":77,"05543":78,"05576":79,"05579":80,"05585":81,"05591":82,"05604":83,"05607":84,"05615":85,"05628":86,"05631":87,"05642":88,"05647":89,"05649":90,"05652":91,"05656":92,"05658":93,"05659":94,"05660":95,"05664":96,"05665":97,"05667":98,"05670":99,"05674":100,"05679":101,"05686":102,"05690":103,"05697":104,"05736":105,"05756":106,"05761":107,"05789":108,"05790":109,"05792":110,"05809":111,"05819":112,"05837":113,"05842":114,"05847":115,"05854":116,"05856":117,"05858":118,"05861":119,"05873":120,"05885":121,"05887":122,"05890":123,"05893":124,"05895":125,"08001":126,"08078":127,"08137":128,"08141":129,"08296":130,"08372":131,"08421":132,"08433":133,"08436":134,"08520":135,"08549":136,"08558":137,"08560":138,"08573":139,"08606":140,"08634":141,"08638":142,"08675":143,"08685":144,"08758":145,"08770":146,"08832":147,"08849":148};
@@ -3097,8 +3139,32 @@ routerAdd('POST', '/api/dian/emit', (e) => {
           dv: custDIANDocType === "31" ? (customer ? (customer.getString("dv") || calcularDV(custDocNum)) : calcularDV(custDocNum)) : null
         },
         payments: (function() {
-          const isCreditPayment = (paymentForm === 'credito' || paymentForm === '2');
+          function resolveMatiasPaymentMeansId(dianCode, method, isCredit) {
+            const c = String(dianCode || "").trim().toUpperCase();
+            const m = String(method || "").trim().toUpperCase();
+
+            if (c === "ZZZ") return 75; // Acuerdo mutuo
+            if (c === "10" || c === "EFECTIVO" || m === "EFECTIVO") return 10;
+            if (c === "47" || c === "TRANSFERENCIA" || m === "TRANSFERENCIA") return 47;
+            if (c === "42" || c === "CONSIGNACION" || c === "CONSIGNACIÓN" || m === "CONSIGNACION" || m === "CONSIGNACIÓN") return 42;
+            if (c === "20" || c === "CHEQUE" || m === "CHEQUE") return 20;
+            if (c === "48" || (c.includes("CRED") && c.includes("TARJ")) || (m.includes("CRED") && m.includes("TARJ"))) return 48;
+            if (c === "49" || (c.includes("DEB") && c.includes("TARJ")) || (m.includes("DEB") && m.includes("TARJ"))) return 49;
+            if (c === "30" || c === "CREDITO" || c === "CRÉDITO" || m === "CREDITO" || m === "CRÉDITO") return 30;
+            if (c === "31") return 31;
+            if (c === "71" || c === "BONOS" || c === "BONO") return 76;
+            if (c === "72" || c === "VALES" || c === "VALE") return 77;
+            if (c === "1" || c === "OTRO") return 1;
+
+            const parsed = parseInt(c, 10);
+            if (!isNaN(parsed) && parsed > 0) return parsed;
+
+            return isCredit ? 30 : 10;
+          }
+
+          const isCreditPayment = (paymentForm === 'credito' || paymentForm === '2' || paymentMethod === 'CREDITO');
           let safePaymentDueDate = issueDate;
+          let durMeasure = String(creditDays || "0");
           if (isCreditPayment) {
             if (dueDate && String(dueDate).slice(0, 10) >= issueDate) {
               safePaymentDueDate = String(dueDate).slice(0, 10);
@@ -3111,20 +3177,87 @@ routerAdd('POST', '/api/dian/emit', (e) => {
                 safePaymentDueDate = issueDate;
               }
             } else {
-              safePaymentDueDate = issueDate;
+              try {
+                const dCalc = new Date(issueDate + "T12:00:00Z");
+                dCalc.setDate(dCalc.getDate() + 30);
+                safePaymentDueDate = dCalc.toISOString().slice(0, 10);
+                durMeasure = "30";
+              } catch (_) {
+                safePaymentDueDate = issueDate;
+              }
+            }
+            if (durMeasure === "0" && safePaymentDueDate > issueDate) {
+              try {
+                const diff = Math.round((new Date(safePaymentDueDate + "T12:00:00Z").getTime() - new Date(issueDate + "T12:00:00Z").getTime()) / 86400000);
+                if (diff > 0) durMeasure = String(diff);
+              } catch (_) {}
             }
           }
+
+          // Soporte para pagos mixtos (payment_split)
+          const splitRaw = invoice ? (invoice.getString("payment_split") || "") : "";
+          if (splitRaw) {
+            try {
+              const splitObj = typeof splitRaw === "string" ? JSON.parse(splitRaw) : splitRaw;
+              if (splitObj && typeof splitObj === "object") {
+                const splitList = [];
+                for (const [sMethod, sAmount] of Object.entries(splitObj)) {
+                  const sVal = parseFloat(sAmount || 0);
+                  if (sVal > 0) {
+                    const isSCredit = (sMethod.toUpperCase() === "CREDITO" || sMethod.toUpperCase() === "CRÉDITO");
+                    const sMeansId = resolveMatiasPaymentMeansId("", sMethod, isSCredit);
+                    splitList.push({
+                      payment_method_id: isSCredit ? 2 : 1,
+                      means_payment_id: sMeansId,
+                      value_paid: sVal.toFixed(2),
+                      payment_due_date: isSCredit ? safePaymentDueDate : issueDate,
+                      duration_measure: isSCredit ? durMeasure : "0"
+                    });
+                  }
+                }
+                if (splitList.length > 0) {
+                  return splitList;
+                }
+              }
+            } catch (_) {}
+          }
+
+          const resolvedMeansId = resolveMatiasPaymentMeansId(paymentDianCode, paymentMethod, isCreditPayment);
           return [{
             payment_method_id: isCreditPayment ? 2 : 1,
-            means_payment_id: parseInt(paymentDianCode || 10, 10),
-            value_paid: parseFloat(total).toFixed(2),
+            means_payment_id: resolvedMeansId,
+            value_paid: parseFloat(total || 0).toFixed(2),
             payment_due_date: safePaymentDueDate,
-            duration_measure: String(creditDays || "0")
+            duration_measure: isCreditPayment ? durMeasure : "0"
           }];
         })(),
         payment_form: (function() {
-          const isCreditPayment = (paymentForm === 'credito' || paymentForm === '2');
+          function resolveMatiasPaymentMeansId(dianCode, method, isCredit) {
+            const c = String(dianCode || "").trim().toUpperCase();
+            const m = String(method || "").trim().toUpperCase();
+
+            if (c === "ZZZ") return 75; // Acuerdo mutuo
+            if (c === "10" || c === "EFECTIVO" || m === "EFECTIVO") return 10;
+            if (c === "47" || c === "TRANSFERENCIA" || m === "TRANSFERENCIA") return 47;
+            if (c === "42" || c === "CONSIGNACION" || c === "CONSIGNACIÓN" || m === "CONSIGNACION" || m === "CONSIGNACIÓN") return 42;
+            if (c === "20" || c === "CHEQUE" || m === "CHEQUE") return 20;
+            if (c === "48" || (c.includes("CRED") && c.includes("TARJ")) || (m.includes("CRED") && m.includes("TARJ"))) return 48;
+            if (c === "49" || (c.includes("DEB") && c.includes("TARJ")) || (m.includes("DEB") && m.includes("TARJ"))) return 49;
+            if (c === "30" || c === "CREDITO" || c === "CRÉDITO" || m === "CREDITO" || m === "CRÉDITO") return 30;
+            if (c === "31") return 31;
+            if (c === "71" || c === "BONOS" || c === "BONO") return 76;
+            if (c === "72" || c === "VALES" || c === "VALE") return 77;
+            if (c === "1" || c === "OTRO") return 1;
+
+            const parsed = parseInt(c, 10);
+            if (!isNaN(parsed) && parsed > 0) return parsed;
+
+            return isCredit ? 30 : 10;
+          }
+
+          const isCreditPayment = (paymentForm === 'credito' || paymentForm === '2' || paymentMethod === 'CREDITO');
           let safePaymentDueDate = issueDate;
+          let durMeasure = String(creditDays || "0");
           if (isCreditPayment) {
             if (dueDate && String(dueDate).slice(0, 10) >= issueDate) {
               safePaymentDueDate = String(dueDate).slice(0, 10);
@@ -3137,14 +3270,28 @@ routerAdd('POST', '/api/dian/emit', (e) => {
                 safePaymentDueDate = issueDate;
               }
             } else {
-              safePaymentDueDate = issueDate;
+              try {
+                const dCalc = new Date(issueDate + "T12:00:00Z");
+                dCalc.setDate(dCalc.getDate() + 30);
+                safePaymentDueDate = dCalc.toISOString().slice(0, 10);
+                durMeasure = "30";
+              } catch (_) {
+                safePaymentDueDate = issueDate;
+              }
+            }
+            if (durMeasure === "0" && safePaymentDueDate > issueDate) {
+              try {
+                const diff = Math.round((new Date(safePaymentDueDate + "T12:00:00Z").getTime() - new Date(issueDate + "T12:00:00Z").getTime()) / 86400000);
+                if (diff > 0) durMeasure = String(diff);
+              } catch (_) {}
             }
           }
+          const resolvedMeansId = resolveMatiasPaymentMeansId(paymentDianCode, paymentMethod, isCreditPayment);
           return {
             payment_form_id: isCreditPayment ? 2 : 1,
-            payment_method_id: parseInt(paymentDianCode || 10, 10),
+            payment_method_id: resolvedMeansId,
             payment_due_date: safePaymentDueDate,
-            duration_measure: String(creditDays || "0")
+            duration_measure: isCreditPayment ? durMeasure : "0"
           };
         })(),
         legal_monetary_totals: {
@@ -3394,6 +3541,16 @@ routerAdd('POST', '/api/dian/emit', (e) => {
 
       // Limpiar tags de metadatos internos de las notas visibles
       matiasPayload.notes = matiasPayload.notes.replace(/\[DIAN_SPECIAL_OP:.*?\]\s*/g, '').trim() || "Generado por GRAVY ERP";
+
+      if (body.dryRun || body.testPayload) {
+        return e.json(200, {
+          success: true,
+          dryRun: true,
+          provider: "MATIAS",
+          endpoint: matiasEndpoint,
+          payload: matiasPayload
+        });
+      }
 
       // Enviar a MATIAS API
       const matiasCaller = getMatiasCaller();
@@ -4326,6 +4483,213 @@ routerAdd('POST', '/api/dian/resend-email', (e) => {
   }
 });
 
+function buildNominaPayrollPayload(rec) {
+  let getSetting = (k, def) => {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + String(k || '').replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || def;
+    } catch (_) {
+      return def;
+    }
+  };
+
+  const prefijo = rec.getString("prefijo") || "NOM";
+  const consecutivo = rec.getInt("consecutivo") || 1;
+  const docNumber = `${prefijo}-${consecutivo}`;
+  const cune = rec.getString("cufe") || "—";
+  const xmlGenerado = rec.getString("xml_generado") || "";
+  const totalDevengos = rec.getFloat("total_devengos") || 0;
+  const totalDeducciones = rec.getFloat("total_deducciones") || 0;
+  const totalNeto = rec.getFloat("total_neto") || (totalDevengos - totalDeducciones);
+
+  let emp = null;
+  const empId = rec.getString("employee_id");
+  if (empId) {
+    try { emp = $app.findRecordById("third_parties", empId); } catch (_) {}
+    if (!emp) {
+      try { emp = $app.findRecordById("employees", empId); } catch (_) {}
+    }
+  }
+
+  let empRule = {};
+  if (emp) {
+    try {
+      const parts = $app.findRecordsByFilter("settings", "key ~ 'payroll_accounting_config_v1_employee_rules'");
+      if (parts && parts.length > 0) {
+        let allRulesJson = "";
+        parts.forEach((p) => { allRulesJson += (p.getString("value") || ""); });
+        const parsedRules = JSON.parse(allRulesJson);
+        const found = parsedRules.find((r) => r.employee_id === emp.id);
+        if (found) empRule = found;
+      }
+    } catch (_) {}
+  }
+
+    const formatPaymentMethod = function(m) {
+    const str = String(m || '').trim();
+    const code = (str.match(/\d+/) || [str])[0];
+    const methods = {
+      '10': '10 - Efectivo',
+      '42': '42 - Consignación Bancaria',
+      '30': '30 - Transferencia ACH',
+      '47': '47 - Transferencia Débito Bancaria',
+      '20': '20 - Cheque',
+      '48': '48 - Tarjeta Crédito',
+      '49': '49 - Tarjeta Débito',
+      '1': '01 - Instrumento no definido'
+    };
+    if (methods[code]) return methods[code];
+    if (str.length > 3) return str;
+    return str ? (str + ' - Transferencia Bancaria') : '42 - Consignación Bancaria';
+  };
+
+  const resolveThirdName = (id) => {
+    if (!id) return "";
+    try {
+      const t = $app.findRecordById("third_parties", id);
+      return t ? (t.getString("name") || t.getString("commercial_name") || "") : "";
+    } catch (_) {
+      return "";
+    }
+  };
+
+  const epsName = resolveThirdName(empRule.tercero_salud_id);
+  const afpName = resolveThirdName(empRule.tercero_pension_id);
+  const arlName = resolveThirdName(empRule.tercero_arl_id);
+  const cajaName = resolveThirdName(empRule.tercero_caja_id);
+
+  const arlRates = { 1: "0.522%", 2: "1.044%", 3: "2.436%", 4: "4.350%", 5: "6.960%" };
+  const arlRiskLevel = empRule.arl_risk_level || 1;
+  const arlRate = arlRates[arlRiskLevel] || "0.522%";
+
+  let empName = "";
+  let empDoc = "";
+  let empAddress = "";
+  let empCityDept = "";
+  let empPhone = "";
+  let empEmail = "";
+
+  if (emp) {
+    const fName = (emp.getString("first_name") || "").trim();
+    const lName = (emp.getString("last_name") || "").trim();
+    empName = (fName && lName) ? `${fName} ${lName}` : (emp.getString("name") || emp.getString("commercial_name") || "Colaborador");
+    empDoc = emp.getString("doc_number") || "";
+    empAddress = emp.getString("address") || "";
+    const city = emp.getString("city") || "";
+    const dept = emp.getString("department") || "";
+    empCityDept = (city && dept) ? `${city}, ${dept}` : (city || dept || "");
+    empPhone = emp.getString("phone") || emp.getString("phone2") || emp.getString("contact_phone") || "";
+    empEmail = emp.getString("email") || emp.getString("email2") || "";
+  }
+
+  if (!empName) {
+    const mPName = (xmlGenerado.match(/PrimerNombre="([^"]*)"/i) || [])[1] || "";
+    const mSName = (xmlGenerado.match(/SegundoNombre="([^"]*)"/i) || [])[1] || "";
+    const mPApellido = (xmlGenerado.match(/PrimerApellido="([^"]*)"/i) || [])[1] || "";
+    const mSApellido = (xmlGenerado.match(/SegundoApellido="([^"]*)"/i) || [])[1] || "";
+    const full = [mPName, mSName, mPApellido, mSApellido].filter(Boolean).join(" ");
+    empName = full || "Colaborador";
+  }
+  if (!empDoc) {
+    empDoc = (xmlGenerado.match(/NumeroDocumento="([^"]*)"/i) || [])[1] || "";
+  }
+  if (!empAddress) {
+    empAddress = (xmlGenerado.match(/LugarTrabajoDireccion="([^"]*)"/i) || [])[1] || "";
+  }
+
+  const fIngreso = empRule.start_date || (xmlGenerado.match(/FechaIngreso="([^"]*)"/i) || [])[1] || (emp ? (emp.getString("date_hired") || emp.getString("hire_date")) : "") || "";
+
+  let fRetiro = empRule.end_date || empRule.retirement_date || (xmlGenerado.match(/FechaRetiro="([^"]*)"/i) || [])[1] || "";
+  if (!fRetiro && emp) {
+    try {
+      const sett = $app.findFirstRecordByFilter("payroll_settlements", "employee_id = '" + emp.id + "'");
+      if (sett) {
+        fRetiro = sett.getString("settlement_date") || "";
+      }
+    } catch (_) {}
+  }
+
+  const cargo = empRule.position || (emp ? (emp.getString("cargo") || emp.getString("notes") || "") : "") || "Colaborador";
+
+  let formatNumeroALetras = function(num) {
+    const tempNum = parseFloat(String(num || 0)).toFixed(2).split('.');
+    const entero = parseInt(tempNum[0], 10);
+    const centavos = tempNum[1];
+    if (entero === 0) return 'CERO PESOS M/CTE CON ' + centavos + '/100';
+
+    function letras(n) {
+      if (n < 10) return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n];
+      if (n < 20) return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10];
+      if (n < 30) return n === 20 ? 'Veinte' : 'Veinti' + letras(n - 20).toLowerCase();
+      if (n < 100) {
+        const u = n % 10;
+        const d = Math.floor(n / 10);
+        const decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
+        return decenas[d] + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
+      }
+      if (n < 1000) {
+        const d_u = n % 100;
+        const c = Math.floor(n / 100);
+        const centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
+        if (n === 100) return 'Cien';
+        if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
+        return centenas[c] + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
+      }
+      if (n < 1000000) {
+        const mil = Math.floor(n / 1000);
+        const resto = n % 1000;
+        const t = mil === 1 ? 'Mil' : letras(mil) + ' mil';
+        return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+      }
+      if (n < 1000000000) {
+        const millon = Math.floor(n / 1000000);
+        const resto = n % 1000000;
+        const t = millon === 1 ? 'Un millón' : letras(millon) + ' millones';
+        return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+      }
+      return String(n);
+    }
+
+    return (letras(entero) + ' PESOS M/CTE CON ' + centavos + '/100').toUpperCase();
+  };
+
+  return {
+    companyName: getSetting("company_name", "DOMESTIKO SAS"),
+    companyNit: getSetting("company_nit", "901428834"),
+    companyAddress: getSetting("company_address", ""),
+    empName: empName,
+    empDoc: empDoc,
+    empAddress: empAddress,
+    empCityDept: empCityDept,
+    empPhone: empPhone,
+    empEmail: empEmail,
+    cargo: cargo,
+    costCenter: emp ? (emp.getString("cost_center") || "General / Colaboradores") : "General / Colaboradores",
+    basicSalary: empRule.basic_salary || (emp ? emp.getFloat("salary_base") : 0) || 1750905,
+    bankName: emp ? (emp.getString("bank_name") || "Bancolombia") : "Bancolombia",
+    bankAccountType: emp ? (emp.getString("bank_account_type") || "Ahorros") : "Ahorros",
+    bankAccount: emp ? (emp.getString("bank_account") || "06185364532") : "06185364532",
+    dateHired: fIngreso,
+    startDate: fIngreso,
+    fIngreso: fIngreso,
+    dateEnd: fRetiro,
+    retirementDate: fRetiro,
+    paymentMethod: formatPaymentMethod(emp ? emp.getString("payment_method") : "42"),
+    healthEntity: epsName || (emp ? emp.getString("eps") : "") || "EPS SURA",
+    pensionEntity: afpName || (empRule.is_pensioner ? "Pensionado (Exento)" : (emp ? emp.getString("afp") : "")) || "Pensionado (Exento)",
+    arlEntity: arlName ? `${arlName} - Riesgo ${arlRiskLevel} (${arlRate})` : ((emp ? emp.getString("arl") : "") || "ARL SURA - Riesgo 1 (0.522%)"),
+    cajaEntity: cajaName || (emp ? emp.getString("caja_compensacion") : "") || "CCF COMFENALCO DEL VALLE DEL CAUCA - COMFENALCO VALLE",
+    fechasPago: "2026-09-30",
+    issueDate: rec.getString("fecha_envio") || "2026-10-09 15:42:03 12:00:00-05:00",
+    cune: cune,
+    totalDevengos: totalDevengos,
+    totalDeducciones: totalDeducciones,
+    totalNeto: totalNeto,
+    valorEnLetras: formatNumeroALetras(totalNeto)
+  };
+}
+
+
 routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
   try {
     const body = e.requestInfo().body || {};
@@ -4374,8 +4738,8 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
     const badgeBg = isAjuste ? "#FEF3C7" : "#DCFCE7";
     const badgeColor = isAjuste ? "#92400E" : "#166534";
     const actionDesc = isAjuste 
-      ? `su <strong>nota de ajuste de nómina electrónica</strong> correspondiente al consecutivo <strong>${docNumber}</strong> procesada y validada ante la DIAN.`
-      : `su <strong>comprobante formal de nómina electrónica</strong> correspondiente al consecutivo <strong>${docNumber}</strong> procesado y validado ante la DIAN.`;
+      ? `el archivo comprimido <strong>ZIP</strong> con su <strong>nota de ajuste de nómina electrónica</strong> correspondiente al consecutivo <strong>${docNumber}</strong>. En su interior encontrará el documento XML formal validado por la DIAN y la representación gráfica en formato PDF.`
+      : `el archivo comprimido <strong>ZIP</strong> con su <strong>comprobante formal de nómina electrónica</strong> correspondiente al consecutivo <strong>${docNumber}</strong>. En su interior encontrará el documento XML firmado con validación DIAN y su respectiva representación gráfica en formato PDF.`;
 
     let empName = "Colaborador";
     try {
@@ -4457,6 +4821,10 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
               <td style="padding: 10px 0; text-align: right; font-size: 16px; font-weight: 800; color: #0284C7; border-bottom: 1px solid #F1F5F9;">${fmtNeto}</td>
             </tr>
             <tr>
+              <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Archivo adjunto:</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: 700; color: #7C3AED; border-bottom: 1px solid #F1F5F9;">Nomina_${docNumber}.zip</td>
+            </tr>
+            <tr>
               <td style="padding: 10px 0; color: #64748B; vertical-align: top;">CUNE:</td>
               <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 11px; word-break: break-all; color: #475569; max-width: 200px;">
                 ${cune}
@@ -4485,17 +4853,54 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
       html: htmlBody
     });
 
-    const attachments = {};
-    if (xmlGenerado) {
-      const xmlFile = $filesystem.fileFromBytes(xmlGenerado, `Nomina_${docNumber}.xml`);
-      attachments[`Nomina_${docNumber}.xml`] = xmlFile.reader.open();
+    let zipPath = "";
+    try {
+      const zipRes = $http.send({
+        url: "http://127.0.0.1:8088/api/dian/generate-zip-file",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          xmlContent: xmlGenerado,
+          filename: `Nomina_${docNumber}`,
+          isNomina: true,
+          payrollData: (function() {
+          let fn = null;
+          try {
+            const m = require(`${__hooks}/dian_mailer.js`);
+            if (m.buildNominaPayrollPayload) fn = m.buildNominaPayrollPayload;
+          } catch (_) {}
+          if (!fn && typeof buildNominaPayrollPayload === 'function') fn = buildNominaPayrollPayload;
+          return fn ? fn(rec) : {};
+        })()
+        })
+      });
+      if (zipRes.statusCode === 200) {
+        const zipData = JSON.parse(zipRes.raw);
+        if (zipData.success && zipData.zipPath) {
+          zipPath = zipData.zipPath;
+        }
+      }
+    } catch (zipErr) {
+      console.warn("[GRAVY HOOK] Error al solicitar ZIP de nómina al orquestador:", zipErr);
     }
-    const pdfB64 = rec.getString("pdf_base64");
-    if (pdfB64) {
+
+    const attachments = {};
+    if (zipPath) {
       try {
-        const pdfFile = $filesystem.fileFromBytes(pdfB64, `Nomina_${docNumber}.pdf`);
-        attachments[`Nomina_${docNumber}.pdf`] = pdfFile.reader.open();
-      } catch (_) {}
+        const zipFile = $filesystem.fileFromPath(zipPath);
+        attachments[`Nomina_${docNumber}.zip`] = zipFile.reader.open();
+      } catch (zipErr) {
+        console.error("[GRAVY HOOK] Error al abrir archivo ZIP de nómina:", zipErr);
+        if (xmlGenerado) {
+          const xmlFile = $filesystem.fileFromBytes(xmlGenerado, `Nomina_${docNumber}.xml`);
+          attachments[`Nomina_${docNumber}.xml`] = xmlFile.reader.open();
+        }
+      }
+    } else {
+      if (xmlGenerado) {
+        const xmlFile = $filesystem.fileFromBytes(xmlGenerado, `Nomina_${docNumber}.xml`);
+        attachments[`Nomina_${docNumber}.xml`] = xmlFile.reader.open();
+      }
     }
     message.attachments = attachments;
 
@@ -4549,95 +4954,47 @@ routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
       return e.json(404, { message: "Registro de nómina electrónica no encontrado." });
     }
 
-    const settingsList = $app.findRecordsByFilter("settings", "key = 'einvoice_method' || key = 'ftech_username' || key = 'ftech_password' || key = 'ftech_environment'");
-    let einvoiceMethod = "simulation";
-    let ftechUsername = "";
-    let ftechPassword = "";
-    let ftechEnvironment = "demo";
-
-    settingsList.forEach((s) => {
-      const k = s.getString("key");
-      const v = s.getString("value");
-      if (k === "einvoice_method") einvoiceMethod = v;
-      if (k === "ftech_username") ftechUsername = v;
-      if (k === "ftech_password") ftechPassword = v;
-      if (k === "ftech_environment") ftechEnvironment = v;
-    });
-
     const prefijo = rec.getString("prefijo") || "NOM";
     const consecutivo = rec.getInt("consecutivo") || 1;
     const filename = `NominaIndividual_${prefijo}-${consecutivo}.pdf`;
 
-    if (einvoiceMethod === "facturatech" && ftechUsername && ftechPassword && rec.getString("estado_dian") === "APROBADO") {
-      try {
-        const callFacturatechNominaSoap = (actionName, soapBodyParams, env) => {
-          const isDemo = (env === 'demo' || env === '2' || env === 'pruebas');
-          const baseUrl = isDemo 
-            ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
-            : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
-          const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
-          const soapAction = targetNs + '#' + actionName;
+    let buildPayload = null;
+    try {
+      const mailer = require(`${__hooks}/dian_mailer.js`);
+      if (mailer.buildNominaPayrollPayload) buildPayload = mailer.buildNominaPayrollPayload;
+    } catch (_) {}
+    if (!buildPayload && typeof buildNominaPayrollPayload === 'function') buildPayload = buildNominaPayrollPayload;
 
-          let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
-          bodyXml += '<username xsi:type="xsd:string">' + ftechUsername + '</username>';
-          bodyXml += '<password xsi:type="xsd:string">' + ftechPassword + '</password>';
-          for (let key in soapBodyParams) {
-            const val = soapBodyParams[key];
-            const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
-            bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
-          }
-          bodyXml += '</urn:' + actionName + '>';
+    const payrollData = buildPayload ? buildPayload(rec) : {};
 
-          const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
-            '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
-            '  <soapenv:Header/>\n' +
-            '  <soapenv:Body>\n' +
-            '    ' + bodyXml + '\n' +
-            '  </soapenv:Body>\n' +
-            '</soapenv:Envelope>';
-
-          return $http.send({
-            url: baseUrl,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'text/xml; charset=utf-8',
-              'SOAPAction': soapAction
-            },
-            body: envelope
-          });
-        };
-
-        const soapRes = callFacturatechNominaSoap('FtechAction.downloadPDF', {
-          prefix: prefijo,
-          number: consecutivo
-        }, ftechEnvironment);
-
-        if (soapRes.statusCode === 200) {
-          const raw = soapRes.raw || "";
-          const docB64Match = raw.match(/<documentBase64[^>]*>(.*?)<\/documentBase64>/i);
-          const docB64 = docB64Match ? docB64Match[1] : "";
-          if (docB64) {
-            return e.json(200, {
-              success: true,
-              isOfficial: true,
-              pdfBase64: docB64,
-              filename: filename
-            });
-          }
-        }
-      } catch (errSoap) {
-        console.error("[GRAVY HOOK] Error al descargar PDF oficial de Facturatech:", errSoap);
-      }
-    }
-
-    return e.json(200, {
-      success: true,
-      isOfficial: false,
-      filename: filename
+    const pdfRes = $http.send({
+      url: "http://127.0.0.1:8088/api/dian/generate-pdf",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        xmlContent: rec.getString("xml_generado") || "",
+        filename: `${prefijo}-${consecutivo}`,
+        isNomina: true,
+        format: "base64",
+        payrollData: payrollData
+      })
     });
 
+    if (pdfRes.statusCode === 200) {
+      const data = JSON.parse(pdfRes.raw);
+      if (data.success && data.pdfBase64) {
+        return e.json(200, {
+          success: true,
+          pdfBase64: data.pdfBase64,
+          filename: filename
+        });
+      }
+    } else {
+      throw new Error("El orquestador no pudo generar el PDF: " + pdfRes.raw);
+    }
   } catch (err) {
-    return e.json(500, { message: "Error al descargar PDF: " + err.message });
+    console.error("[GRAVY HOOK] Error al generar PDF de nómina:", err);
+    return e.json(500, { message: "Error al generar PDF: " + err.message });
   }
 });
 
@@ -4765,28 +5122,62 @@ routerAdd("POST", "/api/dian/sync-matias-resolutions", (e) => {
     const synced = [];
 
     // Mapeo normativo DIAN estricto
-    // 7: Factura Electrónica (FV), 20: POS Electrónico (POS), 11: Documento Soporte (DS), 13: Nómina Electrónica (NE)
+    // 7: Factura Electrónica (FV), 20: POS Electrónico (POS), 11: Documento Soporte (DS), 15: Nota Ajuste DS (NDS), 13: Nómina Electrónica (NE), 14: Nota Ajuste Nómina (NANE), 4: Nota Débito (ND), 5: Nota Crédito (NC)
     const typeMapping = {
       7: 'FV',
       20: 'POS',
       11: 'DS',
-      13: 'NE'
+      15: 'NDS',
+      13: 'NE',
+      14: 'NANE',
+      4: 'ND',
+      5: 'NC'
     };
 
     const typeCol = $app.findCollectionByNameOrId("dian_resolutions");
+    try {
+      const docTypeField = typeCol.fields.getByName("document_type");
+      if (docTypeField && docTypeField.values) {
+        const allowed = ["FV", "POS", "DS", "NE", "NC", "ND", "NDS", "NANE"];
+        const current = docTypeField.values || [];
+        const valsArray = [];
+        for (let j = 0; j < current.length; j++) {
+          valsArray.push(String(current[j]));
+        }
+        let changed = false;
+        for (let k = 0; k < allowed.length; k++) {
+          if (valsArray.indexOf(allowed[k]) === -1) {
+            valsArray.push(allowed[k]);
+            changed = true;
+          }
+        }
+        if (changed) {
+          docTypeField.values = valsArray;
+          $app.save(typeCol);
+          console.log("[SYNC-RESOLUTIONS] Campo document_type actualizado con NANE");
+        }
+      }
+    } catch (eColErr) {
+      console.warn("[SYNC-RESOLUTIONS] Error al asegurar esquema de dian_resolutions:", eColErr);
+    }
 
     for (let i = 0; i < records.length; i++) {
       const r = records[i];
       const docType = typeMapping[r.type_document_id] || (r.type_document_id === 1 ? 'FV' : null);
+      console.log(`[SYNC-DEBUG] item ${i}: id=${r.id}, type_document_id=${r.type_document_id}, docType=${docType}, prefix=${r.prefix}`);
       if (!docType) continue;
 
       let existing = null;
       try {
-        existing = $app.findFirstRecordByFilter("dian_resolutions", "document_type = '" + docType + "'");
+        existing = $app.findFirstRecordByFilter("dian_resolutions", "document_type = '" + docType + "' && prefix = '" + (r.prefix || '').replace(/'/g, "''") + "'");
       } catch (_) {
         try {
-          existing = $app.findFirstRecordByFilter("dian_resolutions", "prefix = '" + (r.prefix || '').replace(/'/g, "''") + "'");
-        } catch (_2) {}
+          existing = $app.findFirstRecordByFilter("dian_resolutions", "document_type = '" + docType + "'");
+        } catch (_2) {
+          try {
+            existing = $app.findFirstRecordByFilter("dian_resolutions", "prefix = '" + (r.prefix || '').replace(/'/g, "''") + "'");
+          } catch (_3) {}
+        }
       }
 
       const rec = existing || new Record(typeCol);
@@ -4838,6 +5229,9 @@ routerAdd("GET", "/api/dian/logs", (e) => {
   const limit = Math.min(parseInt(e.requestInfo().query["limit"] || "20", 10), 100);
 
   try {
+    if (typeof ensureDianLogsTable === "function") {
+      ensureDianLogsTable();
+    }
     let sql = "SELECT * FROM dian_logs WHERE 1=1";
     const binds = {};
     if (txId) {
@@ -4891,7 +5285,8 @@ routerAdd("GET", "/api/dian/logs", (e) => {
       }))
     });
   } catch (err) {
-    return e.json(500, { success: false, error: String(err) });
+    console.warn("[GRAVY HOOK] Advertencia consultando dian_logs:", err);
+    return e.json(200, { success: true, data: [], message: String(err) });
   }
 });
 

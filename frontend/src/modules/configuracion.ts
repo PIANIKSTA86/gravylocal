@@ -649,6 +649,15 @@ async function renderConfiguracion(c) {
                 </select>
               </div>
             </div>
+
+            <div class="form-group">
+              <label class="form-label font-semibold text-xs text-gray-700">Momento de Deducción de Inventario (Kárdex)</label>
+              <select id="cfg-logistics-inventory-deduct-mode" class="form-input text-xs" ${canEdit ? '' : 'disabled'} style="color-scheme: light;">
+                <option value="al_facturar" ${byKey['logistics_inventory_deduct_mode']?.value !== 'al_despachar' ? 'selected' : ''}>Al Facturar (Flujo estándar DIAN - Reserva preventiva en despacho)</option>
+                <option value="al_despachar" ${byKey['logistics_inventory_deduct_mode']?.value === 'al_despachar' ? 'selected' : ''}>Al Despachar / Entregar (Flujo logístico físico previo a facturación)</option>
+              </select>
+              <p class="text-[11px] text-gray-500 mt-1">Habilita la creación y edición de despachos sobre pedidos pendientes sin facturar.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -1343,6 +1352,7 @@ async function renderConfiguracion(c) {
           ['ecommerce_order_prefix', getInputVal('cfg-ecommerce-order-prefix').trim() || 'PED-'],
           ['ecommerce_min_order', getInputVal('cfg-ecommerce-min-order').trim() || '0'],
           ['ecommerce_block_out_of_stock', getInputVal('cfg-ecommerce-block-out-of-stock').trim() || '0'],
+          ['logistics_inventory_deduct_mode', getInputVal('cfg-logistics-inventory-deduct-mode').trim() || 'al_facturar'],
         ];
         await Promise.all(payload.map(([key, value]) => API.setSetting(key, value)));
         showToast('Configuración gráfica y operativa de la Tienda Virtual guardada con éxito', 'success');

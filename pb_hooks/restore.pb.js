@@ -41,7 +41,7 @@ routerAdd("POST", "/api/gravy/restore", (e) => {
     const drCol = $app.findCollectionByNameOrId("dian_resolutions");
     const docTypeField = drCol.fields.getByName("document_type");
     if (docTypeField && docTypeField.type === "select") {
-      const allowed = ["FV", "POS", "DS", "NE", "NC", "ND", "NDS"];
+      const allowed = ["FV", "POS", "DS", "NE", "NC", "ND", "NDS", "NANE"];
       const current = docTypeField.values || [];
       const missing = allowed.filter(v => current.indexOf(v) === -1);
       if (missing.length > 0) {

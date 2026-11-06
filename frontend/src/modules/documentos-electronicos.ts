@@ -337,22 +337,22 @@ function renderDocRow(d: ElecDoc) {
     `;
   } else if (d.radian_031_status === 'sent') {
     radianCellHtml = `
-      <div class="flex items-center gap-1">
-        <span class="badge badge-red text-[10px]" title="Causal ${d.radian_031_claim_code || '01'}: ${d.radian_031_notes || ''}">
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="badge bg-rose-100 text-rose-800 text-[10px] font-bold border border-rose-300" title="Causal ${d.radian_031_claim_code || '01'}: ${(window as any).esc(d.radian_031_notes || '')}">
           <i class="fas fa-ban mr-1"></i>031 Reclamada
         </span>
-        <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1 text-slate-400 hover:text-slate-700" title="Ver auditoría de eventos" onclick="window.openRadianHistoryModal('${d.id}')">
+        <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1 text-slate-400 hover:text-slate-700" title="Ver auditoría de eventos DIAN" onclick="window.openRadianHistoryModal('${d.id}')">
           <i class="fas fa-clock-rotate-left"></i>
         </button>
       </div>
     `;
   } else if (d.radian_033_status === 'sent') {
     radianCellHtml = `
-      <div class="flex items-center gap-1">
-        <span class="badge text-[10px] bg-emerald-100 text-emerald-800 font-bold border border-emerald-300" title="Título Valor RADIAN constituido (${d.radian_033_date || ''})">
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="badge bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300" title="Título Valor RADIAN constituido (${d.radian_033_date || ''})">
           <i class="fas fa-award mr-1"></i>033 Título Valor
         </span>
-        <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1 text-slate-400 hover:text-slate-700" title="Ver auditoría de eventos" onclick="window.openRadianHistoryModal('${d.id}')">
+        <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1 text-slate-400 hover:text-slate-700" title="Ver auditoría de eventos DIAN" onclick="window.openRadianHistoryModal('${d.id}')">
           <i class="fas fa-clock-rotate-left"></i>
         </button>
       </div>
@@ -362,43 +362,87 @@ function renderDocRow(d: ElecDoc) {
     const is032 = d.radian_032_status === 'sent';
 
     radianCellHtml = `
-      <div class="flex items-center gap-1 flex-wrap">
-        ${is030 ? `
-          <span class="badge badge-green text-[10px]" title="DIAN - Acuse de Recibo enviado (${d.radian_030_date || ''})">
-            <i class="fas fa-check mr-0.5"></i>030
-          </span>
-        ` : `
-          <button class="btn btn-outline btn-sm text-[10px] py-0.5 px-1.5 text-blue-600 hover:bg-blue-50 border-blue-200" title="Emitir DIAN - Evento 030 (Acuse de Recibo)" onclick="window.openRadianEventModal('${d.id}', '030')">
-            <i class="fas fa-envelope-open-text mr-0.5"></i>030 Acuse
-          </button>
-        `}
+      <div class="relative inline-block text-left" id="radian-dropdown-wrapper-${d.id}">
+        <div class="flex items-center gap-1 flex-wrap">
+          ${is030 ? `
+            <span class="badge badge-green text-[10px] font-semibold" title="DIAN 030 - Acuse de Recibo enviado (${d.radian_030_date || ''})">
+              <i class="fas fa-check mr-0.5"></i>030
+            </span>
+          ` : ''}
 
-        ${is032 ? `
-          <span class="badge badge-green text-[10px]" title="DIAN - Recibo de bien/servicio confirmado (${d.radian_032_date || ''})">
-            <i class="fas fa-check mr-0.5"></i>032
-          </span>
-        ` : (is030 ? `
-          <button class="btn btn-outline btn-sm text-[10px] py-0.5 px-1.5 text-indigo-600 hover:bg-indigo-50 border-indigo-200" title="Confirmar DIAN - Evento 032 (Recibo del Bien o Servicio)" onclick="window.openRadianEventModal('${d.id}', '032')">
-            <i class="fas fa-box-open mr-0.5"></i>032 Recibo
-          </button>
-          <button class="btn btn-outline btn-sm text-[10px] py-0.5 px-1 text-red-500 hover:bg-red-50 border-red-200" title="Reclamar ante la DIAN (Evento 031)" onclick="window.openRadianClaimModal('${d.id}', '${(window as any).esc(d.number)}', '${(window as any).esc(d.supplier_name)}')">
-            <i class="fas fa-triangle-exclamation"></i>
-          </button>
-        ` : `
-          <span class="text-[10px] text-gray-300 font-mono" title="Requiere emitir Evento 030 primero">032</span>
-        `)}
+          ${is032 ? `
+            <span class="badge badge-green text-[10px] font-semibold" title="DIAN 032 - Recibo de bien/servicio confirmado (${d.radian_032_date || ''})">
+              <i class="fas fa-check mr-0.5"></i>032
+            </span>
+          ` : ''}
 
-        ${is032 ? `
-          <button class="btn btn-outline btn-sm text-[10px] py-0.5 px-1.5 text-emerald-600 hover:bg-emerald-50 border-emerald-300" title="Aceptación Expresa - DIAN Evento 033" onclick="window.openRadianEventModal('${d.id}', '033')">
-            <i class="fas fa-file-signature mr-0.5"></i>033 Aceptar
+          <!-- Botón Menú Desplegable [ Emitir Evento ▼ ] -->
+          <button type="button" class="btn btn-outline btn-sm text-[10px] py-0.5 px-2 font-medium border-violet-300 text-violet-700 hover:bg-violet-50 flex items-center gap-1 rounded-md transition active:scale-98" onclick="window._toggleRadianMenu(event, '${d.id}')" title="Opciones de eventos y reclamos DIAN">
+            <span>Emitir Evento</span>
+            <i class="fas fa-chevron-down text-[8px] ml-0.5"></i>
           </button>
-        ` : `
-          <span class="text-[10px] text-gray-300 font-mono" title="Requiere emitir Evento 032 primero">033</span>
-        `}
 
-        <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1 text-slate-400 hover:text-slate-700 ml-0.5" title="Ver auditoría de eventos DIAN" onclick="window.openRadianHistoryModal('${d.id}')">
-          <i class="fas fa-clock-rotate-left"></i>
-        </button>
+          <!-- Historial -->
+          <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1 text-slate-400 hover:text-slate-700 ml-0.5" title="Ver auditoría de eventos DIAN" onclick="window.openRadianHistoryModal('${d.id}')">
+            <i class="fas fa-clock-rotate-left"></i>
+          </button>
+        </div>
+
+        <!-- Menú Flotante de Opciones RADIAN -->
+        <div id="radian-menu-${d.id}" class="radian-dropdown-menu hidden absolute left-0 z-50 mt-1 w-56 rounded-xl shadow-xl bg-white border border-slate-200 py-1.5 ring-1 ring-black ring-opacity-5 divide-y divide-slate-100 text-left">
+          <div class="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            Eventos RADIAN DIAN
+          </div>
+          <div class="py-1">
+            ${is030 ? `
+              <div class="px-3 py-1.5 flex items-center justify-between text-slate-400 bg-slate-50 text-[11px] cursor-default">
+                <span class="flex items-center gap-1.5"><i class="fas fa-check text-emerald-500"></i>030 Acuse de Recibo</span>
+                <span class="text-[9px] text-emerald-600 font-mono font-bold">Enviado</span>
+              </div>
+            ` : `
+              <a href="javascript:void(0)" onclick="window._closeAllRadianMenus(); window.openRadianEventModal('${d.id}', '030')" class="px-3 py-2 flex items-center justify-between text-slate-700 hover:bg-violet-50 hover:text-violet-700 text-[11px] font-medium transition">
+                <span class="flex items-center gap-1.5"><i class="fas fa-envelope-open-text text-violet-600"></i>030 Acuse de Recibo</span>
+                <span class="text-[9px] text-violet-600 bg-violet-100 px-1.5 py-0.2 rounded font-bold">Paso 1</span>
+              </a>
+            `}
+
+            ${is032 ? `
+              <div class="px-3 py-1.5 flex items-center justify-between text-slate-400 bg-slate-50 text-[11px] cursor-default">
+                <span class="flex items-center gap-1.5"><i class="fas fa-check text-emerald-500"></i>032 Recibo del Bien</span>
+                <span class="text-[9px] text-emerald-600 font-mono font-bold">Enviado</span>
+              </div>
+            ` : (is030 ? `
+              <a href="javascript:void(0)" onclick="window._closeAllRadianMenus(); window.openRadianEventModal('${d.id}', '032')" class="px-3 py-2 flex items-center justify-between text-slate-700 hover:bg-violet-50 hover:text-violet-700 text-[11px] font-medium transition">
+                <span class="flex items-center gap-1.5"><i class="fas fa-box-open text-indigo-600"></i>032 Recibo del Bien</span>
+                <span class="text-[9px] text-indigo-600 bg-indigo-100 px-1.5 py-0.2 rounded font-bold">Paso 2</span>
+              </a>
+            ` : `
+              <div class="px-3 py-1.5 flex items-center justify-between text-slate-300 text-[11px] cursor-not-allowed" title="Requiere emitir primero el Evento 030">
+                <span class="flex items-center gap-1.5"><i class="fas fa-lock text-slate-300"></i>032 Recibo del Bien</span>
+                <span class="text-[9px] text-slate-400">Req. 030</span>
+              </div>
+            `)}
+
+            ${is032 ? `
+              <a href="javascript:void(0)" onclick="window._closeAllRadianMenus(); window.openRadianEventModal('${d.id}', '033')" class="px-3 py-2 flex items-center justify-between text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 text-[11px] font-medium transition">
+                <span class="flex items-center gap-1.5"><i class="fas fa-award text-emerald-600"></i>033 Aceptación Expresa</span>
+                <span class="text-[9px] text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded font-bold">Título</span>
+              </a>
+            ` : `
+              <div class="px-3 py-1.5 flex items-center justify-between text-slate-300 text-[11px] cursor-not-allowed" title="Requiere confirmar primero el Recibo del Bien (032)">
+                <span class="flex items-center gap-1.5"><i class="fas fa-lock text-slate-300"></i>033 Aceptación Expresa</span>
+                <span class="text-[9px] text-slate-400">Req. 032</span>
+              </div>
+            `}
+          </div>
+
+          <div class="py-1">
+            <a href="javascript:void(0)" onclick="window._closeAllRadianMenus(); window.openRadianClaimModal('${d.id}', '${(window as any).esc(d.number)}', '${(window as any).esc(d.supplier_name)}')" class="px-3 py-2 flex items-center justify-between text-rose-600 hover:bg-rose-50 hover:text-rose-700 text-[11px] font-medium transition">
+              <span class="flex items-center gap-1.5"><i class="fas fa-triangle-exclamation text-rose-500"></i>031 Reclamo / Rechazo</span>
+              <span class="text-[9px] text-rose-700 bg-rose-100 border border-rose-200 px-1.5 py-0.2 rounded font-semibold">Disputa</span>
+            </a>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -1255,6 +1299,19 @@ async function openDocHomologationModal(id: string) {
           <div><span class="text-slate-400 block text-[10px]">FECHA EMISIÓN</span> ${d.issue_date}</div>
           <div><span class="text-slate-400 block text-[10px]">VALOR TOTAL</span> <strong class="text-sm font-mono" style="color: #7C3AED;">${(window as any).fmt(d.total)}</strong></div>
         </div>
+
+        ${d.radian_031_status === 'sent' ? `
+          <div class="p-3 rounded-xl border bg-rose-50 border-rose-200 text-rose-900 flex items-start gap-2.5">
+            <i class="fas fa-triangle-exclamation text-rose-600 mt-0.5 text-base"></i>
+            <div>
+              <div class="font-bold text-xs">Aviso DIAN / Fiscal: Factura Reclamada Formalmente (Evento 031)</div>
+              <div class="text-[11px] text-rose-700 mt-0.5 leading-relaxed">
+                Esta factura tiene un Reclamo registrado ante la DIAN (Causal ${d.radian_031_claim_code || '01'}: ${(window as any).esc(d.radian_031_notes || 'Reclamada')}).
+                Como líder contable, puedes continuar con la homologación si requiere registro contable interno bajo tu criterio.
+              </div>
+            </div>
+          </div>
+        ` : ''}
 
         <!-- Alerta de Tercero y Perfil Fiscal -->
         <div id="cde-thirdparty-warning" class="p-3 rounded-xl border flex items-center justify-between ${isThirdPartyExists ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}">
@@ -3169,6 +3226,21 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
               <input type="text" id="cde-cfg-resp-dept" class="form-input w-full text-xs" placeholder="Ej: Contabilidad / Dirección" value="${(window as any).esc(respDept || 'Contabilidad')}">
             </div>
           </div>
+
+          <!-- Estado y Vinculación con MATIAS API -->
+          <div class="mt-4 pt-3 border-t border-violet-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-violet-50/70 p-3.5 rounded-xl border border-violet-200">
+            <div>
+              <div class="text-[10px] font-bold uppercase tracking-wider text-violet-700 mb-0.5">Estado en Proveedor Tecnológico DIAN (MATIAS API)</div>
+              <div id="matias-sync-status-indicator" class="flex items-center gap-1.5 mt-1">
+                <span class="badge bg-slate-100 text-slate-500 text-[11px]"><i class="fas fa-spinner fa-spin mr-1"></i>Consultando MATIAS API...</span>
+              </div>
+            </div>
+            <div>
+              <button type="button" id="btn-sync-matias-person" class="btn btn-sm btn-outline border-violet-400 text-violet-700 hover:bg-violet-600 hover:text-white text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 font-semibold transition active:scale-98">
+                <i class="fas fa-cloud-arrow-up"></i>Vincular Firmante en MATIAS API
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -3265,6 +3337,102 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
       allAccounts
     );
 
+    // Consulta de estado de vinculación del responsable en MATIAS API
+    const checkMatiasPersonStatus = async () => {
+      const container = document.getElementById('matias-sync-status-indicator');
+      if (!container) return;
+      try {
+        const baseUrl = (window as any).pb?.baseUrl || (window as any).PB_URL || window.location.origin;
+        const authToken = (window as any).pb?.authToken || '';
+        const res = await fetch(`${baseUrl}/api/radian/reception-person-status`, {
+          headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
+        const data = await res.json();
+        if (data.success && data.linked && data.default_person) {
+          const p = data.default_person;
+          container.innerHTML = `
+            <span class="badge bg-emerald-100 text-emerald-800 text-[11px] font-semibold border border-emerald-300 flex items-center gap-1">
+              <i class="fas fa-circle-check text-emerald-600"></i>Vinculado como Firmante Principal: <strong>${(window as any).esc(p.first_name)} ${(window as any).esc(p.last_name)}</strong> (CC: ${(window as any).esc(p.dni)})
+            </span>
+          `;
+        } else {
+          container.innerHTML = `
+            <span class="badge bg-amber-100 text-amber-800 text-[11px] font-semibold border border-amber-300 flex items-center gap-1">
+              <i class="fas fa-triangle-exclamation text-amber-600"></i>Sin vincular en MATIAS API. Presione el botón lateral para sincronizar.
+            </span>
+          `;
+        }
+      } catch (_) {
+        container.innerHTML = `
+          <span class="badge bg-slate-100 text-slate-500 text-[11px]">No se pudo verificar el estado con MATIAS API</span>
+        `;
+      }
+    };
+
+    checkMatiasPersonStatus();
+
+    // Listener para el botón "Vincular Firmante en MATIAS API"
+    document.getElementById('btn-sync-matias-person')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-sync-matias-person') as HTMLButtonElement;
+      const dni = (document.getElementById('cde-cfg-resp-dni') as HTMLInputElement)?.value.trim();
+      const fn = (document.getElementById('cde-cfg-resp-first-name') as HTMLInputElement)?.value.trim();
+      const ln = (document.getElementById('cde-cfg-resp-last-name') as HTMLInputElement)?.value.trim();
+      const email = (document.getElementById('cde-cfg-resp-email') as HTMLInputElement)?.value.trim();
+      const job = (document.getElementById('cde-cfg-resp-job-title') as HTMLInputElement)?.value.trim();
+      const dept = (document.getElementById('cde-cfg-resp-dept') as HTMLInputElement)?.value.trim();
+
+      if (!dni || !fn) {
+        return (window as any).showToast('Cédula y Nombres del responsable son obligatorios para vincular.', 'error');
+      }
+
+      const origText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Vinculando en MATIAS API...`;
+
+      try {
+        // Guardar primero en settings local
+        await Promise.all([
+          (window as any).API.setSetting('radian_responsible_dni', dni),
+          (window as any).API.setSetting('radian_responsible_first_name', fn),
+          (window as any).API.setSetting('radian_responsible_last_name', ln),
+          (window as any).API.setSetting('radian_responsible_email', email),
+          (window as any).API.setSetting('radian_responsible_job_title', job),
+          (window as any).API.setSetting('radian_responsible_department', dept)
+        ]);
+
+        const baseUrl = (window as any).pb?.baseUrl || (window as any).PB_URL || window.location.origin;
+        const authToken = (window as any).pb?.authToken || '';
+        const res = await fetch(`${baseUrl}/api/radian/sync-reception-person`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+          },
+          body: JSON.stringify({
+            dni,
+            first_name: fn,
+            last_name: ln,
+            email,
+            job_title: job,
+            department: dept
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Error al vincular persona en MATIAS API');
+        }
+
+        (window as any).showToast(data.message || 'Firmante vinculado exitosamente en MATIAS API.', 'success');
+        await checkMatiasPersonStatus();
+      } catch (err: any) {
+        (window as any).showToast(`Error al sincronizar firmante: ${err.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+      }
+    });
+
     document.getElementById('btn-cde-save-settings')?.addEventListener('click', async () => {
       const expenseInput = document.getElementById('cde-cfg-expense-search') as HTMLInputElement;
       const inventoryInput = document.getElementById('cde-cfg-inventory-search') as HTMLInputElement;
@@ -3358,13 +3526,7 @@ async function reverseDocContabilization(docId: string) {
   }
 
   try {
-    const [d, respDni, respFn, respLn, respJob] = await Promise.all([
-      (window as any).pb.get('electronic_documents', docId),
-      (window as any).API.getSetting('radian_responsible_dni').catch(() => ''),
-      (window as any).API.getSetting('radian_responsible_first_name').catch(() => ''),
-      (window as any).API.getSetting('radian_responsible_last_name').catch(() => ''),
-      (window as any).API.getSetting('radian_responsible_job_title').catch(() => 'Representante Legal / Contador')
-    ]);
+    const d = await (window as any).pb.get('electronic_documents', docId);
     if (!d.transaction_id) {
       return (window as any).showToast('El documento no tiene una transacción asociada.', 'warning');
     }
@@ -3593,7 +3755,13 @@ function openCufeImportModal() {
 
 async function openRadianEventModal(docId: string, code: '030' | '032' | '033') {
   try {
-    const d = await (window as any).pb.get('electronic_documents', docId);
+    const [d, respDni, respFn, respLn, respJob] = await Promise.all([
+      (window as any).pb.get('electronic_documents', docId),
+      (window as any).API.getSetting('radian_responsible_dni').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_first_name').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_last_name').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_job_title').catch(() => 'Representante Legal / Contador')
+    ]);
 
     const eventConfig: Record<string, { title: string; subtitle: string; defaultNote: string; badgeColor: string }> = {
       '030': {
@@ -3698,14 +3866,9 @@ async function openRadianEventModal(docId: string, code: '030' | '032' | '033') 
     document.getElementById('btn-submit-radian-event')?.addEventListener('click', async () => {
       const notes = (document.getElementById('radian-event-notes') as HTMLTextAreaElement)?.value.trim();
       const notifySupplier = (document.getElementById('radian-event-notify') as HTMLInputElement)?.checked;
-      const btn = document.getElementById('btn-submit-radian-event') as HTMLButtonElement;
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1.5"></i>Transmitiendo a la DIAN...`;
-      }
-      (window as any).closeModal();
       const quickDni = (document.getElementById('quick-resp-dni') as HTMLInputElement)?.value.trim();
       const quickName = (document.getElementById('quick-resp-name') as HTMLInputElement)?.value.trim();
+
       let quickPerson = undefined;
       if (quickDni && quickName) {
         const parts = quickName.split(' ');
@@ -3715,7 +3878,22 @@ async function openRadianEventModal(docId: string, code: '030' | '032' | '033') 
           last_name: parts.slice(Math.ceil(parts.length / 2)).join(' ') || quickName,
           job_title: 'Representante Legal / Contador'
         };
+        // Persistir en segundo plano para futuros eventos
+        try {
+          API.setSetting('radian_responsible_dni', quickDni).catch(() => {});
+          API.setSetting('radian_responsible_first_name', quickPerson.first_name).catch(() => {});
+          API.setSetting('radian_responsible_last_name', quickPerson.last_name).catch(() => {});
+          API.setSetting('radian_responsible_job_title', quickPerson.job_title).catch(() => {});
+        } catch (_) {}
       }
+
+      const btn = document.getElementById('btn-submit-radian-event') as HTMLButtonElement;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1.5"></i>Transmitiendo a la DIAN...`;
+      }
+      (window as any).closeModal();
+
       await sendRadianEvent(docId, code, undefined, notes, notifySupplier, quickPerson);
     });
 
@@ -3765,49 +3943,82 @@ async function sendRadianEvent(docId: string, code: '030' | '032' | '033' | '031
   }
 }
 
-function openRadianClaimModal(docId: string, number: string, supplierName: string) {
-  const htmlBody = `
-    <div class="space-y-4 text-xs">
-      <div class="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800">
-        <i class="fas fa-triangle-exclamation mr-1.5 text-red-600"></i>
-        Está a punto de emitir un <strong>Reclamo Legal (Evento 031)</strong> ante la DIAN para la factura <strong>${(window as any).esc(number)}</strong> de <strong>${(window as any).esc(supplierName)}</strong>.
-      </div>
-      <div>
-        <label class="block font-bold mb-1 text-slate-700">Causal Legal de Reclamo DIAN *</label>
-        <select id="radian-claim-code" class="form-input w-full text-xs">
-          <option value="01">01 - Documento con inconsistencias</option>
-          <option value="02">02 - Mercancía no entregada totalmente</option>
-          <option value="03">03 - Mercancía no entregada parcialmente</option>
-          <option value="04">04 - Servicio no prestado</option>
-        </select>
-      </div>
-      <div>
-        <label class="block font-bold mb-1 text-slate-700">Observaciones / Motivo Detallado *</label>
-        <textarea id="radian-claim-notes" class="form-input w-full text-xs h-20" placeholder="Escriba la justificación fiscal o comercial del reclamo..."></textarea>
-      </div>
-    </div>
-  `;
+async function openRadianClaimModal(docId: string, number: string, supplierName: string) {
+  try {
+    const [respDni, respFn, respLn, respJob] = await Promise.all([
+      (window as any).API.getSetting('radian_responsible_dni').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_first_name').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_last_name').catch(() => ''),
+      (window as any).API.getSetting('radian_responsible_job_title').catch(() => '')
+    ]);
 
-  const htmlFooter = `
-    <div class="flex gap-2">
-      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-danger" id="btn-submit-radian-claim" style="background:#DC2626;color:#fff;">
-        <i class="fas fa-ban mr-1"></i>Transmitir a la DIAN (031)
-      </button>
-    </div>
-  `;
+    const htmlBody = `
+      <div class="space-y-4 text-xs">
+        <div class="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800">
+          <i class="fas fa-triangle-exclamation mr-1.5 text-red-600"></i>
+          Está a punto de emitir un <strong>Reclamo Legal (Evento 031)</strong> ante la DIAN para la factura <strong>${(window as any).esc(number)}</strong> de <strong>${(window as any).esc(supplierName)}</strong>.
+        </div>
 
-  (window as any).openModal('DIAN - Evento 031: Reclamo Formal de Factura Electrónica', htmlBody, htmlFooter, false);
+        <div class="p-2.5 bg-violet-50/70 border border-violet-200 rounded-xl">
+          <div class="text-[10px] font-bold text-violet-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <i class="fas fa-user-shield"></i> Responsable Legal del Reclamo (Res. DIAN 000085):
+          </div>
+          <div class="text-[11px] text-slate-700">
+            <strong>${(window as any).esc(respFn || '')} ${(window as any).esc(respLn || '')}</strong> — ${(window as any).esc(respJob || 'Representante Legal')} (CC: ${(window as any).esc(respDni || 'N/A')})
+          </div>
+        </div>
 
-  document.getElementById('btn-submit-radian-claim')?.addEventListener('click', async () => {
-    const code = (document.getElementById('radian-claim-code') as HTMLSelectElement)?.value;
-    const notes = (document.getElementById('radian-claim-notes') as HTMLTextAreaElement)?.value.trim();
-    if (!notes) {
-      return (window as any).showToast('Debe ingresar una observación o motivo para el reclamo.', 'warning');
-    }
-    (window as any).closeModal();
-    await sendRadianEvent(docId, '031', code, notes);
-  });
+        <div>
+          <label class="block font-bold mb-1 text-slate-700">Causal Legal de Reclamo DIAN *</label>
+          <select id="radian-claim-code" class="form-input w-full text-xs font-semibold">
+            <option value="01">01 - Documento con inconsistencias</option>
+            <option value="02">02 - Mercancía no entregada totalmente</option>
+            <option value="03">03 - Mercancía no entregada parcialmente</option>
+            <option value="04">04 - Servicio no prestado</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-bold mb-1 text-slate-700">Observaciones / Motivo Detallado del Reclamo *</label>
+          <textarea id="radian-claim-notes" class="form-input w-full text-xs h-20" placeholder="Escriba la justificación fiscal o comercial detallada del reclamo..."></textarea>
+        </div>
+        <div class="flex items-center gap-2 p-2.5 bg-slate-100 rounded-xl">
+          <input type="checkbox" id="radian-claim-notify" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" checked>
+          <label for="radian-claim-notify" class="cursor-pointer text-slate-700 font-medium select-none text-[11px]">
+            Notificar electrónicamente por correo al emisor al registrar el reclamo formal ante la DIAN
+          </label>
+        </div>
+      </div>
+    `;
+
+    const htmlFooter = `
+      <div class="flex gap-2">
+        <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-danger" id="btn-submit-radian-claim" style="background:#DC2626;color:#fff;">
+          <i class="fas fa-ban mr-1"></i>Transmitir Reclamo a la DIAN (031)
+        </button>
+      </div>
+    `;
+
+    (window as any).openModal('DIAN - Evento 031: Reclamo Formal de Factura Electrónica', htmlBody, htmlFooter, false);
+
+    document.getElementById('btn-submit-radian-claim')?.addEventListener('click', async () => {
+      const code = (document.getElementById('radian-claim-code') as HTMLSelectElement)?.value;
+      const notes = (document.getElementById('radian-claim-notes') as HTMLTextAreaElement)?.value.trim();
+      const notifySupplier = (document.getElementById('radian-claim-notify') as HTMLInputElement)?.checked;
+      if (!notes) {
+        return (window as any).showToast('Debe ingresar una observación o motivo para el reclamo.', 'warning');
+      }
+      const btn = document.getElementById('btn-submit-radian-claim') as HTMLButtonElement;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Transmitiendo Reclamo a la DIAN...`;
+      }
+      (window as any).closeModal();
+      await sendRadianEvent(docId, '031', code, notes, notifySupplier);
+    });
+  } catch (err: any) {
+    (window as any).showToast(`Error al preparar reclamo: ${err.message}`, 'error');
+  }
 }
 
 async function openRadianHistoryModal(docId: string) {
@@ -3905,7 +4116,8 @@ async function openRadianHistoryModal(docId: string) {
         });
         const resData = await res.json();
         if (res.ok && resData.success) {
-          (window as any).showToast(resData.message || 'Estado DIAN sincronizado correctamente.', 'success');
+          const toastType = resData.hasEvents === false ? 'info' : 'success';
+          (window as any).showToast(resData.message || 'Estado DIAN sincronizado correctamente.', toastType);
           (window as any).closeModal();
           openRadianHistoryModal(docId);
           renderDocumentosElectronicos();
@@ -3926,6 +4138,37 @@ async function openRadianHistoryModal(docId: string) {
   }
 }
 
+function closeAllRadianMenus() {
+  document.querySelectorAll('.radian-dropdown-menu').forEach(m => m.classList.add('hidden'));
+}
+
+function toggleRadianMenu(event: MouseEvent, docId: string) {
+  event.stopPropagation();
+  const btn = event.currentTarget as HTMLElement;
+  const targetMenu = document.getElementById(`radian-menu-${docId}`);
+  const isHidden = targetMenu?.classList.contains('hidden');
+
+  closeAllRadianMenus();
+
+  if (isHidden && targetMenu && btn) {
+    const rect = btn.getBoundingClientRect();
+    targetMenu.style.position = 'fixed';
+    targetMenu.style.top = `${rect.bottom + 4}px`;
+    targetMenu.style.left = `${Math.min(rect.left, window.innerWidth - 240)}px`;
+    targetMenu.style.zIndex = '9999';
+    targetMenu.classList.remove('hidden');
+  }
+}
+
+// Cerrar menús de eventos al hacer clic fuera o al hacer scroll
+if (typeof window !== 'undefined' && !(window as any)._radianMenuListenerAttached) {
+  window.addEventListener('click', () => closeAllRadianMenus());
+  window.addEventListener('scroll', () => closeAllRadianMenus(), true);
+  (window as any)._radianMenuListenerAttached = true;
+}
+
+(window as any)._toggleRadianMenu = toggleRadianMenu;
+(window as any)._closeAllRadianMenus = closeAllRadianMenus;
 (window as any).viewDocXmlDetails = viewDocXmlDetails;
 (window as any).openDocHomologationModal = openDocHomologationModal;
 (window as any).renderDocumentosElectronicos = renderDocumentosElectronicos;

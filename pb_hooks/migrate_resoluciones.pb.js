@@ -50,7 +50,29 @@ onBootstrap((e) => {
   // 2. COLECCIÓN: dian_resolutions (Resoluciones DIAN)
   let dianResolutionsId = "";
   try {
-    dianResolutionsId = $app.findCollectionByNameOrId("dian_resolutions").id;
+    const drCol = $app.findCollectionByNameOrId("dian_resolutions");
+    dianResolutionsId = drCol.id;
+    const docTypeField = drCol.fields.getByName("document_type");
+    if (docTypeField && docTypeField.values) {
+      const allowed = ["FV", "POS", "DS", "NE", "NC", "ND", "NDS", "NANE"];
+      const current = docTypeField.values || [];
+      const valsArray = [];
+      for (let j = 0; j < current.length; j++) {
+        valsArray.push(String(current[j]));
+      }
+      let changed = false;
+      for (let k = 0; k < allowed.length; k++) {
+        if (valsArray.indexOf(allowed[k]) === -1) {
+          valsArray.push(allowed[k]);
+          changed = true;
+        }
+      }
+      if (changed) {
+        docTypeField.values = valsArray;
+        $app.save(drCol);
+        console.log("[GRAVY-RESOLUCIONES] dian_resolutions.document_type parcheado con NANE con éxito.");
+      }
+    }
   } catch (_) {
     try {
       const dianResolutions = new Collection({
@@ -62,7 +84,7 @@ onBootstrap((e) => {
         updateRule: writeRule,
         deleteRule: deleteRule,
         fields: [
-          { name: "document_type", type: "select", required: true, values: ["FV", "POS", "DS", "NE", "NC", "ND", "NDS"] },
+          { name: "document_type", type: "select", required: true, values: ["FV", "POS", "DS", "NE", "NC", "ND", "NDS", "NANE"] },
           { name: "prefix", type: "text", required: true },
           { name: "resolution_number", type: "text", required: true },
           { name: "resolution_date", type: "text", required: true },

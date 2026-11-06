@@ -1,26 +1,27 @@
-async function getRes() {
-  const token = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiYWQxYzFlOWUwM2I3YjRmOTNmNzA2NjcwYmEyNjY2OGY5MGI1MmZkZTE2NTJhYmU5ZjRjNGM5YjUxOWRkNDFmZTdkMzZiMWI5MTI5MjRhMjUiLCJpYXQiOjE3OTI0NTYzODUuNTUwODQ5LCJuYmYiOjE3OTI0NTYzODUuNTUwODUsImV4cCI6MTgwMDIzMjM4NS41NDk1NjYsInN1YiI6IjEzNjQiLCJzY29wZXMiOltdfQ.JypMrSTLLR1u8DrYKW1AZ0zntv3N0X73qLrxtaK25D57BZlmpVJA4lw4KCMdWEtFk9fnMzFHtFSlokaNZz1_l1z33qz4D6vIc3HoKyPVilTtPf5DHL_Exp9hiXBQnfOm4iUvkqRieXOQwyLG0MpfLj_iaXYoux8cHheDX44ThhwjLoDGIPk8aTN5eLzfC_e7iFRywz7hvHNyj4rhDRXu-Df5d9X7D1y4tHpQlknCaUgUJot5hm2_ha-37Ob0_p8oLVr5FNYrv8QtoROVgmhS0h_KI59FKm1ECqbeBpcS8-wWRdU-McwyXhM3cQgWmEKZdKwijfQJHoh3BzQ6m-mvYkqK_cqtXd9pT5UPhDuk2bwWvL0EgwrvaW_e13CFPGAuo6Ji6z0WZwf94ddIWDXshiJUMCFo8CGAiucWv9lnEzhBYsEPVbl8yv0y9IBARmBGSKTTNZeA6DvGmVm1xkxz_Gh_2XyzJ4-Yh2CXxDJPV7HrRqg_mHKsJ6zOT_wUIHWjivrY8t0XgwhMF1WPgThc9Wwh7zu6INXUGV3M-IEAM1dkZDCjrjAS999fPq0vKI47WrcrixFLaMESKDx89pUBkBKePswVnPdE2KVoHW_9nY3N9YkaH93t023dtkU7h0jvePnT_na0sIot8qG-iBHWIW1Vmk5kQ-m1jUB337JkFkQ';
-  const clientUuid = '63869fe6-cb40-11f1-a6db-d843ae899220';
-  const url = 'https://api-v2.matias-api.com/api/ubl2.1/resolutions?sync=1&client_uuid=' + clientUuid;
-  const res = await fetch(url, {
-    headers: {
-      'Authorization': 'Bearer ' + token,
-      'Accept': 'application/json'
+const https = require('https');
+
+const token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiNGExY2UyYjdhNjM4YzU0YzY4OTY5ZjUyYTVmMzcxOTVmYTQ1MTQwMTU4YmQyYzcxMmU3YWQ1MDJiNDkxNzllODhmY2IwZmY5NzBmMzVlODkiLCJpYXQiOjE3OTI0MTg3ODIuNTA0ODcyLCJuYmYiOjE3OTI0MTg3ODIuNTA0ODczLCJleHAiOjE4MDAxOTQ3ODIuNTAzNjMsInN1YiI6IjEwNDUiLCJzY29wZXMiOltdfQ.hsxN8MvsX0H6hlnzTLcGxCkUS2JLFkRTn6k4PQKi2tuTaGV6Kp-ZJxICDYI0Af43cnhV5Kqpd6E3TowU36lsnP-0JpxI6wXRRpukqXW-m4EdYJ32_LqhCjbL4kWQswdRYvJ_i6GMa2Mn2cacmQD_whRQ80cPtvqZQ1j49CzJsQIDJy4j9hbf_SwbUwF0qh4Qiewft249IcJqASQQZFW6_XBLnOWVX5-fQ4KGnvJZL7uUQThkH3zQJx-IgyNJ0yOZdOpUJ3VTAsAIEMmI9QmILkoLtQuEAn_OUTy2o1q2PCEUXuDwYrbHLcvfuNG8W7AuSUfViSS360fBIzr8nqpVYtaSPLLW_tHxMWHJmGYTJDSRyArYO0za_f6LhZVewxaajfppCyRgU0oZLJQsxZ8jcBPKkHHPDpY709BTd0YRULf7cQh5fWsyOnOoCuLAw5vyAAG0s7PlddMvqDauH7MEP6dMrcBY9RIpGvIDKhY468w_-RQmXyN6z5KVDaM5Vt65XCIfIvSGhOCyhgwZ7BKGPlFtDlPI8uEG3OW6c9oGoaV8vvH9co8J2iwIjEKbQ5Fo04PcTCth1R54pXe98RxTJx8xlvIQug2sG_acT-sdntfqZW_GCQKAaw23ZbjW9soMl0-KpgcOtmG-VMKXmlagaYd4UKL6D6SoAQ2L8uIRPn4";
+const clientUuid = "0c909a79-8aec-11f1-abbb-d843ae899220";
+const url = `https://api-v2.matias-api.com/api/ubl2.1/resolutions?sync=1&client_uuid=${clientUuid}`;
+
+const options = {
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Accept': 'application/json'
+  }
+};
+
+https.get(url, options, (res) => {
+  let data = '';
+  res.on('data', chunk => data += chunk);
+  res.on('end', () => {
+    console.log('Status:', res.statusCode);
+    try {
+      console.log('Response:', JSON.stringify(JSON.parse(data), null, 2));
+    } catch (_) {
+      console.log('Raw:', data);
     }
   });
-  const json = await res.json();
-  const list = json.dataRecords?.data || json.dataRecords || [];
-  console.log('Total records:', list.length);
-  list.forEach(r => {
-    console.log({
-      id: r.id,
-      type_id: r.type_document_id,
-      voucher: r.type_document?.voucher_name,
-      prefix: r.prefix,
-      resolution_number: r.resolution_number,
-      range: r.range_from + ' - ' + r.range_up,
-      active: r.active
-    });
-  });
-}
-getRes();
+}).on('error', (err) => {
+  console.error('Error:', err.message);
+});

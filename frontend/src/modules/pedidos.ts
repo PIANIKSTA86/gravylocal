@@ -331,7 +331,8 @@ function renderOrderRow(ord: any) {
       <td>
         <div class="flex gap-1 flex-wrap">
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewSalesOrderDetail('${(window as any).esc(ord.id)}')"><i class="fas fa-eye"></i></button>
-          <button class="btn btn-outline btn-sm text-blue-600" style="border-color:#3b82f6" title="Imprimir Carta" onclick="window.printOrderCarta('${(window as any).esc(ord.id)}')"><i class="fas fa-print"></i></button>
+          <button class="btn btn-outline btn-sm text-blue-600" style="border-color:#3b82f6" title="Imprimir Carta (Comercial)" onclick="window.printOrderCarta('${(window as any).esc(ord.id)}')"><i class="fas fa-print"></i></button>
+          <button class="btn btn-outline btn-sm text-indigo-700" style="border-color:#4f46e5;color:#4f46e5" title="Imprimir Orden de Alistamiento / Despacho (Logística)" onclick="window.printOrderPicking('${(window as any).esc(ord.id)}')"><i class="fas fa-boxes-packing"></i></button>
           <button class="btn btn-outline btn-sm text-orange-600" style="border-color:#f97316" title="Imprimir Tirilla" onclick="window.printOrderTirilla('${(window as any).esc(ord.id)}')"><i class="fas fa-receipt"></i></button>
           ${ord.status === 'pending' ? `
             <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#7C3AED;color:#7C3AED" onclick="window.editSalesOrder('${(window as any).esc(ord.id)}')"><i class="fas fa-pen"></i></button>
@@ -1391,6 +1392,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       <div class="flex justify-between items-center w-full">
         <div class="flex gap-2">
           <button class="btn btn-outline" style="border-color:#3b82f6;color:#3b82f6" onclick="window.printOrderCarta('${ord.id}')"><i class="fas fa-print mr-1"></i> Imprimir Carta</button>
+          <button class="btn btn-outline" style="border-color:#4f46e5;color:#4f46e5" onclick="window.printOrderPicking('${ord.id}')"><i class="fas fa-boxes-packing mr-1"></i> Alistamiento / Despacho</button>
           <button class="btn btn-outline" style="border-color:#f97316;color:#f97316" onclick="window.printOrderTirilla('${ord.id}')"><i class="fas fa-receipt mr-1"></i> Imprimir Tirilla</button>
         </div>
         <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
@@ -1712,6 +1714,377 @@ window.printOrderCarta = async function (orderId: string) {
     docStr.close();
   } catch (err: any) {
     (window as any).showToast('Error al imprimir cotización en formato carta: ' + err.message, 'error');
+  }
+};
+
+window.printOrderPicking = async function (orderId: string) {
+  try {
+    const ord = await (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id,seller_id' });
+    const lines = await (window as any).API.getSalesOrderLines(orderId);
+
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, logoBase64] = await Promise.all([
+      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
+      (window as any).API.getSetting('company_address').catch(() => ''),
+      (window as any).API.getSetting('company_phone').catch(() => ''),
+      (window as any).API.getSetting('company_email').catch(() => ''),
+      (window as any).API.getSetting('company_city').catch(() => 'BOGOTA'),
+      (window as any).API.getSetting('company_logo').catch(() => ''),
+    ]);
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      (window as any).showToast('Por favor, permite abrir ventanas emergentes para imprimir.', 'warning');
+      return;
+    }
+
+    const client = ord.expand?.customer_id as any;
+    const wh = ord.expand?.warehouse_id as any;
+    const seller = ord.expand?.seller_id as any;
+
+    const items = (lines || []).map((l: any) => {
+      const p = l.expand?.product_id || {};
+      const code = p.code || p.barcode || l.product_code || '—';
+      const description = p.name || l.description || 'Producto';
+      
+      let format = '—';
+      if (p.largo_cm && p.ancho_cm) {
+        format = `${p.largo_cm}*${p.ancho_cm}`;
+      } else {
+        const m = String(description).match(/\b(\d{2,3}\s*[\*xX]\s*\d{2,3})\b/);
+        format = m ? m[1].replace(/\s+/g, '') : (p.formato || '60*60');
+      }
+
+      const m2OrUndPerBox = Number(p.und_empaque || 1.44) || 1.44;
+      const unitName = (p.unit && String(p.unit).toUpperCase() !== 'M2') ? String(p.unit).toUpperCase() : 'CAJA';
+      const isM2 = String(p.unit || '').toUpperCase() === 'M2';
+
+      let boxesQty = 0;
+      let totalM2 = 0;
+
+      if (l.boxes_qty && Number(l.boxes_qty) > 0) {
+        boxesQty = Number(l.boxes_qty);
+        totalM2 = Math.round(boxesQty * m2OrUndPerBox * 100) / 100;
+      } else if (isM2) {
+        totalM2 = Number(l.qty || 0);
+        boxesQty = m2OrUndPerBox > 0 ? Math.round((totalM2 / m2OrUndPerBox) * 100) / 100 : totalM2;
+      } else {
+        boxesQty = Number(l.qty || 0);
+        totalM2 = Math.round(boxesQty * m2OrUndPerBox * 100) / 100;
+      }
+
+      const pesoKg = Number(p.peso_x_und_empaque || p.peso || p.peso_bruto || 30) || 30;
+      const totalPeso = Math.round(boxesQty * pesoKg * 100) / 100;
+      const boxesPerPallet = Number(p.cajas_en_pallet || 40) || 40;
+      const palletsQty = boxesPerPallet > 0 ? Math.round((boxesQty / boxesPerPallet) * 100) / 100 : 0;
+
+      return {
+        code,
+        description,
+        format,
+        m2OrUndPerBox,
+        unitName,
+        boxesQty,
+        pesoKg,
+        totalPeso,
+        totalM2,
+        boxesPerPallet,
+        palletsQty
+      };
+    });
+
+    const totCajas = items.reduce((s: number, it: any) => s + it.boxesQty, 0);
+    const totPeso = items.reduce((s: number, it: any) => s + it.totalPeso, 0);
+    const totM2 = items.reduce((s: number, it: any) => s + it.totalM2, 0);
+    const totPallets = items.reduce((s: number, it: any) => s + it.palletsQty, 0);
+
+    const logoHtml = logoBase64 
+      ? `<img src="data:image/png;base64,${logoBase64}" style="max-height:65px; max-width:180px; object-fit:contain;" alt="Logo" />`
+      : `<div style="font-size:18px; font-weight:900; color:#111827; letter-spacing:1px; line-height:1.2;">${(window as any).esc(compName)}</div>`;
+
+    const docStr = printWin.document;
+    docStr.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Orden de Alistamiento / Despacho — ${ord.number}</title>
+        <style>
+          @page {
+            size: letter portrait;
+            margin: 8mm 10mm;
+          }
+          * {
+            box-sizing: border-box;
+          }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 10px;
+            color: #111827;
+            margin: 0;
+            padding: 10px;
+            background: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+          }
+          .border-table, .border-table th, .border-table td {
+            border: 1px solid #1f2937;
+          }
+          .table-header {
+            background-color: #f3f4f6;
+            font-weight: bold;
+            text-transform: uppercase;
+          }
+          @media print {
+            body {
+              padding: 0;
+            }
+            .no-print {
+              display: none !important;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; background:#f3f4f6; padding:8px 14px; border-radius:8px; border:1px solid #d1d5db;">
+          <span style="font-size:12px; font-weight:bold; color:#1f2937;">Vista Previa: Orden de Alistamiento / Despacho (Tamaño Carta)</span>
+          <button onclick="window.print()" style="background:#1e3a8a; color:#fff; border:none; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">Imprimir Documento</button>
+        </div>
+
+        <!-- Encabezado Superior -->
+        <table style="margin-bottom:8px;">
+          <tr>
+            <td style="width:30%; vertical-align:middle; border:none;">
+              ${logoHtml}
+              <div style="font-size:11px; font-weight:bold; color:#111827; margin-top:3px;">${(window as any).esc(compName)}</div>
+              <div style="font-size:9.5px; color:#4b5563;">NIT: ${(window as any).esc(compNit)}</div>
+              ${compAddress ? `<div style="font-size:9.5px; color:#4b5563;">${(window as any).esc(compAddress)}</div>` : ''}
+              ${compPhone ? `<div style="font-size:9.5px; color:#4b5563;">Tel: ${(window as any).esc(compPhone)}</div>` : ''}
+            </td>
+            <td style="width:42%; text-align:center; vertical-align:middle; padding:0 8px; border:none;">
+              <h1 style="margin:0; font-size:16px; font-weight:900; letter-spacing:0.5px; color:#111827; text-transform:uppercase;">ORDEN DE ALISTAMIENTO Y DESPACHO</h1>
+              <div style="font-size:10px; font-weight:bold; color:#374151; margin-top:2px;">DOCUMENTO DE CONTROL INTERNO Y BODEGA</div>
+              <div style="font-size:9px; color:#6b7280;">METROLOGÍA DE CARGA Y SEGUIMIENTO LOGÍSTICO</div>
+            </td>
+            <td style="width:28%; vertical-align:top; border:none;">
+              <table class="border-table" style="text-align:center; font-size:9.5px;">
+                <tr class="table-header">
+                  <td style="padding:2px 4px; font-size:8.5px;">FECHA PEDIDO</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 4px; font-weight:bold;">${(window as any).fmtDate(ord.date)}</td>
+                </tr>
+                <tr class="table-header">
+                  <td style="padding:2px 4px; font-size:8.5px;">PEDIDO / OC No.</td>
+                </tr>
+                <tr>
+                  <td style="padding:4px 4px; font-weight:900; font-size:14px; font-family:monospace; color:#1e3a8a;">${(window as any).esc(ord.number)}</td>
+                </tr>
+                <tr class="table-header">
+                  <td style="padding:2px 4px; font-size:8.5px;">ESTADO OPERATIVO</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 4px; font-weight:bold; text-transform:uppercase; font-size:9px;">${ord.status === 'invoiced' ? 'FACTURADO' : (ord.status === 'cancelled' ? 'ANULADO' : 'PENDIENTE DESPACHO')}</td>
+                </tr>
+                <tr class="table-header">
+                  <td style="padding:2px 4px; font-size:8.5px;">BODEGA DE SALIDA</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 4px; font-weight:bold;">${(window as any).esc(wh?.name || 'CENTRAL')}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Bloques de Información (Cliente, Ruta, Cargue, Descargue) -->
+        <table class="border-table" style="margin-bottom:8px; font-size:9.5px;">
+          <tr>
+            <!-- CLIENTE -->
+            <td style="width:50%; vertical-align:top; padding:0;">
+              <table>
+                <tr class="table-header">
+                  <th colspan="2" style="padding:3px 6px; text-align:left; font-size:9px; border-bottom:1px solid #1f2937;">CLIENTE / ADQUIRENTE</th>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; width:28%; border-bottom:1px solid #e5e7eb;">EMPRESA:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb; font-weight:600;">${client ? (window as any).esc(client.name) : '—'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">CONTACTO:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${client ? (window as any).esc(client.contact_name || client.name) : '—'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">TELÉFONO:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${client ? (window as any).esc(client.phone || client.mobile || '—') : '—'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold;">ASESOR COMERCIAL:</td>
+                  <td style="padding:3px 6px;">${seller ? (window as any).esc(seller.name) : '—'}</td>
+                </tr>
+              </table>
+            </td>
+
+            <!-- RUTA Y CONTROL -->
+            <td style="width:50%; vertical-align:top; padding:0;">
+              <table>
+                <tr class="table-header">
+                  <th colspan="2" style="padding:3px 6px; text-align:left; font-size:9px; border-bottom:1px solid #1f2937;">RUTA Y DESTINO</th>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; width:36%; border-bottom:1px solid #e5e7eb;">CIUDAD DESTINO:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb; font-weight:bold; color:#1e3a8a;">${client?.city ? (window as any).esc(client.city) : 'BOGOTA D.C.'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">DIRECCIÓN ENTREGA:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb; font-weight:600;">${client?.address ? (window as any).esc(client.address) : 'DIRECCIÓN REGISTRADA DEL CLIENTE'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">NIT / DOCUMENTO:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${client ? (window as any).esc(client.doc_number || client.nit || '—') : '—'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold;">OBSERVACIÓN PEDIDO:</td>
+                  <td style="padding:3px 6px;">${ord.notes ? (window as any).esc(ord.notes) : '—'}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <!-- LUGAR DE CARGUE -->
+            <td style="vertical-align:top; padding:0;">
+              <table>
+                <tr class="table-header">
+                  <th colspan="2" style="padding:3px 6px; text-align:left; font-size:9px; border-bottom:1px solid #1f2937;">LUGAR DE CARGUE (ORIGEN BODEGA)</th>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; width:28%; border-bottom:1px solid #e5e7eb;">BODEGA:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${wh ? (window as any).esc(wh.name) : (window as any).esc(compName)}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">DIRECCIÓN:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${wh?.address ? (window as any).esc(wh.address) : (compAddress ? (window as any).esc(compAddress) : 'BODEGA PRINCIPAL')}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold;">CONTACTO:</td>
+                  <td style="padding:3px 6px;">JEFE DE BODEGA / DESPACHOS | Tel: ${(window as any).esc(compPhone || '—')}</td>
+                </tr>
+              </table>
+            </td>
+
+            <!-- LUGAR DE DESCARGUE -->
+            <td style="vertical-align:top; padding:0;">
+              <table>
+                <tr class="table-header">
+                  <th colspan="2" style="padding:3px 6px; text-align:left; font-size:9px; border-bottom:1px solid #1f2937;">LUGAR DE DESCARGUE (ENTREGA FINAL)</th>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; width:36%; border-bottom:1px solid #e5e7eb;">RECEPTOR:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${client ? (window as any).esc(client.name) : '—'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">DIRECCIÓN:</td>
+                  <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb; font-weight:600;">${client?.address ? (window as any).esc(client.address) : '—'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 6px; font-weight:bold;">CONTACTO EN OBRA:</td>
+                  <td style="padding:3px 6px;">${client ? (window as any).esc(client.contact_name || client.name) : '—'} | Tel: ${client ? (window as any).esc(client.phone || client.mobile || '—') : '—'}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Tabla de Artículos con Metrología Cerámica (Sin Totales en Dinero) -->
+        <table class="border-table" style="margin-bottom:8px; font-size:9px; text-align:center;">
+          <thead>
+            <tr class="table-header">
+              <th style="padding:4px 3px; width:9%;">CÓDIGO</th>
+              <th style="padding:4px 4px; text-align:left; width:27%;">DESCRIPCIÓN DEL PRODUCTO</th>
+              <th style="padding:4px 3px; width:8%;">FORMATO / TALLA</th>
+              <th style="padding:4px 3px; width:7%;">m² O UND X CAJA</th>
+              <th style="padding:4px 3px; width:7%;">UNIDAD EMPAQUE</th>
+              <th style="padding:4px 3px; width:7%;">CANTIDAD (CAJAS)</th>
+              <th style="padding:4px 3px; width:7%;">PESO KG (X CAJA)</th>
+              <th style="padding:4px 3px; width:8%;">TOTAL PESO (KG)</th>
+              <th style="padding:4px 3px; width:8%;">CANT M² O UNIDADES</th>
+              <th style="padding:4px 3px; width:6%;">CAJAS X PALLET</th>
+              <th style="padding:4px 3px; width:6%;">CANT. PALLETS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map((it: any) => `
+              <tr>
+                <td style="padding:4px 3px; font-family:monospace; font-weight:600;">${(window as any).esc(it.code)}</td>
+                <td style="padding:4px 4px; text-align:left; font-weight:600;">${(window as any).esc(it.description)}</td>
+                <td style="padding:4px 3px;">${(window as any).esc(it.format)}</td>
+                <td style="padding:4px 3px;">${(window as any).fmtN(it.m2OrUndPerBox)}</td>
+                <td style="padding:4px 3px;">${(window as any).esc(it.unitName)}</td>
+                <td style="padding:4px 3px; font-weight:bold;">${(window as any).fmtN(it.boxesQty)}</td>
+                <td style="padding:4px 3px;">${(window as any).fmtN(it.pesoKg)}</td>
+                <td style="padding:4px 3px; font-weight:bold;">${(window as any).fmtN(it.totalPeso)}</td>
+                <td style="padding:4px 3px;">${(window as any).fmtN(it.totalM2)}</td>
+                <td style="padding:4px 3px;">${(window as any).fmtN(it.boxesPerPallet)}</td>
+                <td style="padding:4px 3px; font-weight:bold;">${(window as any).fmtN(it.palletsQty)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+          <tfoot>
+            <tr class="table-header" style="font-weight:bold; font-size:9.5px;">
+              <td colspan="5" style="padding:5px 6px; text-align:right;">TOTALES DE ALISTAMIENTO:</td>
+              <td style="padding:5px 3px; font-size:10px;">${(window as any).fmtN(totCajas)}</td>
+              <td style="padding:5px 3px;">—</td>
+              <td style="padding:5px 3px; font-size:10px;">${(window as any).fmtN(totPeso)} Kg</td>
+              <td style="padding:5px 3px; font-size:10px;">${(window as any).fmtN(totM2)}</td>
+              <td style="padding:5px 3px;">—</td>
+              <td style="padding:5px 3px; font-size:10px;">${(window as any).fmtN(totPallets)}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <!-- Firmas Operativas -->
+        <div style="margin-top:24px; border-top:1px dashed #4b5563; padding-top:14px;">
+          <table style="width:100%; border-collapse:collapse; font-size:9.5px;">
+            <tr>
+              <td style="width:30%; text-align:center; vertical-align:bottom;">
+                <div style="border-bottom:1px solid #111; height:35px; width:85%; margin:0 auto 4px auto;"></div>
+                <strong>RESPONSABLE BODEGA / ALISTAMIENTO</strong>
+                <div style="color:#4b5563; font-size:8.5px; margin-top:2px;">FIRMA Y SELLO DE SALIDA</div>
+              </td>
+              <td style="width:5%;"></td>
+              <td style="width:30%; text-align:center; vertical-align:bottom;">
+                <div style="border-bottom:1px solid #111; height:35px; width:85%; margin:0 auto 4px auto;"></div>
+                <strong>TRANSPORTADOR / CONDUCTOR</strong>
+                <div style="color:#4b5563; font-size:8.5px; margin-top:2px;">C.C. _________________ PLACA: ________</div>
+              </td>
+              <td style="width:5%;"></td>
+              <td style="width:30%; text-align:center; vertical-align:bottom;">
+                <div style="border-bottom:1px solid #111; height:35px; width:85%; margin:0 auto 4px auto;"></div>
+                <strong>RECIBIDO EN OBRA / CLIENTE</strong>
+                <div style="color:#4b5563; font-size:8.5px; margin-top:2px;">NOMBRE / C.C. / FECHA Y HORA</div>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+      </html>
+    `);
+    docStr.close();
+  } catch (err: any) {
+    (window as any).showToast('Error al imprimir orden de alistamiento: ' + err.message, 'error');
   }
 };
 

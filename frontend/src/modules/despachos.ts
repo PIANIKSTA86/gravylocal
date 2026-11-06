@@ -699,7 +699,10 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
     }
   }
 
-  const invoices = await (window as any).pb.listAll('invoices', { sort: '-number', expand: 'customer_id' }).catch(() => []);
+  const [invoices, salesOrders] = await Promise.all([
+    (window as any).pb.listAll('invoices', { sort: '-number', expand: 'customer_id' }).catch(() => []),
+    (window as any).pb.listAll('sales_orders', { sort: '-number', expand: 'customer_id' }).catch(() => []),
+  ]);
   const originalVehicleOptionLabel: Record<string, string> = {};
 
   const toNum = (v: any) => {
@@ -718,6 +721,8 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
   const invoiceWeightCache: Record<string, number> = {};
   const invoiceLinesCache: Record<string, any[]> = {};
   const invoiceLabelCache: Record<string, string> = {};
+  const orderWeightCache: Record<string, number> = {};
+  const orderLinesCache: Record<string, any[]> = {};
 
   const getInvoiceLabel = (inv: any) => `${inv.number} (${(window as any).fmt(inv.total || 0)})`;
 
@@ -731,7 +736,7 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
       const byLineBruto = toNum(l.peso_bruto_total);
       const byLineNeto = toNum(l.peso_neto_total);
       const prod = l.expand?.product_id || {};
-      const unitWeight = toNum(prod.peso_bruto) || toNum(prod.peso_neto) || toNum(prod.weight) || toNum(prod.unit_weight);
+      const unitWeight = toNum(prod.peso_bruto) || toNum(prod.peso_neto) || toNum(prod.peso) || toNum(prod.unit_weight);
       const lineWeight = byLineBruto > 0 ? byLineBruto : (byLineNeto > 0 ? byLineNeto : (qty * unitWeight));
       return sum + Math.max(0, lineWeight);
     }, 0);
@@ -747,6 +752,42 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
     invoiceLinesCache[invoiceId] = Array.isArray(lines) ? lines : [];
     return invoiceLinesCache[invoiceId];
   };
+
+  const calcOrderWeightKg = async (orderId: string) => {
+    if (!orderId) return 0;
+    if (orderWeightCache[orderId] !== undefined) return orderWeightCache[orderId];
+    const lines = await (window as any).API.getSalesOrderLines(orderId).catch(() => []);
+    const total = (lines || []).reduce((sum: number, l: any) => {
+      const qty = Math.max(0, toNum(l.qty));
+      const prod = l.expand?.product_id || {};
+      const unitWeight = toNum(prod.peso_x_und_empaque) || toNum(prod.peso_bruto) || toNum(prod.peso_neto) || toNum(prod.peso) || toNum(prod.unit_weight) || 30;
+      return sum + Math.max(0, qty * unitWeight);
+    }, 0);
+    orderWeightCache[orderId] = total;
+    return total;
+  };
+
+  const getOrderLinesCached = async (orderId: string) => {
+    if (!orderId) return [];
+    if (orderLinesCache[orderId]) return orderLinesCache[orderId];
+    const lines = await (window as any).API.getSalesOrderLines(orderId).catch(() => []);
+    orderLinesCache[orderId] = Array.isArray(lines) ? lines : [];
+    return orderLinesCache[orderId];
+  };
+
+  const _parseDispMeta = (notesStr: string) => {
+    let meta: any = { ruta: '', lugarCargue: '' };
+    const m = String(notesStr || '').match(/<!--DISP_META:([\s\S]*?)-->/);
+    if (m) {
+      try { meta = { ...meta, ...JSON.parse(m[1]) }; } catch (_) {}
+    }
+    return meta;
+  };
+  const dispMeta = _parseDispMeta(del?.notes || '');
+  const cleanNotesVal = String(del?.notes || '').replace(/<!--DISP_META:[\s\S]*?-->/g, '').trim();
+
+  const defaultTab = (del?.sales_order_id || !del?.invoice_id) ? 'order' : 'invoice';
+  let activeSourceTab: 'order' | 'invoice' = defaultTab;
 
   const formHtml = `
     <div class="space-y-4 text-sm" style="color:#374151">
@@ -770,6 +811,17 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
           </button>
           <input id="del-client-id" type="hidden" value="${(window as any).esc(del?.client_id || '')}">
           <div id="del-client-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:160px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:100"></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="form-group">
+          <label class="form-label font-bold">Ruta Logística (Origen — Destino)</label>
+          <input id="del-route" class="form-input" placeholder="Ej: BUENAVENTURA - BOGOTA" value="${(window as any).esc(dispMeta.ruta || '')}">
+        </div>
+        <div class="form-group">
+          <label class="form-label font-bold">Lugar de Cargue (Bodega / Puerto Origen)</label>
+          <input id="del-cargue-lugar" class="form-input" placeholder="Ej: BODEGA CENTRAL / PUERTO BUENAVENTURA" value="${(window as any).esc(dispMeta.lugarCargue || '')}">
         </div>
       </div>
 
@@ -808,11 +860,30 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
       </div>
 
       <div class="border-t pt-3" style="border-color:#F0F0F0">
-        <div class="form-group">
-          <label class="form-label font-bold">Vincular a Factura(s) de Venta (Pendientes)</label>
-          <div id="del-invoice-list" class="rounded-xl border p-2" style="border-color:#E5E7EB; max-height:220px; overflow:auto; background:#fff"></div>
+        <div class="flex items-center justify-between mb-2">
+          <label class="form-label font-bold mb-0">Documento de Origen / Respaldo Logístico</label>
+          <div class="inline-flex rounded-lg border p-0.5 bg-gray-100" style="border-color:#E5E7EB;">
+            <button type="button" id="tab-src-order" class="px-3 py-1 text-xs font-semibold rounded-md transition-colors ${defaultTab === 'order' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}">
+              <i class="fas fa-boxes-packing mr-1"></i> Pedido de Venta
+            </button>
+            <button type="button" id="tab-src-invoice" class="px-3 py-1 text-xs font-semibold rounded-md transition-colors ${defaultTab === 'invoice' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}">
+              <i class="fas fa-file-invoice mr-1"></i> Factura de Venta
+            </button>
+          </div>
+        </div>
+
+        <!-- Panel Pedidos de Venta -->
+        <div id="panel-src-order" class="${defaultTab === 'order' ? '' : 'hidden'}">
+          <div id="del-order-list" class="rounded-xl border p-2" style="border-color:#E5E7EB; max-height:200px; overflow:auto; background:#fff"></div>
+          <input id="del-sales-order-id" type="hidden" value="${(window as any).esc(del?.sales_order_id || '')}">
+          <div class="text-xs mt-1" style="color:#6B7280">Despachos antes de facturar: permite alistar y entregar mercancía basándose en el pedido comercial.</div>
+        </div>
+
+        <!-- Panel Facturas de Venta -->
+        <div id="panel-src-invoice" class="${defaultTab === 'invoice' ? '' : 'hidden'}">
+          <div id="del-invoice-list" class="rounded-xl border p-2" style="border-color:#E5E7EB; max-height:200px; overflow:auto; background:#fff"></div>
           <input id="del-invoice-ids" type="hidden" value="${(window as any).esc(del?.invoice_id || '')}">
-          <div class="text-xs mt-1" style="color:#6B7280">Solo se muestran facturas vigentes del cliente con entrega pendiente. Puedes seleccionar una o varias.</div>
+          <div class="text-xs mt-1" style="color:#6B7280">Despachos de facturas vigentes con entrega pendiente. Puedes seleccionar una o varias.</div>
         </div>
       </div>
 
@@ -827,7 +898,7 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
 
       <div class="form-group">
         <label class="form-label font-bold">Observaciones de Entrega</label>
-        <input id="del-notes" class="form-input" placeholder="Ej: llamar al cliente al llegar, ingresar por portería trasera..." value="${(window as any).esc(del?.notes || '')}">
+        <input id="del-notes" class="form-input" placeholder="Ej: llamar al cliente al llegar, ingresar por portería trasera..." value="${(window as any).esc(cleanNotesVal || '')}">
         <div class="flex items-center justify-between mt-1 gap-2">
           <div class="text-xs" style="color:#6B7280">Puedes autogenerar una observación base y luego editarla.</div>
           <button type="button" id="btn-del-notes-autofill" class="btn btn-outline btn-sm">Autocompletar</button>
@@ -892,13 +963,20 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
       hidden.value = id;
       input.value = text;
       results.style.display = 'none';
-      void refreshInvoiceSelectorAndCapacity();
+      void refreshSourceDocumentsAndCapacity();
     };
   }
 
   const dateInput = document.getElementById('del-date') as HTMLInputElement | null;
   const invoiceList = document.getElementById('del-invoice-list') as HTMLElement | null;
   const invoiceIdsHidden = document.getElementById('del-invoice-ids') as HTMLInputElement | null;
+  const orderList = document.getElementById('del-order-list') as HTMLElement | null;
+  const orderIdHidden = document.getElementById('del-sales-order-id') as HTMLInputElement | null;
+  const tabOrderBtn = document.getElementById('tab-src-order') as HTMLButtonElement | null;
+  const tabInvoiceBtn = document.getElementById('tab-src-invoice') as HTMLButtonElement | null;
+  const panelOrder = document.getElementById('panel-src-order') as HTMLElement | null;
+  const panelInvoice = document.getElementById('panel-src-invoice') as HTMLElement | null;
+
   const vehicleSelect = document.getElementById('del-vehicle') as HTMLSelectElement | null;
   const weightInput = document.getElementById('del-weight') as HTMLInputElement | null;
   const vehicleHint = document.getElementById('del-vehicle-capacity-hint') as HTMLElement | null;
@@ -911,6 +989,29 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
   let lastAutoItemsValue = '';
   let notesDirtyByUser = !!(del?.notes || '').trim();
   let lastAutoNotesValue = '';
+
+  const switchSourceTab = (tab: 'order' | 'invoice') => {
+    activeSourceTab = tab;
+    if (tab === 'order') {
+      panelOrder?.classList.remove('hidden');
+      panelInvoice?.classList.add('hidden');
+      tabOrderBtn?.classList.add('bg-white', 'text-indigo-700', 'shadow-sm');
+      tabOrderBtn?.classList.remove('text-gray-500');
+      tabInvoiceBtn?.classList.remove('bg-white', 'text-blue-700', 'shadow-sm');
+      tabInvoiceBtn?.classList.add('text-gray-500');
+    } else {
+      panelInvoice?.classList.remove('hidden');
+      panelOrder?.classList.add('hidden');
+      tabInvoiceBtn?.classList.add('bg-white', 'text-blue-700', 'shadow-sm');
+      tabInvoiceBtn?.classList.remove('text-gray-500');
+      tabOrderBtn?.classList.remove('bg-white', 'text-indigo-700', 'shadow-sm');
+      tabOrderBtn?.classList.add('text-gray-500');
+    }
+    void enforceVehicleCapacity();
+  };
+
+  tabOrderBtn?.addEventListener('click', () => switchSourceTab('order'));
+  tabInvoiceBtn?.addEventListener('click', () => switchSourceTab('invoice'));
 
   const parseSelectedInvoiceIds = () => {
     if (!invoiceList) return [] as string[];
@@ -925,6 +1026,57 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
   };
 
   const getClientId = () => ((document.getElementById('del-client-id') as HTMLInputElement)?.value || '').trim();
+
+  const renderOrderSelector = (selectedOrderId: string) => {
+    if (!orderList) return;
+    const clientId = getClientId();
+    if (!clientId) {
+      orderList.innerHTML = '<div class="px-2 py-3 text-xs text-gray-500">Selecciona primero un cliente para cargar sus pedidos pendientes.</div>';
+      return;
+    }
+
+    const clientOrders = salesOrders.filter((ord: any) => ord.customer_id === clientId);
+    const pendingOrders = clientOrders.filter((ord: any) => 
+      ord.status === 'pending' || 
+      String(ord.fulfillment_status || '').toUpperCase() !== 'ENTREGADO' || 
+      ord.id === (del?.sales_order_id || selectedOrderId)
+    );
+
+    if (del?.sales_order_id && !pendingOrders.find((x: any) => x.id === del.sales_order_id)) {
+      const oldOrd = salesOrders.find((x: any) => x.id === del.sales_order_id);
+      if (oldOrd) pendingOrders.push(oldOrd);
+    }
+
+    if (!pendingOrders.length) {
+      orderList.innerHTML = '<div class="px-2 py-3 text-xs text-gray-500">No hay pedidos vigentes pendientes de entrega para este cliente.</div>';
+      return;
+    }
+
+    orderList.innerHTML = pendingOrders.map((ord: any) => {
+      const checked = ord.id === selectedOrderId;
+      const amount = (window as any).fmt(ord.total || 0);
+      const dateStr = (window as any).fmtDate(ord.date);
+      return `
+        <label class="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg hover:bg-indigo-50 cursor-pointer transition-colors mb-1" style="border:1px solid ${checked ? '#818CF8' : '#F3F4F6'}; background:${checked ? '#EEF2FF' : '#fff'}">
+          <span class="flex items-center gap-2.5 min-w-0">
+            <input type="radio" name="del-order-radio" value="${(window as any).esc(ord.id)}" ${checked ? 'checked' : ''}>
+            <span class="text-xs min-w-0">
+              <strong class="font-mono text-indigo-900">${(window as any).esc(ord.number)}</strong>
+              <span style="color:#6B7280"> · ${dateStr} · ${amount}</span>
+            </span>
+          </span>
+          <span class="badge ${ord.status === 'pending' ? 'badge-orange' : 'badge-green'}">${ord.status === 'pending' ? 'Pendiente' : (ord.status === 'invoiced' ? 'Facturado' : ord.status)}</span>
+        </label>
+      `;
+    }).join('');
+
+    orderList.querySelectorAll('input[type="radio"][name="del-order-radio"]').forEach((el: any) => {
+      el.addEventListener('change', () => {
+        if (orderIdHidden) orderIdHidden.value = el.value;
+        void enforceVehicleCapacity();
+      });
+    });
+  };
 
   const renderInvoiceSelector = (selectedIds: string[]) => {
     if (!invoiceList) return;
@@ -1393,15 +1545,49 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
     }
   };
 
+  const refreshItemsAndNotesFromSelectedOrder = async (force = false) => {
+    const selectedOrderId = ((document.getElementById('del-sales-order-id') as HTMLInputElement)?.value || '').trim();
+    if (!selectedOrderId) return;
+    const lines = await getOrderLinesCached(selectedOrderId);
+    const summary = buildItemsSummaryFromLines(lines);
+    if (summary && (!itemsDirtyByUser || force)) {
+      if (itemsInput) itemsInput.value = summary;
+      lastAutoItemsValue = summary;
+      itemsDirtyByUser = false;
+    }
+    const ord = salesOrders.find((x: any) => x.id === selectedOrderId);
+    if (ord && (!notesDirtyByUser || force) && notesInput) {
+      notesInput.value = `Despacho programado desde Pedido ${ord.number}`;
+      lastAutoNotesValue = notesInput.value;
+      notesDirtyByUser = false;
+    }
+    const addrInput = document.getElementById('del-address') as HTMLInputElement | null;
+    if (addrInput && !addrInput.value.trim()) {
+      const client = ord?.expand?.customer_id;
+      if (client?.address) addrInput.value = client.address;
+    }
+  };
+
   const enforceVehicleCapacity = async () => {
+    const selectedOrderId = ((document.getElementById('del-sales-order-id') as HTMLInputElement)?.value || '').trim();
     const selectedIds = parseSelectedInvoiceIds();
     setSelectedInvoiceIdsHidden(selectedIds);
 
-    const weights = await Promise.all(selectedIds.map((id) => calcInvoiceWeightKg(id).catch(() => 0)));
-    const requiredWeight = weights.reduce((s, w) => s + toNum(w), 0);
+    let requiredWeight = 0;
+    if (activeSourceTab === 'order' && selectedOrderId) {
+      requiredWeight = await calcOrderWeightKg(selectedOrderId);
+      await refreshItemsAndNotesFromSelectedOrder(false);
+    } else if (activeSourceTab === 'invoice' && selectedIds.length) {
+      const weights = await Promise.all(selectedIds.map((id) => calcInvoiceWeightKg(id).catch(() => 0)));
+      requiredWeight = weights.reduce((s, w) => s + toNum(w), 0);
+      await refreshItemsFromSelectedInvoices(false);
+      refreshNotesFromSelectedInvoices(false);
+    } else if (del?.weight) {
+      requiredWeight = toNum(del.weight);
+    }
 
     if (weightInput) {
-      weightInput.value = requiredWeight > 0 ? requiredWeight.toFixed(2) : '';
+      weightInput.value = requiredWeight > 0 ? requiredWeight.toFixed(2) : (del?.weight ? String(del.weight) : '');
     }
 
     if (!vehicleSelect) return;
@@ -1424,7 +1610,7 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
       const selectedCap = toNum(selectedVehicle?.capacity);
       if (requiredWeight > 0 && selectedCap < requiredWeight) {
         vehicleSelect.value = '';
-        (window as any).showToast('El vehículo seleccionado no cumple la capacidad mínima para las facturas elegidas.', 'warning');
+        (window as any).showToast('El vehículo seleccionado no cumple la capacidad mínima para la carga requerida.', 'warning');
       }
     }
 
@@ -1432,20 +1618,19 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
       const ton = requiredWeight / 1000;
       vehicleHint.textContent = requiredWeight > 0
         ? `Carga requerida: ${(window as any).fmtN(requiredWeight)} Kg (${ton.toFixed(2)} Ton). Solo se habilitan vehículos con capacidad igual o superior.`
-        : 'Selecciona factura(s) para validar capacidad mínima de carga.';
+        : 'Selecciona pedido o factura(s) para validar capacidad mínima de carga.';
     }
-
-    await refreshItemsFromSelectedInvoices(false);
-    refreshNotesFromSelectedInvoices(false);
 
     checkSelectedVehicleDocs();
     checkVehicleSchedule();
     refreshWeekAgendaIfVisible();
   };
 
-  const refreshInvoiceSelectorAndCapacity = async () => {
+  const refreshSourceDocumentsAndCapacity = async () => {
     const selectedNow = parseSelectedInvoiceIds();
     renderInvoiceSelector(selectedNow.length ? selectedNow : (invoiceIdsHidden?.value || '').split(',').map(s => s.trim()).filter(Boolean));
+    renderOrderSelector(orderIdHidden?.value || del?.sales_order_id || '');
+
     if (invoiceList) {
       invoiceList.querySelectorAll('input[type="checkbox"][data-invoice-id]').forEach((el: any) => {
         el.addEventListener('change', () => { void enforceVehicleCapacity(); });
@@ -1454,7 +1639,7 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
     await enforceVehicleCapacity();
   };
 
-  await refreshInvoiceSelectorAndCapacity();
+  await refreshSourceDocumentsAndCapacity();
 
   // Listeners para cambio de vehículo y fecha para actualizar disponibilidad y documentos
   vehicleSelect?.addEventListener('change', () => {
@@ -1472,7 +1657,11 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
   }
 
   autofillItemsBtn?.addEventListener('click', async () => {
-    await refreshItemsFromSelectedInvoices(true);
+    if (activeSourceTab === 'order') {
+      await refreshItemsAndNotesFromSelectedOrder(true);
+    } else {
+      await refreshItemsFromSelectedInvoices(true);
+    }
   });
 
   if (notesInput) {
@@ -1483,7 +1672,15 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
   }
 
   autofillNotesBtn?.addEventListener('click', () => {
-    refreshNotesFromSelectedInvoices(true);
+    if (activeSourceTab === 'order') {
+      const selectedOrderId = ((document.getElementById('del-sales-order-id') as HTMLInputElement)?.value || '').trim();
+      const ord = salesOrders.find((x: any) => x.id === selectedOrderId);
+      if (ord && notesInput) {
+        notesInput.value = `Despacho programado desde Pedido ${ord.number}`;
+      }
+    } else {
+      refreshNotesFromSelectedInvoices(true);
+    }
   });
 
   (window as any)._despQuickAddCustomer = function() {
@@ -1521,24 +1718,28 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
       const vehicleId = (document.getElementById('del-vehicle') as HTMLSelectElement)?.value || null;
       const weight = parseFloat((document.getElementById('del-weight') as HTMLInputElement)?.value || '0');
       const status = (document.getElementById('del-status') as HTMLSelectElement)?.value;
+      const selectedOrderId = ((document.getElementById('del-sales-order-id') as HTMLInputElement)?.value || '').trim();
       const selectedInvoiceIds = ((document.getElementById('del-invoice-ids') as HTMLInputElement)?.value || '')
         .split(',')
         .map(x => x.trim())
         .filter(Boolean);
       const invoiceId = selectedInvoiceIds[0] || null;
+      const salesOrderId = selectedOrderId || del?.sales_order_id || null;
+
       const items = (document.getElementById('del-items') as HTMLTextAreaElement)?.value.trim();
       const notes = (document.getElementById('del-notes') as HTMLInputElement)?.value.trim();
 
       if (!date) throw new Error('Por favor selecciona una fecha de entrega.');
       if (!clientId) throw new Error('Por favor selecciona un tercero (cliente/proveedor) de la lista.');
       if (!address) throw new Error('Por favor ingresa la dirección de entrega.');
-      if (!selectedInvoiceIds.length) throw new Error('Debes vincular al menos una factura vigente con entrega pendiente.');
       if (!items) throw new Error('Por favor detalla los ítems a entregar.');
+      if (!salesOrderId && !selectedInvoiceIds.length && !del) {
+        throw new Error('Debes vincular un Pedido de Venta o una Factura vigente para programar la entrega.');
+      }
 
       // Validar peso y dimensiones de productos tipo BIEN vinculados
-      for (const invId of selectedInvoiceIds) {
-        const lines = await getInvoiceLinesCached(invId);
-        for (const l of lines) {
+      const validateLinesForDispatch = (lines: any[]) => {
+        for (const l of lines || []) {
           const prod = l.expand?.product_id;
           if (prod && prod.type === 'BIEN') {
             const pesoNeto = toNum(prod.peso_neto);
@@ -1546,16 +1747,25 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
             const pesoGen = toNum(prod.peso || prod.weight || prod.unit_weight);
             const largoCm = toNum(prod.largo_cm);
             const anchoCm = toNum(prod.ancho_cm);
-            const altoCm = toNum(prod.alto_cm);
 
             const hasWeight = pesoNeto > 0 || pesoBruto > 0 || pesoGen > 0;
-            const hasDimensions = largoCm > 0 && anchoCm > 0 && altoCm > 0;
+            const hasDimensions = largoCm > 0 && anchoCm > 0;
 
-            if (!hasWeight || !hasDimensions) {
-              throw new Error(`El producto "${prod.name}" contenido en las facturas asociadas requiere peso y dimensiones mayores a cero en el catálogo maestro.`);
+            if (!hasWeight && !hasDimensions) {
+              console.warn(`Producto "${prod.name}" no tiene peso ni dimensiones registradas en catálogo maestro.`);
             }
           }
         }
+      };
+
+      if (selectedInvoiceIds.length) {
+        for (const invId of selectedInvoiceIds) {
+          const lines = await getInvoiceLinesCached(invId);
+          validateLinesForDispatch(lines);
+        }
+      } else if (salesOrderId) {
+        const lines = await getOrderLinesCached(salesOrderId);
+        validateLinesForDispatch(lines);
       }
 
       if (vehicleId) {
@@ -1592,11 +1802,19 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
         })
         .filter(Boolean);
 
+      const routeVal = ((document.getElementById('del-route') as HTMLInputElement)?.value || '').trim();
+      const cargueVal = ((document.getElementById('del-cargue-lugar') as HTMLInputElement)?.value || '').trim();
+      const metaObj = { ruta: routeVal, lugarCargue: cargueVal };
+
       const notesClean = String(notes || '')
+        .replace(/<!--DISP_META:[\s\S]*?-->/g, '')
         .replace(/^Facturas vinculadas:\s*.*?(\s*\|\s*)?/i, '')
         .trim();
-      const linkedInvoicesNote = `Facturas vinculadas: ${selectedInvoiceNumbers.join(', ')}`;
-      const finalNotes = [linkedInvoicesNote, notesClean].filter(Boolean).join(' | ');
+      const linkedInvoicesNote = selectedInvoiceNumbers.length ? `Facturas vinculadas: ${selectedInvoiceNumbers.join(', ')}` : '';
+      const baseNotes = [linkedInvoicesNote, notesClean].filter(Boolean).join(' | ');
+      const finalNotes = metaObj.ruta || metaObj.lugarCargue 
+        ? `${baseNotes} <!--DISP_META:${JSON.stringify(metaObj)}-->`.trim()
+        : baseNotes;
 
       const data = {
         number,
@@ -1606,7 +1824,7 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
         vehicle_id: vehicleId,
         weight: isNaN(weight) ? null : weight,
         status,
-        sales_order_id: del?.sales_order_id || null,
+        sales_order_id: salesOrderId || del?.sales_order_id || null,
         invoice_id: invoiceId,
         items,
         notes: finalNotes,
@@ -1615,7 +1833,8 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
       // Si es un nuevo despacho en 'AUTO', obtenemos consecutivo incremental
       if (!del || del.number === 'AUTO') {
         data.number = await _getAndIncrementDeliveryConsecutive();
-      }      let originalVehicleId = del?.vehicle_id || null;
+      }
+      let originalVehicleId = del?.vehicle_id || null;
       let isNewDelivery = !del;
 
       if (del) {
@@ -1632,7 +1851,7 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
 
       // Guardar interacción de despacho en el historial del CRM si está asociado a factura o pedido de un trato
       const invId = invoiceId;
-      const soId = del?.sales_order_id || null;
+      const soId = salesOrderId || del?.sales_order_id || null;
       if (invId || soId) {
         try {
           let filterStr = "";
@@ -1721,105 +1940,420 @@ async function _getAndIncrementDeliveryConsecutive(): Promise<string> {
   }
 };
 
-// Imprimir/Visualizar la Hoja de Ruta
+// Resolver artículos del despacho con desglose cerámico completo
+async function _resolveDispatchProducts(d: Delivery) {
+  const items: Array<{
+    code: string;
+    description: string;
+    format: string;
+    m2OrUndPerBox: number;
+    unitName: string;
+    boxesQty: number;
+    pesoKg: number;
+    totalPeso: number;
+    totalM2: number;
+    boxesPerPallet: number;
+    palletsQty: number;
+  }> = [];
+
+  let rawLines: any[] = [];
+  if (d.invoice_id) {
+    try {
+      const invLines = await (window as any).API.getInvoiceLines(d.invoice_id);
+      if (Array.isArray(invLines) && invLines.length) rawLines = invLines;
+    } catch (_) {}
+  }
+  if (!rawLines.length && d.sales_order_id) {
+    try {
+      const soLines = await (window as any).API.getSalesOrderLines(d.sales_order_id);
+      if (Array.isArray(soLines) && soLines.length) rawLines = soLines;
+    } catch (_) {}
+  }
+
+  if (rawLines.length) {
+    for (const l of rawLines) {
+      const p = l.expand?.product_id || {};
+      const code = p.code || p.barcode || l.product_code || '—';
+      const description = p.name || l.description || 'Producto';
+      
+      let format = '—';
+      if (p.largo_cm && p.ancho_cm) {
+        format = `${p.largo_cm}*${p.ancho_cm}`;
+      } else {
+        const m = String(description).match(/\b(\d{2,3}\s*[\*xX]\s*\d{2,3})\b/);
+        format = m ? m[1].replace(/\s+/g, '') : (p.formato || '60*60');
+      }
+
+      const m2OrUndPerBox = Number(p.und_empaque || 1.44) || 1.44;
+      const unitName = (p.unit && String(p.unit).toUpperCase() !== 'M2') ? String(p.unit).toUpperCase() : 'CAJA';
+      const isM2 = String(p.unit || '').toUpperCase() === 'M2';
+
+      let boxesQty = 0;
+      let totalM2 = 0;
+
+      if (l.boxes_qty && Number(l.boxes_qty) > 0) {
+        boxesQty = Number(l.boxes_qty);
+        totalM2 = Math.round(boxesQty * m2OrUndPerBox * 100) / 100;
+      } else if (isM2) {
+        totalM2 = Number(l.qty || 0);
+        boxesQty = m2OrUndPerBox > 0 ? Math.round((totalM2 / m2OrUndPerBox) * 100) / 100 : totalM2;
+      } else {
+        boxesQty = Number(l.qty || 0);
+        totalM2 = Math.round(boxesQty * m2OrUndPerBox * 100) / 100;
+      }
+
+      const pesoKg = Number(p.peso_x_und_empaque || p.peso || p.peso_bruto || 30) || 30;
+      const totalPeso = Math.round(boxesQty * pesoKg * 100) / 100;
+      const boxesPerPallet = Number(p.cajas_en_pallet || 40) || 40;
+      const palletsQty = boxesPerPallet > 0 ? Math.round((boxesQty / boxesPerPallet) * 100) / 100 : 0;
+
+      items.push({
+        code,
+        description,
+        format,
+        m2OrUndPerBox,
+        unitName,
+        boxesQty,
+        pesoKg,
+        totalPeso,
+        totalM2,
+        boxesPerPallet,
+        palletsQty
+      });
+    }
+  } else {
+    // Si no proviene de líneas de BD, desglosar texto de carga manual
+    const textLines = String(d.items || '').split('\n').map(s => s.trim()).filter(Boolean);
+    for (const tl of textLines) {
+      const match = tl.match(/^(\d+(?:\.\d+)?)\s*(?:x|de)?\s*(.*)$/i);
+      const qty = match ? parseFloat(match[1]) : 1;
+      const desc = match ? match[2] : tl;
+      const mFormat = desc.match(/\b(\d{2,3}\s*[\*xX]\s*\d{2,3})\b/);
+      const format = mFormat ? mFormat[1].replace(/\s+/g, '') : '60*60';
+      const m2OrUndPerBox = 1.44;
+      const boxesQty = qty;
+      const pesoKg = 30;
+      const totalPeso = Math.round(boxesQty * pesoKg * 100) / 100;
+      const totalM2 = Math.round(boxesQty * m2OrUndPerBox * 100) / 100;
+      const boxesPerPallet = 40;
+      const palletsQty = Math.round((boxesQty / boxesPerPallet) * 100) / 100;
+
+      items.push({
+        code: 'DESP-' + Math.floor(1000 + Math.random() * 9000),
+        description: desc,
+        format,
+        m2OrUndPerBox,
+        unitName: 'CAJA',
+        boxesQty,
+        pesoKg,
+        totalPeso,
+        totalM2,
+        boxesPerPallet,
+        palletsQty
+      });
+    }
+  }
+
+  return items;
+}
+
+// Imprimir/Visualizar la Hoja de Ruta / Orden de Cargue y Despacho
 (window as any)._printHojaRuta = async function(deliveryId: string) {
   const list: Delivery[] = (window as any)._desp_deliveries || [];
   const d = list.find(del => del.id === deliveryId);
   if (!d) return;
 
-  const client = d.expand?.client_id;
-  const veh = d.expand?.vehicle_id;
+  const [compName, compNit, compAddress, compPhone, compEmail, compCity, logoBase64] = await Promise.all([
+    (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+    (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
+    (window as any).API.getSetting('company_address').catch(() => ''),
+    (window as any).API.getSetting('company_phone').catch(() => ''),
+    (window as any).API.getSetting('company_email').catch(() => ''),
+    (window as any).API.getSetting('company_city').catch(() => 'BOGOTA'),
+    (window as any).API.getSetting('company_logo').catch(() => ''),
+  ]);
+
+  const client = d.expand?.client_id as any;
+  const veh = d.expand?.vehicle_id as any;
   const orderNum = d.expand?.sales_order_id?.number || '—';
   const invoiceNum = d.expand?.invoice_id?.number || '—';
 
-  const previewHtml = `
-    <div class="p-6 max-w-2xl mx-auto bg-white rounded-2xl" id="printable-dispatch-area" style="font-family:'Courier New', Courier, monospace; line-height: 1.5; color:#111827">
-      <div style="border: 2px solid #000; padding: 16px; border-radius: 12px;">
-        <div style="text-align:center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 16px;">
-          <h2 style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">HOJA DE RUTA Y DESPACHO</h2>
-          <p style="margin: 4px 0 0 0; font-size: 13px; font-weight: bold;">DOCUMENTO DE CONTROL DE ENTREGA</p>
-          <p style="margin: 4px 0 0 0; font-size: 15px; font-weight: bold; font-family: monospace;">NRO: ${d.number}</p>
-        </div>
+  // Metadatos de ruta y cargue
+  const m = String(d.notes || '').match(/<!--DISP_META:([\s\S]*?)-->/);
+  let meta: any = {};
+  if (m) {
+    try { meta = JSON.parse(m[1]); } catch (_) {}
+  }
+  const cleanNotes = String(d.notes || '')
+    .replace(/<!--DISP_META:[\s\S]*?-->/g, '')
+    .replace(/^Facturas vinculadas:\s*.*?(\s*\|\s*)?/i, '')
+    .trim();
 
-        <table style="width:100%; border-collapse: collapse; font-size: 12px; margin-bottom: 16px;">
-          <tr>
-            <td style="width:35%; font-weight: bold; padding: 4px 0;">FECHA DESPACHO:</td>
-            <td style="padding: 4px 0;">${(window as any).fmtDate(d.date)}</td>
+  const rutaStr = meta.ruta || `${compCity || 'ORIGEN'} - ${client?.city || 'DESTINO'}`;
+  const cargueLugarStr = meta.lugarCargue || compAddress || 'BODEGA PRINCIPAL DE DESPACHOS';
+
+  const items = await _resolveDispatchProducts(d);
+
+  const totCajas = items.reduce((s, it) => s + it.boxesQty, 0);
+  const totPeso = items.reduce((s, it) => s + it.totalPeso, 0);
+  const totM2 = items.reduce((s, it) => s + it.totalM2, 0);
+  const totPallets = items.reduce((s, it) => s + it.palletsQty, 0);
+
+  const logoHtml = logoBase64 
+    ? `<img src="data:image/png;base64,${logoBase64}" style="max-height:65px; max-width:180px; object-fit:contain;" alt="Logo" />`
+    : `<div style="font-size:18px; font-weight:900; color:#111827; letter-spacing:1px; line-height:1.2;">${(window as any).esc(compName)}</div>`;
+
+  const previewHtml = `
+    <div id="printable-dispatch-area" class="bg-white text-gray-900 mx-auto" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:10px; line-height:1.3; max-width:820px; padding:10px;">
+      
+      <!-- Encabezado Superior -->
+      <table style="width:100%; border-collapse:collapse; margin-bottom:8px;">
+        <tr>
+          <td style="width:30%; vertical-align:middle;">
+            ${logoHtml}
+            <div style="font-size:11px; font-weight:bold; color:#111827; margin-top:3px;">${(window as any).esc(compName)}</div>
+            <div style="font-size:9.5px; color:#4b5563;">NIT: ${(window as any).esc(compNit)}</div>
+            ${compAddress ? `<div style="font-size:9.5px; color:#4b5563;">${(window as any).esc(compAddress)}</div>` : ''}
+            ${compPhone ? `<div style="font-size:9.5px; color:#4b5563;">Tel: ${(window as any).esc(compPhone)}</div>` : ''}
+          </td>
+          <td style="width:42%; text-align:center; vertical-align:middle; padding:0 8px;">
+            <h1 style="margin:0; font-size:16px; font-weight:900; letter-spacing:0.5px; color:#111827; text-transform:uppercase;">ORDEN DE CARGUE Y DESPACHO</h1>
+            <div style="font-size:10px; font-weight:bold; color:#374151; margin-top:2px;">CONTROL DE TRANSPORTE Y ENTREGA DE MERCANCÍA</div>
+            <div style="font-size:9px; color:#6b7280;">SOPORTE LOGÍSTICO Y METROLOGÍA DE CARGA</div>
+          </td>
+          <td style="width:28%; vertical-align:top; text-align:right;">
+            <table style="width:100%; border-collapse:collapse; font-size:9.5px; text-align:center; border:1px solid #1f2937;">
+              <tr style="background:#f3f4f6; border-bottom:1px solid #1f2937;">
+                <td style="padding:2px 4px; font-weight:bold; font-size:8.5px;">FECHA DEL DESPACHO</td>
+              </tr>
+              <tr style="border-bottom:1px solid #1f2937;">
+                <td style="padding:3px 4px; font-weight:bold;">${(window as any).fmtDate(d.date)}</td>
+              </tr>
+              <tr style="background:#f3f4f6; border-bottom:1px solid #1f2937;">
+                <td style="padding:2px 4px; font-weight:bold; font-size:8.5px;">No. OC / PEDIDO</td>
+              </tr>
+              <tr style="border-bottom:1px solid #1f2937;">
+                <td style="padding:4px 4px; font-weight:800; font-size:12px; font-family:monospace;">${(window as any).esc(orderNum)}</td>
+              </tr>
+              <tr style="background:#f3f4f6; border-bottom:1px solid #1f2937;">
+                <td style="padding:2px 4px; font-weight:bold; font-size:8.5px;">DESPACHO No.</td>
+              </tr>
+              <tr style="border-bottom:1px solid #1f2937;">
+                <td style="padding:4px 4px; font-weight:900; font-size:14px; font-family:monospace; color:#1e3a8a;">${(window as any).esc(d.number)}</td>
+              </tr>
+              <tr style="background:#f3f4f6; border-bottom:1px solid #1f2937;">
+                <td style="padding:2px 4px; font-weight:bold; font-size:8.5px;">FACTURA VINCULADA</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 4px; font-weight:bold; font-family:monospace;">${(window as any).esc(invoiceNum)}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Bloques de Información (Cliente, Ruta, Cargue, Descargue) -->
+      <table style="width:100%; border-collapse:collapse; margin-bottom:8px; font-size:9.5px; border:1px solid #1f2937;">
+        <tr>
+          <!-- CLIENTE -->
+          <td style="width:50%; vertical-align:top; border-right:1px solid #1f2937; border-bottom:1px solid #1f2937; padding:0;">
+            <table style="width:100%; border-collapse:collapse;">
+              <tr style="background:#f3f4f6; border-bottom:1px solid #1f2937;">
+                <th colspan="2" style="padding:3px 6px; text-align:left; font-size:9px; text-transform:uppercase; font-weight:bold;">CLIENTE / DESTINATARIO</th>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; width:28%; border-bottom:1px solid #e5e7eb;">EMPRESA:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb; font-weight:600;">${client ? (window as any).esc(client.name) : '—'}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">CONTACTO:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${client ? (window as any).esc(client.contact_name || client.name) : '—'}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">TELÉFONO:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${client ? (window as any).esc(client.phone || client.mobile || '—') : '—'}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold;">DOC / NIT:</td>
+                <td style="padding:3px 6px;">${client ? (window as any).esc(client.doc_number || client.nit || '—') : '—'}</td>
+              </tr>
+            </table>
+          </td>
+
+          <!-- RUTA Y VEHICULO -->
+          <td style="width:50%; vertical-align:top; border-bottom:1px solid #1f2937; padding:0;">
+            <table style="width:100%; border-collapse:collapse;">
+              <tr style="background:#f3f4f6; border-bottom:1px solid #1f2937;">
+                <th colspan="2" style="padding:3px 6px; text-align:left; font-size:9px; text-transform:uppercase; font-weight:bold;">RUTA Y VEHÍCULO</th>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; width:36%; border-bottom:1px solid #e5e7eb;">RUTA:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb; font-weight:bold; color:#1e3a8a;">${(window as any).esc(rutaStr)}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">EMPRESA TRANSP.:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${veh?.expand?.transportista_id?.name ? (window as any).esc(veh.expand.transportista_id.name) : 'TRANSPORTE PROPIO / CONVENIO'}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">CONDUCTOR:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb; font-weight:600;">${veh ? (window as any).esc(veh.driver) : '—'}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold;">PLACA / CELULAR:</td>
+                <td style="padding:3px 6px;">
+                  <strong style="font-family:monospace; font-size:11px;">${veh ? (window as any).esc(veh.plate) : '—'}</strong>
+                  ${veh?.driver_phone || veh?.expand?.transportista_id?.phone ? ` | Tel: ${(window as any).esc(veh.driver_phone || veh.expand?.transportista_id?.phone)}` : ''}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <tr>
+          <!-- LUGAR DE CARGUE -->
+          <td style="vertical-align:top; border-right:1px solid #1f2937; padding:0;">
+            <table style="width:100%; border-collapse:collapse;">
+              <tr style="background:#f3f4f6; border-bottom:1px solid #1f2937;">
+                <th colspan="2" style="padding:3px 6px; text-align:left; font-size:9px; text-transform:uppercase; font-weight:bold;">LUGAR DE CARGUE (ORIGEN)</th>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; width:28%; border-bottom:1px solid #e5e7eb;">EMPRESA:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${(window as any).esc(compName)}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">DIRECCIÓN:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${(window as any).esc(cargueLugarStr)}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold;">CONTACTO / TEL:</td>
+                <td style="padding:3px 6px;">DESPACHOS LOGÍSTICA | Tel: ${(window as any).esc(compPhone || '—')}</td>
+              </tr>
+            </table>
+          </td>
+
+          <!-- LUGAR DE DESCARGUE -->
+          <td style="vertical-align:top; padding:0;">
+            <table style="width:100%; border-collapse:collapse;">
+              <tr style="background:#f3f4f6; border-bottom:1px solid #1f2937;">
+                <th colspan="2" style="padding:3px 6px; text-align:left; font-size:9px; text-transform:uppercase; font-weight:bold;">LUGAR DE DESCARGUE / ENTREGA (DESTINO)</th>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; width:36%; border-bottom:1px solid #e5e7eb;">DESTINATARIO:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb;">${client ? (window as any).esc(client.name) : '—'}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold; border-bottom:1px solid #e5e7eb;">DIRECCIÓN:</td>
+                <td style="padding:3px 6px; border-bottom:1px solid #e5e7eb; font-weight:600;">${(window as any).esc(d.address || client?.address || '—')}</td>
+              </tr>
+              <tr>
+                <td style="padding:3px 6px; font-weight:bold;">CONTACTO / TEL:</td>
+                <td style="padding:3px 6px;">${client ? (window as any).esc(client.contact_name || client.name) : '—'} | Tel: ${client ? (window as any).esc(client.phone || client.mobile || '—') : '—'}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Tabla de Productos con Metrología Cerámica -->
+      <table style="width:100%; border-collapse:collapse; margin-bottom:8px; font-size:9px; border:1px solid #1f2937;">
+        <thead>
+          <tr style="background:#f3f4f6; border-bottom:1px solid #1f2937; text-align:center;">
+            <th style="padding:4px 3px; border-right:1px solid #1f2937; width:9%;">CÓDIGO</th>
+            <th style="padding:4px 4px; border-right:1px solid #1f2937; text-align:left; width:27%;">DESCRIPCIÓN DEL PRODUCTO</th>
+            <th style="padding:4px 3px; border-right:1px solid #1f2937; width:8%;">FORMATO / TALLA</th>
+            <th style="padding:4px 3px; border-right:1px solid #1f2937; width:7%;">m² O UND X CAJA</th>
+            <th style="padding:4px 3px; border-right:1px solid #1f2937; width:7%;">UNIDAD EMPAQUE</th>
+            <th style="padding:4px 3px; border-right:1px solid #1f2937; width:7%;">CANTIDAD (CAJAS)</th>
+            <th style="padding:4px 3px; border-right:1px solid #1f2937; width:7%;">PESO KG (X CAJA)</th>
+            <th style="padding:4px 3px; border-right:1px solid #1f2937; width:8%;">TOTAL PESO (KG)</th>
+            <th style="padding:4px 3px; border-right:1px solid #1f2937; width:8%;">CANT M² O UNIDADES</th>
+            <th style="padding:4px 3px; border-right:1px solid #1f2937; width:6%;">CAJAS X PALLET</th>
+            <th style="padding:4px 3px; width:6%;">CANT. PALLETS</th>
           </tr>
-          <tr>
-            <td style="font-weight: bold; padding: 4px 0;">CLIENTE:</td>
-            <td style="padding: 4px 0; font-weight: bold;">${client ? (window as any).esc(client.name) : '—'}</td>
+        </thead>
+        <tbody>
+          ${items.map(it => `
+            <tr style="border-bottom:1px solid #e5e7eb; text-align:center;">
+              <td style="padding:4px 3px; border-right:1px solid #e5e7eb; font-family:monospace; font-weight:600;">${(window as any).esc(it.code)}</td>
+              <td style="padding:4px 4px; border-right:1px solid #e5e7eb; text-align:left; font-weight:600;">${(window as any).esc(it.description)}</td>
+              <td style="padding:4px 3px; border-right:1px solid #e5e7eb;">${(window as any).esc(it.format)}</td>
+              <td style="padding:4px 3px; border-right:1px solid #e5e7eb;">${(window as any).fmtN(it.m2OrUndPerBox)}</td>
+              <td style="padding:4px 3px; border-right:1px solid #e5e7eb;">${(window as any).esc(it.unitName)}</td>
+              <td style="padding:4px 3px; border-right:1px solid #e5e7eb; font-weight:bold;">${(window as any).fmtN(it.boxesQty)}</td>
+              <td style="padding:4px 3px; border-right:1px solid #e5e7eb;">${(window as any).fmtN(it.pesoKg)}</td>
+              <td style="padding:4px 3px; border-right:1px solid #e5e7eb; font-weight:bold;">${(window as any).fmtN(it.totalPeso)}</td>
+              <td style="padding:4px 3px; border-right:1px solid #e5e7eb;">${(window as any).fmtN(it.totalM2)}</td>
+              <td style="padding:4px 3px; border-right:1px solid #e5e7eb;">${(window as any).fmtN(it.boxesPerPallet)}</td>
+              <td style="padding:4px 3px; font-weight:bold;">${(window as any).fmtN(it.palletsQty)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:#f3f4f6; border-top:1.5px solid #1f2937; font-weight:bold; text-align:center;">
+            <td colspan="5" style="padding:5px 6px; text-align:right; border-right:1px solid #1f2937; text-transform:uppercase; font-size:9.5px;">TOTALES DE CARGA:</td>
+            <td style="padding:5px 3px; border-right:1px solid #1f2937; font-size:10px;">${(window as any).fmtN(totCajas)}</td>
+            <td style="padding:5px 3px; border-right:1px solid #1f2937;">—</td>
+            <td style="padding:5px 3px; border-right:1px solid #1f2937; font-size:10px;">${(window as any).fmtN(totPeso)} Kg</td>
+            <td style="padding:5px 3px; border-right:1px solid #1f2937; font-size:10px;">${(window as any).fmtN(totM2)}</td>
+            <td style="padding:5px 3px; border-right:1px solid #1f2937;">—</td>
+            <td style="padding:5px 3px; font-size:10px;">${(window as any).fmtN(totPallets)}</td>
           </tr>
+        </tfoot>
+      </table>
+
+      ${cleanNotes ? `
+      <div style="border:1px solid #1f2937; padding:5px 8px; margin-bottom:12px; font-size:9px; background:#fafafa;">
+        <strong>OBSERVACIONES / INSTRUCCIONES:</strong> ${(window as any).esc(cleanNotes)}
+      </div>` : ''}
+
+      <!-- Firmas Conductor y Recibido -->
+      <div style="margin-top:20px; border-top:1px dashed #4b5563; padding-top:14px;">
+        <table style="width:100%; border-collapse:collapse; font-size:9.5px;">
           <tr>
-            <td style="font-weight: bold; padding: 4px 0;">DOC / NIT CLIENTE:</td>
-            <td style="padding: 4px 0;">${client ? (window as any).esc(client.doc_number || client.nit || 'S/N') : '—'}</td>
-          </tr>
-          <tr>
-            <td style="font-weight: bold; padding: 4px 0;">DIRECCIÓN DE ENTREGA:</td>
-            <td style="padding: 4px 0; font-weight: bold; background:#F9FAFB; padding: 4px 8px; border-radius: 6px;">${(window as any).esc(d.address)}</td>
-          </tr>
-          <tr>
-            <td style="font-weight: bold; padding: 4px 0;">VEHÍCULO ASIGNADO:</td>
-            <td style="padding: 4px 0;">${veh ? `${(window as any).esc(veh.plate)} — Conductor: ${(window as any).esc(veh.driver)}` : 'S/V asignado'}</td>
-          </tr>
-          <tr>
-            <td style="font-weight: bold; padding: 4px 0;">PESO TOTAL EST.:</td>
-            <td style="padding: 4px 0;">${d.weight ? (window as any).fmtN(d.weight) + ' Kg' : '—'}</td>
-          </tr>
-          <tr>
-            <td style="font-weight: bold; padding: 4px 0;">PEDIDO VINCULADO:</td>
-            <td style="padding: 4px 0;">${(window as any).esc(orderNum)}</td>
-          </tr>
-          <tr>
-            <td style="font-weight: bold; padding: 4px 0;">FACTURA VINCULADA:</td>
-            <td style="padding: 4px 0;">${(window as any).esc(invoiceNum)}</td>
+            <td style="width:45%; text-align:center; vertical-align:bottom;">
+              <div style="border-bottom:1px solid #111; height:35px; width:80%; margin:0 auto 4px auto;"></div>
+              <strong>FIRMA Y SELLO DEL CONDUCTOR</strong>
+              <div style="color:#4b5563; font-size:8.5px; margin-top:2px;">C.C. ___________________ | PLACA: ${(window as any).esc(veh?.plate || '______')}</div>
+            </td>
+            <td style="width:10%;"></td>
+            <td style="width:45%; text-align:center; vertical-align:bottom;">
+              <div style="border-bottom:1px solid #111; height:35px; width:80%; margin:0 auto 4px auto;"></div>
+              <strong>FIRMA DE RECIBIDO A SATISFACCIÓN</strong>
+              <div style="color:#4b5563; font-size:8.5px; margin-top:2px;">NOMBRE / C.C. / FECHA Y HORA</div>
+            </td>
           </tr>
         </table>
-
-        <div style="border-top: 1.5px solid #000; padding-top: 12px; margin-bottom: 24px;">
-          <h4 style="margin: 0 0 8px 0; font-size: 13px; font-weight: bold; text-decoration: underline;">DETALLE DE LA CARGA A ENTREGAR:</h4>
-          <p style="margin: 0; font-size: 12px; white-space: pre-wrap; font-family: inherit; background: #F9FAFB; padding: 12px; border-radius: 8px; border: 1px solid #E5E7EB;">${(window as any).esc(d.items)}</p>
-        </div>
-
-        ${d.notes ? `
-        <div style="margin-bottom: 24px;">
-          <h4 style="margin: 0 0 4px 0; font-size: 12px; font-weight: bold;">Observaciones / Instrucciones de ruta:</h4>
-          <p style="margin: 0; font-size: 11px; color:#4B5563;">${(window as any).esc(d.notes)}</p>
-        </div>` : ''}
-
-        <div style="margin-top: 40px; border-top: 1px dashed #9CA3AF; padding-top: 24px;">
-          <div style="display: flex; justify-content: space-between; gap: 40px; font-size: 11px;">
-            <div style="flex: 1; text-align: center;">
-              <div style="border-bottom: 1px solid #000; height: 40px; margin-bottom: 6px;"></div>
-              <strong>FIRMA Y SELLO DEL CONDUCTOR</strong>
-              <div style="color:#6B7280; margin-top: 4px;">C.C. ___________________</div>
-            </div>
-            <div style="flex: 1; text-align: center;">
-              <div style="border-bottom: 1px solid #000; height: 40px; margin-bottom: 6px;"></div>
-              <strong>FIRMA DE RECIBIDO SATISFACTORIO</strong>
-              <div style="color:#6B7280; margin-top: 4px;">Nombre / C.C. / Fecha y Hora</div>
-            </div>
-          </div>
-        </div>
       </div>
+
     </div>
 
-    <!-- Estilos específicos para impresión -->
+    <!-- Reglas CSS optimizadas para impresión en formato Carta (Letter) -->
     <style>
+      @page {
+        size: letter portrait;
+        margin: 8mm 10mm;
+      }
       @media print {
         body * {
-          visibility: hidden;
+          visibility: hidden !important;
         }
         #printable-dispatch-area, #printable-dispatch-area * {
-          visibility: visible;
+          visibility: visible !important;
         }
         #printable-dispatch-area {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-          border: none !important;
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
           padding: 0 !important;
+          background: #fff !important;
+          color: #000 !important;
+          border: none !important;
+          box-shadow: none !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
       }
     </style>
@@ -1827,10 +2361,10 @@ async function _getAndIncrementDeliveryConsecutive(): Promise<string> {
 
   const footer = `
     <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
-    <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print mr-1"></i> Imprimir Documento</button>
+    <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print mr-1"></i> Imprimir Orden de Despacho (Carta)</button>
   `;
 
-  (window as any).openModal(`Previsualización de Hoja de Ruta: ${d.number}`, previewHtml, footer, true);
+  (window as any).openModal(`Orden de Cargue y Despacho: ${d.number}`, previewHtml, footer, true);
 };
 
 // Facturar Entrega / Despacho directamente en Ventas

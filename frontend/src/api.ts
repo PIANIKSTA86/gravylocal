@@ -93,7 +93,7 @@ const pb = {
     let page = 1;
     const all = [];
     while (true) {
-      const r = await this.list(collection, { ...options, page, perPage: 200 });
+      const r = await this.list(collection, { ...options, page, perPage: (options as any)?.perPage || 200 });
       all.push(...r.items);
       if (page >= r.totalPages) break;
       page++;
@@ -2195,6 +2195,7 @@ const API = {
       return _inFlightPostPurchase.get(invoiceId)!;
     }
     const exec = async () => {
+    const self: any = (this && typeof this.getPurchaseInvoiceLines === 'function') ? this : API;
     let inv = null;
     try {
       inv = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
@@ -2236,7 +2237,7 @@ const API = {
     }
     if (isDS && (!purchaseCfg?.accounting?.accounts?.payable_code)) {
       try {
-        const rawFallback = await this.getSetting('purchase_config_v1');
+        const rawFallback = await self.getSetting('purchase_config_v1');
         if (rawFallback) {
           const parsedFallback = JSON.parse(rawFallback);
           purchaseCfg.accounting = {
@@ -2901,6 +2902,7 @@ const API = {
   // ── Documento Soporte Electrónico (DS / NDS) — Módulo Desacoplado ──
 
   async createSupportDocument(header: any, lines: any[]) {
+    const self: any = (this && typeof this.logAudit === 'function') ? this : API;
     const txTypeId = String(header?.tx_type_id || '').trim();
     const docNumber = String(header?.number || '').trim();
     if (!docNumber) throw new Error('El documento soporte debe tener un número asignado.');
@@ -2914,6 +2916,7 @@ const API = {
 
     const doc = await pb.create('support_documents', {
       ...header,
+      doc_type: header.doc_type || 'DS',
       subtotal,
       total: subtotal,
       ret_total: retTot,
@@ -2930,11 +2933,12 @@ const API = {
       });
     }
 
-    await this.logAudit('CREATE', 'SupportDocument', doc.id, `Creado borrador de Documento Soporte ${doc.number}`);
+    await self.logAudit('CREATE', 'SupportDocument', doc.id, `Creado borrador de Documento Soporte ${doc.number}`);
     return doc;
   },
 
   async updateSupportDocument(id: string, header: any, lines: any[]) {
+    const self: any = (this && typeof this.logAudit === 'function') ? this : API;
     let subtotal = 0;
     let retTot = Number(header?.ret_total || 0);
     for (const l of lines) {
@@ -2965,7 +2969,7 @@ const API = {
       });
     }
 
-    await this.logAudit('UPDATE', 'SupportDocument', id, `Actualizado Documento Soporte ${header.number || id}`);
+    await self.logAudit('UPDATE', 'SupportDocument', id, `Actualizado Documento Soporte ${header.number || id}`);
     return pb.get('support_documents', id, { expand: 'supplier_id,tx_type_id,cost_center_id' });
   },
 
@@ -2983,6 +2987,7 @@ const API = {
   },
 
   async postSupportDocument(documentId: string) {
+    const self: any = (this && typeof this.getSupportDocumentLines === 'function') ? this : API;
     let doc: any = null;
     try {
       doc = await pb.get('support_documents', documentId, { expand: 'supplier_id,tx_type_id,cost_center_id' });
@@ -2994,7 +2999,7 @@ const API = {
     }
     if (!doc) {
       // Compatibilidad con registros legacy en purchase_invoices
-      return this.postPurchaseInvoice(documentId);
+      return self.postPurchaseInvoice(documentId);
     }
 
     if (doc.status === 'posted') {
@@ -3006,7 +3011,7 @@ const API = {
     }
     if (doc.status === 'voided') throw new Error('El documento soporte está anulado.');
 
-    const lines = await this.getSupportDocumentLines(doc.id);
+    const lines = await self.getSupportDocumentLines(doc.id);
     if (!lines.length) throw new Error('El documento soporte no tiene líneas de detalle.');
 
     const txTypeCode = String(doc.expand?.tx_type_id?.code || '').toUpperCase();
@@ -3015,7 +3020,7 @@ const API = {
 
     let dsCfg: any = {};
     try {
-      const rawCfg = await this.getSetting('doc_soporte_config_v1');
+      const rawCfg = await self.getSetting('doc_soporte_config_v1');
       dsCfg = rawCfg ? JSON.parse(rawCfg) : {};
     } catch (_) {
       dsCfg = {};
@@ -3239,7 +3244,7 @@ const API = {
     }
     if (!effectiveTxTypeId) throw new Error('El documento soporte no tiene tipo de comprobante contable asignado.');
 
-    const tx = await this.createTransaction({
+    const tx = await self.createTransaction({
       tx_type_id: effectiveTxTypeId,
       number: effectiveTxNumber,
       date: doc.date,
@@ -3267,11 +3272,12 @@ const API = {
       supplier_ref: effectiveCrossDoc,
     });
 
-    await this.logAudit('POST', 'SupportDocument', doc.id, `Contabilizado Documento Soporte ${tx.number || doc.number}`);
+    await self.logAudit('POST', 'SupportDocument', doc.id, `Contabilizado Documento Soporte ${tx.number || doc.number}`);
     return { doc, tx };
   },
 
   async voidSupportDocument(documentId: string, reason = '') {
+    const self: any = (this && typeof this.voidTransaction === 'function') ? this : API;
     const safeReason = String(reason || '').trim();
     if (!safeReason) throw new Error('Debes indicar el motivo de anulación del documento soporte.');
 
@@ -3279,17 +3285,17 @@ const API = {
     try {
       doc = await pb.get('support_documents', documentId);
     } catch (_) {
-      return this.voidPurchaseInvoice(documentId, reason);
+      return self.voidPurchaseInvoice(documentId, reason);
     }
 
     if (doc.status === 'voided') throw new Error('El documento soporte ya está anulado.');
 
     if (doc.status === 'posted' && doc.tx_id) {
-      await this.voidTransaction(doc.tx_id, safeReason);
+      await self.voidTransaction(doc.tx_id, safeReason);
     }
 
     await pb.update('support_documents', doc.id, { status: 'voided' });
-    await this.logAudit('VOID', 'SupportDocument', doc.id, `Anulado ${doc.number} | Motivo: ${safeReason}`);
+    await self.logAudit('VOID', 'SupportDocument', doc.id, `Anulado ${doc.number} | Motivo: ${safeReason}`);
   },
 
   // â”€â”€ Ventas y POS (Comercial) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -4552,9 +4558,9 @@ const API = {
   /** Anula una factura de venta */
   async voidInvoice(invoiceId, reason = '') {
     const safeReason = String(reason || '').trim();
-    if (!safeReason) throw new Error('Debes indicar el motivo de anulaciÃ³n.');
+    if (!safeReason) throw new Error('Debes indicar el motivo de anulación.');
     const inv = await pb.get('invoices', invoiceId);
-    if (inv.status === 'voided') throw new Error('La factura ya estÃ¡ anulada.');
+    if (inv.status === 'voided') throw new Error('La factura ya está anulada.');
     if (inv.status === 'posted') {
       await this.rollbackInvoicePosting(invoiceId, 'anular', safeReason);
     } else {
@@ -4562,6 +4568,71 @@ const API = {
     }
     await pb.update('invoices', invoiceId, { status: 'voided' });
     await this.logAudit('VOID', 'Invoice', invoiceId, `Anulada factura ${inv.number} | Motivo: ${safeReason}`);
+  },
+
+  /** Devuelve una factura de venta contabilizada a borrador (si no fue validada en DIAN ni tiene abonos) */
+  async revertInvoiceToDraft(invoiceId, reason = '') {
+    const safeReason = String(reason || '').trim();
+    if (!safeReason) throw new Error('Debes indicar el motivo de la reversión a borrador.');
+    if (safeReason.length < 8) throw new Error('El motivo debe ser más descriptivo (mínimo 8 caracteres).');
+
+    const inv = await pb.get('invoices', invoiceId, { expand: 'customer_id,tx_type_id' });
+    if (inv.status !== 'posted') {
+      throw new Error('Solo se pueden devolver a borrador facturas que se encuentren en estado Contabilizada.');
+    }
+
+    if (typeof isPeriodClosed === 'function') {
+      const closed = await isPeriodClosed(inv.date);
+      if (closed) throw new Error(`El período ${(inv.date || '').slice(0, 7)} está cerrado. No se puede revertir la venta a borrador.`);
+    }
+
+    // 1. Validar que no haya sido emitida o aceptada ante la DIAN
+    if (inv.tx_id) {
+      try {
+        const einv = await pb.list('einvoice_docs', {
+          filter: `tx_id="${pb.escapeFilterValue(inv.tx_id)}" && (status="enviada" || status="aceptada")`,
+          perPage: 1
+        });
+        if (einv && einv.items && einv.items.length > 0) {
+          throw new Error(`La factura ${inv.number} ya fue transmitida o validada ante la DIAN. Por normativa fiscal colombiana no se puede devolver a borrador; debes emitir una Nota Crédito.`);
+        }
+      } catch (err: any) {
+        if (err.message && err.message.includes('DIAN')) throw err;
+      }
+    }
+
+    // 2. Validar que no registre abonos o pagos en Tesorería / Cartera
+    if (inv.number) {
+      try {
+        const txLines = await pb.listAll('tx_lines', {
+          filter: `cross_doc_ref="${pb.escapeFilterValue(inv.number)}" && (credit > 0 || debit > 0) && (tx_id.status = "posted" || tx_id.status = "active")`,
+          expand: 'tx_id'
+        });
+        const paymentLines = (txLines || []).filter((tl: any) => tl.tx_id && tl.tx_id !== inv.tx_id && Number(tl.credit || 0) > 0);
+        if (paymentLines.length > 0) {
+          const totalAbonado = paymentLines.reduce((sum: number, l: any) => sum + Number(l.credit || 0), 0);
+          throw new Error(`La factura ${inv.number} registra abonos o pagos en Cartera/Tesorería por $ ${totalAbonado.toLocaleString('es-CO')}. Para devolverla a borrador, primero debes anular los recibos de caja asociados.`);
+        }
+      } catch (err: any) {
+        if (err.message && (err.message.includes('abonos') || err.message.includes('recibos de caja'))) throw err;
+      }
+    }
+
+    // 3. Revertir transacción contable, inventario en Kardex y pedidos asociados
+    await this.rollbackInvoicePosting(invoiceId, 'revertir a borrador', safeReason);
+
+    // 4. Actualizar factura a borrador conservando su consecutivo intacto
+    await pb.update('invoices', invoiceId, {
+      status: 'draft',
+      tx_id: '',
+      tx_number: '',
+      inv_movement_id: '',
+      inv_movement_ids: [],
+    });
+
+    // 5. Registrar evento en historial de auditoría
+    await this.logAudit('UPDATE_STATUS', 'Invoice', invoiceId, `Factura ${inv.number} revertida a BORRADOR. Motivo: ${safeReason}`);
+    return { success: true, inv };
   },
 
   /** Cambia el método de pago de una factura contabilizada y actualiza el asiento contable */
@@ -6308,303 +6379,368 @@ const API = {
     return txt;
   },
 
-  async _getPhCarteraDataset(propertyId, fromPeriod = '', toPeriod = '') {
+    _phCarteraCache: new Map<string, { timestamp: number; data: any }>(),
+  _phCarteraInFlight: new Map<string, Promise<any>>(),
+
+  clearPhCarteraCache() {
+    this._phCarteraCache.clear();
+    this._phCarteraInFlight.clear();
+  },
+
+  async _getPhCarteraDataset(propertyId, fromPeriod = '', toPeriod = '', forceRefresh = false) {
     const safePropertyId = pb.escapeFilterValue(propertyId);
     const safeFrom = pb.escapeFilterValue(fromPeriod);
     const safeTo = pb.escapeFilterValue(toPeriod);
+    const cacheKey = `${safePropertyId}__${safeFrom}__${safeTo}`;
+    const now = Date.now();
+    const CACHE_TTL_MS = 60000; // 60 segundos de persistencia en memoria
 
-    // Filtro base: facturas no anuladas y debidamente contabilizadas (con tx_id activo)
-    let filter = `status!="voided" && tx_id!=""`;
-    if (propertyId) filter += ` && property_id="${safePropertyId}"`;
-    // El período es una cadena YYYY-MM, sirve para filtrar lotes de facturación
-    if (fromPeriod) filter += ` && period>="${safeFrom}"`;
-    if (toPeriod) filter += ` && period<="${safeTo}"`;
-
-    let invoices = [];
-    try {
-      const res = await pb.listAll('ph_invoices', { filter, sort: '-date' });
-      // Asegurar unicidad de facturas por ID y que tengan asiento contable válido
-      const uniqueMap = new Map();
-      (res || []).forEach(inv => {
-        if (inv && inv.id && inv.tx_id && String(inv.tx_id).trim() !== '') {
-          uniqueMap.set(inv.id, inv);
-        }
-      });
-      invoices = Array.from(uniqueMap.values());
-    } catch (_) { invoices = []; }
-
-    // Determinar fecha de corte real (cutoffDate) para cÃ¡lculos de mora y saldos
-    let cutoffDate = null;
-    if (toPeriod) {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(toPeriod)) {
-        cutoffDate = toPeriod;
-      } else if (/^\d{4}-\d{2}$/.test(toPeriod)) {
-        const [y, m] = toPeriod.split('-').map(Number);
-        const lastDay = new Date(y, m, 0).getDate();
-        cutoffDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    if (!forceRefresh) {
+      const cached = this._phCarteraCache.get(cacheKey);
+      if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+        return cached.data;
+      }
+      if (this._phCarteraInFlight.has(cacheKey)) {
+        return this._phCarteraInFlight.get(cacheKey);
       }
     }
-    const refDate = cutoffDate || new Date().toISOString().slice(0, 10);
 
-    // Filtrar facturas que fueron emitidas despuÃ©s de la fecha de corte si se especificÃ³
-    if (cutoffDate) {
-      invoices = invoices.filter(inv => {
-        const invDate = (inv.date || inv.created || '').slice(0, 10);
-        return invDate <= cutoffDate;
-      });
-    }
+    const fetchPromise = (async () => {
+      // Filtro base: facturas no anuladas y debidamente contabilizadas (con tx_id activo)
+      let filter = `status!="voided" && tx_id!=""`;
+      if (propertyId) filter += ` && property_id="${safePropertyId}"`;
+      // El período es una cadena YYYY-MM, sirve para filtrar lotes de facturación
+      if (fromPeriod) filter += ` && period>="${safeFrom}"`;
+      if (toPeriod) filter += ` && period<="${safeTo}"`;
 
-    if (invoices.length === 0) return { invoices: [], rows: [] };
-    // 1. Obtener todas las lÃ­neas de las facturas
-    const allInvLines = [];
-    for (const inv of invoices) {
+      let invoices = [];
       try {
-        const lns = await this.getPhInvoiceLines(inv.id);
-        allInvLines.push(...lns);
-      } catch (_) { }
-    }
+        const res = await pb.listAll('ph_invoices', { filter, sort: '-date', perPage: 500 });
+        // Asegurar unicidad de facturas por ID y que tengan asiento contable válido
+        const uniqueMap = new Map();
+        (res || []).forEach(inv => {
+          if (inv && inv.id && inv.tx_id && String(inv.tx_id).trim() !== '') {
+            uniqueMap.set(inv.id, inv);
+          }
+        });
+        invoices = Array.from(uniqueMap.values());
+      } catch (_) { invoices = []; }
 
-    // 2. Obtener ABONOS de Tesorería (tx_lines que cruzan estas facturas o anticipos directos)
-    // Buscamos líneas contables de tipo Recibo de Caja o ajustes que afecten el saldo de cartera (13%)
-    const invNumbers = invoices.map(i => String(i.number || "").toUpperCase()).filter(Boolean);
-    const causalityTxIds = new Set(invoices.map(i => i.tx_id).filter(Boolean));
-    const abonosMap = new Map(); // key: cross_doc_ref, value: total_abono
-    const advancesByPropMap = new Map<string, number>(); // key: property_id, value: unassigned advance pool
+      // Determinar fecha de corte real (cutoffDate) para cálculos de mora y saldos
+      let cutoffDate = null;
+      if (toPeriod) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(toPeriod)) {
+          cutoffDate = toPeriod;
+        } else if (/^\d{4}-\d{2}$/.test(toPeriod)) {
+          const [y, m] = toPeriod.split('-').map(Number);
+          const lastDay = new Date(y, m, 0).getDate();
+          cutoffDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        }
+      }
+      const refDate = cutoffDate || new Date().toISOString().slice(0, 10);
 
-    const properties = await this.getPhProperties(false).catch(() => []);
-    const propById = new Map(properties.map((p: any) => [String(p.id).toLowerCase(), p]));
+      // Filtrar facturas que fueron emitidas después de la fecha de corte si se especificó
+      if (cutoffDate) {
+        invoices = invoices.filter(inv => {
+          const invDate = (inv.date || inv.created || '').slice(0, 10);
+          return invDate <= cutoffDate;
+        });
+      }
 
-    if (invNumbers.length > 0 || properties.length > 0) {
-      // Traemos líneas contables que afecten cartera (cuenta 13%) con fecha <= corte
-      const txLines = await pb.listAll("tx_lines", {
-        filter: `account_id.code ~ "13%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
-        expand: "tx_id,account_id"
+      if (invoices.length === 0) return { invoices: [], rows: [] };
+
+      // 1. Obtener todas las líneas de las facturas (OPTIMIZADO: Batch masivo sin N+1)
+      const invoiceIds = new Set(invoices.map(i => i.id));
+      let allInvLines: any[] = [];
+      if (invoices.length <= 15) {
+        // Para pocas facturas (ej. filtro por una sola unidad), consultar en paralelo
+        const lineArrays = await Promise.all(
+          invoices.map(inv => this.getPhInvoiceLines(inv.id).catch(() => []))
+        );
+        allInvLines = lineArrays.flat();
+      } else {
+        // Para reporte general, traer en bloques masivos de 500
+        try {
+          const rawLines = await pb.listAll('ph_invoice_lines', {
+            perPage: 500,
+            sort: 'line_order',
+            expand: 'concept_id,concept_id.account_id',
+          });
+          allInvLines = (rawLines || []).filter((ln: any) => invoiceIds.has(ln.invoice_id));
+        } catch (bulkErr) {
+          console.warn('Fallback en consulta masiva de líneas PH:', bulkErr);
+          const chunkSize = 25;
+          for (let i = 0; i < invoices.length; i += chunkSize) {
+            const chunk = invoices.slice(i, i + chunkSize);
+            const chunkRes = await Promise.all(chunk.map(inv => this.getPhInvoiceLines(inv.id).catch(() => [])));
+            for (const lns of chunkRes) allInvLines.push(...lns);
+          }
+        }
+      }
+
+      // Pre-indexar líneas por invoice_id para búsqueda O(1)
+      const linesByInvoiceId = new Map<string, any[]>();
+      for (const ln of allInvLines) {
+        const arr = linesByInvoiceId.get(ln.invoice_id);
+        if (arr) arr.push(ln);
+        else linesByInvoiceId.set(ln.invoice_id, [ln]);
+      }
+
+      // 2. Obtener ABONOS de Tesorería (tx_lines que cruzan estas facturas o anticipos directos)
+      // Buscamos líneas contables de tipo Recibo de Caja o ajustes que afecten el saldo de cartera (13%)
+      const invNumbers = invoices.map(i => String(i.number || "").toUpperCase()).filter(Boolean);
+      const causalityTxIds = new Set(invoices.map(i => i.tx_id).filter(Boolean));
+      const abonosMap = new Map(); // key: cross_doc_ref, value: total_abono
+      const advancesByPropMap = new Map<string, number>(); // key: property_id, value: unassigned advance pool
+
+      const properties = await this.getPhProperties(false).catch(() => []);
+      const propById = new Map(properties.map((p: any) => [String(p.id).toLowerCase(), p]));
+
+      if (invNumbers.length > 0 || properties.length > 0) {
+        // Traemos líneas contables que afecten cartera (cuenta 13%) con fecha <= corte
+        const txLines = await pb.listAll("tx_lines", {
+          filter: `account_id.code ~ "13%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
+          expand: "tx_id,account_id",
+          perPage: 500
+        });
+
+        for (const tl of txLines) {
+          // En cuenta 13%, el abono o pago reduce la cartera mediante crédito neto
+          const valAbono = Number(tl.credit || 0) - Number(tl.debit || 0);
+          if (valAbono <= 0) continue; // Un abono o anticipo en cartera siempre es un crédito (CR > DB)
+
+          const ref = String(tl.cross_doc_ref || "").trim().toUpperCase();
+
+          // Buscamos si esta referencia pertenece a alguna de nuestras facturas
+          const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + "-"));
+
+          if (matchedInv) {
+            abonosMap.set(ref, (abonosMap.get(ref) || 0) + valAbono);
+          } else if (ref.startsWith("ANTICIPO-")) {
+            // Soporte Cartera Directa: anticipo pre-asignado a cuota futura (ANTICIPO-YYYYMM-{propId})
+            const parts = ref.split("-");
+            if (parts.length >= 3) {
+              const pCode = parts[1];
+              const pId = parts.slice(2).join("-");
+              const targetInv = invoices.find(inv => {
+                const invPCode = String(inv.period || "").replace("-", "");
+                return invPCode === pCode && String(inv.property_id).toUpperCase() === pId.toUpperCase();
+              });
+              if (targetInv && targetInv.number) {
+                const invNum = String(targetInv.number).trim().toUpperCase();
+                abonosMap.set(invNum, (abonosMap.get(invNum) || 0) + valAbono);
+              } else {
+                const pidKey = pId.toLowerCase();
+                advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+              }
+            }
+          } else if (ref.startsWith("ANT-")) {
+            // Soporte saldo inicial de anticipos por unidad (ANT-{propId})
+            const pidKey = ref.substring(4).toLowerCase();
+            advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+          } else if (tl.description) {
+            // Fallback por descripción explícita de unidad (ej: "Unidad 2603" o "Apartamento. B-603")
+            for (const p of properties) {
+              if (tl.description.includes(`Unidad ${p.code}`) || (p.name && tl.description.includes(p.name)) || (p.code && tl.description.includes(`- ${p.code}`))) {
+                const pidKey = String(p.id).toLowerCase();
+                advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Obtener saldos a favor adicionales en cuentas 28% si existieren
+      try {
+        const ant28Lines = await pb.listAll("tx_lines", {
+          filter: `account_id.code ~ "28%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
+          expand: "account_id",
+          perPage: 500
+        }).catch(() => []);
+        for (const al of (ant28Lines || [])) {
+          const rawRef = String(al.cross_doc_ref || "").trim();
+          let pId = "";
+          if (rawRef.startsWith("ANT-")) {
+            pId = rawRef.substring(4);
+          } else if (rawRef.startsWith("ANTICIPO-")) {
+            pId = rawRef.split("-").slice(2).join("-");
+          }
+          const net = (Number(al.credit) || 0) - (Number(al.debit) || 0);
+          if (pId && net > 0) {
+            const pidKey = pId.toLowerCase();
+            advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + net);
+          }
+        }
+      } catch (_) {}
+
+      // Ordenar facturas cronológicamente para aplicación FIFO estricta de pagos y anticipos
+      invoices.sort((a, b) => {
+        const dA = String(a.date || a.created || "");
+        const dB = String(b.date || b.created || "");
+        return dA.localeCompare(dB) || String(a.number || "").localeCompare(String(b.number || ""));
       });
 
-      for (const tl of txLines) {
-        // En cuenta 13%, el abono o pago reduce la cartera mediante crédito neto
-        const valAbono = Number(tl.credit || 0) - Number(tl.debit || 0);
-        if (valAbono <= 0) continue; // Un abono o anticipo en cartera siempre es un crédito (CR > DB)
-
-        const ref = String(tl.cross_doc_ref || "").trim().toUpperCase();
-
-        // Buscamos si esta referencia pertenece a alguna de nuestras facturas
-        const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + "-"));
-
-        if (matchedInv) {
-          abonosMap.set(ref, (abonosMap.get(ref) || 0) + valAbono);
-        } else if (ref.startsWith("ANTICIPO-")) {
-          // Soporte Cartera Directa: anticipo pre-asignado a cuota futura (ANTICIPO-YYYYMM-{propId})
-          const parts = ref.split("-");
-          if (parts.length >= 3) {
-            const pCode = parts[1];
-            const pId = parts.slice(2).join("-");
-            const targetInv = invoices.find(inv => {
-              const invPCode = String(inv.period || "").replace("-", "");
-              return invPCode === pCode && String(inv.property_id).toUpperCase() === pId.toUpperCase();
-            });
-            if (targetInv && targetInv.number) {
-              const invNum = String(targetInv.number).trim().toUpperCase();
-              abonosMap.set(invNum, (abonosMap.get(invNum) || 0) + valAbono);
-            } else {
-              const pidKey = pId.toLowerCase();
-              advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
-            }
-          }
-        } else if (ref.startsWith("ANT-")) {
-          // Soporte saldo inicial de anticipos por unidad (ANT-{propId})
-          const pidKey = ref.substring(4).toLowerCase();
-          advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
-        } else if (tl.description) {
-          // Fallback por descripción explícita de unidad (ej: "Unidad 2603" o "Apartamento. B-603")
-          for (const p of properties) {
-            if (tl.description.includes(`Unidad ${p.code}`) || (p.name && tl.description.includes(p.name)) || (p.code && tl.description.includes(`- ${p.code}`))) {
-              const pidKey = String(p.id).toLowerCase();
-              advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    // Obtener saldos a favor adicionales en cuentas 28% si existieren
-    try {
-      const ant28Lines = await pb.listAll("tx_lines", {
-        filter: `account_id.code ~ "28%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
-        expand: "account_id"
-      }).catch(() => []);
-      for (const al of (ant28Lines || [])) {
-        const rawRef = String(al.cross_doc_ref || "").trim();
-        let pId = "";
-        if (rawRef.startsWith("ANT-")) {
-          pId = rawRef.substring(4);
-        } else if (rawRef.startsWith("ANTICIPO-")) {
-          pId = rawRef.split("-").slice(2).join("-");
-        }
-        const net = (Number(al.credit) || 0) - (Number(al.debit) || 0);
-        if (pId && net > 0) {
-          const pidKey = pId.toLowerCase();
-          advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + net);
-        }
-      }
-    } catch (_) {}
-
-    // Ordenar facturas cronológicamente para aplicación FIFO estricta de pagos y anticipos
-    invoices.sort((a, b) => {
-      const dA = String(a.date || a.created || "");
-      const dB = String(b.date || b.created || "");
-      return dA.localeCompare(dB) || String(a.number || "").localeCompare(String(b.number || ""));
-    });
-
-    const rows = [];
-    for (const inv of invoices) {
-      const prop = propById.get(String(inv.property_id));
-      const owner = prop?.expand?.owner_id;
-      const invLines = allInvLines.filter(l => l.invoice_id === inv.id);
-
-      const invNumber = String(inv.number || "").trim().toUpperCase();
-      const fechaDoc = String(inv.date || inv.created || "").slice(0, 10);
-      const venc = String(inv.due_date || "").slice(0, 10);
-      const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
-
-      // Control de abono general para distribuir entre líneas
-      let generalAbono = abonosMap.get(invNumber) || 0;
-
-      // Saldo a favor de anticipos disponible para esta unidad (FIFO)
-      const pIdKey = String(inv.property_id || "").toLowerCase();
-      let propAdvancePool = advancesByPropMap.get(pIdKey) || 0;
-
-      for (const line of invLines) {
-        const originalAmount = Number(line.amount || 0);
-
-        // 1. Intentar abono específico por concepto (ej: CF-001-ADMIN)
-        const cCode = String(line.expand?.concept_id?.code || "").trim().toUpperCase();
-        const normDesc = String(line.description || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const isMora = cCode === "MORA" || normDesc.includes("interes") || normDesc.includes("mora");
-        const conceptCode = (cCode || (isMora ? "MORA" : (normDesc.includes("admin") ? "ADM" : "GEN"))).toUpperCase();
-        const specificRef = `${invNumber}-${conceptCode}`;
-        let abonoAplicado = abonosMap.get(specificRef) || 0;
-
-        // 2. Si hay abono general remanente, aplicarlo a esta línea
-        if (generalAbono > 0) {
-          const porAplicar = Math.min(generalAbono, Math.max(0, originalAmount - abonoAplicado));
-          abonoAplicado += porAplicar;
-          generalAbono -= porAplicar;
-        }
-
-        // Si el abono acumulado excede el valor de la línea (sobrepago),
-        // el excedente alimenta la bolsa de anticipos (propAdvancePool) de la unidad
-        if (abonoAplicado > originalAmount) {
-          const surplus = abonoAplicado - originalAmount;
-          abonoAplicado = originalAmount;
-          propAdvancePool += surplus;
-          advancesByPropMap.set(pIdKey, propAdvancePool);
-        }
-
-        let currentBalance = originalAmount - abonoAplicado;
-
-        // 3. Si hay anticipo disponible para la unidad, amortizar FIFO en la línea
-        if (propAdvancePool > 0 && currentBalance > 0) {
-          const porAmortizar = Math.min(propAdvancePool, currentBalance);
-          currentBalance -= porAmortizar;
-          abonoAplicado += porAmortizar;
-          propAdvancePool -= porAmortizar;
-          advancesByPropMap.set(pIdKey, propAdvancePool);
-        }
-
-        let estado = "por_vencer";
-        if (currentBalance < 1) {
-          estado = "cancelado";
-        } else if (inv.status === "draft") {
-          estado = "borrador";
-        } else if (diasMoraRaw >= 0) {
-          estado = "vencido";
-        }
-
-        const rawConcepto = line.expand?.concept_id?.name || line.description || line.account_code || "Concepto";
-        const normalizedConcepto = this.normalizePhCarteraConceptLabel(rawConcepto);
-        const normalizedConceptId = line.concept_id
-          ? String(line.concept_id)
-          : String(normalizedConcepto || line.account_code || "OTROS").toUpperCase();
-
-        rows.push({
-          invoice: inv,
-          line,
-          amount: currentBalance, // Saldo para el reporte
-          originalAmount: originalAmount, // Valor original para integridad
-          abono: abonoAplicado,
-          saldoAnticipo: propAdvancePool,
-          diasMora: Math.max(0, diasMoraRaw),
-          diasMoraRaw,
-          fechaDoc,
-          dueDate: venc,
-          estado,
-          propertyId: String(inv.property_id || ""),
-          propertyCode: String(prop?.code || ""),
-          propertyName: String(prop?.name || ""),
-          ownerId: String(prop?.owner_id || owner?.id || ""),
-          ownerName: String(owner?.name || "").trim(),
-          ownerDoc: String(owner?.doc_number || "").trim(),
-          conceptoId: normalizedConceptId,
-          concepto: normalizedConcepto,
-        });
-      }
-
-      if (generalAbono > 0) {
-        propAdvancePool += generalAbono;
-        advancesByPropMap.set(pIdKey, propAdvancePool);
-      }
-    }
-
-    // 4. Incorporar saldos a favor (anticipos no absorbidos en cuenta 134595)
-    // Se unifican directamente bajo el concepto 'Cuota de administración' (ADM)
-    const admConceptId = allInvLines.find(l => {
-      const norm = String(l.description || l.expand?.concept_id?.name || '').toLowerCase();
-      return norm.includes('administra');
-    })?.concept_id || 'CUOTA DE ADMINISTRACION';
-
-    for (const [pIdKey, remAdvance] of advancesByPropMap.entries()) {
-      if (remAdvance > 0.01) {
-        if (propertyId && String(propertyId).toLowerCase() !== pIdKey) {
-          continue;
-        }
-        const prop = propById.get(pIdKey) || properties.find((p: any) => String(p.id).toLowerCase() === pIdKey);
+      const rows = [];
+      for (const inv of invoices) {
+        const prop = propById.get(String(inv.property_id || '').toLowerCase());
         const owner = prop?.expand?.owner_id;
+        const invLines = linesByInvoiceId.get(inv.id) || [];
 
-        rows.push({
-          invoice: {
-            id: `ADV-${pIdKey}`,
-            number: 'ANTICIPO',
-            period: 'Anticipo',
-            status: 'posted',
-            total: 0,
-          },
-          line: {
-            description: 'Anticipo Cuota de Administración',
-          },
-          amount: -remAdvance, // Saldo a favor acreedor (negativo)
-          originalAmount: 0,
-          abono: remAdvance,
-          saldoAnticipo: remAdvance,
-          diasMora: 0,
-          diasMoraRaw: -1,
-          fechaDoc: cutoffDate || new Date().toISOString().slice(0, 10),
-          dueDate: '',
-          estado: 'saldo_a_favor',
-          propertyId: prop?.id || pIdKey,
-          propertyCode: String(prop?.code || ''),
-          propertyName: String(prop?.name || ''),
-          ownerId: String(prop?.owner_id || owner?.id || ''),
-          ownerName: String(owner?.name || '').trim(),
-          ownerDoc: String(owner?.doc_number || '').trim(),
-          conceptoId: admConceptId,
-          concepto: 'Cuota de administración',
-        });
+        const invNumber = String(inv.number || "").trim().toUpperCase();
+        const fechaDoc = String(inv.date || inv.created || "").slice(0, 10);
+        const venc = String(inv.due_date || "").slice(0, 10);
+        const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
+
+        // Control de abono general para distribuir entre líneas
+        let generalAbono = abonosMap.get(invNumber) || 0;
+
+        // Saldo a favor de anticipos disponible para esta unidad (FIFO)
+        const pIdKey = String(inv.property_id || "").toLowerCase();
+        let propAdvancePool = advancesByPropMap.get(pIdKey) || 0;
+
+        for (const line of invLines) {
+          const originalAmount = Number(line.amount || 0);
+
+          // 1. Intentar abono específico por concepto (ej: CF-001-ADMIN)
+          const cCode = String(line.expand?.concept_id?.code || "").trim().toUpperCase();
+          const normDesc = String(line.description || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const isMora = cCode === "MORA" || normDesc.includes("interes") || normDesc.includes("mora");
+          const conceptCode = (cCode || (isMora ? "MORA" : (normDesc.includes("admin") ? "ADM" : "GEN"))).toUpperCase();
+          const specificRef = `${invNumber}-${conceptCode}`;
+          let abonoAplicado = abonosMap.get(specificRef) || 0;
+
+          // 2. Si hay abono general remanente, aplicarlo a esta línea
+          if (generalAbono > 0) {
+            const porAplicar = Math.min(generalAbono, Math.max(0, originalAmount - abonoAplicado));
+            abonoAplicado += porAplicar;
+            generalAbono -= porAplicar;
+          }
+
+          // Si el abono acumulado excede el valor de la línea (sobrepago),
+          // el excedente alimenta la bolsa de anticipos (propAdvancePool) de la unidad
+          if (abonoAplicado > originalAmount) {
+            const surplus = abonoAplicado - originalAmount;
+            abonoAplicado = originalAmount;
+            propAdvancePool += surplus;
+            advancesByPropMap.set(pIdKey, propAdvancePool);
+          }
+
+          let currentBalance = originalAmount - abonoAplicado;
+
+          // 3. Si hay anticipo disponible para la unidad, amortizar FIFO en la línea
+          if (propAdvancePool > 0 && currentBalance > 0) {
+            const porAmortizar = Math.min(propAdvancePool, currentBalance);
+            currentBalance -= porAmortizar;
+            abonoAplicado += porAmortizar;
+            propAdvancePool -= porAmortizar;
+            advancesByPropMap.set(pIdKey, propAdvancePool);
+          }
+
+          let estado = "por_vencer";
+          if (currentBalance < 1) {
+            estado = "cancelado";
+          } else if (inv.status === "draft") {
+            estado = "borrador";
+          } else if (diasMoraRaw >= 0) {
+            estado = "vencido";
+          }
+
+          const rawConcepto = line.expand?.concept_id?.name || line.description || line.account_code || "Concepto";
+          const normalizedConcepto = this.normalizePhCarteraConceptLabel(rawConcepto);
+          const normalizedConceptId = line.concept_id
+            ? String(line.concept_id)
+            : String(normalizedConcepto || line.account_code || "OTROS").toUpperCase();
+
+          rows.push({
+            invoice: inv,
+            line,
+            amount: currentBalance, // Saldo para el reporte
+            originalAmount: originalAmount, // Valor base inicial
+            abono: abonoAplicado, // Valor pagado
+            saldoAnticipo: 0,
+            plazoDias: 0,
+            diasMora: Math.max(0, diasMoraRaw),
+            diasMoraRaw,
+            fechaDoc,
+            dueDate: venc,
+            estado,
+            propertyId: inv.property_id,
+            propertyCode: String(prop?.code || ""),
+            propertyName: String(prop?.name || ""),
+            ownerId: String(prop?.owner_id || owner?.id || ""),
+            ownerName: String(owner?.name || "").trim(),
+            ownerDoc: String(owner?.doc_number || "").trim(),
+            conceptoId: normalizedConceptId,
+            concepto: normalizedConcepto,
+          });
+        }
+
+        // Si quedó saldo de anticipo o abono libre para la unidad, se guarda en el pool
+        if (generalAbono > 0) {
+          propAdvancePool += generalAbono;
+          advancesByPropMap.set(pIdKey, propAdvancePool);
+        }
       }
-    }
 
-    return { invoices, rows };
+      // 4. Incorporar saldos a favor (anticipos no absorbidos en cuenta 134595)
+      // Se unifican directamente bajo el concepto 'Cuota de administración' (ADM)
+      const admConceptId = allInvLines.find(l => {
+        const norm = String(l.description || l.expand?.concept_id?.name || '').toLowerCase();
+        return norm.includes('administra');
+      })?.concept_id || 'CUOTA DE ADMINISTRACION';
+
+      for (const [pIdKey, remAdvance] of advancesByPropMap.entries()) {
+        if (remAdvance > 0.01) {
+          if (propertyId && String(propertyId).toLowerCase() !== pIdKey) {
+            continue;
+          }
+          const prop = propById.get(pIdKey) || properties.find((p: any) => String(p.id).toLowerCase() === pIdKey);
+          const owner = prop?.expand?.owner_id;
+
+          rows.push({
+            invoice: {
+              id: `ADV-${pIdKey}`,
+              number: 'ANTICIPO',
+              period: 'Anticipo',
+              status: 'posted',
+              total: 0,
+            },
+            line: {
+              description: 'Anticipo Cuota de Administración',
+            },
+            amount: -remAdvance, // Saldo a favor acreedor (negativo)
+            originalAmount: 0,
+            abono: remAdvance,
+            saldoAnticipo: remAdvance,
+            diasMora: 0,
+            diasMoraRaw: -1,
+            fechaDoc: cutoffDate || new Date().toISOString().slice(0, 10),
+            dueDate: '',
+            estado: 'saldo_a_favor',
+            propertyId: prop?.id || pIdKey,
+            propertyCode: String(prop?.code || ''),
+            propertyName: String(prop?.name || ''),
+            ownerId: String(prop?.owner_id || owner?.id || ''),
+            ownerName: String(owner?.name || '').trim(),
+            ownerDoc: String(owner?.doc_number || '').trim(),
+            conceptoId: admConceptId,
+            concepto: 'Cuota de administración',
+          });
+        }
+      }
+
+      return { invoices, rows };
+    })();
+
+    this._phCarteraInFlight.set(cacheKey, fetchPromise);
+    try {
+      const result = await fetchPromise;
+      this._phCarteraCache.set(cacheKey, { timestamp: Date.now(), data: result });
+      return result;
+    } finally {
+      this._phCarteraInFlight.delete(cacheKey);
+    }
   },
 
   /**
@@ -6765,6 +6901,159 @@ const API = {
    * Control de integridad para cartera PH de una unidad.
    * Verifica cuadre global y diferencias por factura (total factura vs suma de lineas).
    */
+  /**
+   * Consulta ultra-optimizada de todo el paquete de Cartera PH en una sola pasada.
+   * Elimina consultas redundantes y procesa en memoria:
+   * 1) Partidas abiertas (openParties)
+   * 2) Saldos consolidados por concepto (cartera)
+   * 3) Integridad operativa (integrity)
+   * 4) Integridad contable del sistema (sysIntegrity)
+   */
+  async getPhCarteraBundle(propertyId = '', fromPeriod = '', toPeriod = '', opts: any = {}) {
+    const forceRefresh = !!opts.forceRefresh;
+    if (forceRefresh) {
+      this.clearPhCarteraCache();
+    }
+
+    const [dataset, sysIntegrity] = await Promise.all([
+      this._getPhCarteraDataset(propertyId, fromPeriod, toPeriod, forceRefresh),
+      this.getPhSystemIntegrity().catch(() => null),
+    ]);
+
+    const { invoices, rows } = dataset;
+
+    // 1. Cartera agrupada por concepto
+    const carteraMap: Record<string, any> = {};
+    for (const r of rows) {
+      if (!carteraMap[r.conceptoId]) {
+        carteraMap[r.conceptoId] = {
+          conceptoId: r.conceptoId,
+          concepto: r.concepto,
+          totalVencido: 0,
+          totalPorVencer: 0,
+          totalCancelado: 0,
+          totalPendiente: 0,
+          diasMoraMax: 0,
+        };
+      }
+      if (r.estado === 'cancelado') {
+        carteraMap[r.conceptoId].totalCancelado += r.amount;
+      } else if (r.estado === 'vencido') {
+        carteraMap[r.conceptoId].totalVencido += r.amount;
+        carteraMap[r.conceptoId].totalPendiente += r.amount;
+        carteraMap[r.conceptoId].diasMoraMax = Math.max(carteraMap[r.conceptoId].diasMoraMax, r.diasMora);
+      } else {
+        carteraMap[r.conceptoId].totalPorVencer += r.amount;
+        carteraMap[r.conceptoId].totalPendiente += r.amount;
+      }
+    }
+    const cartera = Object.values(carteraMap).sort((a: any, b: any) => String(a.concepto).localeCompare(String(b.concepto), 'es'));
+
+    // 2. Open parties completas
+    const openParties = rows.map((r: any) => ({
+      invoiceId: r.invoice?.id,
+      invoiceNumber: r.invoice?.number,
+      periodo: r.invoice?.period,
+      propertyId: r.propertyId,
+      propertyCode: r.propertyCode,
+      propertyName: r.propertyName,
+      ownerId: r.ownerId,
+      ownerName: r.ownerName,
+      ownerDoc: r.ownerDoc,
+      concepto: r.concepto,
+      conceptoId: r.conceptoId,
+      amount: r.amount,
+      fechaDoc: r.fechaDoc,
+      plazoDias: r.plazoDias,
+      dueDate: r.dueDate,
+      diasMora: r.diasMora,
+      diasMoraRaw: r.diasMoraRaw,
+      saldoAnticipo: r.saldoAnticipo,
+      estado: r.estado,
+    })).sort((a: any, b: any) => {
+      const u = String(a.propertyCode || '').localeCompare(String(b.propertyCode || ''));
+      if (u !== 0) return u;
+      const p = String(a.periodo || '').localeCompare(String(b.periodo || ''));
+      if (p !== 0) return p;
+      return String(a.invoiceNumber || '').localeCompare(String(b.invoiceNumber || ''));
+    });
+
+    // 3. Integridad operativa
+    const totals = {
+      invoices: invoices.length,
+      lines: rows.length,
+      totalFacturas: 0,
+      totalOriginalLines: 0,
+      totalPendiente: 0,
+      totalCancelado: 0,
+      totalAbonosParciales: 0,
+      totalRecaudado: 0,
+      diferenciaGlobal: 0,
+      totalLineas: 0,
+    };
+    for (const inv of invoices) totals.totalFacturas += Number(inv.total || 0);
+    for (const r of rows) {
+      if (r.estado === 'saldo_a_favor') continue;
+      totals.totalOriginalLines += Number(r.originalAmount || 0);
+      totals.totalLineas += Number(r.amount || 0);
+      const abono = Number(r.abono || 0);
+      if (r.estado === 'cancelado') {
+        totals.totalCancelado += abono > 0 ? abono : Number(r.originalAmount || 0);
+      } else {
+        totals.totalPendiente += Number(r.amount || 0);
+        if (abono > 0) totals.totalAbonosParciales += abono;
+      }
+    }
+    totals.totalFacturas = Math.round(totals.totalFacturas * 100) / 100;
+    totals.totalOriginalLines = Math.round(totals.totalOriginalLines * 100) / 100;
+    totals.totalCancelado = Math.round(totals.totalCancelado * 100) / 100;
+    totals.totalAbonosParciales = Math.round(totals.totalAbonosParciales * 100) / 100;
+    totals.totalRecaudado = Math.round((totals.totalCancelado + totals.totalAbonosParciales) * 100) / 100;
+    totals.totalPendiente = Math.round(totals.totalPendiente * 100) / 100;
+    totals.totalLineas = Math.round(totals.totalLineas * 100) / 100;
+    totals.diferenciaGlobal = Math.round((totals.totalFacturas - totals.totalOriginalLines) * 100) / 100;
+
+    const byInvoice: Record<string, any> = {};
+    for (const r of rows) {
+      if (r.estado === 'saldo_a_favor') continue;
+      const id = r.invoice?.id;
+      if (!id) continue;
+      if (!byInvoice[id]) {
+        byInvoice[id] = {
+          invoiceId: id,
+          number: r.invoice?.number,
+          period: r.invoice?.period,
+          status: r.invoice?.status,
+          totalFactura: Number(r.invoice?.total || 0),
+          totalOriginalLines: 0,
+          diferencia: 0,
+        };
+      }
+      byInvoice[id].totalOriginalLines += Number(r.originalAmount || 0);
+    }
+
+    const mismatches = Object.values(byInvoice)
+      .map((m: any) => {
+        m.diferencia = Math.round((m.totalFactura - (m.totalOriginalLines || 0)) * 100) / 100;
+        return m;
+      })
+      .filter((m: any) => Math.abs(m.diferencia) > 1)
+      .sort((a: any, b: any) => Math.abs(b.diferencia) - Math.abs(a.diferencia));
+
+    const integrity = {
+      totals,
+      mismatches,
+      isBalanced: Math.abs(totals.diferenciaGlobal) <= 1 && mismatches.length === 0,
+    };
+
+    return {
+      openParties,
+      cartera,
+      integrity,
+      sysIntegrity,
+    };
+  },
+
   async getPhCarteraIntegrity(propertyId, fromPeriod = '', toPeriod = '') {
     const { invoices, rows } = await this._getPhCarteraDataset(propertyId, fromPeriod, toPeriod);
     const totals = {
@@ -6774,18 +7063,37 @@ const API = {
       totalOriginalLines: 0,
       totalPendiente: 0,
       totalCancelado: 0,
+      totalAbonosParciales: 0,
+      totalRecaudado: 0,
       diferenciaGlobal: 0,
       totalLineas: 0,
     };
 
     for (const inv of invoices) totals.totalFacturas += Number(inv.total || 0);
     for (const r of rows) {
+      if (r.estado === 'saldo_a_favor') continue;
       totals.totalOriginalLines += Number(r.originalAmount || 0);
       totals.totalLineas += Number(r.amount || 0);
-      if (r.estado === 'cancelado') totals.totalCancelado += Number(r.abono || 0);
-      else totals.totalPendiente += Number(r.amount || 0);
+      const abono = Number(r.abono || 0);
+      if (r.estado === 'cancelado') {
+        totals.totalCancelado += abono > 0 ? abono : Number(r.originalAmount || 0);
+      } else {
+        totals.totalPendiente += Number(r.amount || 0);
+        if (abono > 0) {
+          totals.totalAbonosParciales += abono;
+        }
+      }
     }
-    // La integridad se chequea contra el valor ORIGINAL de las lÃ­neas
+
+    totals.totalFacturas = Math.round(totals.totalFacturas * 100) / 100;
+    totals.totalOriginalLines = Math.round(totals.totalOriginalLines * 100) / 100;
+    totals.totalCancelado = Math.round(totals.totalCancelado * 100) / 100;
+    totals.totalAbonosParciales = Math.round(totals.totalAbonosParciales * 100) / 100;
+    totals.totalRecaudado = Math.round((totals.totalCancelado + totals.totalAbonosParciales) * 100) / 100;
+    totals.totalPendiente = Math.round(totals.totalPendiente * 100) / 100;
+    totals.totalLineas = Math.round(totals.totalLineas * 100) / 100;
+
+    // La integridad se chequea contra el valor ORIGINAL de las líneas
     totals.diferenciaGlobal = Math.round((totals.totalFacturas - totals.totalOriginalLines) * 100) / 100;
 
     const byInvoice = {};
@@ -6807,12 +7115,12 @@ const API = {
     }
 
     const mismatches = Object.values(byInvoice)
-      .map((m) => {
+      .map((m: any) => {
         m.diferencia = Math.round((m.totalFactura - (m.totalOriginalLines || 0)) * 100) / 100;
         return m;
       })
-      .filter((m) => Math.abs(m.diferencia) > 1)
-      .sort((a, b) => Math.abs(b.diferencia) - Math.abs(a.diferencia));
+      .filter((m: any) => Math.abs(m.diferencia) > 1)
+      .sort((a: any, b: any) => Math.abs(b.diferencia) - Math.abs(a.diferencia));
 
     return {
       totals,
@@ -6828,7 +7136,7 @@ const API = {
   async getPhSystemIntegrity() {
     const res = await fetch(`${pb.baseUrl}/api/ph/integrity-check`, {
       headers: {
-        ...(pb.authStore.token ? { Authorization: `Bearer ${pb.authStore.token}` } : {}),
+        ...((pb as any).authToken ? { Authorization: `Bearer ${(pb as any).authToken}` } : {}),
       },
     });
     if (!res.ok) {

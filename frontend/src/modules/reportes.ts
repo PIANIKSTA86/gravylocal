@@ -6825,6 +6825,18 @@ async function generateAuxiliaryRows() {
 (window as any).drawPdfFooter = drawPdfFooter;
 (window as any).signatureBlock = signatureBlock;
 
+function getWithholdingCertificateMeta(retType: string, items: any[] = []) {
+  return {
+    type: retType,
+    tag: 'retenciones',
+    title: 'CERTIFICADO DE RETENCIONES',
+    subtitle: 'Retenciones en la fuente a título de Renta, IVA e ICA practicadas a proveedores',
+    statutoryNote: 'Certificado expedido en cumplimiento del Art. 381 del Estatuto Tributario, normatividad tributaria aplicable y el D.R. 836/91 (Art. 1.6.1.12.12 del DUR 1625 de 2016).',
+    badgeColor: '#4F46E5',
+    categoryLabel: 'Certificado de Retenciones',
+  };
+}
+
 async function renderWithholdingCertificates() {
   const view = getReportViewHost();
   if (!view) return;
@@ -6840,10 +6852,10 @@ async function renderWithholdingCertificates() {
 
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
-      <h4 class="font-bold mb-3" style="color:#0D2137">Certificados de Retención</h4>
+      <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-file-contract mr-2 text-indigo-600"></i>Certificados de Retención</h4>
       <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
         <div class="form-group md:col-span-2">
-          <label class="form-label">Tercero (Proveedor)</label>
+          <label class="form-label">Tercero (Proveedor / Beneficiario)</label>
           <div class="relative">
             <input type="text" id="ret-third-search" class="form-input w-full text-xs" placeholder="— Seleccione Tercero (Escribe para buscar...) —" autocomplete="off" />
             <input type="hidden" id="ret-third" value="" />
@@ -6856,11 +6868,11 @@ async function renderWithholdingCertificates() {
         </div>
         <div class="form-group">
           <label class="form-label">Tipo Retención</label>
-          <select id="ret-type" class="form-input">
-            <option value="todos">Todos</option>
-            <option value="rente">ReteFuente</option>
-            <option value="iva">ReteIVA</option>
-            <option value="ica">ReteICA</option>
+          <select id="ret-type" class="form-input font-medium">
+            <option value="todos">Todos (Consolidado)</option>
+            <option value="rente">Retención en la Fuente (Renta)</option>
+            <option value="iva">Retención en la Fuente (IVA)</option>
+            <option value="ica">Retención en la Fuente (ICA)</option>
           </select>
         </div>
         <div class="form-group">
@@ -6874,8 +6886,8 @@ async function renderWithholdingCertificates() {
       </div>
       
       <div class="flex gap-3 mt-3">
-        <button class="btn btn-primary" id="btn-gen-ret-cert"><i class="fas fa-filter"></i> Generar Vista Previa</button>
-        <button class="btn btn-outline" id="btn-pdf-ret-cert" disabled><i class="fas fa-file-pdf"></i> Generar Certificado PDF</button>
+        <button class="btn btn-primary" id="btn-gen-ret-cert"><i class="fas fa-filter mr-1.5"></i> Generar Vista Previa</button>
+        <button class="btn btn-outline" id="btn-pdf-ret-cert" disabled><i class="fas fa-file-pdf mr-1.5 text-red-500"></i> Generar Certificado PDF</button>
       </div>
     </div>
     <div id="ret-cert-results" class="p-8 text-center" style="color:#9CA3AF">
@@ -6933,7 +6945,7 @@ async function renderWithholdingCertificates() {
       const purchaseRules = purchaseCfg?.accounting?.withholding_rules || [];
       const salesRules = salesCfg?.accounting?.withholding_rules || [];
 
-      const resolveRate = (accCode, acc, lineRateRaw) => {
+      const resolveRate = (accCode: string, acc: any, lineRateRaw: any, accName: string) => {
         const lineRate = Number(lineRateRaw || 0);
         if (lineRate > 0) return lineRate;
 
@@ -6958,11 +6970,34 @@ async function renderWithholdingCertificates() {
             return Number(acc.ret_rate_reteiva);
           }
           if (accCode.startsWith('2368') && Number(acc.ret_rate_reteica || 0) > 0) {
-            return Number(acc.ret_rate_reteica);
+            const r = Number(acc.ret_rate_reteica);
+            // Si el valor configurado en ICA es > 2 (ej: 7.7, 8.8, 10), fue digitado como tarifa por mil entera
+            return r > 2 ? r / 10 : r;
           }
         }
 
-        // Fallbacks to Colombian defaults
+        // Intelligent parsing from account name (e.g. "2.5%", "4%", "10/1000", "7.7/1000")
+        if (accName) {
+          const pctMatch = accName.match(/(\d+(?:[.,]\d+)?)\s*%/);
+          if (pctMatch) {
+            const val = parseFloat(pctMatch[1].replace(',', '.'));
+            if (!isNaN(val) && val > 0) return val;
+          }
+          const milMatch = accName.match(/(\d+(?:[.,]\d+)?)\s*(?:\/|por\s+|x\s*)1000/i);
+          if (milMatch) {
+            const val = parseFloat(milMatch[1].replace(',', '.'));
+            if (!isNaN(val) && val > 0) return val / 10;
+          }
+          if (accCode.startsWith('2368')) {
+            const icaMatch = accName.match(/tarifa\s+(\d+(?:[.,]\d+)?)/i);
+            if (icaMatch) {
+              const val = parseFloat(icaMatch[1].replace(',', '.'));
+              if (!isNaN(val) && val > 0) return val > 2 ? val / 10 : val;
+            }
+          }
+        }
+
+        // Fallbacks to Colombian statutory defaults
         if (accCode.startsWith('2365')) return 3.5;
         if (accCode.startsWith('2367')) return 15;
         if (accCode.startsWith('2368')) return 0.414;
@@ -6971,7 +7006,9 @@ async function renderWithholdingCertificates() {
       };
 
       const yearLines = lines.filter(l => l.expand?.tx_id?.date && l.expand.tx_id.date.startsWith(year));
-      const withholdingGroups = [];
+      
+      // Agrupación contable neta por concepto y tarifa (respetando débitos y devoluciones)
+      const summaryMap = new Map<string, any>();
 
       for (const l of yearLines) {
         const accCode = l.expand?.account_id?.code || '';
@@ -6985,68 +7022,94 @@ async function renderWithholdingCertificates() {
 
         if (retType !== 'todos' && retType !== type) continue;
 
-        const withheld = Number(l.credit || 0) - Number(l.debit || 0);
-        if (withheld <= 0.01) continue;
+        // Saldo neto de la línea: retenciones practicadas al proveedor se acreditan; anulaciones o devoluciones se debitan
+        const netWithheld = Number(l.credit || 0) - Number(l.debit || 0);
+        if (Math.abs(netWithheld) < 0.001) continue;
 
         const acc = l.expand?.account_id || accountMap.get(accCode);
-        const rate = resolveRate(accCode, acc, l.ret_rate);
-        
-        let base = Number(l.ret_base || 0);
-        // Recalculate base if it is 0 or if it was saved incorrectly as equal to the withheld amount
-        if (base <= 0.01 || (rate > 0 && Math.abs(base - withheld) < 0.05 && Math.abs(rate - 100) > 0.01)) {
-          base = rate > 0 ? (withheld / (rate / 100)) : withheld;
+        const rawRate = resolveRate(accCode, acc, l.ret_rate, accName);
+        const rate = Math.round(rawRate * 1000) / 1000;
+
+        let lineBase = Number(l.ret_base || 0);
+        if (lineBase <= 0.01 || (rate > 0 && Math.abs(lineBase - Math.abs(netWithheld)) < 0.05 && Math.abs(rate - 100) > 0.01)) {
+          lineBase = rate > 0 ? (Math.abs(netWithheld) / (rate / 100)) : Math.abs(netWithheld);
+        }
+        if (netWithheld < 0) {
+          lineBase = -Math.abs(lineBase);
         }
 
-        withholdingGroups.push({
-          accountCode: accCode,
-          accountName: accName,
-          type,
-          rate,
-          base,
-          amount: withheld,
-        });
+        // Concept code agrupa subcuentas de devolución (ej: 23654091 se integra con 236540)
+        const conceptCode = accCode.length >= 6 ? accCode.slice(0, 6) : accCode;
+        const key = `${conceptCode}|${rate}`;
+
+        if (!summaryMap.has(key)) {
+          // Nombre limpio sin etiqueta de devolución para presentación del concepto
+          const cleanName = accName.replace(/por DEVOLUCION /i, '').trim();
+          summaryMap.set(key, {
+            conceptCode,
+            accountCode: accCode,
+            accountName: cleanName,
+            type,
+            rate,
+            base: 0,
+            amount: 0,
+          });
+        }
+
+        const grp = summaryMap.get(key);
+        grp.base += lineBase;
+        grp.amount += netWithheld;
+
+        // Si el nombre inicial era de devolución y llega una línea regular, actualizar a la cuenta principal
+        if (grp.accountName.toLowerCase().includes('devolucion') && !accName.toLowerCase().includes('devolucion')) {
+          grp.accountName = accName;
+          grp.accountCode = accCode;
+        }
       }
 
-      if (withholdingGroups.length === 0) {
-        results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No se encontraron retenciones aplicadas a este tercero en el año seleccionado.</div>';
+      // Filtrar conceptos con retención neta positiva (> 0.01) y redondear a 2 decimales
+      const summaryList = [...summaryMap.values()]
+        .filter(r => r.amount > 0.01)
+        .map(r => ({
+          ...r,
+          base: Math.round(r.base * 100) / 100,
+          amount: Math.round(r.amount * 100) / 100,
+        }))
+        .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+
+      if (summaryList.length === 0) {
+        results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-info-circle mr-2"></i>No se encontraron retenciones aplicadas a este tercero en el año seleccionado (o fueron anuladas/devueltas en su totalidad).</div>';
         lastGeneratedData = null;
         const pdfBtn = document.getElementById('btn-pdf-ret-cert');
         if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = true;
         return;
       }
 
-      const summaryMap = new Map();
-      for (const item of withholdingGroups) {
-        const key = `${item.accountCode}|${item.rate}`;
-        if (!summaryMap.has(key)) {
-          summaryMap.set(key, {
-            accountCode: item.accountCode,
-            accountName: item.accountName,
-            type: item.type,
-            rate: item.rate,
-            base: 0,
-            amount: 0,
-          });
-        }
-        const grp = summaryMap.get(key);
-        grp.base += item.base;
-        grp.amount += item.amount;
-      }
+      const totalBase = Math.round(summaryList.reduce((s, r) => s + r.base, 0) * 100) / 100;
+      const totalAmount = Math.round(summaryList.reduce((s, r) => s + r.amount, 0) * 100) / 100;
 
-      const summaryList = [...summaryMap.values()].sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-      const totalBase = summaryList.reduce((s, r) => s + r.base, 0);
-      const totalAmount = summaryList.reduce((s, r) => s + r.amount, 0);
+      const certMeta = getWithholdingCertificateMeta(retType, summaryList);
 
       results.innerHTML = `
         <div class="p-4 border-b flex flex-wrap items-center justify-between gap-3 bg-gray-50 rounded-xl mb-4">
-          <p class="text-sm" style="color:#6B7280">Año Gravable: <strong>${esc(year)}</strong> · Total Base: <strong>${fmt(totalBase)}</strong> · Total Retenido: <strong>${fmt(totalAmount)}</strong></p>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:${certMeta.badgeColor}"></span>
+              <h5 class="text-sm font-bold text-gray-800">${esc(certMeta.title)}</h5>
+            </div>
+            <p class="text-xs text-gray-500 mt-0.5">${esc(certMeta.subtitle)}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-xs text-gray-500">Año Gravable: <strong class="text-gray-800 text-sm">${esc(year)}</strong></p>
+            <p class="text-xs text-gray-600">Base: <strong class="text-gray-800">${fmt(totalBase)}</strong> · Retenido: <strong class="text-orange-600">${fmt(totalAmount)}</strong></p>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="data-table">
             <thead>
               <tr>
-                <th>Concepto / Cuenta</th>
-                <th>Tarifa</th>
+                <th>Concepto / Cuenta Contable</th>
+                <th class="text-center">Tarifa</th>
                 <th class="text-right">Base Gravable</th>
                 <th class="text-right">Valor Retenido</th>
               </tr>
@@ -7054,17 +7117,17 @@ async function renderWithholdingCertificates() {
             <tbody>
               ${summaryList.map(r => `
                 <tr>
-                  <td><span class="font-bold">${esc(r.accountCode)}</span> - ${esc(r.accountName)}</td>
-                  <td>${r.rate > 0 ? `${r.rate}%` : '—'}</td>
+                  <td><span class="font-bold text-gray-700">${esc(r.accountCode)}</span> - ${esc(r.accountName)}</td>
+                  <td class="text-center font-medium">${r.rate > 0 ? `${r.rate}%` : '—'}</td>
                   <td class="text-right font-semibold">${fmt(r.base)}</td>
                   <td class="text-right font-semibold text-orange-600">${fmt(r.amount)}</td>
                 </tr>
               `).join('')}
             </tbody>
             <tfoot>
-              <tr class="font-bold">
+              <tr class="font-bold bg-gray-50">
                 <td colspan="2">TOTAL RETENCIONES</td>
-                <td class="text-right">${fmt(totalBase)}</td>
+                <td class="text-right text-gray-800">${fmt(totalBase)}</td>
                 <td class="text-right text-orange-600">${fmt(totalAmount)}</td>
               </tr>
             </tfoot>
@@ -7076,6 +7139,7 @@ async function renderWithholdingCertificates() {
         third: thirds.find(t => t.id === thirdId),
         year,
         type: retType,
+        meta: certMeta,
         city,
         expDate,
         items: summaryList,
@@ -7106,36 +7170,114 @@ async function renderWithholdingCertificates() {
       const left = 36;
       const right = doc.internal.pageSize.getWidth() - 36;
       const width = right - left;
+      const centerX = doc.internal.pageSize.getWidth() / 2;
 
-      // 1. Cabecera
+      const meta = lastGeneratedData.meta || getWithholdingCertificateMeta(lastGeneratedData.type, lastGeneratedData.items);
+
+      // 1. Cabecera Institucional
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(13);
       doc.setTextColor(13, 33, 55);
-      doc.text(headerCtx.companyName.toUpperCase(), doc.internal.pageSize.getWidth() / 2, 50, { align: 'center' });
-      doc.setFontSize(10);
-      doc.text(`NIT: ${headerCtx.companyNit}`, doc.internal.pageSize.getWidth() / 2, 65, { align: 'center' });
-      doc.text(headerCtx.companyAddress, doc.internal.pageSize.getWidth() / 2, 78, { align: 'center' });
+      doc.text(headerCtx.companyName.toUpperCase(), centerX, 46, { align: 'center' });
 
-      doc.setFontSize(12);
-      doc.text('CERTIFICADO DE RETENCION EN LA FUENTE', doc.internal.pageSize.getWidth() / 2, 110, { align: 'center' });
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.text(`AÑO GRAVABLE: ${lastGeneratedData.year}`, doc.internal.pageSize.getWidth() / 2, 125, { align: 'center' });
+      doc.setFontSize(9);
+      doc.setTextColor(70, 70, 70);
+      const fullNit = headerCtx.companyDv ? `${headerCtx.companyNit}-${headerCtx.companyDv}` : headerCtx.companyNit;
+      doc.text(`NIT: ${fullNit}`, centerX, 59, { align: 'center' });
+      if (headerCtx.companyAddress) {
+        doc.text(headerCtx.companyAddress, centerX, 71, { align: 'center' });
+      }
+
+      // 2. Título Genérico del Certificado
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(24, 43, 73);
+      doc.text('CERTIFICADO DE RETENCIONES', centerX, 96, { align: 'center' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(meta.subtitle, centerX, 108, { align: 'center' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(13, 33, 55);
+      doc.text(`AÑO GRAVABLE: ${lastGeneratedData.year}`, centerX, 123, { align: 'center' });
 
       doc.setDrawColor(200, 200, 200);
-      doc.line(left, 140, right, 140);
+      doc.setLineWidth(0.75);
+      doc.line(left, 133, right, 133);
 
-      // 2. Información del retenido
+      // 3. Información del Sujeto Retenido (Proveedor)
       const t = lastGeneratedData.third;
-      doc.setFont('helvetica', 'bold');
-      doc.text('RETENIDO A:', left, 160);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Nombre / Razón Social: ${t.name}`, left, 175);
-      doc.text(`NIT / Cédula: ${t.doc_number}`, left, 188);
-      doc.text(`Dirección: ${t.address || 'No registrada'}`, left, 201);
-      doc.text(`Ciudad: ${t.city || 'No registrada'}`, left, 214);
+      const thirdNit = t.dv ? `${t.doc_number}-${t.dv}` : t.doc_number;
 
-      // 3. Tabla
+      const cardStartY = 140;
+      const innerPaddingX = 12;
+      const innerWidth = width - (innerPaddingX * 2);
+
+      // Fila 1: Nombre y NIT
+      const row1Y = cardStartY + 26;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+
+      const maxNameWidth = 310;
+      const nameLines = doc.splitTextToSize(String(t.name || ''), maxNameWidth);
+      const row1Height = Math.max(12, nameLines.length * 10);
+
+      // Fila 2: Ubicación completa (Dirección y Ciudad) a ancho completo
+      const row2Y = row1Y + row1Height + 2;
+      const locString = `Dirección: ${t.address || 'No registrada'}   —   Ciudad: ${t.city || 'No registrada'}`;
+      const locLines = doc.splitTextToSize(locString, innerWidth);
+      const locHeight = (locLines.length - 1) * 10;
+
+      // Altura total dinámica de la tarjeta con margen inferior armónico
+      const cardHeight = Math.max(54, (row2Y - cardStartY) + locHeight + 10);
+
+      // Dibujar tarjeta (fondo y borde sutiles con bordes redondeados)
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(left, cardStartY, width, cardHeight, 4, 4, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.75);
+      doc.roundedRect(left, cardStartY, width, cardHeight, 4, 4, 'S');
+
+      // Título de la tarjeta
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(13, 33, 55);
+      doc.text('DATOS DEL RETENIDO (BENEFICIARIO DEL PAGO):', left + innerPaddingX, cardStartY + 14);
+
+      // Contenido Fila 1 (Izquierda: Nombre / Razón Social)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(75, 85, 99);
+      doc.text('Nombre / Razón Social: ', left + innerPaddingX, row1Y);
+      const nameLabelWidth = doc.getTextWidth('Nombre / Razón Social: ');
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(17, 24, 39);
+      doc.text(nameLines, left + innerPaddingX + nameLabelWidth, row1Y);
+
+      // Contenido Fila 1 (Derecha: NIT / Cédula)
+      const nitColX = left + innerPaddingX + 340;
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(75, 85, 99);
+      doc.text('NIT / Cédula: ', nitColX, row1Y);
+      const nitLabelWidth = doc.getTextWidth('NIT / Cédula: ');
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(17, 24, 39);
+      doc.text(String(thirdNit || ''), nitColX + nitLabelWidth, row1Y);
+
+      // Contenido Fila 2 (Ancho completo: Dirección — Ciudad)
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(55, 65, 81);
+      doc.text(locLines, left + innerPaddingX, row2Y);
+
+      // 4. Tabla de Retenciones con startY dinámico
+      const tableStartY = cardStartY + cardHeight + 12;
       const body = lastGeneratedData.items.map(r => [
         `${r.accountCode} - ${r.accountName}`,
         r.rate > 0 ? `${r.rate}%` : '—',
@@ -7145,43 +7287,60 @@ async function renderWithholdingCertificates() {
       body.push(['TOTALES', '', fmtPdfNum(lastGeneratedData.totalBase), fmtPdfNum(lastGeneratedData.totalAmount)]);
 
       doc.autoTable({
-        startY: 235,
+        startY: tableStartY,
         head: [['Concepto de Retención', 'Tarifa', 'Base Gravable', 'Valor Retenido']],
         body,
         theme: 'plain',
-        margin: { top: 235, left, right: 36, bottom: 50 },
-        styles: { font: 'helvetica', fontSize: 8.5, textColor: [55, 55, 55], cellPadding: 4, lineWidth: 0.1, lineColor: [220, 220, 220] },
-        headStyles: { fillColor: [240, 240, 240], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 8.5 },
+        margin: { top: 40, left, right: 36, bottom: 40 },
+        styles: { font: 'helvetica', fontSize: 8, textColor: [55, 55, 55], cellPadding: 4, lineWidth: 0.1, lineColor: [220, 220, 220] },
+        headStyles: { fillColor: [241, 245, 249], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 8 },
         columnStyles: {
           0: { cellWidth: 260 },
           1: { cellWidth: 50, halign: 'center' },
-          2: { cellWidth: 110, halign: 'right' },
-          3: { cellWidth: 110, halign: 'right' },
+          2: { cellWidth: 115, halign: 'right' },
+          3: { cellWidth: 115, halign: 'right' },
         },
         didParseCell: (data) => {
           if (data.section !== 'body') return;
           const isTotal = data.row.index === body.length - 1;
           if (isTotal) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [245, 245, 245];
+            data.cell.styles.fillColor = [245, 247, 250];
             data.cell.styles.textColor = [13, 33, 55];
           }
         },
       });
 
-      const finalY = doc.previousAutoTable.finalY + 30;
+      const finalY = doc.previousAutoTable.finalY + 22;
 
-      // 4. Firmas y pie de página
-      doc.setFontSize(8.5);
-      doc.text(`Ciudad de Expedición: ${lastGeneratedData.city}`, left, finalY);
-      doc.text(`Fecha de Expedición: ${lastGeneratedData.expDate}`, left, finalY + 12);
-      doc.text('Este documento no requiere firma autógrafa para su validez (Art. 10 D.R. 836/91).', left, finalY + 35, { maxWidth: width });
+      // 5. Marco Legal, Ciudad y Firmas
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(55, 55, 55);
+      doc.text(`Ciudad donde se practicó la retención: ${lastGeneratedData.city}`, left, finalY);
+      doc.text(`Fecha de Expedición: ${lastGeneratedData.expDate}`, left, finalY + 11);
 
-      doc.line(left, finalY + 100, left + 180, finalY + 100);
-      doc.text('Firma Agente Retenedor / Certificador', left, finalY + 112);
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`${meta.statutoryNote} Este documento no requiere firma autógrafa para su validez conforme al Art. 10 del D.R. 836/91 (Art. 1.6.1.12.12 del DUR 1625/2016).`, left, finalY + 26, { maxWidth: width });
 
-      doc.save(`certificado_retencion_${t.doc_number}_${lastGeneratedData.year}.pdf`);
-      showToast('Certificado generado en PDF.', 'success');
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.5);
+      doc.line(left, finalY + 70, left + 190, finalY + 70);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(13, 33, 55);
+      doc.text('Firma Agente Retenedor / Pagador', left, finalY + 81);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(70, 70, 70);
+      doc.text(`${headerCtx.companyName}`, left, finalY + 92);
+      doc.text(`NIT: ${fullNit}`, left, finalY + 102);
+
+      const fileTag = meta.tag || 'retencion';
+      const cleanDoc = String(t.doc_number || 'tercero').replace(/[^a-zA-Z0-9]/g, '');
+      doc.save(`certificado_${fileTag}_${cleanDoc}_${lastGeneratedData.year}.pdf`);
+      showToast('Certificado generado en PDF exitosamente.', 'success');
     } catch (err) {
       showToast(`Error al generar PDF: ${err.message}`, 'error');
     }

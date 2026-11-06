@@ -965,10 +965,63 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
     bankWrap.style.display = requiresBank ? 'block' : 'none';
   };
 
+  (window as any).dsOnDateChange = () => {
+    const dateInp = document.getElementById('ds-date') as HTMLInputElement;
+    const warnEl = document.getElementById('ds-date-warning');
+    const billDate = dateInp?.value;
+    const today = (window as any).todayStr ? (window as any).todayStr() : new Date().toISOString().slice(0, 10);
+    if (warnEl) {
+      if (billDate && billDate !== today) {
+        warnEl.classList.remove('hidden');
+        showToast(`Atención: La fecha seleccionada (${billDate}) difiere de hoy (${today}). Para emitir a la DIAN, la fecha de emisión debe coincidir con el día calendario de firma.`, 'warning', 6000);
+      } else {
+        warnEl.classList.add('hidden');
+      }
+    }
+    if (typeof (window as any).dsRecalcDueDate === 'function') {
+      (window as any).dsRecalcDueDate();
+    }
+  };
+
+  (window as any).dsOnCreditDaysInput = () => {
+    const daysInp = document.getElementById('ds-credit-days') as HTMLInputElement;
+    const warnEl = document.getElementById('ds-credit-days-warning');
+    const val = parseInt(daysInp?.value || '0', 10);
+    if (isNaN(val) || val <= 0) {
+      if (warnEl) warnEl.classList.remove('hidden');
+      daysInp?.classList.add('border-amber-500', 'bg-amber-50');
+    } else {
+      if (warnEl) warnEl.classList.add('hidden');
+      daysInp?.classList.remove('border-amber-500', 'bg-amber-50');
+    }
+    if (typeof (window as any).dsRecalcDueDate === 'function') {
+      (window as any).dsRecalcDueDate();
+    }
+  };
+
+  (window as any).dsOnDueDateChange = () => {
+    const dateInp = document.getElementById('ds-date') as HTMLInputElement;
+    const dueInp = document.getElementById('ds-due-date') as HTMLInputElement;
+    const warnEl = document.getElementById('ds-due-date-warning');
+    const billDate = dateInp?.value || (window as any).todayStr();
+    const dueDate = dueInp?.value;
+    if (warnEl) {
+      if (dueDate && dueDate <= billDate) {
+        warnEl.classList.remove('hidden');
+        dueInp?.classList.add('border-red-500', 'bg-red-50');
+        showToast('En crédito comercial, la fecha de vencimiento debe ser posterior a la fecha de emisión.', 'warning', 5000);
+      } else {
+        warnEl.classList.add('hidden');
+        dueInp?.classList.remove('border-red-500', 'bg-red-50');
+      }
+    }
+  };
+
   (window as any).dsOnPaymentFormChange = () => {
     const formSel = document.getElementById('ds-payment-form') as HTMLSelectElement;
     const creditPanel = document.getElementById('ds-credit-panel');
     const paymentDianCodeSel = document.getElementById('ds-payment-dian-code') as HTMLSelectElement;
+    const creditDaysInp = document.getElementById('ds-credit-days') as HTMLInputElement;
     const isCredit = formSel?.value === '2';
     if (creditPanel) {
       creditPanel.style.display = isCredit ? 'grid' : 'none';
@@ -976,6 +1029,13 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
     if (isCredit) {
       if (paymentDianCodeSel && paymentDianCodeSel.value === '10') {
         paymentDianCodeSel.value = '30';
+      }
+      if (creditDaysInp) {
+        const val = parseInt(creditDaysInp.value || '0', 10);
+        if (isNaN(val) || val <= 0) {
+          creditDaysInp.value = '30';
+          showToast('Forma de pago a crédito seleccionada: se asignaron 30 días de plazo por defecto (mínimo 1 día requerido por la DIAN).', 'info');
+        }
       }
       (window as any).dsRecalcDueDate();
     } else {
@@ -1173,7 +1233,10 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         </div>
         <div>
           <label class="form-label font-bold">Fecha Emisión</label>
-          <input type="date" id="ds-date" class="form-input w-full" value="${existingPur?.date || (window as any).todayStr()}" onchange="window.dsRecalcDueDate && window.dsRecalcDueDate()">
+          <input type="date" id="ds-date" class="form-input w-full" value="${existingPur?.date || (window as any).todayStr()}" onchange="window.dsOnDateChange && window.dsOnDateChange()">
+          <div id="ds-date-warning" class="text-[11px] text-amber-700 font-semibold mt-1 hidden">
+            <i class="fas fa-triangle-exclamation mr-1"></i>Fecha diferente a hoy. Al firmar ante la DIAN debe coincidir con el día de presentación.
+          </div>
         </div>
         <!-- 3. Selector de Forma de Pago DIAN -->
         <div>
@@ -1188,12 +1251,18 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
       <!-- Panel de Crédito Comercial (Días y Vencimiento) -->
       <div id="ds-credit-panel" class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-amber-50/80 border border-amber-200 rounded-xl" style="${isExistingCredit ? 'display:grid;' : 'display:none;'}">
         <div>
-          <label class="form-label font-bold text-amber-900"><i class="fas fa-calendar-day mr-1"></i>Plazo Crédito (Días)</label>
-          <input type="number" id="ds-credit-days" class="form-input w-full font-semibold" min="1" max="365" value="${creditDaysDefault}" oninput="window.dsRecalcDueDate()">
+          <label class="form-label font-bold text-amber-900"><i class="fas fa-calendar-day mr-1"></i>Plazo Crédito (Días) <span class="text-red-500">*</span></label>
+          <input type="number" id="ds-credit-days" class="form-input w-full font-semibold" min="1" max="365" value="${creditDaysDefault > 0 ? creditDaysDefault : 30}" oninput="window.dsOnCreditDaysInput && window.dsOnCreditDaysInput()">
+          <div id="ds-credit-days-warning" class="text-[11px] text-amber-800 font-medium mt-1 hidden">
+            <i class="fas fa-circle-exclamation mr-1"></i>El plazo debe ser por lo menos de 1 día (superior a cero).
+          </div>
         </div>
         <div>
           <label class="form-label font-bold text-amber-900"><i class="fas fa-calendar-check mr-1"></i>Fecha de Vencimiento <span class="text-red-500">*</span></label>
-          <input type="date" id="ds-due-date" class="form-input w-full font-bold font-mono text-amber-900 bg-white" value="${existingDueDate}">
+          <input type="date" id="ds-due-date" class="form-input w-full font-bold font-mono text-amber-900 bg-white" value="${existingDueDate}" onchange="window.dsOnDueDateChange && window.dsOnDueDateChange()">
+          <div id="ds-due-date-warning" class="text-[11px] text-red-600 font-medium mt-1 hidden">
+            <i class="fas fa-circle-xmark mr-1"></i>La fecha de vencimiento debe ser posterior a la fecha de emisión.
+          </div>
         </div>
       </div>
 
@@ -1398,17 +1467,46 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
 
       const consecutivoPreview = (document.getElementById('ds-consecutivo-preview') as HTMLInputElement)?.value || 'DS';
       const billDate = (document.getElementById('ds-date') as HTMLInputElement).value || (window as any).todayStr();
+      const today = (window as any).todayStr ? (window as any).todayStr() : new Date().toISOString().slice(0, 10);
 
-      // Si es edición de borrador existente, conservar de forma estricta su número original
-      const validDocNumber = (existingPur && existingPur.number)
-        ? existingPur.number
-        : ((consecutivoPreview && !consecutivoPreview.includes('Sin resolución')) ? consecutivoPreview : 'AUTO');
+      // ── VALIDACIÓN 1: Fecha de Emisión vs. Fecha Calendario de Firma ──
+      if (isEmitDirect && billDate !== today) {
+        showToast(`La fecha de emisión (${billDate}) debe concordar con la fecha calendario del día de firma (${today}) para la validación ante la DIAN.`, 'warning', 8000);
+        confirmDialog(
+          'Fecha de Emisión Diferente a Fecha de Firma DIAN',
+          `El documento tiene fecha de emisión <strong>${billDate}</strong> y la fecha actual de presentación/firma es <strong>${today}</strong>.<br><br>
+          Conforme a las reglas de validación DIAN (Res. 000167/2021), en la transmisión por operación <strong>la fecha de emisión debe concordar con la fecha calendario del día de firma</strong>.<br><br>
+          ¿Deseas <strong>actualizar la fecha de emisión a hoy (${today})</strong> para firmar y transmitir directamente, o prefieres cancelar y guardarlo como borrador?`,
+          async () => {
+            const dateInput = document.getElementById('ds-date') as HTMLInputElement;
+            if (dateInput) dateInput.value = today;
+            if (isCredit && typeof (window as any).dsRecalcDueDate === 'function') {
+              (window as any).dsRecalcDueDate();
+            }
+            await submitDsForm(true);
+          }
+        );
+        return;
+      }
 
+      // ── VALIDACIÓN 2: Forma de Pago Crédito y Días de Plazo DIAN ──
       const paymentForm = (document.getElementById('ds-payment-form') as HTMLSelectElement)?.value || '1';
       const isCredit = (paymentForm === '2');
-      const creditDays = isCredit ? (parseInt((document.getElementById('ds-credit-days') as HTMLInputElement)?.value || '30', 10) || 30) : 0;
+      let creditDays = 0;
       let dueDate = billDate;
+
       if (isCredit) {
+        const creditDaysInput = document.getElementById('ds-credit-days') as HTMLInputElement;
+        const daysVal = parseInt(creditDaysInput?.value || '0', 10);
+        if (isNaN(daysVal) || daysVal <= 0) {
+          showToast('En forma de pago a crédito, los días de plazo DIAN deben ser superiores a cero (mínimo 1 día).', 'warning', 8000);
+          creditDaysInput?.focus();
+          creditDaysInput?.classList.add('border-red-500', 'bg-red-50');
+          return;
+        }
+        creditDaysInput?.classList.remove('border-red-500', 'bg-red-50');
+        creditDays = daysVal;
+
         const customDueDate = (document.getElementById('ds-due-date') as HTMLInputElement)?.value;
         if (customDueDate) {
           dueDate = customDueDate;
@@ -1421,7 +1519,20 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
             dueDate = billDate;
           }
         }
+
+        if (dueDate <= billDate) {
+          showToast('En forma de pago a crédito, la fecha de vencimiento debe ser posterior a la fecha de emisión.', 'warning', 8000);
+          const dueInput = document.getElementById('ds-due-date') as HTMLInputElement;
+          dueInput?.focus();
+          dueInput?.classList.add('border-red-500', 'bg-red-50');
+          return;
+        }
       }
+
+      // Si es edición de borrador existente, conservar de forma estricta su número original
+      const validDocNumber = (existingPur && existingPur.number)
+        ? existingPur.number
+        : ((consecutivoPreview && !consecutivoPreview.includes('Sin resolución')) ? consecutivoPreview : 'AUTO');
 
       const paymentMethod = isCredit ? 'CREDITO' : (requiresBank ? 'TRANSFERENCIA' : 'EFECTIVO');
       const warehouseId = (document.getElementById('ds-warehouse') as HTMLSelectElement)?.value || '';
@@ -1492,6 +1603,8 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
       const payableTotal = Math.max(0, subtotalSum - retSum);
 
       const headerPayload = {
+        doc_type: (existingPur && existingPur.doc_type) ? existingPur.doc_type : 'DS',
+        dian_resolution_id: (document.getElementById('ds-resolution-id') as HTMLSelectElement)?.value || null,
         cost_center_id: costCenterId,
         number: validDocNumber,
         tx_number: (existingPur && (existingPur.tx_number || existingPur.number)) ? (existingPur.tx_number || existingPur.number) : validDocNumber,
@@ -1555,7 +1668,7 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         } else if (typeof (window as any).API?.createPurchaseInvoice === 'function') {
           purInv = await (window as any).API.createPurchaseInvoice(headerPayload, linesData);
         } else {
-          purInv = await pb.create('support_documents', headerPayload);
+          purInv = await pb.create('support_documents', { doc_type: 'DS', ...headerPayload });
           for (let i = 0; i < linesData.length; i++) {
             await pb.create('support_document_lines', {
               document_id: purInv.id,
@@ -1570,11 +1683,19 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
 
       if (isEmitDirect) {
         showToast('Documento guardado. Firmando y contabilizando ante la DIAN...', 'info');
-        const postFn = (window as any).API?.postSupportDocument || (window as any).API?.postPurchaseInvoice;
-        const postedRes = await postFn(purInv.id).catch((pErr: any) => {
+        const api = (window as any).API;
+        let postedRes: any = null;
+        try {
+          if (api?.postSupportDocument) {
+            postedRes = await api.postSupportDocument(purInv.id);
+          } else if (api?.postPurchaseInvoice) {
+            postedRes = await api.postPurchaseInvoice(purInv.id);
+          }
+        } catch (pErr: any) {
+          console.error('[DS] Error al contabilizar post-guardado:', pErr);
           showToast(pErr.message || 'Error al contabilizar documento', 'error');
-          return null;
-        });
+          postedRes = null;
+        }
         const targetTxId = postedRes?.tx?.id || purInv?.tx_id || existingPur?.tx_id;
         if (targetTxId) {
           if (typeof (window as any).emitDocSoporteFromList === 'function') {
@@ -2100,9 +2221,11 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
 (window as any).contabilizarDsRow = async function(id: string) {
   try {
     showToast('Contabilizando documento soporte...', 'info');
-    const postFn = (window as any).API?.postSupportDocument || (window as any).API?.postPurchaseInvoice;
-    const res = await postFn(id);
-    showToast(`Documento soporte contabilizado con éxito. Consecutivo asignado: ${res.doc?.number || res.inv?.number || 'DS'}`, 'success');
+    const api = (window as any).API;
+    const res = api?.postSupportDocument
+      ? await api.postSupportDocument(id)
+      : await api?.postPurchaseInvoice(id);
+    showToast(`Documento soporte contabilizado con éxito. Consecutivo asignado: ${res?.doc?.number || res?.inv?.number || 'DS'}`, 'success');
     if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
     else renderDocSoporte();
   } catch (err: any) {
@@ -2110,11 +2233,7 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
   }
 };
 
-(window as any).emitDocSoporteFromList = async function(txId: string, docNumber: string) {
-  if (!txId) {
-    showToast('No hay una transacción vinculada a este documento soporte.', 'warning');
-    return;
-  }
+(window as any).doEmitDocSoporteAction = async function(txId: string, docNumber: string) {
   confirmDialog('Firmar y Emitir Documento Soporte', `¿Confirmas el firmado digital y envío del Documento Soporte <strong>${esc(docNumber)}</strong> a la DIAN?`, async () => {
     try {
       showToast('Transmitiendo Documento Soporte a la DIAN...', 'info');
@@ -2143,6 +2262,48 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
   });
 };
 
+(window as any).emitDocSoporteFromList = async function(txId: string, docNumber: string) {
+  if (!txId) {
+    showToast('No hay una transacción vinculada a este documento soporte.', 'warning');
+    return;
+  }
+
+  // Comprobar si la fecha de emisión coincide con la fecha de hoy
+  const today = (window as any).todayStr ? (window as any).todayStr() : new Date().toISOString().slice(0, 10);
+  let suppDoc: any = null;
+  try {
+    suppDoc = await pb.getFirstRecordByFilter('support_documents', `tx_id="${pb.escapeFilterValue(txId)}" || id="${pb.escapeFilterValue(txId)}"`);
+  } catch (_) {}
+
+  if (suppDoc) {
+    const docDate = (suppDoc.date || '').slice(0, 10);
+    if (docDate && docDate !== today) {
+      showToast(`La fecha del documento (${docDate}) difiere de la fecha calendario de hoy (${today}).`, 'warning', 7000);
+      confirmDialog(
+        'Fecha de Emisión Diferente al Día de Firma DIAN',
+        `El documento <strong>${esc(docNumber)}</strong> tiene fecha de emisión <strong>${docDate}</strong> y hoy es <strong>${today}</strong>.<br><br>
+        La DIAN exige que la fecha de emisión concuerde con el día de la firma electrónica para su aceptación.<br><br>
+        ¿Deseas <strong>actualizar la fecha de emisión a hoy (${today})</strong> y proceder con la transmisión a la DIAN?`,
+        async () => {
+          try {
+            await pb.update('support_documents', suppDoc.id, { date: today });
+            if (suppDoc.tx_id) {
+              await pb.update('transactions', suppDoc.tx_id, { date: today }).catch(() => {});
+            }
+            showToast(`Fecha actualizada a ${today}. Transmitiendo...`, 'info');
+            await (window as any).doEmitDocSoporteAction(txId, docNumber);
+          } catch (err: any) {
+            showToast('Error al actualizar fecha: ' + err.message, 'error');
+          }
+        }
+      );
+      return;
+    }
+  }
+
+  await (window as any).doEmitDocSoporteAction(txId, docNumber);
+};
+
 (window as any).emitDsDocFromRow = async function(id: string, txId: string, docNumber: string) {
   if (!txId) {
     confirmDialog(
@@ -2151,8 +2312,10 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
       async () => {
         try {
           showToast('Contabilizando documento soporte...', 'info');
-          const postFn = (window as any).API?.postSupportDocument || (window as any).API?.postPurchaseInvoice;
-          const posted = await postFn(id);
+          const api = (window as any).API;
+          const posted = api?.postSupportDocument
+            ? await api.postSupportDocument(id)
+            : await api?.postPurchaseInvoice(id);
           if (posted && posted.tx && posted.tx.id) {
             showToast(`Documento contabilizado (${posted.doc?.number || posted.inv?.number || docNumber}). Transmitiendo a la DIAN...`, 'info');
             if (typeof (window as any).emitDocSoporteFromList === 'function') {

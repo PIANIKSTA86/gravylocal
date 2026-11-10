@@ -222,6 +222,7 @@ async function renderTerceros(c) {
                 </td>
                 <td style="text-align:center;">
                   <div class="flex items-center justify-center gap-1.5">
+                    <button class="btn btn-outline btn-sm text-blue-600" onclick="window.openCustomerTrackingModal('${esc(r.id)}')" title="Ver Seguimiento 360° del Cliente" style="padding:4px 8px;border-color:#93C5FD;color:#2563EB"><i class="fas fa-route"></i></button>
                     ${can('canWrite') ? `<button class="btn btn-outline btn-sm" onclick="editTercero('${esc(r.id)}')" title="Editar tercero" style="padding:4px 8px;border-color:#E2E8F0"><i class="fas fa-pen text-slate-600"></i></button>` : ''}
                     ${can('canDelete') ? `
                       <button class="btn btn-outline btn-sm" onclick="toggleTercero('${esc(r.id)}', ${r.active?'false':'true'})" title="${r.active?'Inactivar':'Activar'}" style="padding:4px 8px;color:#D97706;border-color:#FDE68A;background:#FFFBEB">

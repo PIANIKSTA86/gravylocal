@@ -21,6 +21,16 @@ const pb = {
   get authToken() { return this._token ?? localStorage.getItem('pb_token'); },
   set authToken(v) { this._token = v; if (v) localStorage.setItem('pb_token', v); else localStorage.removeItem('pb_token'); },
 
+  get authStore() {
+    const self = this;
+    return {
+      get token() { return self.authToken || localStorage.getItem('pb_token') || ''; },
+      get model() { return self.currentUser; },
+      get isValid() { return !!(self.authToken || localStorage.getItem('pb_token')); },
+      clear() { self.authToken = null; self.currentUser = null; }
+    };
+  },
+
   get currentUser() {
     if (this._user) return this._user;
     try {

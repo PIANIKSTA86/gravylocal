@@ -175,19 +175,126 @@ function renderReservationRow(r: any) {
       <td>${order ? `<span class="font-mono" style="color:#2563EB">${(window as any).esc(order.number || 'PED')}</span>` : '<span class="text-xs text-amber-600 font-semibold"><i class="fas fa-clock mr-1"></i>Sin Pedido</span>'}</td>
       <td>${invoice ? `<span class="font-mono" style="color:#059669">${(window as any).esc(invoice.number || 'FV')}</span>` : '—'}</td>
       <td><span class="badge ${status.badge}">${status.label}</span></td>
-      <td>
-        <div class="flex gap-1">
-          <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewImportReservationDetail('${(window as any).esc(r.id)}')"><i class="fas fa-eye"></i></button>
-          ${canAccept ? `<button class="btn btn-sm text-white font-semibold" style="background:#059669;border-color:#059669" title="Aceptar Reserva y Generar Orden de Carga / Pedido" onclick="window.acceptImportReservation('${(window as any).esc(r.id)}')"><i class="fas fa-check-double mr-1"></i> Aceptar</button>` : ''}
-          ${canEdit ? `<button class="btn btn-outline btn-sm text-amber-600" style="border-color:#d97706" title="Editar Reserva" onclick="window.editImportReservation('${(window as any).esc(r.id)}')"><i class="fas fa-pen"></i></button>` : ''}
-          <button class="btn btn-outline btn-sm text-blue-600" style="border-color:#3b82f6" title="Imprimir" onclick="window.printReservationCarta('${(window as any).esc(r.id)}')"><i class="fas fa-print"></i></button>
-          ${canConvert ? `<button class="btn btn-primary btn-sm" title="Convertir a factura" onclick="window.convertReservationToInvoice('${(window as any).esc(r.id)}')"><i class="fas fa-file-invoice"></i> Facturar</button>` : ''}
-          ${canCancel ? `<button class="btn btn-danger btn-sm" title="Cancelar / Liberar" onclick="window.cancelImportReservation('${(window as any).esc(r.id)}','${(window as any).esc(r.number || '')}')"><i class="fas fa-ban"></i></button>` : ''}
+      <td class="text-right">
+        <div class="inline-flex items-center gap-1.5 justify-end">
+          <button type="button" class="btn btn-outline btn-sm px-2.5 text-gray-700 hover:text-purple-700 hover:border-purple-300 transition-all inline-flex items-center gap-1.5 shadow-2xs" title="Ver detalle de reserva" onclick="window.viewImportReservationDetail('${(window as any).esc(r.id)}')">
+            <i class="fas fa-eye text-xs text-purple-600"></i>
+            <span class="text-xs font-semibold">Ver</span>
+          </button>
+          <button type="button" class="btn btn-outline btn-sm px-2 text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-300 shadow-2xs transition-colors" title="Más opciones" onclick="window.openReservaActionMenu(event, { id: '${(window as any).esc(r.id)}', number: '${(window as any).esc(r.number || '')}', status: '${(window as any).esc(r.status)}', canAccept: ${canAccept}, canEdit: ${canEdit}, canConvert: ${canConvert}, canCancel: ${canCancel} })">
+            <i class="fas fa-ellipsis-vertical text-xs"></i>
+          </button>
         </div>
       </td>
     </tr>
   `;
 }
+
+(window as any).openReservaActionMenu = function(e: MouseEvent, resData: any) {
+  e.stopPropagation();
+  const oldMenu = document.getElementById('res-row-action-floating-menu');
+  if (oldMenu) oldMenu.remove();
+
+  const btn = (e.currentTarget || e.target) as HTMLElement;
+  const targetBtn = btn.closest('button') || btn;
+  const rect = targetBtn.getBoundingClientRect();
+
+  const menu = document.createElement('div');
+  menu.id = 'res-row-action-floating-menu';
+  menu.className = 'fixed z-50 bg-white rounded-2xl shadow-xl border border-gray-200/90 py-1.5 min-w-[220px] text-xs animate-in fade-in zoom-in-95 duration-100';
+
+  let itemsHtml = `
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-blue-700 hover:bg-blue-50 hover:text-blue-900 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('res-row-action-floating-menu')?.remove(); window.openDocumentTrackingModal('reservation', '${resData.id}')">
+      <i class="fas fa-route text-blue-600 w-4"></i>
+      <span>Expediente de Seguimiento</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('res-row-action-floating-menu')?.remove(); window.viewImportReservationDetail('${resData.id}')">
+      <i class="fas fa-eye text-gray-500 w-4"></i>
+      <span>Ver detalle completo</span>
+    </button>
+    <div class="my-1 border-t border-gray-100"></div>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('res-row-action-floating-menu')?.remove(); window.printReservationCarta('${resData.id}')">
+      <i class="fas fa-print text-gray-500 w-4"></i>
+      <span>Imprimir Formato Carta</span>
+    </button>
+  `;
+
+  if (resData.canAccept) {
+    itemsHtml += `
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-emerald-800 hover:bg-emerald-50 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('res-row-action-floating-menu')?.remove(); window.acceptImportReservation('${resData.id}')">
+        <i class="fas fa-check-double text-emerald-600 w-4"></i>
+        <span>Aceptar Reserva / Orden Carga</span>
+      </button>
+    `;
+  }
+
+  if (resData.canEdit) {
+    itemsHtml += `
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-amber-800 hover:bg-amber-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('res-row-action-floating-menu')?.remove(); window.editImportReservation('${resData.id}')">
+        <i class="fas fa-pen text-amber-600 w-4"></i>
+        <span>Editar Reserva</span>
+      </button>
+    `;
+  }
+
+  if (resData.canConvert) {
+    itemsHtml += `
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-purple-700 hover:bg-purple-50 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('res-row-action-floating-menu')?.remove(); window.convertReservationToInvoice('${resData.id}')">
+        <i class="fas fa-file-invoice text-purple-600 w-4"></i>
+        <span>Facturar Reserva</span>
+      </button>
+    `;
+  }
+
+  if (resData.canCancel) {
+    itemsHtml += `
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-rose-700 hover:bg-rose-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('res-row-action-floating-menu')?.remove(); window.cancelImportReservation('${resData.id}', '${resData.number}')">
+        <i class="fas fa-ban text-rose-600 w-4"></i>
+        <span>Cancelar / Liberar</span>
+      </button>
+    `;
+  }
+
+  menu.innerHTML = itemsHtml;
+  document.body.appendChild(menu);
+
+  const menuWidth = 220;
+  const menuHeight = menu.offsetHeight || 220;
+  let top = rect.bottom + 4;
+  let left = rect.right - menuWidth;
+
+  if (left < 10) left = 10;
+  if (top + menuHeight > window.innerHeight - 10) {
+    top = Math.max(10, rect.top - menuHeight - 4);
+  }
+
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+
+  const onDocClick = (ev: MouseEvent) => {
+    if (!menu.contains(ev.target as Node) && ev.target !== targetBtn && !targetBtn.contains(ev.target as Node)) {
+      menu.remove();
+      document.removeEventListener('click', onDocClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    }
+  };
+  const onScroll = () => {
+    menu.remove();
+    document.removeEventListener('click', onDocClick);
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', onScroll);
+  };
+
+  setTimeout(() => {
+    document.addEventListener('click', onDocClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+  }, 20);
+};
 
 function filterReservationTable() {
   const q = ((document.getElementById('res-q') as HTMLInputElement)?.value || '').toLowerCase().trim();

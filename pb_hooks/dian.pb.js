@@ -107,7 +107,7 @@ function getMatiasCaller() {
     }
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+      throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
     }
 
     let clientUuid = opts.client_uuid;
@@ -2881,7 +2881,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
         }
 
         if (!token) {
-          throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+          throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
         }
 
         let clientUuid = opts.client_uuid;
@@ -3562,7 +3562,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       const isAlreadyValidated = !!((matiasData.message && matiasData.message.includes("ya se encuentra validado")) || (matiasData.data && (matiasData.data.is_valid === 1 || matiasData.data.status === 1) && matiasData.data.XmlDocumentKey));
 
       if (!matiasRes.ok && !isAlreadyValidated) {
-        const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en MATIAS API (${matiasRes.statusCode})`;
+        const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en DIAN API (${matiasRes.statusCode})`;
         const fullErr = errMsg + (matiasRes.data?.response?.ErrorMessage?.string ? ": " + JSON.stringify(matiasRes.data.response.ErrorMessage.string) : "");
         docRecord.set("status", "rechazada");
         docRecord.set("dian_response", fullErr);
@@ -3930,7 +3930,7 @@ routerAdd('POST', '/api/dian/check-status', (e) => {
       }
 
       if (!token) {
-        throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+        throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
       }
 
       let clientUuid = opts.client_uuid;
@@ -4665,22 +4665,22 @@ function buildNominaPayrollPayload(rec) {
     empEmail: empEmail,
     cargo: cargo,
     costCenter: emp ? (emp.getString("cost_center") || "General / Colaboradores") : "General / Colaboradores",
-    basicSalary: empRule.basic_salary || (emp ? emp.getFloat("salary_base") : 0) || 1750905,
-    bankName: emp ? (emp.getString("bank_name") || "Bancolombia") : "Bancolombia",
+    basicSalary: empRule.basic_salary || (emp ? emp.getFloat("salary_base") : 0) || totalDevengos || 0,
+    bankName: emp ? (emp.getString("bank_name") || "") : "",
     bankAccountType: emp ? (emp.getString("bank_account_type") || "Ahorros") : "Ahorros",
-    bankAccount: emp ? (emp.getString("bank_account") || "06185364532") : "06185364532",
+    bankAccount: emp ? (emp.getString("bank_account") || "") : "",
     dateHired: fIngreso,
     startDate: fIngreso,
     fIngreso: fIngreso,
     dateEnd: fRetiro,
     retirementDate: fRetiro,
     paymentMethod: formatPaymentMethod(emp ? emp.getString("payment_method") : "42"),
-    healthEntity: epsName || (emp ? emp.getString("eps") : "") || "EPS SURA",
-    pensionEntity: afpName || (empRule.is_pensioner ? "Pensionado (Exento)" : (emp ? emp.getString("afp") : "")) || "Pensionado (Exento)",
-    arlEntity: arlName ? `${arlName} - Riesgo ${arlRiskLevel} (${arlRate})` : ((emp ? emp.getString("arl") : "") || "ARL SURA - Riesgo 1 (0.522%)"),
-    cajaEntity: cajaName || (emp ? emp.getString("caja_compensacion") : "") || "CCF COMFENALCO DEL VALLE DEL CAUCA - COMFENALCO VALLE",
-    fechasPago: "2026-09-30",
-    issueDate: rec.getString("fecha_envio") || "2026-10-09 15:42:03 12:00:00-05:00",
+    healthEntity: epsName || (emp ? emp.getString("eps") : "") || "No asignada",
+    pensionEntity: afpName || (empRule.is_pensioner ? "Pensionado (Exento)" : (emp ? emp.getString("afp") : "")) || "No asignada",
+    arlEntity: arlName ? `${arlName} - Riesgo ${arlRiskLevel} (${arlRate})` : ((emp ? emp.getString("arl") : "") || "No asignada"),
+    cajaEntity: cajaName || (emp ? emp.getString("caja_compensacion") : "") || "No asignada",
+    fechasPago: rec.getString("fecha_envio")?.slice(0, 10) || `${rec.getInt("ano")}-${String(rec.getInt("mes")).padStart(2, "0")}-30`,
+    issueDate: rec.getString("fecha_envio") || new Date().toISOString().replace('T', ' ').slice(0, 19),
     cune: cune,
     totalDevengos: totalDevengos,
     totalDeducciones: totalDeducciones,
@@ -4853,6 +4853,41 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
       html: htmlBody
     });
 
+    if ((!xmlGenerado || xmlGenerado.startsWith("{") || !xmlGenerado.includes("<")) && cune && cune !== "Registrado en el portal DIAN") {
+      try {
+        const caller = typeof globalThis.getMatiasCaller === "function" ? globalThis.getMatiasCaller() : null;
+        if (caller) {
+          const xmlRes = caller(`/documents/xml/${encodeURIComponent(cune)}`, "GET");
+          const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64;
+          if (b64) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+            let input = String(b64).replace(/[^A-Za-z0-9\+\/\=]/g, "");
+            let i = 0, utf8Xml = "";
+            while (i < input.length) {
+              let enc1 = chars.indexOf(input.charAt(i++));
+              let enc2 = chars.indexOf(input.charAt(i++));
+              let enc3 = chars.indexOf(input.charAt(i++));
+              let enc4 = chars.indexOf(input.charAt(i++));
+              let chr1 = (enc1 << 2) | (enc2 >> 4);
+              let chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+              let chr3 = ((enc3 & 3) << 6) | enc4;
+              utf8Xml += String.fromCharCode(chr1);
+              if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
+              if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
+            }
+            const decoded = decodeURIComponent(escape(utf8Xml));
+            if (decoded && decoded.includes("<")) {
+              xmlGenerado = decoded;
+              rec.set("xml_generado", decoded);
+              $app.save(rec);
+            }
+          }
+        }
+      } catch (eMat) {
+        console.warn("[GRAVY] Error obteniendo XML en resend-email:", eMat);
+      }
+    }
+
     let zipPath = "";
     try {
       const zipRes = $http.send({
@@ -4941,6 +4976,82 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
 
 
 
+// Descargar XML UBL 2.1 oficial firmado DIAN
+routerAdd('POST', '/api/dian/nomina/download-xml', (e) => {
+  try {
+    let body = {};
+    try {
+      const reqInfo = e.requestInfo();
+      body = reqInfo ? (reqInfo.body || {}) : {};
+      if (typeof body === 'string') body = JSON.parse(body);
+    } catch (_) {}
+
+    const recordId = body.id || body.electronicPayrollId;
+    if (!recordId) {
+      return e.json(400, { success: false, message: "ID de registro de nómina no especificado." });
+    }
+
+    const rec = $app.findRecordById("electronic_payrolls", recordId);
+    if (!rec) {
+      return e.json(404, { success: false, message: "Registro de nómina no encontrado." });
+    }
+
+    const prefijo = rec.getString("prefijo") || "NOM";
+    const consecutivo = rec.getInt("consecutivo") || 1;
+    const filename = `NominaIndividual_${prefijo}-${consecutivo}.xml`;
+    const cune = (rec.getString("cufe") || "").trim();
+
+    let currentXml = (rec.getString("xml_generado") || "").trim();
+
+    // Si el XML actual es JSON o no tiene la firma DIAN (<NominaIndividual>), y el documento está aprobado con CUNE,
+    // consultar el XML UBL 2.1 firmado oficial de MATIAS API:
+    if ((!currentXml || currentXml.startsWith("{") || !currentXml.includes("<")) && cune) {
+      try {
+        const caller = typeof globalThis.getMatiasCaller === "function" ? globalThis.getMatiasCaller() : null;
+        if (caller) {
+          const xmlRes = caller(`/documents/xml/${encodeURIComponent(cune)}`, "GET");
+          const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64;
+          if (b64) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+            let input = String(b64).replace(/[^A-Za-z0-9\+\/\=]/g, "");
+            let i = 0, utf8Xml = "";
+            while (i < input.length) {
+              let enc1 = chars.indexOf(input.charAt(i++));
+              let enc2 = chars.indexOf(input.charAt(i++));
+              let enc3 = chars.indexOf(input.charAt(i++));
+              let enc4 = chars.indexOf(input.charAt(i++));
+              let chr1 = (enc1 << 2) | (enc2 >> 4);
+              let chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+              let chr3 = ((enc3 & 3) << 6) | enc4;
+              utf8Xml += String.fromCharCode(chr1);
+              if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
+              if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
+            }
+            const decoded = decodeURIComponent(escape(utf8Xml));
+            if (decoded && decoded.includes("<")) {
+              currentXml = decoded;
+              rec.set("xml_generado", decoded);
+              $app.save(rec);
+            }
+          }
+        }
+      } catch (errMatias) {
+        console.warn("[GRAVY] Error consultando XML de MATIAS en download-xml:", errMatias);
+      }
+    }
+
+    return e.json(200, {
+      success: true,
+      isSigned: currentXml.includes("Signature") || currentXml.includes("NominaIndividual"),
+      xml: currentXml,
+      filename: filename
+    });
+  } catch (err) {
+    console.error("[GRAVY HOOK] Error al descargar XML de nómina:", err);
+    return e.json(500, { success: false, message: "Error al descargar XML: " + err.message });
+  }
+});
+
 routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
   try {
     const body = e.requestInfo().body || {};
@@ -4957,6 +5068,43 @@ routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
     const prefijo = rec.getString("prefijo") || "NOM";
     const consecutivo = rec.getInt("consecutivo") || 1;
     const filename = `NominaIndividual_${prefijo}-${consecutivo}.pdf`;
+    const cune = (rec.getString("cufe") || "").trim();
+
+    let xmlContent = (rec.getString("xml_generado") || "").trim();
+    if ((!xmlContent || xmlContent.startsWith("{") || !xmlContent.includes("<")) && cune) {
+      try {
+        const caller = typeof globalThis.getMatiasCaller === "function" ? globalThis.getMatiasCaller() : null;
+        if (caller) {
+          const xmlRes = caller(`/documents/xml/${encodeURIComponent(cune)}`, "GET");
+          const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64;
+          if (b64) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+            let input = String(b64).replace(/[^A-Za-z0-9\+\/\=]/g, "");
+            let i = 0, utf8Xml = "";
+            while (i < input.length) {
+              let enc1 = chars.indexOf(input.charAt(i++));
+              let enc2 = chars.indexOf(input.charAt(i++));
+              let enc3 = chars.indexOf(input.charAt(i++));
+              let enc4 = chars.indexOf(input.charAt(i++));
+              let chr1 = (enc1 << 2) | (enc2 >> 4);
+              let chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+              let chr3 = ((enc3 & 3) << 6) | enc4;
+              utf8Xml += String.fromCharCode(chr1);
+              if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
+              if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
+            }
+            const decoded = decodeURIComponent(escape(utf8Xml));
+            if (decoded && decoded.includes("<")) {
+              xmlContent = decoded;
+              rec.set("xml_generado", decoded);
+              $app.save(rec);
+            }
+          }
+        }
+      } catch (eMat) {
+        console.warn("[GRAVY] Error obteniendo XML en download-pdf:", eMat);
+      }
+    }
 
     let buildPayload = null;
     try {
@@ -4972,7 +5120,7 @@ routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        xmlContent: rec.getString("xml_generado") || "",
+        xmlContent: xmlContent,
         filename: `${prefijo}-${consecutivo}`,
         isNomina: true,
         format: "base64",
@@ -5022,7 +5170,7 @@ routerAdd("POST", "/api/dian/sync-matias-resolutions", (e) => {
             return (r ? r.get("value") : "") || "";
           } catch (_) { return ""; }
         })();
-        if (!token) throw new Error("Token de MATIAS API no configurado.");
+        if (!token) throw new Error("Token de DIAN API no configurado.");
         const clientUuid = opts.client_uuid || (function() {
           try {
             const r = $app.findFirstRecordByFilter("settings", "key = 'matias_client_uuid'");
@@ -5060,10 +5208,10 @@ routerAdd("POST", "/api/dian/sync-matias-resolutions", (e) => {
     });
 
     if (!res.ok) {
-      const errMsg = res.data?.message || res.data?.error || `Error HTTP ${res.statusCode} desde MATIAS API`;
+      const errMsg = res.data?.message || res.data?.error || `Error HTTP ${res.statusCode} desde DIAN API`;
       return e.json(res.statusCode || 400, { 
         success: false, 
-        message: "No se pudieron obtener las resoluciones desde MATIAS API: " + errMsg,
+        message: "No se pudieron obtener las resoluciones desde DIAN API: " + errMsg,
         details: res.data || res.raw
       });
     }
@@ -5210,8 +5358,8 @@ routerAdd("POST", "/api/dian/sync-matias-resolutions", (e) => {
       count: synced.length,
       synced: synced,
       message: synced.length > 0
-        ? `Se sincronizaron exitosamente ${synced.length} resoluciones desde MATIAS API.`
-        : "MATIAS API respondió correctamente pero no se encontraron resoluciones activas asociadas a este ambiente/token."
+        ? `Se sincronizaron exitosamente ${synced.length} resoluciones desde DIAN API.`
+        : "DIAN API respondió correctamente pero no se encontraron resoluciones activas asociadas a este ambiente/token."
     });
   } catch (err) {
     console.error("[GRAVY HOOK] Error en /api/dian/sync-matias-resolutions:", err);

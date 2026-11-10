@@ -4584,8 +4584,9 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
 
     if (printFormat === 'carta_standard') {
       try {
+        const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
         const token = (window as any).pb.getToken();
-        const response = await fetch('/api/dian/pdf-bytes', {
+        const response = await fetch(`${baseUrl}/api/dian/pdf-bytes`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -5881,6 +5882,10 @@ window.viewSalesInvoiceDetail = async function(id: string) {
 
         <!-- Zona Derecha: Impresión, Flujo DIAN y Menú Más Acciones -->
         <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" class="btn btn-outline btn-sm text-blue-700 border-blue-300 bg-blue-50/50 hover:bg-blue-100 flex items-center gap-1.5" onclick="window.openDocumentTrackingModal('invoice', '${inv.id}')" title="Ver Expediente de Seguimiento Comercial y Logístico">
+            <i class="fas fa-route text-blue-600"></i>
+            <span>Seguimiento</span>
+          </button>
           <!-- Grupo de Impresión Rápida -->
           <div class="inline-flex rounded-xl shadow-2xs border border-purple-200 overflow-hidden bg-white">
             <button type="button" class="btn btn-primary btn-sm px-3 rounded-none border-0 flex items-center gap-1.5" onclick="window.printInvoiceCarta('${inv.id}')" title="Imprimir Formato Carta / PDF">
@@ -6056,7 +6061,7 @@ window.showDianLogsModal = async function(txId: string, docNumber: string) {
                 <div class="flex items-center gap-2">
                   <span class="font-bold text-gray-800 text-sm font-mono">Intento #${logs.length - i}</span>
                   ${statusBadge}
-                  <span class="badge badge-gray text-[10px] font-mono">${(window as any).esc(l.provider && !/matias|facturatech/i.test(l.provider) ? l.provider : 'UBL 2.1')} · ${l.duration_ms || 0}ms</span>
+                  <span class="badge badge-gray text-[10px] font-mono">${(window as any).esc(l.provider && !/facturatech/i.test(l.provider) ? (l.provider.toUpperCase().includes('MATIAS') ? 'DIAN API' : l.provider) : 'UBL 2.1')} · ${l.duration_ms || 0}ms</span>
                 </div>
                 <span class="text-gray-500 font-mono">${l.created ? l.created.slice(0, 19).replace('T', ' ') : ''}</span>
               </div>
@@ -6408,6 +6413,10 @@ window.openSoActionMenu = function(e: MouseEvent, invData: any) {
   const isNC = !!invData.isNC;
 
   let itemsHtml = `
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-blue-700 hover:bg-blue-50 hover:text-blue-900 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.openDocumentTrackingModal('invoice', '${invData.id}')">
+      <i class="fas fa-route text-blue-600 w-4"></i>
+      <span>Expediente de Seguimiento</span>
+    </button>
     <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.viewSalesInvoiceDetail('${invData.id}')">
       <i class="fas fa-eye text-gray-500 w-4"></i>
       <span>Ver detalle completo</span>

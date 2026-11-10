@@ -570,7 +570,7 @@ function renderDsRows(list: DocSoporteItem[]): string {
           ${(d.status_dian === 'rechazada' || (d.dian_response && d.status_dian !== 'aceptada')) && d.dian_response ? `
             <div class="text-[11px] text-rose-600 mt-1 max-w-[200px] mx-auto truncate font-medium flex items-center justify-center gap-1" title="${esc(d.dian_response)}">
               <i class="fas fa-circle-exclamation text-rose-500 text-[10px]"></i>
-              <span class="truncate">${esc(d.dian_response.replace(/^Error de emisión:\s*/i, '').replace(/^Facturatech:\s*/i, '').replace(/^MATIAS API(?:\s+Error)?:\s*/i, ''))}</span>
+              <span class="truncate">${esc(d.dian_response.replace(/^Error de emisión:\s*/i, '').replace(/^Facturatech:\s*/i, '').replace(/^(?:MATIAS|DIAN)\s*API(?:\s+Error)?:\s*/i, ''))}</span>
             </div>
           ` : ''}
         </td>

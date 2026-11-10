@@ -1,0 +1,847 @@
+[
+  {
+    "consecutivo": "NOM-364",
+    "empleado": "AMPARO REYES SARRIA",
+    "documento": "29700430",
+    "endpoint": "/api/ubl2.1/ep/payroll",
+    "payload": {
+      "document_number": "364",
+      "prefix": "NOM",
+      "resolution_number": "18760000001",
+      "generation_city_id": "76520",
+      "worker_code": "29700430",
+      "novelty": false,
+      "pay_day": "2026-09-30",
+      "notes": "",
+      "period": {
+        "date_entry": "2025-06-01",
+        "departure_date": null,
+        "settlement_start_date": "2026-09-01",
+        "settlement_end_date": "2026-09-30",
+        "time_worked": "30",
+        "generation_date": "2026-09-30"
+      },
+      "general_information": {
+        "generation_date": "2026-09-30",
+        "generation_time": "10:00:00",
+        "period_id": 5,
+        "currency_id": 272,
+        "trm": "0",
+        "type_xml_id": 102
+      },
+      "employee": {
+        "worker_type_id": 1,
+        "type_worker_id": 1,
+        "worker_subtype_id": 0,
+        "sub_type_worker_id": 0,
+        "contract_type_id": 2,
+        "type_contract_id": 2,
+        "identity_document_id": "1",
+        "type_document_identification_id": 1,
+        "document_number": "29700430",
+        "first_surname": "REYES",
+        "second_surname": "SARRIA",
+        "first_name": "AMPARO",
+        "other_names": "",
+        "working_country_id": 45,
+        "work_city_id": 76520,
+        "municipality_id": 76520,
+        "work_address": "CL 19 24 59",
+        "address": "CL 19 24 59",
+        "high_risk_pension": "false",
+        "integral_salary": "false",
+        "salary": "1750905.00",
+        "worker_code": "29700430"
+      },
+      "payment": {
+        "payment_method_id": 1,
+        "means_payment_id": "30",
+        "bank": "Bancolombia",
+        "bank_name": "Bancolombia",
+        "account_type": "Ahorros",
+        "account_number": "06185364532"
+      },
+      "payment_dates": [
+        "2026-09-30"
+      ],
+      "earn": {
+        "basic": {
+          "worked_days": "30",
+          "salary_worked": "1750905.00"
+        },
+        "transport": {
+          "transportation_assistance": "249095.00",
+          "viatic_maintenance": "0.00",
+          "viatic_non_salary_maintenance": "0.00"
+        }
+      },
+      "deductions": {
+        "health": {
+          "percentage": "4.00",
+          "deduction": "70036.20"
+        },
+        "pension_fund": {
+          "percentage": "4.00",
+          "deduction": "0.00"
+        }
+      },
+      "rounding": "0.00",
+      "total_earned": "2000000.00",
+      "deductions_total": "70036.20",
+      "total_voucher": "1929963.80"
+    }
+  },
+  {
+    "consecutivo": "NOM-365",
+    "empleado": "ANGELA MARIA GARCIA VIVAS",
+    "documento": "1112475477",
+    "endpoint": "/api/ubl2.1/ep/payroll",
+    "payload": {
+      "document_number": "365",
+      "prefix": "NOM",
+      "resolution_number": "18760000001",
+      "generation_city_id": "76001",
+      "worker_code": "1112475477",
+      "novelty": false,
+      "pay_day": "2026-09-30",
+      "notes": "",
+      "period": {
+        "date_entry": "2025-03-10",
+        "departure_date": null,
+        "settlement_start_date": "2026-09-01",
+        "settlement_end_date": "2026-09-30",
+        "time_worked": "30",
+        "generation_date": "2026-09-30"
+      },
+      "general_information": {
+        "generation_date": "2026-09-30",
+        "generation_time": "10:00:00",
+        "period_id": 5,
+        "currency_id": 272,
+        "trm": "0",
+        "type_xml_id": 102
+      },
+      "employee": {
+        "worker_type_id": 1,
+        "type_worker_id": 1,
+        "worker_subtype_id": 0,
+        "sub_type_worker_id": 0,
+        "contract_type_id": 2,
+        "type_contract_id": 2,
+        "identity_document_id": "1",
+        "type_document_identification_id": 1,
+        "document_number": "1112475477",
+        "first_surname": "GARCIA",
+        "second_surname": "VIVAS",
+        "first_name": "ANGELA",
+        "other_names": "MARIA",
+        "working_country_id": 45,
+        "work_city_id": 76001,
+        "municipality_id": 76001,
+        "work_address": "CR 98 53 105",
+        "address": "CR 98 53 105",
+        "high_risk_pension": "false",
+        "integral_salary": "false",
+        "salary": "1840000.00",
+        "worker_code": "1112475477"
+      },
+      "payment": {
+        "payment_method_id": 1,
+        "means_payment_id": "30",
+        "bank": "Bancolombia",
+        "bank_name": "Bancolombia",
+        "account_type": "Ahorros",
+        "account_number": "75254416690"
+      },
+      "payment_dates": [
+        "2026-09-30"
+      ],
+      "earn": {
+        "basic": {
+          "worked_days": "30",
+          "salary_worked": "1840000.00"
+        },
+        "transport": {
+          "transportation_assistance": "249095.00",
+          "viatic_maintenance": "0.00",
+          "viatic_non_salary_maintenance": "0.00"
+        }
+      },
+      "deductions": {
+        "health": {
+          "percentage": "4.00",
+          "deduction": "73600.00"
+        },
+        "pension_fund": {
+          "percentage": "4.00",
+          "deduction": "73600.00"
+        }
+      },
+      "rounding": "0.00",
+      "total_earned": "2089095.00",
+      "deductions_total": "147200.00",
+      "total_voucher": "1941895.00"
+    }
+  },
+  {
+    "consecutivo": "NOM-366",
+    "empleado": "ANGELICA MONCADA ARMILLA",
+    "documento": "29682675",
+    "endpoint": "/api/ubl2.1/ep/payroll",
+    "payload": {
+      "document_number": "366",
+      "prefix": "NOM",
+      "resolution_number": "18760000001",
+      "generation_city_id": "76520",
+      "worker_code": "29682675",
+      "novelty": false,
+      "pay_day": "2026-09-30",
+      "notes": "",
+      "period": {
+        "date_entry": "2024-02-15",
+        "departure_date": null,
+        "settlement_start_date": "2026-09-01",
+        "settlement_end_date": "2026-09-30",
+        "time_worked": "15",
+        "generation_date": "2026-09-30"
+      },
+      "general_information": {
+        "generation_date": "2026-09-30",
+        "generation_time": "10:00:00",
+        "period_id": 5,
+        "currency_id": 272,
+        "trm": "0",
+        "type_xml_id": 102
+      },
+      "employee": {
+        "worker_type_id": 1,
+        "type_worker_id": 1,
+        "worker_subtype_id": 0,
+        "sub_type_worker_id": 0,
+        "contract_type_id": 2,
+        "type_contract_id": 2,
+        "identity_document_id": "1",
+        "type_document_identification_id": 1,
+        "document_number": "29682675",
+        "first_surname": "MONCADA",
+        "second_surname": "ARMILLA",
+        "first_name": "ANGELICA",
+        "other_names": "",
+        "working_country_id": 45,
+        "work_city_id": 76520,
+        "municipality_id": 76520,
+        "work_address": "CR 24 A 19 37",
+        "address": "CR 24 A 19 37",
+        "high_risk_pension": "false",
+        "integral_salary": "false",
+        "salary": "1087000.00",
+        "worker_code": "29682675"
+      },
+      "payment": {
+        "payment_method_id": 1,
+        "means_payment_id": "30",
+        "bank": "Bancolombia",
+        "bank_name": "Bancolombia",
+        "account_type": "Ahorros",
+        "account_number": "91280570864"
+      },
+      "payment_dates": [
+        "2026-09-30"
+      ],
+      "earn": {
+        "basic": {
+          "worked_days": "15",
+          "salary_worked": "1087000.00"
+        },
+        "transport": {
+          "transportation_assistance": "124547.50",
+          "viatic_maintenance": "0.00",
+          "viatic_non_salary_maintenance": "0.00"
+        }
+      },
+      "deductions": {
+        "health": {
+          "percentage": "4.00",
+          "deduction": "43480.00"
+        },
+        "pension_fund": {
+          "percentage": "4.00",
+          "deduction": "43480.00"
+        }
+      },
+      "rounding": "0.00",
+      "total_earned": "1211547.50",
+      "deductions_total": "86960.00",
+      "total_voucher": "1124587.50"
+    }
+  },
+  {
+    "consecutivo": "NOM-367",
+    "empleado": "BLADIMIR DIAZ ORTEGA",
+    "documento": "94551654",
+    "endpoint": "/api/ubl2.1/ep/payroll",
+    "payload": {
+      "document_number": "367",
+      "prefix": "NOM",
+      "resolution_number": "18760000001",
+      "generation_city_id": "76001",
+      "worker_code": "94551654",
+      "novelty": false,
+      "pay_day": "2026-09-30",
+      "notes": "",
+      "period": {
+        "date_entry": "2025-01-13",
+        "departure_date": null,
+        "settlement_start_date": "2026-09-01",
+        "settlement_end_date": "2026-09-30",
+        "time_worked": "30",
+        "generation_date": "2026-09-30"
+      },
+      "general_information": {
+        "generation_date": "2026-09-30",
+        "generation_time": "10:00:00",
+        "period_id": 5,
+        "currency_id": 272,
+        "trm": "0",
+        "type_xml_id": 102
+      },
+      "employee": {
+        "worker_type_id": 1,
+        "type_worker_id": 1,
+        "worker_subtype_id": 0,
+        "sub_type_worker_id": 0,
+        "contract_type_id": 2,
+        "type_contract_id": 2,
+        "identity_document_id": "1",
+        "type_document_identification_id": 1,
+        "document_number": "94551654",
+        "first_surname": "DIAZ",
+        "second_surname": "ORTEGA",
+        "first_name": "BLADIMIR",
+        "other_names": "",
+        "working_country_id": 45,
+        "work_city_id": 76001,
+        "municipality_id": 76001,
+        "work_address": "CR 99 B 48 22 AP 610",
+        "address": "CR 99 B 48 22 AP 610",
+        "high_risk_pension": "false",
+        "integral_salary": "false",
+        "salary": "3501810.00",
+        "worker_code": "94551654"
+      },
+      "payment": {
+        "payment_method_id": 1,
+        "means_payment_id": "30",
+        "bank": "Bancolombia",
+        "bank_name": "Bancolombia",
+        "account_type": "Ahorros",
+        "account_number": "51445522434"
+      },
+      "payment_dates": [
+        "2026-09-30"
+      ],
+      "earn": {
+        "basic": {
+          "worked_days": "30",
+          "salary_worked": "3501810.00"
+        },
+        "transport": {
+          "transportation_assistance": "249095.00",
+          "viatic_maintenance": "0.00",
+          "viatic_non_salary_maintenance": "0.00"
+        }
+      },
+      "deductions": {
+        "health": {
+          "percentage": "4.00",
+          "deduction": "140072.40"
+        },
+        "pension_fund": {
+          "percentage": "4.00",
+          "deduction": "140072.40"
+        }
+      },
+      "rounding": "0.00",
+      "total_earned": "3750905.00",
+      "deductions_total": "280144.80",
+      "total_voucher": "3470760.20"
+    }
+  },
+  {
+    "consecutivo": "NOM-368",
+    "empleado": "CIELO DEL PILAR ALDANA VILLAMIZAR",
+    "documento": "1075538190",
+    "endpoint": "/api/ubl2.1/ep/payroll",
+    "payload": {
+      "document_number": "368",
+      "prefix": "NOM",
+      "resolution_number": "18760000001",
+      "generation_city_id": "76001",
+      "worker_code": "1075538190",
+      "novelty": false,
+      "pay_day": "2026-09-30",
+      "notes": "",
+      "period": {
+        "date_entry": "2025-03-06",
+        "departure_date": null,
+        "settlement_start_date": "2026-09-01",
+        "settlement_end_date": "2026-09-30",
+        "time_worked": "30",
+        "generation_date": "2026-09-30"
+      },
+      "general_information": {
+        "generation_date": "2026-09-30",
+        "generation_time": "10:00:00",
+        "period_id": 5,
+        "currency_id": 272,
+        "trm": "0",
+        "type_xml_id": 102
+      },
+      "employee": {
+        "worker_type_id": 1,
+        "type_worker_id": 1,
+        "worker_subtype_id": 0,
+        "sub_type_worker_id": 0,
+        "contract_type_id": 2,
+        "type_contract_id": 2,
+        "identity_document_id": "1",
+        "type_document_identification_id": 1,
+        "document_number": "1075538190",
+        "first_surname": "ALDANA",
+        "second_surname": "VILLAMIZAR",
+        "first_name": "CIELO",
+        "other_names": "DEL PILAR",
+        "working_country_id": 45,
+        "work_city_id": 76001,
+        "municipality_id": 76001,
+        "work_address": "CL 18 41B 34",
+        "address": "CL 18 41B 34",
+        "high_risk_pension": "false",
+        "integral_salary": "false",
+        "salary": "1750905.00",
+        "worker_code": "1075538190"
+      },
+      "payment": {
+        "payment_method_id": 1,
+        "means_payment_id": "30",
+        "bank": "Bancolombia",
+        "bank_name": "Bancolombia",
+        "account_type": "Ahorros",
+        "account_number": "91278707615"
+      },
+      "payment_dates": [
+        "2026-09-30"
+      ],
+      "earn": {
+        "basic": {
+          "worked_days": "30",
+          "salary_worked": "1750905.00"
+        },
+        "transport": {
+          "transportation_assistance": "249095.00",
+          "viatic_maintenance": "0.00",
+          "viatic_non_salary_maintenance": "0.00"
+        },
+        "commissions": [
+          {
+            "commission": "1063831.36"
+          }
+        ]
+      },
+      "deductions": {
+        "health": {
+          "percentage": "4.00",
+          "deduction": "112589.46"
+        },
+        "pension_fund": {
+          "percentage": "4.00",
+          "deduction": "112589.46"
+        }
+      },
+      "rounding": "0.00",
+      "total_earned": "3143831.36",
+      "deductions_total": "225178.92",
+      "total_voucher": "2918652.44"
+    }
+  },
+  {
+    "consecutivo": "NOM-369",
+    "empleado": "CRISTIAN DANILO GARCIA CHACON",
+    "documento": "1007173844",
+    "endpoint": "/api/ubl2.1/ep/payroll",
+    "payload": {
+      "document_number": "369",
+      "prefix": "NOM",
+      "resolution_number": "18760000001",
+      "generation_city_id": "76001",
+      "worker_code": "1007173844",
+      "novelty": false,
+      "pay_day": "2026-09-30",
+      "notes": "",
+      "period": {
+        "date_entry": "2026-07-01",
+        "departure_date": null,
+        "settlement_start_date": "2026-09-01",
+        "settlement_end_date": "2026-09-30",
+        "time_worked": "30",
+        "generation_date": "2026-09-30"
+      },
+      "general_information": {
+        "generation_date": "2026-09-30",
+        "generation_time": "10:00:00",
+        "period_id": 5,
+        "currency_id": 272,
+        "trm": "0",
+        "type_xml_id": 102
+      },
+      "employee": {
+        "worker_type_id": 1,
+        "type_worker_id": 1,
+        "worker_subtype_id": 0,
+        "sub_type_worker_id": 0,
+        "contract_type_id": 2,
+        "type_contract_id": 2,
+        "identity_document_id": "1",
+        "type_document_identification_id": 1,
+        "document_number": "1007173844",
+        "first_surname": "GARCIA",
+        "second_surname": "CHACON",
+        "first_name": "CRISTIAN",
+        "other_names": "DANILO",
+        "working_country_id": 45,
+        "work_city_id": 76001,
+        "municipality_id": 76001,
+        "work_address": "CR 36 25 53",
+        "address": "CR 36 25 53",
+        "high_risk_pension": "false",
+        "integral_salary": "false",
+        "salary": "1900000.00",
+        "worker_code": "1007173844"
+      },
+      "payment": {
+        "payment_method_id": 1,
+        "means_payment_id": "30",
+        "bank": "Bancolombia",
+        "bank_name": "Bancolombia",
+        "account_type": "Ahorros",
+        "account_number": "91239530481"
+      },
+      "payment_dates": [
+        "2026-09-30"
+      ],
+      "earn": {
+        "basic": {
+          "worked_days": "30",
+          "salary_worked": "1900000.00"
+        },
+        "transport": {
+          "transportation_assistance": "249095.00",
+          "viatic_maintenance": "0.00",
+          "viatic_non_salary_maintenance": "0.00"
+        }
+      },
+      "deductions": {
+        "health": {
+          "percentage": "4.00",
+          "deduction": "76000.00"
+        },
+        "pension_fund": {
+          "percentage": "4.00",
+          "deduction": "76000.00"
+        }
+      },
+      "rounding": "0.00",
+      "total_earned": "2149095.00",
+      "deductions_total": "152000.00",
+      "total_voucher": "1997095.00"
+    }
+  },
+  {
+    "consecutivo": "NOM-370",
+    "empleado": "JUAN ANDRES CAICEDO SALAZAR",
+    "documento": "94488015",
+    "endpoint": "/api/ubl2.1/ep/payroll",
+    "payload": {
+      "document_number": "370",
+      "prefix": "NOM",
+      "resolution_number": "18760000001",
+      "generation_city_id": "76001",
+      "worker_code": "94488015",
+      "novelty": false,
+      "pay_day": "2026-09-30",
+      "notes": "",
+      "period": {
+        "date_entry": "2024-05-07",
+        "departure_date": null,
+        "settlement_start_date": "2026-09-01",
+        "settlement_end_date": "2026-09-30",
+        "time_worked": "30",
+        "generation_date": "2026-09-30"
+      },
+      "general_information": {
+        "generation_date": "2026-09-30",
+        "generation_time": "10:00:00",
+        "period_id": 5,
+        "currency_id": 272,
+        "trm": "0",
+        "type_xml_id": 102
+      },
+      "employee": {
+        "worker_type_id": 1,
+        "type_worker_id": 1,
+        "worker_subtype_id": 0,
+        "sub_type_worker_id": 0,
+        "contract_type_id": 2,
+        "type_contract_id": 2,
+        "identity_document_id": "1",
+        "type_document_identification_id": 1,
+        "document_number": "94488015",
+        "first_surname": "CAICEDO",
+        "second_surname": "SALAZAR",
+        "first_name": "JUAN",
+        "other_names": "ANDRES",
+        "working_country_id": 45,
+        "work_city_id": 76001,
+        "municipality_id": 76001,
+        "work_address": "CL 1 A 70 30",
+        "address": "CL 1 A 70 30",
+        "high_risk_pension": "false",
+        "integral_salary": "false",
+        "salary": "1993594.00",
+        "worker_code": "94488015"
+      },
+      "payment": {
+        "payment_method_id": 1,
+        "means_payment_id": "30",
+        "bank": "Bancolombia",
+        "bank_name": "Bancolombia",
+        "account_type": "Ahorros",
+        "account_number": "30410866951"
+      },
+      "payment_dates": [
+        "2026-09-30"
+      ],
+      "earn": {
+        "basic": {
+          "worked_days": "30",
+          "salary_worked": "1993594.00"
+        },
+        "transport": {
+          "transportation_assistance": "249095.00",
+          "viatic_maintenance": "0.00",
+          "viatic_non_salary_maintenance": "0.00"
+        },
+        "HEDs": [
+          {
+            "start_time": null,
+            "final_hour": null,
+            "amount": "3",
+            "percentage": "25.00",
+            "payment": "35599.88"
+          }
+        ]
+      },
+      "deductions": {
+        "health": {
+          "percentage": "4.00",
+          "deduction": "81167.76"
+        },
+        "pension_fund": {
+          "percentage": "4.00",
+          "deduction": "81167.76"
+        }
+      },
+      "rounding": "0.00",
+      "total_earned": "2278288.88",
+      "deductions_total": "162335.52",
+      "total_voucher": "2115953.36"
+    }
+  },
+  {
+    "consecutivo": "NOM-371",
+    "empleado": "CATALINA MARTINEZ REYES",
+    "documento": "1113642135",
+    "endpoint": "/api/ubl2.1/ep/payroll",
+    "payload": {
+      "document_number": "371",
+      "prefix": "NOM",
+      "resolution_number": "18760000001",
+      "generation_city_id": "76520",
+      "worker_code": "1113642135",
+      "novelty": false,
+      "pay_day": "2026-09-30",
+      "notes": "",
+      "period": {
+        "date_entry": "2023-06-15",
+        "departure_date": null,
+        "settlement_start_date": "2026-09-01",
+        "settlement_end_date": "2026-09-30",
+        "time_worked": "30",
+        "generation_date": "2026-09-30"
+      },
+      "general_information": {
+        "generation_date": "2026-09-30",
+        "generation_time": "10:00:00",
+        "period_id": 5,
+        "currency_id": 272,
+        "trm": "0",
+        "type_xml_id": 102
+      },
+      "employee": {
+        "worker_type_id": 1,
+        "type_worker_id": 1,
+        "worker_subtype_id": 0,
+        "sub_type_worker_id": 0,
+        "contract_type_id": 2,
+        "type_contract_id": 2,
+        "identity_document_id": "1",
+        "type_document_identification_id": 1,
+        "document_number": "1113642135",
+        "first_surname": "MARTINEZ",
+        "second_surname": "REYES",
+        "first_name": "CATALINA",
+        "other_names": "",
+        "working_country_id": 45,
+        "work_city_id": 76520,
+        "municipality_id": 76520,
+        "work_address": "CL 19 24 59",
+        "address": "CL 19 24 59",
+        "high_risk_pension": "false",
+        "integral_salary": "false",
+        "salary": "7630280.00",
+        "worker_code": "1113642135"
+      },
+      "payment": {
+        "payment_method_id": 1,
+        "means_payment_id": "30",
+        "bank": "Bancolombia",
+        "bank_name": "Bancolombia",
+        "account_type": "Ahorros",
+        "account_number": "18597345875"
+      },
+      "payment_dates": [
+        "2026-09-30"
+      ],
+      "earn": {
+        "basic": {
+          "worked_days": "30",
+          "salary_worked": "7630280.00"
+        }
+      },
+      "deductions": {
+        "health": {
+          "percentage": "4.00",
+          "deduction": "305211.20"
+        },
+        "pension_fund": {
+          "percentage": "4.00",
+          "deduction": "305211.20"
+        },
+        "fundSP": {
+          "percentage": "1.00",
+          "deduction": "76302.80",
+          "percentageSub": "0.00",
+          "deductionSub": "0.00"
+        },
+        "retefuente": "21698.06",
+        "debt": "98000.86"
+      },
+      "rounding": "0.00",
+      "total_earned": "9630280.00",
+      "deductions_total": "708423.26",
+      "total_voucher": "8921856.74"
+    }
+  },
+  {
+    "consecutivo": "NOM-372",
+    "empleado": "YOLANDA CALLE MENA",
+    "documento": "29544232",
+    "endpoint": "/api/ubl2.1/ep/payroll",
+    "payload": {
+      "document_number": "372",
+      "prefix": "NOM",
+      "resolution_number": "18760000001",
+      "generation_city_id": "76001",
+      "worker_code": "29544232",
+      "novelty": false,
+      "pay_day": "2026-09-30",
+      "notes": "",
+      "period": {
+        "date_entry": "2026-09-09",
+        "departure_date": null,
+        "settlement_start_date": "2026-09-01",
+        "settlement_end_date": "2026-09-30",
+        "time_worked": "22",
+        "generation_date": "2026-09-30"
+      },
+      "general_information": {
+        "generation_date": "2026-09-30",
+        "generation_time": "10:00:00",
+        "period_id": 5,
+        "currency_id": 272,
+        "trm": "0",
+        "type_xml_id": 102
+      },
+      "employee": {
+        "worker_type_id": 1,
+        "type_worker_id": 1,
+        "worker_subtype_id": 0,
+        "sub_type_worker_id": 0,
+        "contract_type_id": 2,
+        "type_contract_id": 2,
+        "identity_document_id": "1",
+        "type_document_identification_id": 1,
+        "document_number": "29544232",
+        "first_surname": "CALLE",
+        "second_surname": "MENA",
+        "first_name": "YOLANDA",
+        "other_names": "",
+        "working_country_id": 45,
+        "work_city_id": 76001,
+        "municipality_id": 76001,
+        "work_address": "CL 62 A 1 210 AP 209 C UR VILLA DEL SOL SEC 1",
+        "address": "CL 62 A 1 210 AP 209 C UR VILLA DEL SOL SEC 1",
+        "high_risk_pension": "false",
+        "integral_salary": "false",
+        "salary": "1393333.33",
+        "worker_code": "29544232"
+      },
+      "payment": {
+        "payment_method_id": 1,
+        "means_payment_id": "30",
+        "bank": "Bancolombia",
+        "bank_name": "Bancolombia",
+        "account_type": "Ahorros",
+        "account_number": "91291139278"
+      },
+      "payment_dates": [
+        "2026-09-30"
+      ],
+      "earn": {
+        "basic": {
+          "worked_days": "22",
+          "salary_worked": "1393333.33"
+        },
+        "transport": {
+          "transportation_assistance": "182669.67",
+          "viatic_maintenance": "0.00",
+          "viatic_non_salary_maintenance": "0.00"
+        }
+      },
+      "deductions": {
+        "health": {
+          "percentage": "4.00",
+          "deduction": "55733.33"
+        },
+        "pension_fund": {
+          "percentage": "4.00",
+          "deduction": "55733.33"
+        }
+      },
+      "rounding": "0.00",
+      "total_earned": "1576003.00",
+      "deductions_total": "111466.66",
+      "total_voucher": "1464536.34"
+    }
+  }
+]

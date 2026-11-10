@@ -1,0 +1,17 @@
+Created At: 2026-11-07T17:45:53-05:00
+Completed At: 2026-11-07T17:45:54-05:00
+Command exited with code 0.
+
+Command output:
+[
+  [Object: null prototype] {
+    key: 'payroll_accounting_config_v1_employee_rules_part_001',
+    len: 5000
+  },
+  [Object: null prototype] {
+    key: 'payroll_accounting_config_v1_employee_rules_part_002',
+    len: 5000
+  }
+]
+(node:14032) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

@@ -1,0 +1,30 @@
+Created At: 2026-11-07T17:01:20-05:00
+Completed At: 2026-11-07T17:01:22-05:00
+Command exited with code 0.
+
+Command output:
+Found 22 employee rules in settings:
+- ID: zy49bniamw9poof | Unknown | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: zlk0zh45xhi6y69 | Unknown | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: in1kesw72zdfecw | Unknown | Start: '2026-06-01' | End: 'undefined' | Contract: 'INDEFINIDO'
+- ID: 0m03arcyu0bsiio | Unknown | Start: '2026-07-14' | End: 'undefined' | Contract: 'INDEFINIDO'
+- ID: t1hbrdpojdhv980 | Unknown | Start: '2025-01-13' | End: 'undefined' | Contract: 'INDEFINIDO'
+- ID: wtfcr6m7wmw49qi | Unknown | Start: '2025-03-10' | End: 'undefined' | Contract: 'INDEFINIDO'
+- ID: 5996dibwttdpjg2 | Unknown | Start: '2023-06-15' | End: 'undefined' | Contract: 'INDEFINIDO'
+- ID: fdexhz7z3nyjhrh | Unknown | Start: '2026-07-01' | End: 'undefined' | Contract: 'INDEFINIDO'
+- ID: giyd2rz4d0gv7ik | Unknown | Start: '2025-02-15' | End: 'undefined' | Contract: 'INDEFINIDO'
+- ID: 4yi78j1v008eogt | Unknown | Start: '2024-05-07' | End: 'undefined' | Contract: 'INDEFINIDO'
+- ID: bnfw0wuy9usg65y | Unknown | Start: '2026-07-01' | End: 'undefined' | Contract: 'INDEFINIDO'
+- ID: 0zbb63nz7p6tzwc | ALISON NICOL GOMEZ MACA | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: gyilekodzdj1sde | AMPARO REYES SARRIA | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: cz5t165sse24oa2 | ANGELA MARIA GARCIA VIVAS | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: vsu8bz83547sxrn | ANGELICA MONCADA ARMILLA | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: b6c3mvlw6b9rodf | BLADIMIR DIAZ ORTEGA | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: cm6g6vpckf15ct8 | CATALINA MARTINEZ REYES | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: v21xfu4abpcba2f | CIELO DEL PILAR ALDANA VILLAMIZAR | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: j8jctmcchsrgm5b | CRISTIAN DANILO GARCIA CHACON | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: jqq5tlo1sze2ulu | SEBASTIAN DIAZ DIAZ | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: quzokljc9p33j75 | YOLANDA CALLE MENA | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+- ID: waykc023e9kpeen | JUAN ANDRES CAICEDO SALAZAR | Start: 'undefined' | End: 'undefined' | Contract: 'undefined'
+(node:8832) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

@@ -38,14 +38,14 @@ function getMatiasBaseUrl() {
 }
 globalThis.getMatiasBaseUrl = getMatiasBaseUrl;
 
-// Invocador HTTP centralizado para MATIAS API
+// Invocador HTTP centralizado para DIAN API
 function callMatiasApi(endpoint, method, payload) {
   const baseUrl = getMatiasBaseUrl();
   const token = getRadianSetting("matias_api_token", "");
   const clientUuid = getRadianSetting("matias_client_uuid", "");
 
   if (!token) {
-    throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+    throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
   }
 
   let fullUrl = baseUrl + endpoint;
@@ -87,11 +87,11 @@ globalThis.callMatiasApi = callMatiasApi;
 function getMatiasCaller() {
   if (typeof callMatiasApi === 'function') return callMatiasApi;
   if (typeof globalThis.callMatiasApi === 'function') return globalThis.callMatiasApi;
-  throw new Error("El conector de MATIAS API no está disponible en este servidor.");
+  throw new Error("El conector de DIAN API no está disponible en este servidor.");
 }
 globalThis.getMatiasCaller = getMatiasCaller;
 
-// Helper para registrar y asignar el Responsable de Recepción en MATIAS API
+// Helper para registrar y asignar el Responsable de Recepción en DIAN API
 function syncMatiasReceptionPerson(personOverride) {
   const dni = String(personOverride?.dni || getRadianSetting("radian_responsible_dni", "")).trim();
   const firstName = String(personOverride?.first_name || getRadianSetting("radian_responsible_first_name", "")).trim();
@@ -101,7 +101,7 @@ function syncMatiasReceptionPerson(personOverride) {
   const department = String(personOverride?.department || getRadianSetting("radian_responsible_department", "Contabilidad")).trim();
 
   if (!dni || !firstName) {
-    throw new Error("Cédula (DNI) y Nombres del responsable son requeridos para vincular en MATIAS API.");
+    throw new Error("Cédula (DNI) y Nombres del responsable son requeridos para vincular en DIAN API.");
   }
 
   // 1. Consultar personas existentes
@@ -130,7 +130,7 @@ function syncMatiasReceptionPerson(personOverride) {
     });
 
     if (!createRes.ok) {
-      const err = createRes.data?.message || createRes.data?.error || ("Error registrando persona en MATIAS API (" + createRes.statusCode + ")");
+      const err = createRes.data?.message || createRes.data?.error || ("Error registrando persona en DIAN API (" + createRes.statusCode + ")");
       throw new Error(err);
     }
     personUuid = createRes.data?.dataRecord?.uuid || createRes.data?.data?.uuid || createRes.data?.uuid;
@@ -204,7 +204,7 @@ routerAdd('POST', '/api/radian/sync-email', (c) => {
     const clientUuid = getRadianSetting("matias_client_uuid", "");
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+      throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
     }
 
     let fullUrl = baseUrl + endpoint;
@@ -511,7 +511,7 @@ routerAdd('POST', '/api/radian/import-excel', (c) => {
     const clientUuid = getRadianSetting("matias_client_uuid", "");
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+      throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
     }
 
     let fullUrl = baseUrl + endpoint;
@@ -654,7 +654,7 @@ routerAdd('POST', '/api/radian/import-cufe', (c) => {
     const clientUuid = getRadianSetting("matias_client_uuid", "");
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+      throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
     }
 
     let fullUrl = baseUrl + endpoint;
@@ -775,7 +775,7 @@ routerAdd('POST', '/api/radian/send-event', (c) => {
     const clientUuid = getRadianSetting("matias_client_uuid", "");
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+      throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
     }
 
     let fullUrl = baseUrl + endpoint;
@@ -1149,7 +1149,7 @@ routerAdd('POST', '/api/radian/sync-event-status', (c) => {
     const clientUuid = getRadianSetting("matias_client_uuid", "");
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+      throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
     }
 
     let fullUrl = baseUrl + endpoint;
@@ -1230,35 +1230,247 @@ routerAdd('POST', '/api/radian/sync-event-status', (c) => {
       return c.json(res.statusCode, { success: false, error: errMsg, details: res.data });
     }
 
+    // Helper para decodificar Base64 a UTF-8 de forma segura en Goja
+    function decodeBase64Utf8(b64) {
+      if (!b64 || typeof b64 !== "string") return "";
+      var input = b64.trim();
+      if (input.indexOf("<") !== -1) return input;
+      try {
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+        input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+        var i = 0, bytes = [];
+        while (i < input.length) {
+          var enc1 = chars.indexOf(input.charAt(i++));
+          var enc2 = chars.indexOf(input.charAt(i++));
+          var enc3 = chars.indexOf(input.charAt(i++));
+          var enc4 = chars.indexOf(input.charAt(i++));
+          var chr1 = (enc1 << 2) | (enc2 >> 4);
+          var chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+          var chr3 = ((enc3 & 3) << 6) | enc4;
+          bytes.push(chr1);
+          if (enc3 !== 64 && enc3 !== -1) bytes.push(chr2);
+          if (enc4 !== 64 && enc4 !== -1) bytes.push(chr3);
+        }
+        var out = "", pos = 0;
+        while (pos < bytes.length) {
+          var c1 = bytes[pos++];
+          if (c1 < 128) {
+            out += String.fromCharCode(c1);
+          } else if (c1 > 191 && c1 < 224) {
+            var c2 = bytes[pos++];
+            out += String.fromCharCode(((c1 & 31) << 6) | (c2 & 63));
+          } else if (c1 > 223 && c1 < 240) {
+            var c2 = bytes[pos++];
+            var c3 = bytes[pos++];
+            out += String.fromCharCode(((c1 & 15) << 12) | ((c2 & 63) << 6) | (c3 & 63));
+          } else {
+            out += String.fromCharCode(c1);
+          }
+        }
+        return out;
+      } catch (_) {
+        return "";
+      }
+    }
+
     const d = res.data || {};
     const respDian = d.ResponseDian || d.responseDian || {};
     const dianCude = respDian.XmlDocumentKey || respDian.cude || d.cude || "";
     const dianMessage = respDian.StatusMessage || d.message || "Consulta de estado exitosa.";
+    const eventsFound = [];
+    let isContado = false;
 
-    if (docRecord) {
-      let updated = false;
-      // Actualizar CUDE en los eventos que lo tengan pendiente
-      if (dianCude) {
-        if (docRecord.getString("radian_030_status") === "sent" && !docRecord.getString("radian_030_cude")) {
-          docRecord.set("radian_030_cude", dianCude);
-          updated = true;
+    // 1. Analizar si en MATIAS API la recepción fue clasificada de contado o tiene eventos
+    try {
+      const recRes = callMatiasApi('/events/document-receptions?limit=100', 'GET');
+      if (recRes.ok && recRes.data && recRes.data.dataRecords && recRes.data.dataRecords.data) {
+        const list = recRes.data.dataRecords.data || [];
+        let item = null;
+        for (let li = 0; li < list.length; li++) {
+          if (list[li].cufe_cude && list[li].cufe_cude.toLowerCase() === trackId.toLowerCase()) {
+            item = list[li];
+            break;
+          }
         }
-        if (docRecord.getString("radian_032_status") === "sent" && !docRecord.getString("radian_032_cude")) {
-          docRecord.set("radian_032_cude", dianCude);
-          updated = true;
-        }
-        if (docRecord.getString("radian_033_status") === "sent" && !docRecord.getString("radian_033_cude")) {
-          docRecord.set("radian_033_cude", dianCude);
-          updated = true;
+        if (item) {
+          if (item.id && docRecord && !docRecord.getString("matias_reception_id")) {
+            docRecord.set("matias_reception_id", String(item.id));
+          }
+          if (item.payment_method && item.payment_method.payment_method && item.payment_method.payment_method.toLowerCase() === 'contado') {
+            isContado = true;
+          } else if (item.payment_method_id === 1) {
+            isContado = true;
+          } else if (item.status_reason && item.status_reason.toLowerCase().indexOf('contado') !== -1) {
+            isContado = true;
+          }
+
+          // Si MATIAS ya tiene eventos procesados para este documento
+          if (Array.isArray(item.events) && item.events.length > 0) {
+            for (let ei = 0; ei < item.events.length; ei++) {
+              const ev = item.events[ei];
+              let evCode = (ev.type_event && ev.type_event.code) ? ev.type_event.code : '';
+              if (!evCode) {
+                if (ev.type_event_id === 1 || ev.type_event_id === 3) evCode = '030';
+                else if (ev.type_event_id === 2) evCode = '032';
+                else if (ev.type_event_id === 4) evCode = '033';
+              }
+              const evStatus = String(ev.document_status || '').toUpperCase();
+              const isApproved = (evStatus === 'ACCEPTED' || evStatus === 'SENT' || evStatus === 'COMPLETED');
+              const isPending = (evStatus === 'PENDING' || evStatus === 'PROCESSING');
+              const evDate = ev.date_event || new Date().toISOString().replace('T', ' ').slice(0, 19);
+              const evCude = ev.event_cude || ev.cude || dianCude || '';
+
+              if (docRecord) {
+                if (evCode === '030') {
+                  docRecord.set("radian_030_status", isApproved ? "sent" : (isPending ? "sent" : "none"));
+                  if (evDate) docRecord.set("radian_030_date", evDate);
+                  if (evCude) docRecord.set("radian_030_cude", evCude);
+                  if (eventsFound.indexOf("030 - Acuse de Recibo") === -1) eventsFound.push("030 - Acuse de Recibo");
+                } else if (evCode === '032') {
+                  docRecord.set("radian_032_status", isApproved ? "sent" : (isPending ? "sent" : "none"));
+                  if (evDate) docRecord.set("radian_032_date", evDate);
+                  if (evCude) docRecord.set("radian_032_cude", evCude);
+                  if (eventsFound.indexOf("032 - Recibo del Bien") === -1) eventsFound.push("032 - Recibo del Bien");
+                } else if (evCode === '033') {
+                  docRecord.set("radian_033_status", isApproved ? "sent" : (isPending ? "sent" : "none"));
+                  if (evDate) docRecord.set("radian_033_date", evDate);
+                  if (evCude) docRecord.set("radian_033_cude", evCude);
+                  if (eventsFound.indexOf("033 - Aceptación Expresa") === -1) eventsFound.push("033 - Aceptación Expresa");
+                } else if (evCode === '031') {
+                  docRecord.set("radian_031_status", isApproved ? "sent" : "none");
+                  if (ev.claim_code) docRecord.set("radian_031_claim_code", ev.claim_code);
+                  if (ev.description) docRecord.set("radian_031_notes", ev.description);
+                  if (eventsFound.indexOf("031 - Reclamo") === -1) eventsFound.push("031 - Reclamo");
+                }
+              }
+            }
+          }
         }
       }
+    } catch (eRec) {
+      console.warn("[RADIAN SYNC] Aviso consultando /events/document-receptions:", eRec);
+    }
 
+    // 2. Decodificar y procesar XmlBase64Bytes de la DIAN si existe
+    const rawB64 = respDian.XmlBase64Bytes || "";
+    if (rawB64 && typeof rawB64 === "string" && rawB64.length > 20) {
+      const decodedXml = decodeBase64Utf8(rawB64);
+      if (decodedXml && decodedXml.indexOf("<") !== -1) {
+        let docResponses = decodedXml.match(/<cac:DocumentResponse[\s\S]*?<\/cac:DocumentResponse>/gi);
+        if (!docResponses || docResponses.length === 0) {
+          docResponses = [decodedXml];
+        }
+
+        for (let di = 0; di < docResponses.length; di++) {
+          const block = docResponses[di];
+          const codeMatch = block.match(/<cbc:ResponseCode[^>]*>\s*([0-9]{3})\s*<\/cbc:ResponseCode>/i);
+          if (codeMatch) {
+            const xmlCode = codeMatch[1];
+            const dateM = block.match(/<cbc:EffectiveDate[^>]*>\s*([^<]+)\s*<\/cbc:EffectiveDate>/i) ||
+                          decodedXml.match(/<cbc:IssueDate[^>]*>\s*([^<]+)\s*<\/cbc:IssueDate>/i);
+            const timeM = block.match(/<cbc:EffectiveTime[^>]*>\s*([^<]+)\s*<\/cbc:EffectiveTime>/i) ||
+                          decodedXml.match(/<cbc:IssueTime[^>]*>\s*([^<]+)\s*<\/cbc:IssueTime>/i);
+            const cudeM = decodedXml.match(/<cbc:UUID[^>]*schemeName=["']CUDE-SHA384["'][^>]*>\s*([a-fA-F0-9]{64,96})\s*<\/cbc:UUID>/i) ||
+                          block.match(/<cbc:UUID[^>]*>\s*([a-fA-F0-9]{64,96})\s*<\/cbc:UUID>/i);
+
+            const xmlEventDate = (dateM ? dateM[1].trim() : '') + (timeM ? ' ' + timeM[1].trim() : '');
+            const xmlEventCude = cudeM ? cudeM[1].trim() : (dianCude || '');
+
+            if (docRecord) {
+              if (xmlCode === '030') {
+                docRecord.set("radian_030_status", "sent");
+                if (xmlEventDate) docRecord.set("radian_030_date", xmlEventDate);
+                if (xmlEventCude) docRecord.set("radian_030_cude", xmlEventCude);
+                if (eventsFound.indexOf("030 - Acuse de Recibo") === -1) eventsFound.push("030 - Acuse de Recibo");
+              } else if (xmlCode === '032') {
+                docRecord.set("radian_032_status", "sent");
+                if (xmlEventDate) docRecord.set("radian_032_date", xmlEventDate);
+                if (xmlEventCude) docRecord.set("radian_032_cude", xmlEventCude);
+                if (eventsFound.indexOf("032 - Recibo del Bien") === -1) eventsFound.push("032 - Recibo del Bien");
+              } else if (xmlCode === '033') {
+                docRecord.set("radian_033_status", "sent");
+                if (xmlEventDate) docRecord.set("radian_033_date", xmlEventDate);
+                if (xmlEventCude) docRecord.set("radian_033_cude", xmlEventCude);
+                if (eventsFound.indexOf("033 - Aceptación Expresa") === -1) eventsFound.push("033 - Aceptación Expresa");
+              } else if (xmlCode === '031') {
+                docRecord.set("radian_031_status", "sent");
+                if (eventsFound.indexOf("031 - Reclamo") === -1) eventsFound.push("031 - Reclamo");
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Manejar caso de Factura de Contado (Normativa Res. 000085 de 2022)
+    if (isContado && eventsFound.length === 0) {
+      if (docRecord) {
+        docRecord.set("radian_030_status", "not_applicable");
+        docRecord.set("radian_last_response", "Factura de Contado: Conforme a la Res. DIAN 000085 de 2022 no admite eventos RADIAN.");
+        $app.save(docRecord);
+      }
+      return c.json(200, {
+        success: true,
+        hasEvents: false,
+        isContado: true,
+        message: "Esta factura fue emitida como Pago de Contado. Conforme a la Resolución DIAN 000085 de 2022, no requiere ni admite acuses ni eventos RADIAN al no constituir título valor para circulación.",
+        status: "not_applicable"
+      });
+    }
+
+    // 4. Si se detectaron eventos
+    if (eventsFound.length > 0) {
+      if (docRecord) {
+        docRecord.set("radian_last_response", "Eventos DIAN sincronizados: " + eventsFound.join(", "));
+        $app.save(docRecord);
+      }
+      return c.json(200, {
+        success: true,
+        hasEvents: true,
+        eventsFound: eventsFound,
+        message: "Sincronización exitosa: Se encontraron " + eventsFound.length + " evento(s) en la DIAN (" + eventsFound.join(", ") + ").",
+        status: "synced",
+        cude: dianCude,
+        dianDetails: d
+      });
+    }
+
+    // 5. Si no hay eventos
+    const statusCode = String(respDian.StatusCode || '');
+    if (statusCode === '67' || (respDian.StatusDescription && respDian.StatusDescription.indexOf('no tiene a la fecha eventos') !== -1)) {
+      if (docRecord) {
+        docRecord.set("radian_last_response", "DIAN: No registra eventos asociados a la fecha.");
+        $app.save(docRecord);
+      }
+      return c.json(200, {
+        success: true,
+        hasEvents: false,
+        message: "La DIAN confirma que este documento no registra eventos RADIAN asociados a la fecha. Puedes emitir el primer Acuse (030).",
+        status: "pending"
+      });
+    }
+
+    if (statusCode === '68') {
+      if (docRecord) {
+        docRecord.set("radian_last_response", "DIAN: TrackId no corresponde a un CUFE.");
+        $app.save(docRecord);
+      }
+      return c.json(200, {
+        success: true,
+        hasEvents: false,
+        message: "La DIAN informa: TrackId no corresponde a un CUFE válido o el documento no es una factura electrónica a crédito.",
+        status: "invalid_cufe"
+      });
+    }
+
+    if (docRecord) {
       docRecord.set("radian_last_response", dianMessage);
       $app.save(docRecord);
     }
 
     return c.json(200, {
       success: true,
+      hasEvents: false,
       message: dianMessage,
       cude: dianCude,
       dianDetails: d
@@ -1294,7 +1506,7 @@ routerAdd('POST', '/api/radian/check-event-status', (c) => {
     const clientUuid = getRadianSetting("matias_client_uuid", "");
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+      throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
     }
 
     let fullUrl = baseUrl + endpoint;
@@ -1372,7 +1584,7 @@ routerAdd('POST', '/api/radian/resend-email', (c) => {
     const clientUuid = getRadianSetting("matias_client_uuid", "");
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado. Vaya a Configuración -> Facturación Electrónica.");
+      throw new Error("Token de DIAN API no configurado. Vaya a Configuración -> Facturación Electrónica.");
     }
 
     let fullUrl = baseUrl + endpoint;
@@ -1450,7 +1662,7 @@ routerAdd('GET', '/api/radian/reception-person-status', (c) => {
     const clientUuid = getRadianSetting("matias_client_uuid", "");
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado.");
+      throw new Error("Token de DIAN API no configurado.");
     }
 
     let fullUrl = baseUrl + endpoint;
@@ -1488,7 +1700,7 @@ routerAdd('GET', '/api/radian/reception-person-status', (c) => {
   try {
     const listRes = callMatiasApi("/events/reception-people", "GET");
     if (!listRes.ok) {
-      return c.json(listRes.statusCode, { success: false, error: listRes.data?.message || "Error consultando MATIAS API" });
+      return c.json(listRes.statusCode, { success: false, error: listRes.data?.message || "Error consultando DIAN API" });
     }
     const rec = listRes.data?.dataRecord || {};
     const defaultUuid = rec.default_person_uuid;
@@ -1539,7 +1751,7 @@ routerAdd('POST', '/api/radian/sync-reception-person', (c) => {
     const clientUuid = getRadianSetting("matias_client_uuid", "");
 
     if (!token) {
-      throw new Error("Token de MATIAS API no configurado.");
+      throw new Error("Token de DIAN API no configurado.");
     }
 
     let fullUrl = baseUrl + endpoint;
@@ -1613,7 +1825,7 @@ routerAdd('POST', '/api/radian/sync-reception-person', (c) => {
       });
 
       if (!createRes.ok) {
-        return c.json(createRes.statusCode, { success: false, error: createRes.data?.message || "Error registrando persona en MATIAS API" });
+        return c.json(createRes.statusCode, { success: false, error: createRes.data?.message || "Error registrando persona en DIAN API" });
       }
 
       personUuid = createRes.data?.dataRecord?.uuid || createRes.data?.data?.uuid || createRes.data?.uuid;
@@ -1629,7 +1841,7 @@ routerAdd('POST', '/api/radian/sync-reception-person', (c) => {
 
     return c.json(200, {
       success: true,
-      message: "Responsable vinculado exitosamente en MATIAS API como firmante predeterminado.",
+      message: "Responsable vinculado exitosamente en DIAN API como firmante predeterminado.",
       data: {
         uuid: personUuid,
         dni: dni,

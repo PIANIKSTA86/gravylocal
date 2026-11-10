@@ -105,7 +105,18 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
           rec.set("dian_response", statusMsg);
           rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
           if (xmlDocKey) rec.set("cufe", xmlDocKey.trim());
-          if (matiasData.XmlBase64Bytes && typeof decodeBase64Utf8Queue === "function") {
+          if (finalStatus === "APROBADO" && xmlDocKey) {
+            try {
+              const xmlRes = matiasCaller(`/documents/xml/${encodeURIComponent(xmlDocKey.trim())}`, "GET");
+              const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64 || matiasData.XmlBase64Bytes;
+              if (b64 && typeof decodeBase64Utf8Queue === "function") {
+                const decodedXml = decodeBase64Utf8Queue(b64);
+                if (decodedXml && decodedXml.includes("<")) rec.set("xml_generado", decodedXml);
+              }
+            } catch (eXml) {
+              console.warn("[GRAVY NOMINA MATIAS] No se pudo obtener XML firmado de MATIAS:", eXml);
+            }
+          } else if (matiasData.XmlBase64Bytes && typeof decodeBase64Utf8Queue === "function") {
             try {
               const decodedXml = decodeBase64Utf8Queue(matiasData.XmlBase64Bytes);
               if (decodedXml && decodedXml.includes("<")) rec.set("xml_generado", decodedXml);
@@ -113,6 +124,40 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
           }
 
           $app.save(rec);
+
+          // Si es una Nota de Ajuste de Eliminación (Tipo 2) aprobada, actualizar el documento predecesor a ANULADO
+          if (finalStatus === "APROBADO" && isAjusteDoc) {
+            try {
+              const rawJson = rec.getString("xml_generado") || "";
+              let predNum = null;
+              let predCune = null;
+              if (rawJson.startsWith("{")) {
+                const pj = JSON.parse(rawJson);
+                if (pj.payroll_type === "delete" || pj.deleting_predecessor) {
+                  predNum = pj.deleting_predecessor ? pj.deleting_predecessor.number : null;
+                  predCune = pj.deleting_predecessor ? pj.deleting_predecessor.cune : null;
+                }
+              } else if (rawJson.includes("<Eliminar>")) {
+                const mNum = rawJson.match(/NumeroPred\s*=\s*"([^"]*)"/i);
+                const mCune = rawJson.match(/CUNEPred\s*=\s*"([^"]*)"/i);
+                if (mNum) predNum = mNum[1];
+                if (mCune) predCune = mCune[1];
+              }
+
+              if (predCune || predNum) {
+                const filter = predCune ? `cufe = '${predCune.replace(/'/g, "''")}'` : `consecutivo = ${parseInt(String(predNum).replace(/[^0-9]/g, '')) || 0}`;
+                const predRec = $app.findFirstRecordByFilter("electronic_payrolls", filter);
+                if (predRec) {
+                  predRec.set("estado_dian", "ANULADO");
+                  predRec.set("dian_response", `Anulado formalmente ante la DIAN mediante Nota de Ajuste ${prefijo}-${consecutivo}`);
+                  $app.save(predRec);
+                  console.log(`[GRAVY NOMINA] Documento predecesor ${predRec.getString("prefijo")}-${predRec.getInt("consecutivo")} actualizado a ANULADO.`);
+                }
+              }
+            } catch (errPred) {
+              console.error("[GRAVY NOMINA] Error al actualizar estado del predecesor:", errPred);
+            }
+          }
 
           return e.json(200, {
             success: true,
@@ -144,7 +189,7 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
         }
       } catch (errMatias) {
         rec.set("estado_dian", "RECHAZADO");
-        rec.set("dian_response", errMatias.message || "Error al conectar con MATIAS API");
+        rec.set("dian_response", errMatias.message || "Error al conectar con DIAN API");
         $app.save(rec);
         return e.json(500, { success: false, message: errMatias.message });
       }
@@ -567,7 +612,18 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
             rec.set("dian_response", statusMsg);
             rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
             if (xmlDocKey) rec.set("cufe", xmlDocKey.trim());
-            if (matiasData.XmlBase64Bytes && typeof decodeBase64Utf8Queue === "function") {
+            if (finalStatus === "APROBADO" && xmlDocKey) {
+              try {
+                const xmlRes = matiasCaller(`/documents/xml/${encodeURIComponent(xmlDocKey.trim())}`, "GET");
+                const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64 || matiasData.XmlBase64Bytes;
+                if (b64 && typeof decodeBase64Utf8Queue === "function") {
+                  const decodedXml = decodeBase64Utf8Queue(b64);
+                  if (decodedXml && decodedXml.includes("<")) rec.set("xml_generado", decodedXml);
+                }
+              } catch (eXml) {
+                console.warn("[GRAVY NOMINA MATIAS] No se pudo obtener XML firmado de MATIAS:", eXml);
+              }
+            } else if (matiasData.XmlBase64Bytes && typeof decodeBase64Utf8Queue === "function") {
               try {
                 const decodedXml = decodeBase64Utf8Queue(matiasData.XmlBase64Bytes);
                 if (decodedXml && decodedXml.includes("<")) rec.set("xml_generado", decodedXml);
@@ -590,7 +646,7 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
           }
         } catch (errMatias) {
           rec.set("estado_dian", "RECHAZADO");
-          rec.set("dian_response", errMatias.message || "Error al conectar con MATIAS API");
+          rec.set("dian_response", errMatias.message || "Error al conectar con DIAN API");
           rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
         }
       } else if (einvoiceMethod === "facturatech" && ftechUsername) {

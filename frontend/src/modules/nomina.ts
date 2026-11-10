@@ -39,13 +39,24 @@ const NOVELTY_TYPES = {
   RECARGOS: [
     { key: 'RECARGO_NOCTURNO', label: 'Recargo Nocturno (0.35)' },
     { key: 'RECARGO_DOMINICAL', label: 'Recargo Dominical/Festivo Diurno (0.75)' },
+    { key: 'RECARGO_DOMINICAL_NOCTURNO', label: 'Recargo Dominical/Festivo Nocturno (HRNDF 1.10)' },
   ],
   DESCUENTOS: [
-    { key: 'PRESTAMO', label: 'Préstamo' },
-    { key: 'ANTICIPO', label: 'Anticipo' },
-    { key: 'MULTA', label: 'Multa / Sanción' },
-    { key: 'EMBARGO', label: 'Embargo' },
+    { key: 'PRESTAMO', label: 'Préstamo Empresa' },
+    { key: 'ANTICIPO', label: 'Anticipo de Nómina' },
+    { key: 'MULTA', label: 'Multa / Sanción Disciplinaria' },
+    { key: 'SANCION_PRIVADA', label: 'Sanción Disciplinaria Privada' },
+    { key: 'SANCION_PUBLICA', label: 'Sanción Disciplinaria Pública' },
+    { key: 'EMBARGO', label: 'Embargo Judicial / Fiscal' },
     { key: 'LIBRANZA', label: 'Descuento por Libranza' },
+    { key: 'SINDICATO', label: 'Cuota Sindical' },
+    { key: 'PENSION_VOLUNTARIA', label: 'Pensión Voluntaria' },
+    { key: 'AHORRO_AFC', label: 'Ahorro AFC' },
+    { key: 'COOPERATIVA', label: 'Aporte / Cuota Cooperativa' },
+    { key: 'PLAN_COMPLEMENTARIO', label: 'Plan Complementario de Salud' },
+    { key: 'EDUCACION', label: 'Deducción por Educación' },
+    { key: 'PAGO_TERCERO', label: 'Pago a Terceros (Deducción)' },
+    { key: 'REINTEGRO_DEDUCCION', label: 'Reintegro / Ajuste a favor de la Empresa' },
     { key: 'RETENCION_PORCENTAJE', label: 'Retención en la Fuente (% Fijo)' },
     { key: 'OTRA_DEDUCCION', label: 'Otra Deducción' },
   ],
@@ -56,8 +67,19 @@ const NOVELTY_TYPES = {
     { key: 'GASTOS_REPRESENTACION', label: 'Gastos de Representación' },
     { key: 'AUX_NO_SALARIALES', label: 'Auxilios No Salariales' },
     { key: 'AUXILIO_RODAMIENTO', label: 'Auxilio de Rodamiento' },
+    { key: 'VIATICO_SALARIAL', label: 'Viáticos Manutención y Alojamiento (Salariales)' },
+    { key: 'VIATICO_NO_SALARIAL', label: 'Viáticos Manutención y Alojamiento (No Salariales)' },
     { key: 'COMPENSATORIOS', label: 'Compensatorios' },
     { key: 'AUXILIO_ALIMENTACION', label: 'Auxilio de Alimentación' },
+    { key: 'BONO_ALIMENTACION', label: 'Bonos de Alimentación / Canasta (EPCTV)' },
+    { key: 'TELETRABAJO', label: 'Auxilio de Conectividad / Teletrabajo' },
+    { key: 'APOYO_SOSTENIMIENTO', label: 'Apoyo Sostenimiento (SENA / Prácticas)' },
+    { key: 'COMPENSACION_ORDINARIA', label: 'Compensación Ordinaria (CTA / Cooperativa)' },
+    { key: 'COMPENSACION_EXTRAORDINARIA', label: 'Compensación Extraordinaria (CTA / Cooperativa)' },
+    { key: 'PAGO_TERCERO_DEVENGO', label: 'Pago a Terceros (Asumido por Empleador)' },
+    { key: 'BONIFICACION_RETIRO', label: 'Bonificación por Retiro Voluntario / Arreglo' },
+    { key: 'INDEMNIZACION', label: 'Indemnización Laboral' },
+    { key: 'REINTEGRO_DEVENGO', label: 'Reintegro / Devolución a favor del Trabajador' },
     { key: 'PRIMA_SERVICIOS', label: 'Prima de Servicios (Legal)' },
     { key: 'INTERESES_CESANTIAS', label: 'Intereses de Cesantías' },
     { key: 'CESANTIAS', label: 'Cesantías (Pago Directo)' },
@@ -67,8 +89,10 @@ const NOVELTY_TYPES = {
   ],
   OTROS: [
     { key: 'RETIRO', label: 'Retiro / Terminación de Contrato' },
-    { key: 'VACACIONES', label: 'Vacaciones' },
-    { key: 'SUSPENSION', label: 'Suspensión' },
+    { key: 'VACACIONES', label: 'Vacaciones Disfrutadas' },
+    { key: 'VACACIONES_COMPENSADAS', label: 'Vacaciones Compensadas en Dinero' },
+    { key: 'SUSPENSION', label: 'Suspensión Disciplinaria / Contractual' },
+    { key: 'HUELGA_LEGAL', label: 'Huelga Legal (Suspensión de Contrato)' },
   ]
 };
 
@@ -80,8 +104,9 @@ const NOVEDAD_A_OVERTIME_KEY = {
   HORA_EXTRA_DOMINICAL_NOCTURNA: 'hendf',
   RECARGO_DOMINICAL: 'rdfd',
   RECARGO_FESTIVO: 'rdfd',
-  RECARGO_NOCTURNO_DOMINICAL: 'rno',
-  RECARGO_NOCTURNO_FESTIVO: 'rno',
+  RECARGO_DOMINICAL_NOCTURNO: 'hrndf',
+  RECARGO_NOCTURNO_DOMINICAL: 'hrndf',
+  RECARGO_NOCTURNO_FESTIVO: 'hrndf',
 };
 
 const NOVEDADES_ALL_KEYS = Object.values(NOVELTY_TYPES).flat().map(n => n.key);
@@ -243,6 +268,7 @@ const NOMINA_OVERTIME_TYPES = [
   { key: 'heddf', label: 'Hora Extra Diurna Dominical/Festiva (HEDDF)', factor: 2.0 },
   { key: 'hendf', label: 'Hora Extra Nocturna Dominical/Festiva (HENDF)', factor: 2.5 },
   { key: 'rdfd', label: 'Recargo Dominical/Festivo Diurno', factor: 0.75 },
+  { key: 'hrndf', label: 'Recargo Dominical/Festivo Nocturno (HRNDF)', factor: 1.10 },
 ];
 
 const ARL_RISK_RATES = {
@@ -2342,7 +2368,35 @@ async function liquidarPeriodoMasivo(periodId) {
       let libranzas = 0;
       let diasLicenciaNoRem = 0;
       let retencionPorcentajeNovedad = 0; // % fijo de retención desde novedad (0 = no aplica)
-      const otHours = { hed: 0, hen: 0, rno: 0, heddf: 0, hendf: 0, rdfd: 0 };
+      let teletrabajo = 0;
+      let apoyoSostenimiento = 0;
+      let bonoAlimentacion = 0;
+      let indemnizacion = 0;
+      let vacacionesCompensadas = 0;
+      let diasVacacionesCompensadas = 0;
+      let diasLicenciaMP = 0;
+      let incapacidadesTipo = 1;
+      let pensionVoluntaria = 0;
+      let ahorroAfc = 0;
+      let cooperativa = 0;
+      let planComplementario = 0;
+      let educacion = 0;
+      let pagoTercero = 0;
+      let viaticoSal = 0;
+      let viaticoNoSal = 0;
+      let compOrd = 0;
+      let compExtra = 0;
+      let pagoTerceroDev = 0;
+      let bonifRetiro = 0;
+      let reintegroDev = 0;
+      let huelgaLegalDias = 0;
+      let huelgaLegalIni = '';
+      let huelgaLegalFin = '';
+      let sindicato = 0;
+      let sancionPriv = 0;
+      let sancionPub = 0;
+      let reintegroDed = 0;
+      const otHours = { hed: 0, hen: 0, rno: 0, heddf: 0, hendf: 0, rdfd: 0, hrndf: 0 };
       empNovelties.forEach(n => {
         const type = n.type || '';
         const qty = Number(n.qty || 0);
@@ -2352,6 +2406,18 @@ async function liquidarPeriodoMasivo(periodId) {
         if (type === 'RETIRO') {
           isRetiroNov = true;
           retiroDate = n.date_from || '';
+        } else if (type === 'INCAPACIDAD_ENFERMEDAD_GENERAL') {
+          incapacidadesTipo = 1;
+          diasIncapacidad += qty;
+          diasAusentismo += qty;
+        } else if (type === 'INCAPACIDAD_ACCIDENTE_TRABAJO') {
+          incapacidadesTipo = 3;
+          diasIncapacidad += qty;
+          diasAusentismo += qty;
+        } else if (type === 'INCAPACIDAD_ENFERMEDAD_PROFESION') {
+          incapacidadesTipo = 2;
+          diasIncapacidad += qty;
+          diasAusentismo += qty;
         } else if (type.startsWith('INCAPACIDAD')) {
           diasIncapacidad += qty;
           diasAusentismo += qty;
@@ -2362,16 +2428,25 @@ async function liquidarPeriodoMasivo(periodId) {
         ) {
           diasLicenciaNoRem += qty;
           diasAusentismo += qty;
+        } else if (type === 'HUELGA_LEGAL') {
+          huelgaLegalDias += qty;
+          diasAusentismo += qty;
+          if (!huelgaLegalIni && n.date_from) huelgaLegalIni = n.date_from;
+          if (n.date_to) huelgaLegalFin = n.date_to;
         } else if (type === 'VACACIONES' || type === 'VACACIONES_RETIRO') {
           diasVacaciones += qty;
           diasAusentismo += qty;
           if (type === 'VACACIONES_RETIRO' || note.includes('retiro') || note.includes('cancelac') || note.includes('liquidacion definitiva')) {
             isVacacionesRetiro = true;
           }
+        } else if (type === 'VACACIONES_COMPENSADAS') {
+          diasVacacionesCompensadas += (qty || 1);
+          vacacionesCompensadas += (amount > 0 ? amount : round2(((empRule.basic_salary || 0) / 30) * (qty || 1)));
+        } else if (type === 'LICENCIA_MATERNIDAD' || type === 'LICENCIA_PATERNIDAD') {
+          diasLicenciaMP += qty;
+          diasLicenciaRem += qty;
         } else if (
           type === 'LICENCIA_REMUNERADA' ||
-          type === 'LICENCIA_MATERNIDAD' ||
-          type === 'LICENCIA_PATERNIDAD' ||
           type === 'LICENCIA_LUTO' ||
           type === 'PERMISO_REMUNERADO'
         ) {
@@ -2390,6 +2465,28 @@ async function liquidarPeriodoMasivo(periodId) {
           dotaciones += amount;
         } else if (type === 'AJUSTE_SALARIAL') {
           ajusteSalarial += amount;
+        } else if (type === 'TELETRABAJO') {
+          teletrabajo += (amount || qty);
+        } else if (type === 'APOYO_SOSTENIMIENTO') {
+          apoyoSostenimiento += (amount || qty);
+        } else if (type === 'BONO_ALIMENTACION') {
+          bonoAlimentacion += (amount || qty);
+        } else if (type === 'VIATICO_SALARIAL') {
+          viaticoSal += (amount || qty);
+        } else if (type === 'VIATICO_NO_SALARIAL') {
+          viaticoNoSal += (amount || qty);
+        } else if (type === 'COMPENSACION_ORDINARIA') {
+          compOrd += (amount || qty);
+        } else if (type === 'COMPENSACION_EXTRAORDINARIA') {
+          compExtra += (amount || qty);
+        } else if (type === 'PAGO_TERCERO_DEVENGO') {
+          pagoTerceroDev += (amount || qty);
+        } else if (type === 'BONIFICACION_RETIRO') {
+          bonifRetiro += (amount || qty);
+        } else if (type === 'INDEMNIZACION') {
+          indemnizacion += (amount || qty);
+        } else if (type === 'REINTEGRO_DEVENGO') {
+          reintegroDev += (amount || qty);
         } else if (type === 'OTRO_INGRESO' || type === 'REINTEGRO') {
           otrosIngresos += amount;
         } else if (type === 'PRESTAMO') {
@@ -2398,8 +2495,30 @@ async function liquidarPeriodoMasivo(periodId) {
           anticipos += amount;
         } else if (type === 'MULTA') {
           multas += amount;
+        } else if (type === 'SANCION_PRIVADA') {
+          sancionPriv += amount;
+        } else if (type === 'SANCION_PUBLICA') {
+          sancionPub += amount;
         } else if (type === 'EMBARGO') {
           embargos += amount;
+        } else if (type === 'LIBRANZA') {
+          libranzas += amount;
+        } else if (type === 'SINDICATO') {
+          sindicato += (amount || qty);
+        } else if (type === 'PENSION_VOLUNTARIA') {
+          pensionVoluntaria += (amount || qty);
+        } else if (type === 'AHORRO_AFC') {
+          ahorroAfc += (amount || qty);
+        } else if (type === 'COOPERATIVA') {
+          cooperativa += (amount || qty);
+        } else if (type === 'PLAN_COMPLEMENTARIO') {
+          planComplementario += (amount || qty);
+        } else if (type === 'EDUCACION') {
+          educacion += (amount || qty);
+        } else if (type === 'PAGO_TERCERO') {
+          pagoTercero += (amount || qty);
+        } else if (type === 'REINTEGRO_DEDUCCION') {
+          reintegroDed += (amount || qty);
         } else if (type === 'OTRA_DEDUCCION') {
           otrasDeducciones += amount;
         } else if (type === 'GASTOS_REPRESENTACION') {
@@ -2412,13 +2531,9 @@ async function liquidarPeriodoMasivo(periodId) {
           compensatorios += amount;
         } else if (type === 'AUXILIO_ALIMENTACION') {
           alimentacion += amount;
-        } else if (type === 'LIBRANZA') {
-          libranzas += amount;
         } else if (type === 'RETENCION_PORCENTAJE') {
           // qty = porcentaje entero (ej. 5 para 5%), amount ignorado
           retencionPorcentajeNovedad = Math.max(retencionPorcentajeNovedad, qty > 0 ? qty / 100 : (amount > 0 ? amount / 100 : 0));
-        } else if (type === 'OTRA_DEDUCCION') {
-          otrasDeducciones += amount;
         } else if (NOVEDAD_A_OVERTIME_KEY[type]) {
           const key = NOVEDAD_A_OVERTIME_KEY[type];
           otHours[key] += qty;
@@ -2469,7 +2584,9 @@ async function liquidarPeriodoMasivo(periodId) {
         salaryProportional + transportAllowance + otAmount +
         vacacionesAmount + licenciasAmount + incapacidadesAmount + bonificaciones + comisiones + ajusteSalarial + otrosIngresos +
         gastosRepresentacion + auxNoSalariales + rodamiento + compensatorios + alimentacion +
-        n_primaServicios + n_interesesCesantias + n_cesantias
+        n_primaServicios + n_interesesCesantias + n_cesantias +
+        teletrabajo + apoyoSostenimiento + bonoAlimentacion + indemnizacion + vacacionesCompensadas +
+        viaticoSal + viaticoNoSal + compOrd + compExtra + pagoTerceroDev + bonifRetiro + reintegroDev
       );
 
       // Si las vacaciones corresponden a liquidación por retiro o cancelación de contrato, NO forman parte del IBC de EPS/Pensión
@@ -2516,7 +2633,9 @@ async function liquidarPeriodoMasivo(periodId) {
         ? calculateWithholdingTax(totalEarnings, deductionHealth, deductionPension, solidarityFund, UVT_VIGENTE, effectiveRate)
         : 0;
 
-      const deductionOther = prestamos + anticipos + multas + embargos + otrasDeducciones + libranzas;
+      const deductionOther = prestamos + anticipos + multas + embargos + otrasDeducciones + libranzas +
+        pensionVoluntaria + ahorroAfc + cooperativa + planComplementario + educacion + pagoTercero +
+        sindicato + sancionPriv + sancionPub + reintegroDed;
       const totalDeducciones = round2(deductionHealth + deductionPension + solidarityFund + withholdingTax + deductionOther);
       const netPay = round2(totalEarnings - totalDeducciones);
 
@@ -2572,7 +2691,9 @@ async function liquidarPeriodoMasivo(periodId) {
 
       const conceptAmounts = {
         incapacidades: incapacidadesAmount,
+        incapacidades_tipo: incapacidadesTipo,
         licencias: licenciasAmount,
+        dias_licencia_mp: diasLicenciaMP,
         gastos_representacion: gastosRepresentacion,
         bonificacion: bonificaciones,
         aux_no_salariales: auxNoSalariales,
@@ -2583,6 +2704,22 @@ async function liquidarPeriodoMasivo(periodId) {
         rodamiento: rodamiento,
         ajuste_salarial: ajusteSalarial,
         vacaciones_disfrutadas: vacacionesAmount,
+        vacaciones_compensadas: vacacionesCompensadas,
+        dias_vacaciones_compensadas: diasVacacionesCompensadas,
+        teletrabajo: teletrabajo,
+        apoyo_sostenimiento: apoyoSostenimiento,
+        bono_alimentacion: bonoAlimentacion,
+        indemnizacion: indemnizacion,
+        viatico_salarial: viaticoSal,
+        viatico_no_salarial: viaticoNoSal,
+        compensacion_ordinaria: compOrd,
+        compensacion_extraordinaria: compExtra,
+        pago_tercero_devengo: pagoTerceroDev,
+        bonificacion_retiro: bonifRetiro,
+        reintegro_devengo: reintegroDev,
+        dias_huelga_legal: huelgaLegalDias,
+        huelga_legal_inicio: huelgaLegalIni,
+        huelga_legal_fin: huelgaLegalFin,
         prima_servicios: n_primaServicios,
         cesantias_pagadas: n_cesantias,
         intereses_cesantias: n_interesesCesantias,
@@ -2590,6 +2727,16 @@ async function liquidarPeriodoMasivo(periodId) {
         embargo: embargos,
         cxc: 0,
         libranza: libranzas,
+        sindicato: sindicato,
+        sancion_privada: sancionPriv,
+        sancion_publica: sancionPub,
+        reintegro_deduccion: reintegroDed,
+        pension_voluntaria: pensionVoluntaria,
+        ahorro_afc: ahorroAfc,
+        cooperativa: cooperativa,
+        plan_complementario: planComplementario,
+        educacion: educacion,
+        pago_tercero: pagoTercero,
         prestamos: prestamos + anticipos + multas,
       };
 
@@ -3854,9 +4001,18 @@ function openNoveltyForm(periods, employees, novelty = null) {
 
   const getFieldType = (tipo) => {
     if (tipo === 'RETIRO') return 'retiro';
-    if (['HORA_EXTRA_DIURNA', 'HORA_EXTRA_NOCTURNA', 'HORA_EXTRA_DOMINICAL', 'HORA_EXTRA_DOMINICAL_NOCTURNA', 'RECARGO_NOCTURNO', 'RECARGO_DOMINICAL'].includes(tipo)) return 'horas';
+    if (['HORA_EXTRA_DIURNA', 'HORA_EXTRA_NOCTURNA', 'HORA_EXTRA_DOMINICAL', 'HORA_EXTRA_DOMINICAL_NOCTURNA', 'RECARGO_NOCTURNO', 'RECARGO_DOMINICAL', 'RECARGO_DOMINICAL_NOCTURNO'].includes(tipo)) return 'horas';
     if (['RETENCION_PORCENTAJE'].includes(tipo)) return 'porcentaje';
-    if (['PRESTAMO', 'ANTICIPO', 'MULTA', 'EMBARGO', 'OTRA_DEDUCCION', 'BONIFICACION', 'COMISION', 'AJUSTE_SALARIAL', 'PRIMA_SERVICIOS', 'INTERESES_CESANTIAS', 'CESANTIAS', 'DOTACION', 'PRIMA_EXTRALGAL', 'OTRO_INGRESO', 'GASTOS_REPRESENTACION', 'AUX_NO_SALARIALES', 'AUXILIO_RODAMIENTO', 'COMPENSATORIOS', 'AUXILIO_ALIMENTACION', 'LIBRANZA'].includes(tipo)) return 'valor';
+    if ([
+      'PRESTAMO', 'ANTICIPO', 'MULTA', 'SANCION_PRIVADA', 'SANCION_PUBLICA', 'EMBARGO', 'OTRA_DEDUCCION',
+      'BONIFICACION', 'COMISION', 'AJUSTE_SALARIAL', 'PRIMA_SERVICIOS', 'INTERESES_CESANTIAS', 'CESANTIAS',
+      'DOTACION', 'PRIMA_EXTRALGAL', 'OTRO_INGRESO', 'GASTOS_REPRESENTACION', 'AUX_NO_SALARIALES',
+      'AUXILIO_RODAMIENTO', 'VIATICO_SALARIAL', 'VIATICO_NO_SALARIAL', 'COMPENSATORIOS', 'AUXILIO_ALIMENTACION',
+      'LIBRANZA', 'SINDICATO', 'PENSION_VOLUNTARIA', 'AHORRO_AFC', 'COOPERATIVA', 'PLAN_COMPLEMENTARIO',
+      'EDUCACION', 'PAGO_TERCERO', 'PAGO_TERCERO_DEVENGO', 'REINTEGRO_DEVENGO', 'REINTEGRO_DEDUCCION',
+      'TELETRABAJO', 'APOYO_SOSTENIMIENTO', 'COMPENSACION_ORDINARIA', 'COMPENSACION_EXTRAORDINARIA',
+      'BONIFICACION_RETIRO', 'BONO_ALIMENTACION', 'INDEMNIZACION'
+    ].includes(tipo)) return 'valor';
     return 'dias';
   };
 
@@ -5869,15 +6025,19 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
           const name = emp.name || 'Empleado';
           const doc = emp.doc_number || '—';
           const numSec = `${r.prefijo || 'NOM'}-${r.consecutivo || '0'}`;
-          const isAjuste = (r.xml_generado && r.xml_generado.includes('NominaIndividualDeAjuste')) || (r.prefijo && (r.prefijo.startsWith('NA') || r.prefijo.includes('AJUS')));
+          const isAjuste = (r.xml_generado && (r.xml_generado.includes('NominaIndividualDeAjuste') || r.xml_generado.includes('"payroll_type"') || r.xml_generado.includes('predecessor'))) || (r.prefijo && (r.prefijo.startsWith('NA') || r.prefijo.includes('AJUS') || r.prefijo === 'NANE'));
           const badgeColor = {
             PENDIENTE: 'background:#FFF3CD;color:#856404',
             EN_PROCESO: 'background:#DBEAFE;color:#1E40AF',
             EN_COLA: 'background:#E0E7FF;color:#3730A3',
             SIMULADO: 'background:#EDE9FE;color:#5B21B6',
             APROBADO: 'background:#D4EDDA;color:#155724',
+            ANULADO: 'background:#FEE2E2;color:#991B1B;text-decoration:line-through',
             RECHAZADO: 'background:#F8D7DA;color:#721C24'
           }[r.estado_dian || 'PENDIENTE'] || 'background:#E2E8F0;color:#334155';
+
+          const isApproved = r.estado_dian === 'APROBADO' || !!r.cufe;
+          const hasCufe = !!r.cufe;
 
           let cuneDisplayHtml = '<span class="text-gray-400 text-3xs italic">Pendiente de firma</span>';
           const cuneVal = r.cufe || '';
@@ -5924,16 +6084,14 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
                           <span class="badge font-bold" style="${badgeColor}">${r.estado_dian || 'PENDIENTE'}</span>
                         </td>
                         <td class="text-right">
-                          <div class="flex gap-1 justify-end">
-                            <button class="btn btn-outline btn-sm p-1.5 border-gray-300 hover:bg-gray-100" title="Ver Detalle y XML UBL 2.1" onclick="window.openNominaWorkerDetailModal('${esc(r.id)}')"><i class="fas fa-eye text-gray-600"></i></button>
-                            <button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Firmar y Transmitir ante la DIAN" onclick="window.emitNominaElectronicaDian('${esc(r.id)}')"><i class="fas fa-paper-plane text-emerald-600"></i></button>
-                            ${(r.estado_dian === 'APROBADO' || r.cufe) ? `
-                            <button class="btn btn-outline btn-sm p-1.5 border-amber-600 hover:bg-amber-50 text-amber-700" title="Emitir Nota de Ajuste DIAN (Reemplazar o Eliminar)" onclick="window.openNominaAjusteModal('${esc(r.id)}')"><i class="fas fa-file-pen text-amber-600"></i></button>
-                            ` : ''}
-                            <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado DIAN" onclick="window.checkNominaFtechStatus('${esc(r.id)}')"><i class="fas fa-arrows-rotate text-blue-600"></i></button>
-                            <button class="btn btn-outline btn-sm p-1.5 border-purple-500 hover:bg-purple-50" title="Descargar PDF (Desprendible con CUNE)" onclick="window.downloadNominaPdf('${esc(r.id)}')"><i class="fas fa-file-pdf text-purple-600"></i></button>
-                            <button class="btn btn-outline btn-sm p-1.5 border-amber-500 hover:bg-amber-50" title="Descargar XML UBL 2.1 Individual" onclick="window.downloadNominaXml('${esc(r.id)}')"><i class="fas fa-file-code text-amber-600"></i></button>
-                            <button class="btn btn-outline btn-sm p-1.5 border-indigo-500 hover:bg-indigo-50" title="Reenviar Comprobante por Correo" onclick="window.resendNominaEmail('${esc(r.id)}')"><i class="fas fa-envelope text-indigo-600"></i></button>
+                          <div class="flex items-center gap-1.5 justify-end">
+                            <button type="button" class="btn btn-sm px-2.5 py-1 text-xs inline-flex items-center gap-1.5 shadow-2xs font-semibold ${isApproved ? 'btn-outline border-gray-300 text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300' : 'btn-primary bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'}" title="${isApproved ? 'Volver a Transmitir ante la DIAN' : 'Firmar y Transmitir ante la DIAN'}" onclick="window.emitNominaElectronicaDian('${esc(r.id)}')">
+                              <i class="fas fa-paper-plane text-xs ${isApproved ? 'text-gray-400' : 'text-white'}"></i>
+                              <span>Firmar</span>
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm px-2 py-1 text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-300 shadow-2xs transition-colors" title="Más opciones" onclick="window.openNominaRowActionMenu(event, { id: '${esc(r.id)}', approved: ${isApproved}, hasCufe: ${hasCufe} })">
+                              <i class="fas fa-ellipsis-vertical text-xs"></i>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -6042,6 +6200,525 @@ function calcNitDV(nit: string): string {
   return String(remainder < 2 ? remainder : 11 - remainder);
 }
 
+/**
+ * GRAVY ERP — Generador de Payload Nativo JSON UBL 2.1 para MATIAS API
+ * Elimina la serialización intermedia en XML para Nómina Individual y Notas de Ajuste.
+ */
+export function buildMatiasPayrollPayload(
+  emp: any,
+  company: any,
+  consecutivo: number,
+  prefijo: string,
+  year: number,
+  month: number,
+  periodStart: string,
+  periodEnd: string,
+  predecessor?: { prefijo: string; consecutivo: number; cune: string; fechaGen: string } | null,
+  tipoAjuste?: '1' | '2' | null
+): any {
+  const ymPrefix = `${year}-${String(month).padStart(2, '0')}`;
+  const targetPrefix = prefijo || (tipoAjuste ? 'NANE' : 'NOM');
+
+  // CASO 1: Nota de Ajuste de Eliminación (Tipo 2)
+  if (tipoAjuste === '2') {
+    const predNum = predecessor?.prefijo ? `${predecessor.prefijo}-${predecessor.consecutivo}` : `NOM-${predecessor?.consecutivo || 1}`;
+    const predCune = predecessor?.cune || '';
+    const predFechaGen = (predecessor?.fechaGen || periodStart || `${year}-01-01`).slice(0, 10);
+
+    return {
+      payroll_type: "delete",
+      document_number: String(consecutivo),
+      prefix: targetPrefix,
+      resolution_number: company.resolutionNumber || "18760000001",
+      deleting_predecessor: {
+        number: predNum,
+        cune: predCune,
+        generation_date: predFechaGen
+      }
+    };
+  }
+
+  // CASO 2 Y 3: Nómina Individual Ordinaria o Nota de Ajuste de Reemplazo (Tipo 1)
+  const settlementStart = periodStart || `${ymPrefix}-01`;
+  const settlementEnd = periodEnd || `${ymPrefix}-30`;
+  const dateEntry = (emp.fechaIngreso || periodStart || `${ymPrefix}-01`).trim();
+  const departureDate = emp.fechaRetiro ? emp.fechaRetiro.trim() : null;
+  const timeWorked = String(emp.diasLaborados || 30);
+
+  // Mapeo de Tipo de Documento DIAN a MATIAS API
+  const rawDocType = String(emp.tipoDocumento || 'CC').toUpperCase().trim();
+  let typeDocId = 1; // 1: Cédula de Ciudadanía
+  if (rawDocType === 'CE') typeDocId = 2;
+  else if (rawDocType === 'NIT') typeDocId = 3;
+  else if (rawDocType === 'TI') typeDocId = 7;
+  else if (rawDocType === 'RC') typeDocId = 6;
+  else if (rawDocType === 'TE') typeDocId = 8;
+  else if (rawDocType === 'PAS' || rawDocType === 'PASAPORTE') typeDocId = 9;
+  else if (rawDocType === 'DIE' || rawDocType === 'EXTRANJERO') typeDocId = 10;
+  else if (rawDocType === 'PEP') typeDocId = 14;
+  else if (rawDocType === 'PPT') typeDocId = 13;
+  else if (rawDocType === 'NUIP') typeDocId = 12;
+
+  // Resolución de códigos de ciudad a IDs numéricos internos de MATIAS API
+  const resolveMatiasCity = (codeOrName: any, defaultId = 1006): number => {
+    if (!codeOrName) return defaultId;
+    const s = String(codeOrName).trim();
+    const n = parseInt(s, 10);
+    if (!isNaN(n) && n > 0 && n <= 1200 && s.length <= 4) return n;
+    if (s === "76520") return 1032; // Palmira
+    if (s === "76001") return 1006; // Cali
+    if (s === "11001") return 149;  // Bogotá
+    if (s === "05001") return 1;    // Medellín
+    if (s === "08001") return 126;  // Barranquilla
+    if (s === "68001") return 846;  // Bucaramanga
+    if (s === "66001") return 832;  // Pereira
+    if (s === "13001") return 150;  // Cartagena
+    if (s === "17001") return 319;  // Manizales
+    if (s === "63001") return 820;  // Armenia
+    const low = s.toLowerCase();
+    if (low.includes("palmira")) return 1032;
+    if (low.includes("cali")) return 1006;
+    if (low.includes("bogot")) return 149;
+    return defaultId;
+  };
+
+  const companyCityId = resolveMatiasCity(company.cityCode || company.deptCode, 1006);
+  const employeeCityId = resolveMatiasCity(emp.cityCode, companyCityId);
+  const typeContractId = parseInt(emp.tipoContratoCode || "2", 10) || 2;
+  const municipalityId = employeeCityId;
+
+  let workerTypeId = parseInt(emp.tipoTrabajador || "1", 10) || 1;
+  if (workerTypeId === 0) workerTypeId = 1;
+  let workerSubtypeId = parseInt(emp.subTipoTrabajador || "1", 10) || 1;
+  if (workerSubtypeId === 0) workerSubtypeId = 1;
+
+  // Trabajador (Estándar canónico MATIAS API UBL 2.1)
+  const employeeObj = {
+    worker_type_id: workerTypeId,
+    worker_subtype_id: workerSubtypeId,
+    contract_type_id: typeContractId,
+    identity_document_id: String(typeDocId),
+    document_number: String(emp.numeroDocumento || "00000000"),
+    first_surname: String(emp.primerApellido || "EMPLEADO"),
+    second_surname: String(emp.segundoApellido || ""),
+    first_name: String(emp.primerNombre || "COLABORADOR"),
+    other_names: String(emp.otrosNombres || ""),
+    working_country_id: 45,
+    work_city_id: employeeCityId,
+    work_address: String(emp.direccion || company.companyDir || "CL 29 5 50"),
+    high_risk_pension: emp.altoRiesgo ? "true" : "false",
+    integral_salary: emp.salarioIntegral ? "true" : "false",
+    salary: round2(emp.salarioContrato || emp.sueldoBasico || 0).toFixed(2),
+    worker_code: String(emp.numeroDocumento || "00000000")
+  };
+
+  // Información de Pago
+  let paymentMethodId = 10; // Efectivo
+  if (emp.metodoPago === 'TRANSFERENCIA' || emp.metodoPagoCode === '30' || emp.metodoPagoCode === '47' || emp.metodoPagoCode === '42') {
+    paymentMethodId = 1;
+  } else if (emp.metodoPago === 'EFECTIVO' || emp.metodoPagoCode === '10') {
+    paymentMethodId = 10;
+  }
+  const paymentObj = {
+    payment_method_id: paymentMethodId,
+    means_payment_id: paymentMethodId === 1 ? "30" : "10",
+    bank: (emp.banco || "Bancolombia").trim(),
+    account_type: (emp.tipoCuenta || "Ahorros").trim(),
+    account_number: (emp.numeroCuenta || "0000000000").trim()
+  };
+
+  // 1. DEVENGADOS (accrued)
+  const accruedObj: any = {
+    basic: {
+      worked_days: timeWorked,
+      salary_worked: round2(emp.sueldoBasico || 0).toFixed(2)
+    }
+  };
+
+  // Auxilio de Transporte y Viáticos
+  const auxTransporte = round2(emp.auxilioTransporte || 0);
+  const viaticoSal = round2(emp.viaticoSalMonto || 0);
+  const viaticoNoSal = round2(emp.viaticoNoSalMonto || 0);
+  if (auxTransporte > 0 || viaticoSal > 0 || viaticoNoSal > 0) {
+    accruedObj.transport = {
+      transportation_assistance: auxTransporte.toFixed(2),
+      viatic_maintenance: viaticoSal.toFixed(2),
+      viatic_non_salary_maintenance: viaticoNoSal.toFixed(2)
+    };
+  }
+
+  // Horas Extras y Recargos
+  if (emp.otBreakdownMap && Object.keys(emp.otBreakdownMap).length > 0) {
+    const map = emp.otBreakdownMap;
+    if (map.hed && map.hed.amount > 0) {
+      accruedObj.HEDs = [{ start_time: null, final_hour: null, amount: String(map.hed.hours), percentage: "25.00", payment: round2(map.hed.amount).toFixed(2) }];
+    }
+    if (map.hen && map.hen.amount > 0) {
+      accruedObj.HENs = [{ start_time: null, final_hour: null, amount: String(map.hen.hours), percentage: "75.00", payment: round2(map.hen.amount).toFixed(2) }];
+    }
+    if (map.rno && map.rno.amount > 0) {
+      accruedObj.HRNs = [{ start_time: null, final_hour: null, amount: String(map.rno.hours), percentage: "35.00", payment: round2(map.rno.amount).toFixed(2) }];
+    }
+    if (map.heddf && map.heddf.amount > 0) {
+      accruedObj.HEDDFs = [{ start_time: null, final_hour: null, amount: String(map.heddf.hours), percentage: "100.00", payment: round2(map.heddf.amount).toFixed(2) }];
+    }
+    if (map.rdfd && map.rdfd.amount > 0) {
+      accruedObj.HRDDFs = [{ start_time: null, final_hour: null, amount: String(map.rdfd.hours), percentage: "75.00", payment: round2(map.rdfd.amount).toFixed(2) }];
+    }
+    if (map.hendf && map.hendf.amount > 0) {
+      accruedObj.HENDFs = [{ start_time: null, final_hour: null, amount: String(map.hendf.hours), percentage: "150.00", payment: round2(map.hendf.amount).toFixed(2) }];
+    }
+    if (map.hrndf && map.hrndf.amount > 0) {
+      accruedObj.HRNDFs = [{ start_time: null, final_hour: null, amount: String(map.hrndf.hours), percentage: "110.00", payment: round2(map.hrndf.amount).toFixed(2) }];
+    }
+  } else if ((emp.horasExtrasMonto || 0) > 0) {
+    accruedObj.HEDs = [{ start_time: null, final_hour: null, amount: "1", percentage: "25.00", payment: round2(emp.horasExtrasMonto).toFixed(2) }];
+  }
+
+  // Vacaciones (comunes y/o compensadas)
+  if ((emp.vacacionesMonto || 0) > 0 || (emp.vacacionesCompensadasMonto || 0) > 0) {
+    accruedObj.vacations = {};
+    if ((emp.vacacionesMonto || 0) > 0) {
+      accruedObj.vacations.common = {
+        start_date: settlementStart,
+        final_date: settlementEnd,
+        amount: "1",
+        payment: round2(emp.vacacionesMonto).toFixed(2)
+      };
+    }
+    if ((emp.vacacionesCompensadasMonto || 0) > 0) {
+      accruedObj.vacations.paid = {
+        amount: String(emp.vacacionesCompensadasDias || 1),
+        payment: round2(emp.vacacionesCompensadasMonto).toFixed(2)
+      };
+    }
+  }
+
+  // Primas de Servicios
+  if ((emp.primaMonto || 0) > 0) {
+    accruedObj.service_bonus = {
+      amount: "1",
+      payment: round2(emp.primaMonto).toFixed(2)
+    };
+  }
+
+  // Cesantías e Intereses de Cesantías
+  if ((emp.cesantiasMonto || 0) > 0 || (emp.interesesCesantiasMonto || 0) > 0) {
+    accruedObj.severance = {
+      amount: "1",
+      percentage: "12.00",
+      payment: round2(emp.cesantiasMonto || 0).toFixed(2),
+      payment_interest: round2(emp.interesesCesantiasMonto || 0).toFixed(2)
+    };
+  }
+
+  // Incapacidades
+  if ((emp.incapacidadesMonto || 0) > 0) {
+    accruedObj.work_disabilities = [{
+      start_date: settlementStart,
+      final_date: settlementEnd,
+      amount: "1",
+      type: String(emp.incapacidadTipo || "1"),
+      payment: round2(emp.incapacidadesMonto).toFixed(2)
+    }];
+  }
+
+  // Licencias Maternidad / Paternidad
+  if ((emp.licenciasMPMonto || 0) > 0) {
+    accruedObj.maternities = [{
+      start_date: settlementStart,
+      final_date: settlementEnd,
+      amount: String(emp.licenciasMPDias || 1),
+      type: "1",
+      payment: round2(emp.licenciasMPMonto).toFixed(2)
+    }];
+  }
+
+  // Licencias Remuneradas
+  if ((emp.licenciasMonto || 0) > 0) {
+    accruedObj.paid_leaves = [{
+      start_date: settlementStart,
+      final_date: settlementEnd,
+      amount: "1",
+      payment: round2(emp.licenciasMonto).toFixed(2)
+    }];
+  }
+
+  // Licencias No Remuneradas
+  if ((emp.licenciasNRDias || 0) > 0) {
+    accruedObj.non_paid_leaves = [{
+      start_date: emp.licenciasNRInicio || settlementStart,
+      final_date: emp.licenciasNRFin || settlementEnd,
+      amount: String(emp.licenciasNRDias)
+    }];
+  }
+
+  // Bonificaciones
+  if ((emp.bonificacionesMonto || 0) > 0) {
+    accruedObj.bonuses = [{
+      salary_bonus: round2(emp.bonificacionesMonto).toFixed(2),
+      non_salary_bonus: "0.00"
+    }];
+  }
+
+  // Auxilios (dotación, no salariales, alimentación)
+  const totalAux = round2((emp.dotacionMonto || 0) + (emp.auxNoSalarialesMonto || 0) + (emp.alimentacionMonto || 0));
+  if (totalAux > 0) {
+    accruedObj.aid = [{
+      salary_assistance: "0.00",
+      non_salary_assistance: totalAux.toFixed(2)
+    }];
+  }
+
+  // Comisiones
+  if ((emp.comisionesMonto || 0) > 0) {
+    accruedObj.commissions = [{
+      commission: round2(emp.comisionesMonto).toFixed(2)
+    }];
+  }
+
+  // Huelga legal
+  if ((emp.huelgaLegalDias || 0) > 0) {
+    accruedObj.legal_strike = [{
+      start_date: emp.huelgaLegalIni || settlementStart,
+      final_date: emp.huelgaLegalFin || settlementEnd,
+      amount: String(emp.huelgaLegalDias)
+    }];
+  }
+
+  // Otros conceptos
+  const totalOtrosDev = round2((emp.otrosIngresosMonto || 0) + (emp.gastosRepresentacionMonto || 0) + (emp.rodamientoMonto || 0));
+  if (totalOtrosDev > 0) {
+    const totStr = totalOtrosDev.toFixed(2);
+    accruedObj.other_concepts = [{
+      conceptS: "0.00",
+      conceptNS: totStr,
+      description: "Otros Devengados y Auxilios"
+    }];
+  }
+
+  // Compensaciones
+  if ((emp.compOrdMonto || 0) > 0 || (emp.compExtraMonto || 0) > 0 || (emp.compensatoriosMonto || 0) > 0) {
+    accruedObj.compensations = [{
+      ordinary_compensation: round2(emp.compOrdMonto || 0).toFixed(2),
+      extraordinary_compensation: round2((emp.compExtraMonto || 0) + (emp.compensatoriosMonto || 0)).toFixed(2)
+    }];
+  }
+
+  // Bonos de alimentación / vouchers
+  if ((emp.bonoAlimentacionMonto || 0) > 0) {
+    accruedObj.vouchers = [{
+      payment: round2(emp.bonoAlimentacionMonto).toFixed(2)
+    }];
+  }
+
+  // Indemnización
+  if ((emp.indemnizacionMonto || 0) > 0) {
+    accruedObj.indemnities = [{
+      indemnity: round2(emp.indemnizacionMonto).toFixed(2)
+    }];
+  }
+
+  // Reintegros devengos
+  if ((emp.reintegroDevMonto || 0) > 0) {
+    accruedObj.refunds = [{
+      refund: round2(emp.reintegroDevMonto).toFixed(2)
+    }];
+  }
+
+  // Pagos a terceros devengos
+  if ((emp.pagoTerceroDevMonto || 0) > 0) {
+    accruedObj.third_party_payments = [{
+      third_party_payment: round2(emp.pagoTerceroDevMonto).toFixed(2)
+    }];
+  }
+
+  // Teletrabajo
+  if ((emp.teletrabajoMonto || 0) > 0) {
+    accruedObj.telecommuting = round2(emp.teletrabajoMonto).toFixed(2);
+  }
+
+  // Apoyo sostenimiento
+  if ((emp.apoyoSostenimientoMonto || 0) > 0) {
+    accruedObj.support_sustainability = round2(emp.apoyoSostenimientoMonto).toFixed(2);
+  }
+
+  // Bonificación retiro
+  if ((emp.bonifRetiroMonto || 0) > 0) {
+    accruedObj.end_work_bonus = round2(emp.bonifRetiroMonto).toFixed(2);
+  }
+
+  // 2. DEDUCCIONES (deductions)
+  const healthDedStr = round2(emp.saludDeduccion || 0).toFixed(2);
+  const pensionDedStr = round2(emp.pensionDeduccion || 0).toFixed(2);
+  const deductionsObj: any = {
+    health: {
+      percentage: "4.00",
+      deduction: healthDedStr
+    },
+    pension_fund: {
+      percentage: "4.00",
+      deduction: pensionDedStr
+    }
+  };
+
+  // Fondo Solidaridad Pensional
+  if ((emp.solidaridadDeduccion || 0) > 0) {
+    const spVal = round2(emp.solidaridadDeduccion).toFixed(2);
+    deductionsObj.fundSP = {
+      percentage: "1.00",
+      deduction: spVal,
+      percentageSub: "0.00",
+      deductionSub: "0.00"
+    };
+  }
+
+  // Sindicatos
+  if ((emp.sindicatoDeduccion || 0) > 0) {
+    deductionsObj.labor_union = [{
+      percentage: "1.00",
+      deduction: round2(emp.sindicatoDeduccion).toFixed(2)
+    }];
+  }
+
+  // Sanciones
+  if ((emp.sancionPubDeduccion || 0) > 0 || (emp.sancionPrivDeduccion || 0) > 0) {
+    deductionsObj.sanctions = [{
+      public_sanction: round2(emp.sancionPubDeduccion || 0).toFixed(2),
+      private_sanction: round2(emp.sancionPrivDeduccion || 0).toFixed(2)
+    }];
+  }
+
+  // Libranzas
+  if ((emp.libranzaDeduccion || 0) > 0) {
+    deductionsObj.orders = [{
+      description: "Deducción Libranza",
+      deduction: round2(emp.libranzaDeduccion).toFixed(2)
+    }];
+  }
+
+  // Anticipos
+  if ((emp.anticipoDeduccion || 0) > 0) {
+    deductionsObj.advances = [{
+      advance: round2(emp.anticipoDeduccion).toFixed(2)
+    }];
+  }
+
+  // Pagos a terceros deducciones
+  if ((emp.pagoTerceroDeduccion || 0) > 0) {
+    deductionsObj.third_party_payment = [{
+      third_party_pay: round2(emp.pagoTerceroDeduccion).toFixed(2)
+    }];
+  }
+
+  // Pensión voluntaria
+  if ((emp.pensionVoluntariaDeduccion || 0) > 0) {
+    deductionsObj.pension_voluntary = round2(emp.pensionVoluntariaDeduccion).toFixed(2);
+  }
+
+  // Retención en la fuente
+  if ((emp.retencionDeduccion || 0) > 0) {
+    deductionsObj.retefuente = round2(emp.retencionDeduccion).toFixed(2);
+  }
+
+  // Cuentas AFC
+  if ((emp.afcDeduccion || 0) > 0) {
+    deductionsObj.afc = round2(emp.afcDeduccion).toFixed(2);
+  }
+
+  // Cooperativas
+  if ((emp.cooperativaDeduccion || 0) > 0) {
+    deductionsObj.cooperative = round2(emp.cooperativaDeduccion).toFixed(2);
+  }
+
+  // Embargos
+  if ((emp.embargoDeduccion || 0) > 0) {
+    deductionsObj.tax_liens = round2(emp.embargoDeduccion).toFixed(2);
+  }
+
+  // Planes complementarios
+  if ((emp.planComplementarioDeduccion || 0) > 0) {
+    deductionsObj.supplementary_plan = round2(emp.planComplementarioDeduccion).toFixed(2);
+  }
+
+  // Educación
+  if ((emp.educacionDeduccion || 0) > 0) {
+    deductionsObj.education = round2(emp.educacionDeduccion).toFixed(2);
+  }
+
+  // Reintegros deducciones
+  if ((emp.reintegroDeduccion || 0) > 0) {
+    deductionsObj.refund = round2(emp.reintegroDeduccion).toFixed(2);
+  }
+
+  // Deuda y otras deducciones
+  const totalDeuda = round2((emp.deudaDeduccion || 0) + (emp.otrasDeducciones || 0));
+  if (totalDeuda > 0) {
+    deductionsObj.debt = totalDeuda.toFixed(2);
+  }
+
+  const totalEarnedStr = round2(emp.totalDevengos || 0).toFixed(2);
+  const totalDeductionsStr = round2(emp.totalDeducciones || 0).toFixed(2);
+  const totalVoucherStr = round2(emp.netoPagar || 0).toFixed(2);
+
+  const payload: any = {
+    document_number: String(consecutivo),
+    prefix: targetPrefix,
+    resolution_number: company.resolutionNumber || "18760000001",
+    generation_city_id: String(companyCityId || municipalityId),
+    worker_code: String(emp.numeroDocumento || "00000000"),
+    novelty: false,
+    pay_day: settlementEnd,
+    notes: "",
+    rounding: "0.00",
+    payroll_period_id: 5,
+    settlement_type_id: 1,
+    period: {
+      settlement_start_date: settlementStart,
+      settlement_end_date: settlementEnd,
+      amount_time: `${timeWorked}.00`,
+      date_issue: settlementEnd,
+      date_entry: dateEntry,
+      departure_date: departureDate,
+      time_worked: timeWorked,
+      generation_date: settlementEnd
+    },
+    general_information: {
+      generation_date: settlementEnd,
+      generation_time: "10:00:00",
+      period_id: 5,
+      currency_id: 272,
+      trm: "0",
+      type_xml_id: tipoAjuste === '1' ? 103 : 102
+    },
+    employee: employeeObj,
+    payment: paymentObj,
+    payment_dates: [settlementEnd],
+    earn: accruedObj,
+    deductions: deductionsObj,
+    total_earned: totalEarnedStr,
+    deductions_total: totalDeductionsStr,
+    total_voucher: totalVoucherStr
+  };
+
+  if (tipoAjuste === '1') {
+    payload.payroll_type = "replace";
+    const predNum = predecessor?.prefijo ? `${predecessor.prefijo}-${predecessor.consecutivo}` : `NOM-${predecessor?.consecutivo || 1}`;
+    payload.relevant_predecessor = {
+      number: predNum,
+      cune: predecessor?.cune || '',
+      generation_date: (predecessor?.fechaGen || periodStart || `${year}-01-01`).slice(0, 10)
+    };
+    payload.replacing_predecessor = {
+      number: predNum,
+      cune: predecessor?.cune || '',
+      generation_date: (predecessor?.fechaGen || periodStart || `${year}-01-01`).slice(0, 10)
+    };
+  }
+
+  return payload;
+}
+
 function buildNominaIndividualDeAjusteXml(
   emp: any,
   company: any,
@@ -6140,12 +6817,19 @@ function buildNominaIndividualDeAjusteXml(
   }
 
   let devengadosXml = `  <Basico DiasTrabajados="${emp.diasLaborados || 30}" SueldoTrabajado="${sueldoBasico}" />\n`;
-  if ((emp.auxilioTransporte || 0) > 0) {
-    devengadosXml += `  <Transporte AuxilioTransporte="${round2(emp.auxilioTransporte).toFixed(2)}" ViaticoManuAlojS="0.00" ViaticoManuAlojNS="0.00" />\n`;
+  if ((emp.auxilioTransporte || 0) > 0 || (emp.viaticoSalMonto || 0) > 0 || (emp.viaticoNoSalMonto || 0) > 0) {
+    devengadosXml += `  <Transporte AuxilioTransporte="${round2(emp.auxilioTransporte || 0).toFixed(2)}" ViaticoManuAlojS="${round2(emp.viaticoSalMonto || 0).toFixed(2)}" ViaticoManuAlojNS="${round2(emp.viaticoNoSalMonto || 0).toFixed(2)}" />\n`;
   }
   if (otNodesXml) devengadosXml += otNodesXml;
-  if ((emp.vacacionesMonto || 0) > 0) {
-    devengadosXml += `  <Vacaciones><VacacionesComunes Cantidad="${emp.vacacionesDias || 1}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" /></Vacaciones>\n`;
+  if ((emp.vacacionesMonto || 0) > 0 || (emp.vacacionesCompensadasMonto || 0) > 0) {
+    let vacContent = '';
+    if ((emp.vacacionesMonto || 0) > 0) {
+      vacContent += `<VacacionesComunes Cantidad="${emp.vacacionesDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" />`;
+    }
+    if ((emp.vacacionesCompensadasMonto || 0) > 0) {
+      vacContent += `<VacacionesCompensadas Cantidad="${emp.vacacionesCompensadasDias || 1}" Pago="${round2(emp.vacacionesCompensadasMonto).toFixed(2)}" />`;
+    }
+    devengadosXml += `  <Vacaciones>${vacContent}</Vacaciones>\n`;
   }
   if ((emp.primaMonto || 0) > 0) {
     devengadosXml += `  <Primas Cantidad="${emp.primaDias || 180}" Pago="${round2(emp.primaMonto).toFixed(2)}" />\n`;
@@ -6156,12 +6840,17 @@ function buildNominaIndividualDeAjusteXml(
     devengadosXml += `  <Cesantias Pago="${round2(emp.cesantiasMonto).toFixed(2)}" Porcentaje="${pctInt}" PagoIntereses="${intCes.toFixed(2)}" />\n`;
   }
   if ((emp.incapacidadesMonto || 0) > 0) {
-    devengadosXml += `  <Incapacidades><Incapacidad Tipo="1" Cantidad="${emp.incapacidadesDias || 1}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
+    devengadosXml += `  <Incapacidades><Incapacidad Tipo="${emp.incapacidadTipo || 1}" Cantidad="${emp.incapacidadesDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
   }
-  if ((emp.licenciasMonto || 0) > 0 || (emp.licenciasNRDias || 0) > 0) {
+  if ((emp.licenciasMonto || 0) > 0 || (emp.licenciasNRDias || 0) > 0 || (emp.licenciasMPMonto || 0) > 0 || (emp.licenciasMPDias || 0) > 0) {
     let licContent = '';
-    if ((emp.licenciasMonto || 0) > 0) {
-      licContent += `<LicenciaR Cantidad="${emp.licenciasDias || 1}" Pago="${round2(emp.licenciasMonto).toFixed(2)}" />`;
+    if ((emp.licenciasMPMonto || 0) > 0 || (emp.licenciasMPDias || 0) > 0) {
+      licContent += `<LicenciaMP Cantidad="${emp.licenciasMPDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.licenciasMPMonto || 0).toFixed(2)}" />`;
+    }
+    const remMonto = round2((emp.licenciasMonto || 0) - (emp.licenciasMPMonto || 0));
+    if (remMonto > 0) {
+      const remDias = Math.max(1, (emp.licenciasDias || 1) - (emp.licenciasMPDias || 0));
+      licContent += `<LicenciaR Cantidad="${remDias}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${remMonto.toFixed(2)}" />`;
     }
     if ((emp.licenciasNRDias || 0) > 0) {
       const fIni = emp.licenciasNRInicio || `${ymPrefix}-01`;
@@ -6177,6 +6866,9 @@ function buildNominaIndividualDeAjusteXml(
   if (auxNS > 0) {
     devengadosXml += `  <Auxilios><Auxilio AuxilioS="0.00" AuxilioNS="${auxNS.toFixed(2)}" /></Auxilios>\n`;
   }
+  if ((emp.huelgaLegalDias || 0) > 0) {
+    devengadosXml += `  <HuelgasLegales><HuelgaLegal Cantidad="${emp.huelgaLegalDias}" FechaInicio="${emp.huelgaLegalIni || fechaLiqInicio}" FechaFin="${emp.huelgaLegalFin || fechaLiqFin}" /></HuelgasLegales>\n`;
+  }
   let otrosConceptosInner = '';
   if ((emp.otrosIngresosMonto || 0) > 0) {
     otrosConceptosInner += `<OtroConcepto DescripcionConcepto="Otros Conceptos" ConceptoS="${round2(emp.otrosIngresosMonto).toFixed(2)}" ConceptoNS="0.00" />`;
@@ -6190,11 +6882,35 @@ function buildNominaIndividualDeAjusteXml(
   if (otrosConceptosInner) {
     devengadosXml += `  <OtrosConceptos>${otrosConceptosInner}</OtrosConceptos>\n`;
   }
+  if ((emp.compOrdMonto || 0) > 0 || (emp.compExtraMonto || 0) > 0) {
+    devengadosXml += `  <Compensaciones><Compensacion CompensacionO="${round2(emp.compOrdMonto || 0).toFixed(2)}" CompensacionE="${round2(emp.compExtraMonto || 0).toFixed(2)}" /></Compensaciones>\n`;
+  }
+  if ((emp.bonoAlimentacionMonto || 0) > 0) {
+    devengadosXml += `  <BonoEPCTVs><BonoEPCTV PagoS="0.00" PagoNS="${round2(emp.bonoAlimentacionMonto).toFixed(2)}" PagoAlimentacionS="0.00" PagoAlimentacionNS="${round2(emp.bonoAlimentacionMonto).toFixed(2)}" /></BonoEPCTVs>\n`;
+  }
   if ((emp.comisionesMonto || 0) > 0) {
     devengadosXml += `  <Comisiones><Comision>${round2(emp.comisionesMonto).toFixed(2)}</Comision></Comisiones>\n`;
   }
+  if ((emp.pagoTerceroDevMonto || 0) > 0) {
+    devengadosXml += `  <PagosTerceros><PagoTercero>${round2(emp.pagoTerceroDevMonto).toFixed(2)}</PagoTercero></PagosTerceros>\n`;
+  }
   if ((emp.dotacionMonto || 0) > 0) {
-    devengadosXml += `  <PagosTerceros><PagoTercero>${round2(emp.dotacionMonto).toFixed(2)}</PagoTercero></PagosTerceros>\n`;
+    devengadosXml += `  <Dotacion>${round2(emp.dotacionMonto).toFixed(2)}</Dotacion>\n`;
+  }
+  if ((emp.apoyoSostenimientoMonto || 0) > 0) {
+    devengadosXml += `  <ApoyoSost>${round2(emp.apoyoSostenimientoMonto).toFixed(2)}</ApoyoSost>\n`;
+  }
+  if ((emp.teletrabajoMonto || 0) > 0) {
+    devengadosXml += `  <Teletrabajo>${round2(emp.teletrabajoMonto).toFixed(2)}</Teletrabajo>\n`;
+  }
+  if ((emp.bonifRetiroMonto || 0) > 0) {
+    devengadosXml += `  <BonifRetiro>${round2(emp.bonifRetiroMonto).toFixed(2)}</BonifRetiro>\n`;
+  }
+  if ((emp.indemnizacionMonto || 0) > 0) {
+    devengadosXml += `  <Indemnizacion>${round2(emp.indemnizacionMonto).toFixed(2)}</Indemnizacion>\n`;
+  }
+  if ((emp.reintegroDevMonto || 0) > 0) {
+    devengadosXml += `  <Reintegro>${round2(emp.reintegroDevMonto).toFixed(2)}</Reintegro>\n`;
   }
 
   let deduccionesAdicionalesXml = '';
@@ -6208,17 +6924,41 @@ function buildNominaIndividualDeAjusteXml(
   if ((emp.sindicatoDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <Sindicatos><Sindicato Porcentaje="1.00" Deduccion="${round2(emp.sindicatoDeduccion).toFixed(2)}" /></Sindicatos>\n`;
   }
+  if ((emp.sancionPubDeduccion || 0) > 0 || (emp.sancionPrivDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Sanciones><Sancion SancionPub="${round2(emp.sancionPubDeduccion || 0).toFixed(2)}" SancionPriv="${round2(emp.sancionPrivDeduccion || 0).toFixed(2)}" /></Sanciones>\n`;
+  }
   if ((emp.libranzaDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <Libranzas><Libranza Descripcion="Deducción Libranza" Deduccion="${round2(emp.libranzaDeduccion).toFixed(2)}" /></Libranzas>\n`;
   }
   if ((emp.anticipoDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <Anticipos><Anticipo>${round2(emp.anticipoDeduccion).toFixed(2)}</Anticipo></Anticipos>\n`;
   }
+  if ((emp.pensionVoluntariaDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <PensionVoluntaria>${round2(emp.pensionVoluntariaDeduccion).toFixed(2)}</PensionVoluntaria>\n`;
+  }
   if ((emp.retencionDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <RetencionFuente>${round2(emp.retencionDeduccion).toFixed(2)}</RetencionFuente>\n`;
   }
+  if ((emp.afcDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <AfC>${round2(emp.afcDeduccion).toFixed(2)}</AfC>\n`;
+  }
+  if ((emp.cooperativaDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Cooperativa>${round2(emp.cooperativaDeduccion).toFixed(2)}</Cooperativa>\n`;
+  }
   if ((emp.embargoDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <EmbargoFiscal>${round2(emp.embargoDeduccion).toFixed(2)}</EmbargoFiscal>\n`;
+  }
+  if ((emp.planComplementarioDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <PlanComplementarios>${round2(emp.planComplementarioDeduccion).toFixed(2)}</PlanComplementarios>\n`;
+  }
+  if ((emp.educacionDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Educacion>${round2(emp.educacionDeduccion).toFixed(2)}</Educacion>\n`;
+  }
+  if ((emp.pagoTerceroDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <PagosTerceros><PagoTercero>${round2(emp.pagoTerceroDeduccion).toFixed(2)}</PagoTercero></PagosTerceros>\n`;
+  }
+  if ((emp.reintegroDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Reintegro>${round2(emp.reintegroDeduccion).toFixed(2)}</Reintegro>\n`;
   }
   const totalDeuda = round2((emp.deudaDeduccion || 0) + (emp.otrasDeducciones || 0));
   if (totalDeuda > 0) {
@@ -6329,15 +7069,22 @@ function buildSingleWorkerUblXml(
 
   // Construcción de Devengados siguiendo estrictamente la secuencia jerárquica XSD de la DIAN
   let devengadosXml = `  <Basico DiasTrabajados="${emp.diasLaborados || 30}" SueldoTrabajado="${sueldoBasico}" />\n`;
-  if ((emp.auxilioTransporte || 0) > 0) {
-    devengadosXml += `  <Transporte AuxilioTransporte="${round2(emp.auxilioTransporte).toFixed(2)}" ViaticoManuAlojS="0.00" ViaticoManuAlojNS="0.00" />\n`;
+  if ((emp.auxilioTransporte || 0) > 0 || (emp.viaticoSalMonto || 0) > 0 || (emp.viaticoNoSalMonto || 0) > 0) {
+    devengadosXml += `  <Transporte AuxilioTransporte="${round2(emp.auxilioTransporte || 0).toFixed(2)}" ViaticoManuAlojS="${round2(emp.viaticoSalMonto || 0).toFixed(2)}" ViaticoManuAlojNS="${round2(emp.viaticoNoSalMonto || 0).toFixed(2)}" />\n`;
   }
   // Horas Extras y Recargos: DEBEN ir inmediatamente después de Transporte y antes de Vacaciones según XSD DIAN
   if (otNodesXml) {
     devengadosXml += otNodesXml;
   }
-  if ((emp.vacacionesMonto || 0) > 0) {
-    devengadosXml += `  <Vacaciones><VacacionesComunes Cantidad="${emp.vacacionesDias || 1}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" /></Vacaciones>\n`;
+  if ((emp.vacacionesMonto || 0) > 0 || (emp.vacacionesCompensadasMonto || 0) > 0) {
+    let vacNodes = '';
+    if ((emp.vacacionesMonto || 0) > 0) {
+      vacNodes += `<VacacionesComunes Cantidad="${emp.vacacionesDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" />`;
+    }
+    if ((emp.vacacionesCompensadasMonto || 0) > 0) {
+      vacNodes += `<VacacionesCompensadas Cantidad="${emp.vacacionesCompensadasDias || 1}" Pago="${round2(emp.vacacionesCompensadasMonto).toFixed(2)}" />`;
+    }
+    devengadosXml += `  <Vacaciones>${vacNodes}</Vacaciones>\n`;
   }
   if ((emp.primaMonto || 0) > 0) {
     devengadosXml += `  <Primas Cantidad="${emp.primaDias || 180}" Pago="${round2(emp.primaMonto).toFixed(2)}" />\n`;
@@ -6348,12 +7095,17 @@ function buildSingleWorkerUblXml(
     devengadosXml += `  <Cesantias Pago="${round2(emp.cesantiasMonto).toFixed(2)}" Porcentaje="${pctInt}" PagoIntereses="${intCes.toFixed(2)}" />\n`;
   }
   if ((emp.incapacidadesMonto || 0) > 0) {
-    devengadosXml += `  <Incapacidades><Incapacidad Tipo="1" Cantidad="${emp.incapacidadesDias || 1}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
+    devengadosXml += `  <Incapacidades><Incapacidad Tipo="${emp.incapacidadTipo || 1}" Cantidad="${emp.incapacidadesDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
   }
-  if ((emp.licenciasMonto || 0) > 0 || (emp.licenciasNRDias || 0) > 0) {
+  if ((emp.licenciasMonto || 0) > 0 || (emp.licenciasNRDias || 0) > 0 || (emp.licenciasMPMonto || 0) > 0 || (emp.licenciasMPDias || 0) > 0) {
     let licContent = '';
-    if ((emp.licenciasMonto || 0) > 0) {
-      licContent += `<LicenciaR Cantidad="${emp.licenciasDias || 1}" Pago="${round2(emp.licenciasMonto).toFixed(2)}" />`;
+    if ((emp.licenciasMPMonto || 0) > 0 || (emp.licenciasMPDias || 0) > 0) {
+      licContent += `<LicenciaMP Cantidad="${emp.licenciasMPDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.licenciasMPMonto || 0).toFixed(2)}" />`;
+    }
+    const remMonto = round2((emp.licenciasMonto || 0) - (emp.licenciasMPMonto || 0));
+    if (remMonto > 0) {
+      const remDias = Math.max(1, (emp.licenciasDias || 1) - (emp.licenciasMPDias || 0));
+      licContent += `<LicenciaR Cantidad="${remDias}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${remMonto.toFixed(2)}" />`;
     }
     if ((emp.licenciasNRDias || 0) > 0) {
       const fIni = emp.licenciasNRInicio || `${ymPrefix}-01`;
@@ -6369,6 +7121,9 @@ function buildSingleWorkerUblXml(
   if (auxNS > 0) {
     devengadosXml += `  <Auxilios><Auxilio AuxilioS="0.00" AuxilioNS="${auxNS.toFixed(2)}" /></Auxilios>\n`;
   }
+  if ((emp.huelgaLegalDias || 0) > 0) {
+    devengadosXml += `  <HuelgasLegales><HuelgaLegal Cantidad="${emp.huelgaLegalDias}" FechaInicio="${emp.huelgaLegalIni || fechaLiqInicio}" FechaFin="${emp.huelgaLegalFin || fechaLiqFin}" /></HuelgasLegales>\n`;
+  }
   let otrosConceptosInner = '';
   if ((emp.otrosIngresosMonto || 0) > 0) {
     otrosConceptosInner += `<OtroConcepto DescripcionConcepto="Otros Conceptos" ConceptoS="${round2(emp.otrosIngresosMonto).toFixed(2)}" ConceptoNS="0.00" />`;
@@ -6382,12 +7137,37 @@ function buildSingleWorkerUblXml(
   if (otrosConceptosInner) {
     devengadosXml += `  <OtrosConceptos>${otrosConceptosInner}</OtrosConceptos>\n`;
   }
+  if ((emp.compOrdMonto || 0) > 0 || (emp.compExtraMonto || 0) > 0) {
+    devengadosXml += `  <Compensaciones><Compensacion CompensacionO="${round2(emp.compOrdMonto || 0).toFixed(2)}" CompensacionE="${round2(emp.compExtraMonto || 0).toFixed(2)}" /></Compensaciones>\n`;
+  }
+  if ((emp.bonoAlimentacionMonto || 0) > 0) {
+    devengadosXml += `  <BonoEPCTVs><BonoEPCTV PagoS="0.00" PagoNS="${round2(emp.bonoAlimentacionMonto).toFixed(2)}" PagoAlimentacionS="0.00" PagoAlimentacionNS="${round2(emp.bonoAlimentacionMonto).toFixed(2)}" /></BonoEPCTVs>\n`;
+  }
   if ((emp.comisionesMonto || 0) > 0) {
     devengadosXml += `  <Comisiones><Comision>${round2(emp.comisionesMonto).toFixed(2)}</Comision></Comisiones>\n`;
+  }
+  if ((emp.pagoTerceroDevMonto || 0) > 0) {
+    devengadosXml += `  <PagosTerceros><PagoTercero>${round2(emp.pagoTerceroDevMonto).toFixed(2)}</PagoTercero></PagosTerceros>\n`;
   }
   if ((emp.dotacionMonto || 0) > 0) {
     devengadosXml += `  <Dotacion>${round2(emp.dotacionMonto).toFixed(2)}</Dotacion>\n`;
   }
+  if ((emp.apoyoSostenimientoMonto || 0) > 0) {
+    devengadosXml += `  <ApoyoSost>${round2(emp.apoyoSostenimientoMonto).toFixed(2)}</ApoyoSost>\n`;
+  }
+  if ((emp.teletrabajoMonto || 0) > 0) {
+    devengadosXml += `  <Teletrabajo>${round2(emp.teletrabajoMonto).toFixed(2)}</Teletrabajo>\n`;
+  }
+  if ((emp.bonifRetiroMonto || 0) > 0) {
+    devengadosXml += `  <BonifRetiro>${round2(emp.bonifRetiroMonto).toFixed(2)}</BonifRetiro>\n`;
+  }
+  if ((emp.indemnizacionMonto || 0) > 0) {
+    devengadosXml += `  <Indemnizacion>${round2(emp.indemnizacionMonto).toFixed(2)}</Indemnizacion>\n`;
+  }
+  if ((emp.reintegroDevMonto || 0) > 0) {
+    devengadosXml += `  <Reintegro>${round2(emp.reintegroDevMonto).toFixed(2)}</Reintegro>\n`;
+  }
+
   let deduccionesAdicionalesXml = '';
   deduccionesAdicionalesXml += `  <Salud Porcentaje="4.00" Deduccion="${round2(emp.saludDeduccion || 0).toFixed(2)}" />\n`;
   deduccionesAdicionalesXml += `  <FondoPension Porcentaje="4.00" Deduccion="${round2(emp.pensionDeduccion || 0).toFixed(2)}" />\n`;
@@ -6398,17 +7178,41 @@ function buildSingleWorkerUblXml(
   if ((emp.sindicatoDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <Sindicatos><Sindicato Porcentaje="1.00" Deduccion="${round2(emp.sindicatoDeduccion).toFixed(2)}" /></Sindicatos>\n`;
   }
+  if ((emp.sancionPubDeduccion || 0) > 0 || (emp.sancionPrivDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Sanciones><Sancion SancionPub="${round2(emp.sancionPubDeduccion || 0).toFixed(2)}" SancionPriv="${round2(emp.sancionPrivDeduccion || 0).toFixed(2)}" /></Sanciones>\n`;
+  }
   if ((emp.libranzaDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <Libranzas><Libranza Descripcion="Deducción Libranza" Deduccion="${round2(emp.libranzaDeduccion).toFixed(2)}" /></Libranzas>\n`;
   }
   if ((emp.anticipoDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <Anticipos><Anticipo>${round2(emp.anticipoDeduccion).toFixed(2)}</Anticipo></Anticipos>\n`;
   }
+  if ((emp.pensionVoluntariaDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <PensionVoluntaria>${round2(emp.pensionVoluntariaDeduccion).toFixed(2)}</PensionVoluntaria>\n`;
+  }
   if ((emp.retencionDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <RetencionFuente>${round2(emp.retencionDeduccion).toFixed(2)}</RetencionFuente>\n`;
   }
+  if ((emp.afcDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <AfC>${round2(emp.afcDeduccion).toFixed(2)}</AfC>\n`;
+  }
+  if ((emp.cooperativaDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Cooperativa>${round2(emp.cooperativaDeduccion).toFixed(2)}</Cooperativa>\n`;
+  }
   if ((emp.embargoDeduccion || 0) > 0) {
     deduccionesAdicionalesXml += `  <EmbargoFiscal>${round2(emp.embargoDeduccion).toFixed(2)}</EmbargoFiscal>\n`;
+  }
+  if ((emp.planComplementarioDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <PlanComplementarios>${round2(emp.planComplementarioDeduccion).toFixed(2)}</PlanComplementarios>\n`;
+  }
+  if ((emp.educacionDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Educacion>${round2(emp.educacionDeduccion).toFixed(2)}</Educacion>\n`;
+  }
+  if ((emp.pagoTerceroDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <PagosTerceros><PagoTercero>${round2(emp.pagoTerceroDeduccion).toFixed(2)}</PagoTercero></PagosTerceros>\n`;
+  }
+  if ((emp.reintegroDeduccion || 0) > 0) {
+    deduccionesAdicionalesXml += `  <Reintegro>${round2(emp.reintegroDeduccion).toFixed(2)}</Reintegro>\n`;
   }
   const totalDeuda = round2((emp.deudaDeduccion || 0) + (emp.otrasDeducciones || 0));
   if (totalDeuda > 0) {
@@ -6467,6 +7271,302 @@ ${deduccionesAdicionalesXml}</Deducciones>
 <DeduccionesTotal>${deducciones}</DeduccionesTotal>
 <ComprobanteTotal>${neto}</ComprobanteTotal>
 </NominaIndividual>`;
+}
+
+async function mergeSettlementsIntoAccumulators(
+  year: number,
+  month: number,
+  acumuladosPorEmpleado: Map<string, any>,
+  nomConfig: any,
+  companyDefaults: { deptCode: string; cityCode: string; companyDir: string }
+) {
+  const ymPrefix = `${year}-${String(month).padStart(2, '0')}`;
+  const mStart = `${ymPrefix}-01`;
+  const mEnd = `${ymPrefix}-31`;
+
+  // 1. Consultar liquidaciones registradas en la tabla payroll_settlements
+  const monthSettlements = await pb.listAll('payroll_settlements', {
+    filter: `settlement_date >= "${mStart}" && settlement_date <= "${mEnd}" && status != "draft"`,
+    expand: 'employee_id,tx_id'
+  }).catch(() => [] as any[]);
+
+  const processedSettlementEmps = new Set<string>();
+  const processedSettlementTxIds = new Set<string>();
+
+  const allSettlementsToMerge: Array<{
+    empId: string;
+    settlementDate: string;
+    cesantias: number;
+    intCes: number;
+    prima: number;
+    vacaciones: number;
+    vacDays: number;
+    indemnizacion: number;
+    pendingSal: number;
+    pendingTrans: number;
+  }> = [];
+
+  for (const s of monthSettlements) {
+    if (!s.employee_id) continue;
+    if (s.tx_id) processedSettlementTxIds.add(s.tx_id);
+    processedSettlementEmps.add(s.employee_id);
+
+    allSettlementsToMerge.push({
+      empId: s.employee_id,
+      settlementDate: s.settlement_date,
+      cesantias: round2(Number(s.severance_amount || 0)),
+      intCes: round2(Number(s.severance_interest_amount || 0)),
+      prima: round2(Number(s.bonus_amount || 0)),
+      vacaciones: round2(Number(s.vacation_amount || 0)),
+      vacDays: Number(s.vacation_days || 0),
+      indemnizacion: round2(Number(s.indemnity_amount || 0)),
+      pendingSal: round2(Number(s.pending_salary_amount || 0)),
+      pendingTrans: round2(Number(s.pending_transport_amount || 0)),
+    });
+  }
+
+  // 2. Consultar comprobantes contables de finiquito (cross_type = 'payroll_settlement' o transacciones LQ)
+  const settlementTxs = await pb.listAll('transactions', {
+    filter: `cross_type = "payroll_settlement" && date >= "${mStart}" && date <= "${mEnd}" && status != "void" && status != "cancelled"`,
+    expand: 'third_party_id'
+  }).catch(() => [] as any[]);
+
+  for (const tx of settlementTxs) {
+    const empId = tx.third_party_id;
+    if (!empId || processedSettlementTxIds.has(tx.id) || processedSettlementEmps.has(empId)) {
+      continue;
+    }
+
+    const lines = await pb.listAll('tx_lines', {
+      filter: `tx_id = "${tx.id}"`,
+      expand: 'account_id'
+    }).catch(() => [] as any[]);
+
+    let cesantias = 0;
+    let intCes = 0;
+    let prima = 0;
+    let vacaciones = 0;
+    let indemnizacion = 0;
+    let pendingSal = 0;
+    let pendingTrans = 0;
+
+    for (const l of lines) {
+      const code = String(l.expand?.account_id?.code || l.account_code || '');
+      const desc = String(l.description || '').toLowerCase();
+      const debit = Number(l.debit || 0);
+      const credit = Number(l.credit || 0);
+      const netDebit = debit - credit;
+
+      // Omitir pasivos y aportes parafiscales CCF (cuenta 2370, 510572, etc.)
+      if (code.startsWith('2370') || code.startsWith('510572') || desc.includes('caja') || desc.includes('ccf') || desc.includes('parafiscal')) {
+        continue;
+      }
+
+      if (code.startsWith('261005') || code.startsWith('510530') || (desc.includes('cesant') && !desc.includes('interes'))) {
+        cesantias += netDebit;
+      } else if (code.startsWith('261010') || code.startsWith('510533') || desc.includes('interes')) {
+        intCes += netDebit;
+      } else if (code.startsWith('261020') || code.startsWith('510536') || desc.includes('prima')) {
+        prima += netDebit;
+      } else if (code.startsWith('261015') || code.startsWith('510539') || (desc.includes('vacacion') && !desc.includes('caja'))) {
+        vacaciones += netDebit;
+      } else if (code.startsWith('510527') || desc.includes('indemniz')) {
+        indemnizacion += netDebit;
+      } else if (code.startsWith('510506') || desc.includes('salario pend')) {
+        pendingSal += netDebit;
+      } else if (code.startsWith('510527') || desc.includes('transporte pend')) {
+        pendingTrans += netDebit;
+      }
+    }
+
+    let retiroDate = tx.date;
+    const match = tx.description?.match(/Retiro:\s*(\d{4}-\d{2}-\d{2})/i) || tx.cross_number?.match(/(\d{4}-\d{2}-\d{2})/);
+    if (match) retiroDate = match[1];
+
+    allSettlementsToMerge.push({
+      empId,
+      settlementDate: retiroDate,
+      cesantias: round2(cesantias),
+      intCes: round2(intCes),
+      prima: round2(prima),
+      vacaciones: round2(vacaciones),
+      vacDays: 0,
+      indemnizacion: round2(indemnizacion),
+      pendingSal: round2(pendingSal),
+      pendingTrans: round2(pendingTrans),
+    });
+  }
+
+  // 3. Fusionar cada liquidación en acumuladosPorEmpleado
+  for (const s of allSettlementsToMerge) {
+    const empRule = nomConfig ? getEmployeePayrollRule(nomConfig, s.empId) : null;
+    const salary = Number(empRule?.basic_salary || 0);
+
+    let vacDays = s.vacDays;
+    if (vacDays <= 0 && s.vacaciones > 0) {
+      if (salary > 0) {
+        vacDays = Math.round((s.vacaciones / (salary / 30)) * 100) / 100;
+      }
+      if (vacDays <= 0) vacDays = 1;
+    }
+
+    const existing = acumuladosPorEmpleado.get(s.empId);
+    if (existing) {
+      existing.fechaRetiro = s.settlementDate;
+      existing.cesantiasMonto = round2((existing.cesantiasMonto || 0) + s.cesantias);
+      existing.interesesCesantiasMonto = round2((existing.interesesCesantiasMonto || 0) + s.intCes);
+      existing.primaMonto = round2((existing.primaMonto || 0) + s.prima);
+      existing.vacacionesCompensadasMonto = round2((existing.vacacionesCompensadasMonto || 0) + s.vacaciones);
+      existing.vacacionesCompensadasDias = (existing.vacacionesCompensadasDias || 0) + vacDays;
+      existing.indemnizacionMonto = round2((existing.indemnizacionMonto || 0) + s.indemnizacion);
+
+      const totalLiqDevengos = round2(s.cesantias + s.intCes + s.prima + s.vacaciones + s.indemnizacion + s.pendingSal + s.pendingTrans);
+      existing.totalDevengos = round2(existing.totalDevengos + totalLiqDevengos);
+      existing.netoPagar = round2(existing.totalDevengos - existing.totalDeducciones);
+    } else {
+      // Empleado con finiquito sin volantes quincenales en el mes
+      const emp = await pb.get('third_parties', s.empId).catch(() => null);
+      if (emp) {
+        const rawName = (emp.first_name && emp.last_name) ? `${emp.first_name} ${emp.last_name}` : (emp.name || 'Empleado');
+        let primerNombre = 'Empleado';
+        let otrosNombres = '';
+        let primerApellido = 'Apellido';
+        let segundoApellido = '';
+
+        const fName = String(emp.first_name || '').trim();
+        const lName = String(emp.last_name || '').trim();
+
+        if (fName && lName) {
+          const fParts = fName.split(/\s+/).filter(Boolean);
+          primerNombre = fParts[0] || 'Empleado';
+          otrosNombres = fParts.slice(1).join(' ');
+          const lParts = lName.split(/\s+/).filter(Boolean);
+          primerApellido = lParts[0] || 'Apellido';
+          segundoApellido = lParts.slice(1).join(' ');
+        } else {
+          const nameParts = rawName.trim().split(/\s+/).filter(Boolean);
+          if (nameParts.length >= 4) {
+            primerNombre = nameParts[0]; otrosNombres = nameParts[1];
+            primerApellido = nameParts[2]; segundoApellido = nameParts.slice(3).join(' ');
+          } else if (nameParts.length === 3) {
+            primerNombre = nameParts[0]; primerApellido = nameParts[1]; segundoApellido = nameParts[2];
+          } else if (nameParts.length === 2) {
+            primerNombre = nameParts[0]; primerApellido = nameParts[1];
+          } else {
+            primerNombre = nameParts[0] || 'Empleado'; primerApellido = 'SinApellido';
+          }
+        }
+
+        const cType = empRule?.contract_type || emp.contract_type || 'INDEFINIDO';
+        let tipoContratoCode = '2';
+        if (cType === 'TERMINADO_FIJO' || cType === 'FIJO') tipoContratoCode = '1';
+        else if (cType === 'INDEFINIDO') tipoContratoCode = '2';
+        else if (cType === 'OBRA_LABOR') tipoContratoCode = '3';
+        else if (cType === 'APRENDIZAJE') tipoContratoCode = '4';
+        else if (cType === 'PRACTICA' || cType === 'PRACTICAS') tipoContratoCode = '5';
+
+        const contractStartDate = (empRule?.start_date || emp.date_hired || emp.hire_date || emp.fecha_ingreso || '').trim();
+        const fechaIngresoFinal = contractStartDate || `${ymPrefix}-01`;
+
+        const totalLiqDevengos = round2(s.cesantias + s.intCes + s.prima + s.vacaciones + s.indemnizacion + s.pendingSal + s.pendingTrans);
+
+        acumuladosPorEmpleado.set(s.empId, {
+          empId: s.empId,
+          nombreCompleto: rawName,
+          primerNombre,
+          otrosNombres,
+          primerApellido,
+          segundoApellido,
+          tipoDocumento: emp.doc_type || 'CC',
+          numeroDocumento: emp.doc_number || s.empId,
+          cargo: empRule?.position || emp.notes || 'Colaborador',
+          email: emp.email || '',
+          banco: (emp.bank_name || '').trim(),
+          numeroCuenta: (emp.bank_account || '').trim(),
+          tipoCuenta: emp.bank_account_type || 'Ahorros',
+          metodoPago: (emp.payment_method === '10' || (!emp.bank_account && emp.payment_method !== '30' && emp.payment_method !== '47' && emp.payment_method !== '42')) ? 'EFECTIVO' : 'TRANSFERENCIA',
+          metodoPagoCode: emp.payment_method || (emp.bank_account ? '30' : '10'),
+          fechaIngreso: fechaIngresoFinal,
+          fechaRetiro: s.settlementDate,
+          tipoTrabajador: '01',
+          subTipoTrabajador: '00',
+          tipoContratoCode,
+          salarioIntegral: false,
+          altoRiesgo: false,
+          deptCode: emp.dept_code || companyDefaults.deptCode,
+          cityCode: emp.city_code || companyDefaults.cityCode,
+          direccion: emp.address || companyDefaults.companyDir,
+          sueldoBasico: salary,
+          salarioContrato: salary,
+          totalDevengos: totalLiqDevengos,
+          totalDeducciones: 0,
+          netoPagar: totalLiqDevengos,
+          totalEmpleador: 0,
+          diasLaborados: 0,
+          ibc: 0,
+          auxilioTransporte: s.pendingTrans,
+          horasExtrasMonto: 0,
+          otBreakdownMap: {},
+          comisionesMonto: 0,
+          bonificacionesMonto: 0,
+          incapacidadesMonto: 0,
+          licenciasMonto: 0,
+          vacacionesMonto: 0,
+          primaMonto: s.prima,
+          cesantiasMonto: s.cesantias,
+          interesesCesantiasMonto: s.intCes,
+          dotacionMonto: 0,
+          otrosIngresosMonto: 0,
+          gastosRepresentacionMonto: 0,
+          rodamientoMonto: 0,
+          auxNoSalarialesMonto: 0,
+          alimentacionMonto: 0,
+          compensatoriosMonto: 0,
+          teletrabajoMonto: 0,
+          apoyoSostenimientoMonto: 0,
+          bonoAlimentacionMonto: 0,
+          indemnizacionMonto: s.indemnizacion,
+          viaticoSalMonto: 0,
+          viaticoNoSalMonto: 0,
+          compOrdMonto: 0,
+          compExtraMonto: 0,
+          pagoTerceroDevMonto: 0,
+          bonifRetiroMonto: 0,
+          reintegroDevMonto: 0,
+          huelgaLegalDias: 0,
+          huelgaLegalIni: '',
+          huelgaLegalFin: '',
+          vacacionesCompensadasMonto: s.vacaciones,
+          vacacionesCompensadasDias: vacDays,
+          licenciasMPDias: 0,
+          licenciasMPMonto: 0,
+          incapacidadTipo: 1,
+          saludDeduccion: 0,
+          pensionDeduccion: 0,
+          solidaridadDeduccion: 0,
+          retencionDeduccion: 0,
+          sindicatoDeduccion: 0,
+          libranzaDeduccion: 0,
+          anticipoDeduccion: 0,
+          embargoDeduccion: 0,
+          deudaDeduccion: 0,
+          pensionVoluntariaDeduccion: 0,
+          afcDeduccion: 0,
+          cooperativaDeduccion: 0,
+          planComplementarioDeduccion: 0,
+          educacionDeduccion: 0,
+          pagoTerceroDeduccion: 0,
+          sancionPrivDeduccion: 0,
+          sancionPubDeduccion: 0,
+          reintegroDeduccion: 0,
+          otrasDeducciones: 0,
+          licenciasNRDias: 0,
+          licenciasNRInicio: '',
+          licenciasNRFin: ''
+        });
+      }
+    }
+  }
 }
 
 async function generateNominaElectronica(year: number, month: number, btn?: HTMLButtonElement) {
@@ -6607,6 +7707,34 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       const auxNoSalariales = round2(Number(ca.aux_no_salariales || 0));
       const alimentacion = round2(Number(ca.alimentacion || 0));
       const compensatorios = round2(Number(ca.compensatorios || 0));
+      const teletrabajo = round2(Number(ca.teletrabajo || 0));
+      const apoyoSostenimiento = round2(Number(ca.apoyo_sostenimiento || 0));
+      const bonoAlimentacion = round2(Number(ca.bono_alimentacion || 0));
+      const indemnizacion = round2(Number(ca.indemnizacion || 0));
+      const vacCompensadas = round2(Number(ca.vacaciones_compensadas || 0));
+      const vacCompensadasDias = Number(ca.dias_vacaciones_compensadas || 0);
+      const licMPDias = Number(ca.dias_licencia_mp || 0);
+      const licMPMonto = licMPDias > 0 ? round2(((l.salary_base || 0) / 30) * licMPDias) : 0;
+      const incapacidadTipo = Number(ca.incapacidades_tipo || 1);
+      const pensionVoluntaria = round2(Number(ca.pension_voluntaria || 0));
+      const ahorroAfc = round2(Number(ca.ahorro_afc || 0));
+      const cooperativa = round2(Number(ca.cooperativa || 0));
+      const planComplementario = round2(Number(ca.plan_complementario || 0));
+      const educacion = round2(Number(ca.educacion || 0));
+      const pagoTercero = round2(Number(ca.pago_tercero || 0));
+      const viaticoSal = round2(Number(ca.viatico_salarial || 0));
+      const viaticoNoSal = round2(Number(ca.viatico_no_salarial || 0));
+      const compOrd = round2(Number(ca.compensacion_ordinaria || 0));
+      const compExtra = round2(Number(ca.compensacion_extraordinaria || 0));
+      const pagoTerceroDev = round2(Number(ca.pago_tercero_devengo || 0));
+      const bonifRetiro = round2(Number(ca.bonificacion_retiro || 0));
+      const reintegroDev = round2(Number(ca.reintegro_devengo || 0));
+      const huelgaLegalDias = Number(ca.dias_huelga_legal || 0);
+      const huelgaLegalIni = String(ca.huelga_legal_inicio || '');
+      const huelgaLegalFin = String(ca.huelga_legal_fin || '');
+      const sancionPriv = round2(Number(ca.sancion_privada || 0));
+      const sancionPub = round2(Number(ca.sancion_publica || 0));
+      const reintegroDed = round2(Number(ca.reintegro_deduccion || 0));
 
       const provCesantias = round2(Number(l.cesantias || 0));
       const provIntCes = round2(Number(l.intereses_ces || 0));
@@ -6667,6 +7795,25 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         existing.auxNoSalarialesMonto += auxNoSalariales;
         existing.alimentacionMonto += alimentacion;
         existing.compensatoriosMonto += compensatorios;
+        existing.teletrabajoMonto = (existing.teletrabajoMonto || 0) + teletrabajo;
+        existing.apoyoSostenimientoMonto = (existing.apoyoSostenimientoMonto || 0) + apoyoSostenimiento;
+        existing.bonoAlimentacionMonto = (existing.bonoAlimentacionMonto || 0) + bonoAlimentacion;
+        existing.indemnizacionMonto = (existing.indemnizacionMonto || 0) + indemnizacion;
+        existing.viaticoSalMonto = (existing.viaticoSalMonto || 0) + viaticoSal;
+        existing.viaticoNoSalMonto = (existing.viaticoNoSalMonto || 0) + viaticoNoSal;
+        existing.compOrdMonto = (existing.compOrdMonto || 0) + compOrd;
+        existing.compExtraMonto = (existing.compExtraMonto || 0) + compExtra;
+        existing.pagoTerceroDevMonto = (existing.pagoTerceroDevMonto || 0) + pagoTerceroDev;
+        existing.bonifRetiroMonto = (existing.bonifRetiroMonto || 0) + bonifRetiro;
+        existing.reintegroDevMonto = (existing.reintegroDevMonto || 0) + reintegroDev;
+        existing.huelgaLegalDias = (existing.huelgaLegalDias || 0) + huelgaLegalDias;
+        if (!existing.huelgaLegalIni && huelgaLegalIni) existing.huelgaLegalIni = huelgaLegalIni;
+        if (huelgaLegalFin) existing.huelgaLegalFin = huelgaLegalFin;
+        existing.vacacionesCompensadasMonto = (existing.vacacionesCompensadasMonto || 0) + vacCompensadas;
+        existing.vacacionesCompensadasDias = (existing.vacacionesCompensadasDias || 0) + vacCompensadasDias;
+        existing.licenciasMPDias = (existing.licenciasMPDias || 0) + licMPDias;
+        existing.licenciasMPMonto = (existing.licenciasMPMonto || 0) + licMPMonto;
+        existing.incapacidadTipo = incapacidadTipo;
 
         existing.saludDeduccion += saludDeduccion;
         existing.pensionDeduccion += pensionDeduccion;
@@ -6677,6 +7824,15 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         existing.anticipoDeduccion += anticipo;
         existing.embargoDeduccion += embargo;
         existing.deudaDeduccion += deuda;
+        existing.pensionVoluntariaDeduccion = (existing.pensionVoluntariaDeduccion || 0) + pensionVoluntaria;
+        existing.afcDeduccion = (existing.afcDeduccion || 0) + ahorroAfc;
+        existing.cooperativaDeduccion = (existing.cooperativaDeduccion || 0) + cooperativa;
+        existing.planComplementarioDeduccion = (existing.planComplementarioDeduccion || 0) + planComplementario;
+        existing.educacionDeduccion = (existing.educacionDeduccion || 0) + educacion;
+        existing.pagoTerceroDeduccion = (existing.pagoTerceroDeduccion || 0) + pagoTercero;
+        existing.sancionPrivDeduccion = (existing.sancionPrivDeduccion || 0) + sancionPriv;
+        existing.sancionPubDeduccion = (existing.sancionPubDeduccion || 0) + sancionPub;
+        existing.reintegroDeduccion = (existing.reintegroDeduccion || 0) + reintegroDed;
         existing.otrasDeducciones += otrasDeducciones;
         existing.licenciasNRDias = (existing.licenciasNRDias || 0) + licNRQty;
         if (!existing.licenciasNRInicio && licNRIni) existing.licenciasNRInicio = licNRIni;
@@ -6779,6 +7935,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           cityCode: emp.city_code || companyCityCode,
           direccion: emp.address || companyDir,
           sueldoBasico: proportionalSalary,
+          salarioContrato: Number(empRule?.basic_salary || l.salary_base || proportionalSalary),
           totalDevengos: dev,
           totalDeducciones: ded,
           netoPagar: net,
@@ -6803,6 +7960,25 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           auxNoSalarialesMonto: auxNoSalariales,
           alimentacionMonto: alimentacion,
           compensatoriosMonto: compensatorios,
+          teletrabajoMonto: teletrabajo,
+          apoyoSostenimientoMonto: apoyoSostenimiento,
+          bonoAlimentacionMonto: bonoAlimentacion,
+          indemnizacionMonto: indemnizacion,
+          viaticoSalMonto: viaticoSal,
+          viaticoNoSalMonto: viaticoNoSal,
+          compOrdMonto: compOrd,
+          compExtraMonto: compExtra,
+          pagoTerceroDevMonto: pagoTerceroDev,
+          bonifRetiroMonto: bonifRetiro,
+          reintegroDevMonto: reintegroDev,
+          huelgaLegalDias: huelgaLegalDias,
+          huelgaLegalIni: huelgaLegalIni,
+          huelgaLegalFin: huelgaLegalFin,
+          vacacionesCompensadasMonto: vacCompensadas,
+          vacacionesCompensadasDias: vacCompensadasDias,
+          licenciasMPDias: licMPDias,
+          licenciasMPMonto: licMPMonto,
+          incapacidadTipo: incapacidadTipo,
           saludDeduccion: saludDeduccion,
           pensionDeduccion: pensionDeduccion,
           solidaridadDeduccion: solidaridad,
@@ -6812,12 +7988,28 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           anticipoDeduccion: anticipo,
           embargoDeduccion: embargo,
           deudaDeduccion: deuda,
+          pensionVoluntariaDeduccion: pensionVoluntaria,
+          afcDeduccion: ahorroAfc,
+          cooperativaDeduccion: cooperativa,
+          planComplementarioDeduccion: planComplementario,
+          educacionDeduccion: educacion,
+          pagoTerceroDeduccion: pagoTercero,
+          sancionPrivDeduccion: sancionPriv,
+          sancionPubDeduccion: sancionPub,
+          reintegroDeduccion: reintegroDed,
           otrasDeducciones: otrasDeducciones,
           licenciasNRDias: licNRQty,
           licenciasNRInicio: licNRIni,
           licenciasNRFin: licNRFin
         });
       }
+    });
+
+    // ── Integración de Liquidaciones Definitivas (Finiquitos) del Mes ──────
+    await mergeSettlementsIntoAccumulators(year, month, acumuladosPorEmpleado, nomConfig, {
+      deptCode: companyDeptCode,
+      cityCode: companyCityCode,
+      companyDir
     });
 
     const empleadosList = Array.from(acumuladosPorEmpleado.values());
@@ -6833,17 +8025,29 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         filter: `ano=${year} && mes=${month} && (employee_id="${e.empId}" || (xml_generado ~ "${e.numeroDocumento}"))`
       });
 
-      if (existentes.length > 0 && existentes[0].estado_dian === 'APROBADO') {
-        // Un volante ya aprobado formalmente ante la DIAN no se debe regenerar ni sobreescribir
+      // Filtrar comprobantes ordinarios de nómina (excluir notas de ajuste NANE / NA / AJUS)
+      const ordinarios = existentes.filter((r: any) => {
+        const pfx = (r.prefijo || '').toUpperCase();
+        return !pfx.startsWith('NA') && !pfx.startsWith('AJ') && pfx !== 'NANE';
+      });
+
+      // Si existe un volante ordinario formalmente APROBADO y vigente ante la DIAN, no se sobreescribe
+      const aprobadoVigente = ordinarios.find((r: any) => r.estado_dian === 'APROBADO');
+      if (aprobadoVigente) {
         continue;
       }
 
+      // Si hay un volante en borrador (PENDIENTE o RECHAZADO no anulado), se puede reutilizar
+      const borradorReutilizable = ordinarios.find((r: any) => (r.estado_dian === 'PENDIENTE' || r.estado_dian === 'RECHAZADO') && r.estado_dian !== 'ANULADO');
+
       let consecutivo = 0;
       let recordPrefix = nePrefix;
+      let targetIdToUpdate: string | null = null;
 
-      if (existentes.length > 0 && existentes[0].consecutivo) {
-        consecutivo = existentes[0].consecutivo;
-        if (existentes[0].prefijo) recordPrefix = existentes[0].prefijo;
+      if (borradorReutilizable && borradorReutilizable.consecutivo) {
+        consecutivo = borradorReutilizable.consecutivo;
+        if (borradorReutilizable.prefijo) recordPrefix = borradorReutilizable.prefijo;
+        targetIdToUpdate = borradorReutilizable.id;
       } else {
         consecutivo = nextConsecutiveToAssign++;
         newConsecutivesCount++;
@@ -6855,23 +8059,21 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         prefijo: recordPrefix, ambienteDian
       };
 
-      // Para Facturatech (Proveedor Tecnológico), el CUNE se transmite vacío en el XML inicial; Facturatech calcula el CUNE oficial y sella digitalmente el comprobante
-      const calculatedCune = '';
-
-      const singleXml = buildSingleWorkerUblXml(
+      // Generación Nativa JSON UBL 2.1 para MATIAS API (sin serialización XML intermedia)
+      const matiasPayload = buildMatiasPayrollPayload(
         e,
         companyData,
+        consecutivo,
+        recordPrefix,
         year,
         month,
-        consecutivo,
         periodStart,
         periodEnd,
-        calculatedCune,
-        fechaGen,
-        horaGen
+        null,
+        null
       );
+      const singleJson = JSON.stringify(matiasPayload, null, 2);
 
-      const prevCufe = existentes[0]?.estado_dian === 'APROBADO' ? existentes[0].cufe : '';
       const payload = {
         periodo_id: periods[0]?.id || undefined,
         employee_id: e.empId,
@@ -6884,15 +8086,15 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         total_neto: round2(e.netoPagar),
         total_empleador: round2(e.totalEmpleador),
         total_empleados: 1,
-        xml_generado: singleXml,
-        estado_dian: existentes[0]?.estado_dian || 'PENDIENTE',
+        xml_generado: singleJson,
+        estado_dian: borradorReutilizable?.estado_dian || 'PENDIENTE',
         numero_envio: 1,
         fecha_envio: todayStr(),
-        cufe: prevCufe
+        cufe: ''
       };
 
-      if (existentes.length > 0) {
-        await pb.update('electronic_payrolls', existentes[0].id, payload);
+      if (targetIdToUpdate) {
+        await pb.update('electronic_payrolls', targetIdToUpdate, payload);
       } else {
         await pb.create('electronic_payrolls', payload);
       }
@@ -6923,8 +8125,13 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
   try {
     const rec = await pb.get('electronic_payrolls', recId, { expand: 'employee_id' });
     const emp = rec.expand?.employee_id || {};
-    const xml = rec.xml_generado || '<?xml version="1.0"?><NominaIndividual/>';
-    const escapedXml = xml.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const rawContent = (rec.xml_generado || '').trim();
+    const isJson = rawContent.startsWith('{');
+    let jsonObj: any = null;
+    if (isJson) {
+      try { jsonObj = JSON.parse(rawContent); } catch (_) { }
+    }
+    const escapedContent = isJson && jsonObj ? esc(JSON.stringify(jsonObj, null, 2)) : rawContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     let cuneDetailLabel = '— (Se asignará y sellará digitalmente tras la firma y validación DIAN)';
     if (rec.estado_dian === 'APROBADO' && rec.cufe) {
@@ -6939,11 +8146,20 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       cuneDetailLabel = `<span class="text-blue-600 font-semibold"><i class="fas fa-spinner fa-spin mr-1"></i>En proceso de firma y validación DIAN...</span>`;
     }
 
-    const isAjuste = (rec.prefijo && (rec.prefijo.startsWith('NA') || rec.prefijo.startsWith('AJ'))) || (xml.includes('NominaIndividualDeAjuste'));
-    const isEliminacion = isAjuste && (xml.includes('<TipoNota>2</TipoNota>') || xml.includes('<Eliminando>'));
+    const isAjuste = (rec.prefijo && (rec.prefijo.startsWith('NA') || rec.prefijo.startsWith('AJ') || rec.prefijo === 'NANE')) || (rawContent.includes('NominaIndividualDeAjuste') || rawContent.includes('"payroll_type"') || rawContent.includes('predecessor'));
+    const isEliminacion = isAjuste && (
+      (jsonObj && (jsonObj.payroll_type === 'delete' || !!jsonObj.deleting_predecessor)) ||
+      rawContent.includes('<TipoNota>2</TipoNota>') ||
+      rawContent.includes('<Eliminando>')
+    );
     const isReemplazo = isAjuste && !isEliminacion;
-    const predMatch = xml.match(/Numero\s*=\s*"([^"]*)"/i);
-    const predNumero = predMatch ? predMatch[1] : '';
+    let predNumero = '';
+    if (jsonObj) {
+      predNumero = jsonObj.deleting_predecessor?.number || jsonObj.relevant_predecessor?.number || '';
+    } else {
+      const predMatch = rawContent.match(/Numero\s*=\s*"([^"]*)"/i);
+      predNumero = predMatch ? predMatch[1] : '';
+    }
 
     const docTitle = isEliminacion
       ? 'Nota de Ajuste de Nómina Electrónica — Eliminación (Tipo 2)'
@@ -6991,15 +8207,21 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         </div>
 
         <div class="border rounded-xl p-3 bg-white space-y-2">
-          <div class="font-bold text-xs text-gray-700 border-b pb-1">UBL 2.1 NominaIndividual (XML para DIAN)</div>
-          <pre class="font-mono text-3xs bg-gray-900 text-green-400 p-3 rounded-lg overflow-auto max-h-60" style="white-space: pre-wrap;">${escapedXml}</pre>
+          <div class="flex justify-between items-center border-b pb-1">
+            <div class="font-bold text-xs text-gray-700">${isJson ? 'Payload Nativo JSON (DIAN API — UBL 2.1)' : 'UBL 2.1 NominaIndividual (XML para DIAN)'}</div>
+            <span class="text-3xs ${isJson ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-blue-700 bg-blue-50 border border-blue-200'} px-2 py-0.5 rounded font-mono font-bold">${isJson ? 'JSON Nativo DIAN API' : 'XML DIAN'}</span>
+          </div>
+          <pre class="font-mono text-3xs bg-gray-900 ${isJson ? 'text-emerald-400' : 'text-green-400'} p-3 rounded-lg overflow-auto max-h-60" style="white-space: pre-wrap;">${escapedContent}</pre>
         </div>
       </div>
     `;
 
     const modalFooter = `
       <div class="flex justify-between items-center w-full">
-        <div>
+        <div class="flex gap-2">
+          <button class="btn btn-outline border-indigo-600 text-indigo-700 hover:bg-indigo-50" onclick="closeModal(); window.previewNominaModal('${esc(rec.id)}')">
+            <i class="fas fa-file-invoice mr-1 text-indigo-600"></i>Ver Volante Previo
+          </button>
           ${(rec.estado_dian === 'APROBADO' || rec.cufe) ? `
             <button class="btn btn-outline border-amber-600 text-amber-700 hover:bg-amber-50" onclick="closeModal(); window.openNominaAjusteModal('${esc(rec.id)}')">
               <i class="fas fa-file-pen mr-1 text-amber-600"></i>Emitir Nota de Ajuste DIAN
@@ -7294,6 +8516,12 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
       }
 
       try {
+        const now = new Date();
+        const fechaGen = now.toISOString().slice(0, 10);
+        const horaGen = now.toTimeString().slice(0, 8) + "-05:00";
+        const periodStart = periods[0]?.date_from || `${ymPrefix}-01`;
+        const periodEnd = periods[periods.length - 1]?.date_to || `${ymPrefix}-30`;
+
         // Cargar acumulados del mes del empleado
         const filterExpr = pIds.map((id: string) => `period_id = "${id}"`).join(' || ');
         const lines = await pb.listAll('payroll_lines', {
@@ -7439,6 +8667,7 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
               cityCode: emp.city_code || companyCityCode,
               direccion: emp.address || companyDir,
               sueldoBasico: proportionalSalary,
+          salarioContrato: Number(empRule?.basic_salary || l.salary_base || proportionalSalary),
               totalDevengos: dev,
               totalDeducciones: ded,
               netoPagar: net,
@@ -7525,16 +8754,22 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
           };
         }
 
-        const now = new Date();
-        const fechaGen = now.toISOString().slice(0, 10);
-        const horaGen = now.toTimeString().slice(0, 8) + "-05:00";
-        const periodStart = periods[0]?.date_from || `${ymPrefix}-01`;
-        const periodEnd = periods[periods.length - 1]?.date_to || `${ymPrefix}-30`;
+        if (tipoAjuste === '1' && accumEmp) {
+          const tmpMap = new Map();
+          tmpMap.set(rec.employee_id, accumEmp);
+          await mergeSettlementsIntoAccumulators(ano, mes, tmpMap, nomConfig, {
+            deptCode: companyDeptCode,
+            cityCode: companyCityCode,
+            companyDir
+          });
+          accumEmp = tmpMap.get(rec.employee_id);
+        }
 
         const companyData = {
           companyName, companyNit, companyDv, companyDir,
           deptCode: companyDeptCode, cityCode: companyCityCode,
-          prefijo: inputPfx, ambienteDian
+          prefijo: inputPfx, ambienteDian,
+          resolutionNumber: activeNaneRes?.resolution_number || '18760000001'
         };
 
         const predecessorData = {
@@ -7544,19 +8779,20 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
           fechaGen: (rec.fecha_envio || rec.created || fechaGen).slice(0, 10)
         };
 
-        const ajusteXml = buildNominaIndividualDeAjusteXml(
+        // Generación Nativa JSON UBL 2.1 de Nota de Ajuste para MATIAS API
+        const matiasPayload = buildMatiasPayrollPayload(
           accumEmp,
           companyData,
           inputNum,
-          tipoAjuste,
-          predecessorData,
+          inputPfx,
           ano,
           mes,
           periodStart,
           periodEnd,
-          fechaGen,
-          horaGen
+          predecessorData,
+          tipoAjuste
         );
+        const ajusteJson = JSON.stringify(matiasPayload, null, 2);
 
         // Crear el registro de la nota de ajuste en electronic_payrolls
         const nuevoRegistroPayload = {
@@ -7571,7 +8807,7 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
           total_neto: tipoAjuste === '2' ? 0 : round2(accumEmp.netoPagar),
           total_empleador: tipoAjuste === '2' ? 0 : round2(accumEmp.totalEmpleador),
           total_empleados: 1,
-          xml_generado: ajusteXml,
+          xml_generado: ajusteJson,
           estado_dian: 'PENDIENTE',
           numero_envio: (rec.numero_envio || 1) + 1,
           fecha_envio: todayStr(),
@@ -7821,6 +9057,304 @@ function parseNominaXmlConcepts(xmlStr: string) {
 
   if (!xmlStr) return { devengos, deducciones };
 
+  const trimmed = xmlStr.trim();
+
+  // ─────────────────────────────────────────────────────────────
+  // 1. SOPORTE NATIVO JSON (MATIAS API UBL 2.1)
+  // ─────────────────────────────────────────────────────────────
+  if (trimmed.startsWith('{')) {
+    try {
+      const pj = JSON.parse(trimmed);
+      const earn = pj.earn || pj.accrued || {};
+      const ded = pj.deductions || {};
+      const timeWorked = String(pj.period?.time_worked || pj.period?.amount_time || '30');
+
+      // Básico
+      if (earn.basic) {
+        const salVal = parseFloat(earn.basic.salary_worked || '0');
+        const days = earn.basic.worked_days || timeWorked;
+        if (salVal > 0) {
+          devengos.push({ code: '001', name: 'Sueldo Básico', qty: `${days} días`, value: salVal });
+        }
+      }
+
+      // Transporte y viáticos
+      if (earn.transport) {
+        const aux = parseFloat(earn.transport.transportation_assistance || '0');
+        if (aux > 0) devengos.push({ code: '040', name: 'Auxilio de Transporte', qty: `${timeWorked} días`, value: aux });
+        const viatS = parseFloat(earn.transport.viatic_maintenance || '0');
+        if (viatS > 0) devengos.push({ code: '041', name: 'Viáticos Salariales', qty: '—', value: viatS });
+        const viatNS = parseFloat(earn.transport.viatic_non_salary_maintenance || '0');
+        if (viatNS > 0) devengos.push({ code: '042', name: 'Viáticos No Salariales', qty: '—', value: viatNS });
+      }
+
+      // Horas extras
+      const otMap: Record<string, { code: string; name: string; defaultPct: string }> = {
+        HEDs: { code: '101', name: 'Hora Extra Diurna', defaultPct: '25%' },
+        HENs: { code: '102', name: 'Hora Extra Nocturna', defaultPct: '75%' },
+        HRNs: { code: '103', name: 'Recargo Nocturno', defaultPct: '35%' },
+        HEDDFs: { code: '104', name: 'Hora Extra Diurna Dominical/Festiva', defaultPct: '100%' },
+        HRDDFs: { code: '105', name: 'Recargo Dominical/Festivo', defaultPct: '75%' },
+        HRDFs: { code: '105', name: 'Recargo Dominical/Festivo', defaultPct: '75%' },
+        HENDFs: { code: '106', name: 'Hora Extra Nocturna Dominical/Festiva', defaultPct: '150%' },
+        HRNDFs: { code: '107', name: 'Recargo Nocturno Dominical/Festivo', defaultPct: '110%' }
+      };
+      Object.keys(otMap).forEach(key => {
+        const items = earn[key];
+        if (Array.isArray(items)) {
+          items.forEach((it: any) => {
+            const val = parseFloat(it.payment || '0');
+            if (val > 0) {
+              const cant = it.amount || '1';
+              const pct = it.percentage ? `${it.percentage}%` : otMap[key].defaultPct;
+              devengos.push({
+                code: otMap[key].code,
+                name: `${otMap[key].name} (${pct})`,
+                qty: `${cant} hrs`,
+                value: val
+              });
+            }
+          });
+        }
+      });
+
+      // Vacaciones
+      if (earn.vacations) {
+        if (earn.vacations.common) {
+          const val = parseFloat(earn.vacations.common.payment || '0');
+          const cant = earn.vacations.common.amount || '—';
+          if (val > 0) devengos.push({ code: '085', name: 'Vacaciones Disfrutadas / Comunes', qty: `${cant} días`, value: val });
+        }
+        if (earn.vacations.paid) {
+          const val = parseFloat(earn.vacations.paid.payment || '0');
+          const cant = earn.vacations.paid.amount || '—';
+          if (val > 0) devengos.push({ code: '086', name: 'Vacaciones Compensadas', qty: `${cant} días`, value: val });
+        }
+      }
+
+      // Prima de Servicios
+      if (earn.service_bonus) {
+        const val = parseFloat(earn.service_bonus.payment || '0');
+        const cant = earn.service_bonus.amount || '';
+        if (val > 0) devengos.push({ code: '080', name: 'Prima de Servicios', qty: cant ? `${cant} días` : '—', value: val });
+      }
+
+      // Cesantías e Intereses
+      if (earn.severance) {
+        const valP = parseFloat(earn.severance.payment || '0');
+        const valInt = parseFloat(earn.severance.payment_interest || '0');
+        const pct = earn.severance.percentage || '12.00';
+        if (valP > 0) devengos.push({ code: '090', name: 'Cesantías Pagadas', qty: '—', value: valP });
+        if (valInt > 0) devengos.push({ code: '091', name: 'Intereses a las Cesantías Pagados', qty: `${pct}%`, value: valInt });
+      }
+
+      // Incapacidades
+      const incList = earn.work_disabilities || earn.incapacity;
+      if (Array.isArray(incList)) {
+        incList.forEach((inc: any) => {
+          const val = parseFloat(inc.payment || '0');
+          const cant = inc.amount || '1';
+          const tipo = String(inc.type || inc.type_id || '1');
+          const tipoLabel = tipo === '1' ? 'Común' : (tipo === '2' ? 'Profesional' : 'Laboral');
+          if (val > 0) devengos.push({ code: '120', name: `Incapacidad (${tipoLabel})`, qty: `${cant} días`, value: val });
+        });
+      }
+
+      // Licencias
+      const licMP = earn.maternities || (earn.licenses && [earn.licenses.licenseMP].filter(Boolean));
+      if (Array.isArray(licMP)) {
+        licMP.forEach((lic: any) => {
+          const val = parseFloat(lic.payment || '0');
+          if (val > 0) devengos.push({ code: '131', name: 'Licencia Maternidad / Paternidad', qty: `${lic.amount || 1} días`, value: val });
+        });
+      }
+      const licR = earn.paid_leaves || (earn.licenses && [earn.licenses.licenseR].filter(Boolean));
+      if (Array.isArray(licR)) {
+        licR.forEach((lic: any) => {
+          const val = parseFloat(lic.payment || '0');
+          if (val > 0) devengos.push({ code: '130', name: 'Licencia Remunerada', qty: `${lic.amount || 1} días`, value: val });
+        });
+      }
+      const licNR = earn.non_paid_leaves || (earn.licenses && [earn.licenses.licenseNR].filter(Boolean));
+      if (Array.isArray(licNR)) {
+        licNR.forEach((lic: any) => {
+          devengos.push({ code: '132', name: 'Licencia No Remunerada', qty: `${lic.amount || 1} días`, value: 0 });
+        });
+      }
+
+      // Bonificaciones
+      if (Array.isArray(earn.bonuses)) {
+        earn.bonuses.forEach((b: any) => {
+          const valS = parseFloat(b.salary_bonus || b.bonusS || '0');
+          const valNS = parseFloat(b.non_salary_bonus || b.bonusNS || '0');
+          if (valS > 0) devengos.push({ code: '060', name: 'Bonificación Salarial', qty: '—', value: valS });
+          if (valNS > 0) devengos.push({ code: '061', name: 'Bonificación No Salarial', qty: '—', value: valNS });
+        });
+      }
+
+      // Auxilios
+      const auxList = earn.aid || earn.assistances;
+      if (Array.isArray(auxList)) {
+        auxList.forEach((a: any) => {
+          const valS = parseFloat(a.salary_assistance || a.assistanceS || '0');
+          const valNS = parseFloat(a.non_salary_assistance || a.assistanceNS || '0');
+          if (valS > 0) devengos.push({ code: '070', name: 'Auxilio Salarial', qty: '—', value: valS });
+          if (valNS > 0) devengos.push({ code: '071', name: 'Auxilio No Salarial', qty: '—', value: valNS });
+        });
+      }
+
+      // Comisiones
+      if (Array.isArray(earn.commissions)) {
+        earn.commissions.forEach((c: any) => {
+          const val = parseFloat(c.commission || c.payment || '0');
+          if (val > 0) devengos.push({ code: '050', name: 'Comisiones', qty: '—', value: val });
+        });
+      }
+
+      // Dotación
+      if (earn.endowment) {
+        const val = parseFloat(earn.endowment);
+        if (val > 0) devengos.push({ code: '140', name: 'Dotación', qty: '—', value: val });
+      }
+
+      // Otros conceptos
+      if (Array.isArray(earn.other_concepts)) {
+        earn.other_concepts.forEach((oc: any) => {
+          const cS = parseFloat(oc.conceptS || oc.salary_concept || '0');
+          const cNS = parseFloat(oc.conceptNS || oc.non_salary_concept || '0');
+          const desc = oc.description || oc.concept_description || 'Otros Devengados';
+          if (cS > 0) devengos.push({ code: '190', name: `${desc} (Salarial)`, qty: '—', value: cS });
+          if (cNS > 0) devengos.push({ code: '191', name: `${desc} (No Salarial)`, qty: '—', value: cNS });
+        });
+      }
+
+      // Compensaciones
+      if (Array.isArray(earn.compensations)) {
+        earn.compensations.forEach((comp: any) => {
+          const ord = parseFloat(comp.ordinary_compensation || '0');
+          const ext = parseFloat(comp.extraordinary_compensation || '0');
+          if (ord > 0) devengos.push({ code: '160', name: 'Compensación Ordinaria', qty: '—', value: ord });
+          if (ext > 0) devengos.push({ code: '161', name: 'Compensación Extraordinaria', qty: '—', value: ext });
+        });
+      }
+
+      // Teletrabajo / Apoyos / Indemnizaciones
+      if (earn.telecommuting) {
+        const val = parseFloat(earn.telecommuting);
+        if (val > 0) devengos.push({ code: '170', name: 'Apoyo Teletrabajo', qty: '—', value: val });
+      }
+      if (earn.support_sustainability) {
+        const val = parseFloat(earn.support_sustainability);
+        if (val > 0) devengos.push({ code: '180', name: 'Apoyo Sostenimiento', qty: '—', value: val });
+      }
+      if (earn.end_work_bonus) {
+        const val = parseFloat(earn.end_work_bonus);
+        if (val > 0) devengos.push({ code: '185', name: 'Bonificación Retiro', qty: '—', value: val });
+      }
+      if (Array.isArray(earn.indemnities)) {
+        earn.indemnities.forEach((ind: any) => {
+          const val = parseFloat(ind.indemnity || '0');
+          if (val > 0) devengos.push({ code: '175', name: 'Indemnización', qty: '—', value: val });
+        });
+      }
+
+      // ── DEDUCCIONES EN JSON ──
+      // Salud
+      const saludObj = ded.health || ded.eps_type;
+      if (saludObj) {
+        const val = parseFloat(saludObj.deduction || '0');
+        const pct = saludObj.percentage || '4';
+        if (val > 0) deducciones.push({ code: '201', name: 'Salud (Aporte Trabajador)', qty: `${pct}%`, value: val });
+      }
+
+      // Pensión
+      const pensionObj = ded.pension_fund || ded.pension_type;
+      if (pensionObj) {
+        const val = parseFloat(pensionObj.deduction || '0');
+        const pct = pensionObj.percentage || '4';
+        if (val > 0) deducciones.push({ code: '202', name: 'Fondo Pensión (Aporte Trabajador)', qty: `${pct}%`, value: val });
+      }
+
+      // Fondo Solidaridad Pensional
+      const fspObj = ded.fundSP || ded.deduction_sp;
+      if (fspObj) {
+        const valSP = parseFloat(fspObj.deduction || fspObj.deduction_sp || '0');
+        const valSub = parseFloat(fspObj.deductionSub || '0');
+        const pct = fspObj.percentage || '1';
+        if (valSP > 0) deducciones.push({ code: '203', name: 'Fondo de Solidaridad Pensional', qty: `${pct}%`, value: valSP });
+        if (valSub > 0) deducciones.push({ code: '204', name: 'Fondo de Subsistencia Pensional', qty: '—', value: valSub });
+      }
+
+      // Sindicatos
+      if (Array.isArray(ded.labor_union)) {
+        ded.labor_union.forEach((s: any) => {
+          const val = parseFloat(s.deduction || '0');
+          const pct = s.percentage || '';
+          if (val > 0) deducciones.push({ code: '210', name: 'Cuota Sindical', qty: pct ? `${pct}%` : '—', value: val });
+        });
+      }
+
+      // Sanciones
+      if (Array.isArray(ded.sanctions)) {
+        ded.sanctions.forEach((s: any) => {
+          const pub = parseFloat(s.public_sanction || '0');
+          const priv = parseFloat(s.private_sanction || '0');
+          const val = pub + priv;
+          if (val > 0) deducciones.push({ code: '220', name: 'Sanciones Disciplinarias', qty: '—', value: val });
+        });
+      }
+
+      // Libranzas
+      const ords = ded.orders || ded.libranzas;
+      if (Array.isArray(ords)) {
+        ords.forEach((l: any) => {
+          const val = parseFloat(l.deduction || '0');
+          const desc = l.description || 'Libranza';
+          if (val > 0) deducciones.push({ code: '230', name: `Libranza (${desc})`, qty: '—', value: val });
+        });
+      }
+
+      // Anticipos
+      if (Array.isArray(ded.advances)) {
+        ded.advances.forEach((a: any) => {
+          const val = parseFloat(a.advance || a.deduction || '0');
+          if (val > 0) deducciones.push({ code: '235', name: 'Anticipos de Nómina', qty: '—', value: val });
+        });
+      }
+
+      // Retención en la fuente
+      const retVal = parseFloat(ded.retefuente || ded.withholding_at_source || '0');
+      if (retVal > 0) deducciones.push({ code: '240', name: 'Retención en la Fuente', qty: '—', value: retVal });
+
+      // Embargos
+      const embVal = parseFloat(ded.tax_liens || ded.tax_embargo || '0');
+      if (embVal > 0) deducciones.push({ code: '250', name: 'Embargo Fiscal / Judicial', qty: '—', value: embVal });
+
+      // Cooperativas
+      const coopVal = parseFloat(ded.cooperative || '0');
+      if (coopVal > 0) deducciones.push({ code: '260', name: 'Cooperativas', qty: '—', value: coopVal });
+
+      // Pensión voluntaria
+      const penVolVal = parseFloat(ded.pension_voluntary || ded.voluntary_pension || '0');
+      if (penVolVal > 0) deducciones.push({ code: '270', name: 'Pensión Voluntaria', qty: '—', value: penVolVal });
+
+      // AFC
+      const afcVal = parseFloat(ded.afc || '0');
+      if (afcVal > 0) deducciones.push({ code: '280', name: 'Ahorro AFC', qty: '—', value: afcVal });
+
+      // Deudas / Préstamos
+      const debtVal = parseFloat(ded.debt || ded.other_deductions || '0');
+      if (debtVal > 0) deducciones.push({ code: '290', name: 'Otras Deducciones / Deudas', qty: '—', value: debtVal });
+
+      return { devengos, deducciones };
+    } catch (e) {
+      console.warn("Error parseando JSON de conceptos de nómina:", e);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 2. SOPORTE XML (UBL 2.1 / FACTURATECH)
+  // ─────────────────────────────────────────────────────────────
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlStr, 'text/xml');
@@ -8104,53 +9638,89 @@ function parseNominaXmlConcepts(xmlStr: string) {
   try {
     const rec = await pb.get('electronic_payrolls', id, { expand: 'employee_id' });
     const emp = rec.expand?.employee_id || {};
-    const name = emp.name || 'Empleado';
-    const doc = emp.doc_number || '—';
+    let name = emp.name || 'Empleado';
+    let doc = emp.doc_number || '—';
     const cargo = emp.notes || emp.cargo || emp.position || 'Colaborador';
     const numSec = `${rec.prefijo || 'NOM'}-${String(rec.consecutivo || '1').padStart(4, '0')}`;
     const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     const monthLabel = monthNames[rec.mes] || String(rec.mes);
 
-    const xml = rec.xml_generado || '';
+    const xml = (rec.xml_generado || '').trim();
+    const isJson = xml.startsWith('{');
+    let pj: any = null;
 
-    // Extraer datos del Empleador y Período directamente del XML oficial
+    // Extraer datos del Empleador y Período directamente del XML / JSON oficial
     let companyName = '';
     let companyNit = '';
     let companyDir = '';
     let fechaIngresoXml = '';
+    let fechaRetiroRaw = '';
     let fechaLiqInicioXml = '';
     let fechaLiqFinXml = '';
     let bancoXml = '';
     let tipoCuentaXml = '';
     let numeroCuentaXml = '';
     let metodoPagoXml = '';
+    let workAddressJson = '';
+    let workCityJson = '';
+    let sueldoContratoJson = 0;
 
     if (xml) {
-      try {
-        const parser = new DOMParser();
-        const docXml = parser.parseFromString(xml, 'text/xml');
-        const empNode = docXml.querySelector('Empleador');
-        if (empNode) {
-          companyName = empNode.getAttribute('RazonSocial') || '';
-          const n = empNode.getAttribute('NIT') || '';
-          const dv = empNode.getAttribute('DV') || '';
-          companyNit = n ? (dv ? `${n}-${dv}` : n) : '';
-          companyDir = empNode.getAttribute('Direccion') || '';
-        }
-        const perNode = docXml.querySelector('Periodo');
-        if (perNode) {
-          fechaIngresoXml = perNode.getAttribute('FechaIngreso') || '';
-          fechaLiqInicioXml = perNode.getAttribute('FechaLiquidacionInicio') || '';
-          fechaLiqFinXml = perNode.getAttribute('FechaLiquidacionFin') || '';
-        }
-        const pagoNode = docXml.querySelector('Pago');
-        if (pagoNode) {
-          bancoXml = pagoNode.getAttribute('Banco') || '';
-          tipoCuentaXml = pagoNode.getAttribute('TipoCuenta') || '';
-          numeroCuentaXml = pagoNode.getAttribute('NumeroCuenta') || '';
-          metodoPagoXml = pagoNode.getAttribute('Metodo') || '';
-        }
-      } catch (_) { }
+      if (isJson) {
+        try {
+          pj = JSON.parse(xml);
+          const empJson = pj.employee || pj.worker || {};
+          const fullName = [empJson.first_name, empJson.other_names, empJson.first_surname, empJson.second_surname].filter(Boolean).join(' ');
+          if (fullName) name = fullName;
+          if (empJson.document_number) doc = empJson.document_number;
+          if (empJson.salary) sueldoContratoJson = parseFloat(empJson.salary);
+          if (empJson.work_address || empJson.address) workAddressJson = empJson.work_address || empJson.address;
+
+          const rawCity = empJson.work_city_id || empJson.municipality_id || pj.generation_city_id;
+          if (rawCity === 1032 || rawCity === '1032' || rawCity === '76520') workCityJson = 'Palmira, Valle del Cauca';
+          else if (rawCity === 1006 || rawCity === '1006' || rawCity === '76001') workCityJson = 'Cali, Valle del Cauca';
+          else if (rawCity === 149 || rawCity === '149' || rawCity === '11001') workCityJson = 'Bogotá, D.C.';
+          else if (rawCity === 1 || rawCity === '1' || rawCity === '05001') workCityJson = 'Medellín, Antioquia';
+          else if (rawCity === 126 || rawCity === '126' || rawCity === '08001') workCityJson = 'Barranquilla, Atlántico';
+          else if (rawCity) workCityJson = `Municipio ID ${rawCity}`;
+
+          fechaIngresoXml = pj.period?.date_entry || '';
+          fechaRetiroRaw = pj.period?.departure_date || '';
+          fechaLiqInicioXml = pj.period?.settlement_start_date || '';
+          fechaLiqFinXml = pj.period?.settlement_end_date || '';
+          bancoXml = pj.payment?.bank || pj.payment?.bank_name || '';
+          tipoCuentaXml = pj.payment?.account_type || '';
+          numeroCuentaXml = pj.payment?.account_number || '';
+          metodoPagoXml = (pj.payment?.means_payment_id === '10' || pj.payment?.payment_method_id === 10) ? '10 - Efectivo' : '30 - Transferencia ACH';
+        } catch (_) { }
+      } else {
+        try {
+          const parser = new DOMParser();
+          const docXml = parser.parseFromString(xml, 'text/xml');
+          const empNode = docXml.querySelector('Empleador');
+          if (empNode) {
+            companyName = empNode.getAttribute('RazonSocial') || '';
+            const n = empNode.getAttribute('NIT') || '';
+            const dv = empNode.getAttribute('DV') || '';
+            companyNit = n ? (dv ? `${n}-${dv}` : n) : '';
+            companyDir = empNode.getAttribute('Direccion') || '';
+          }
+          const perNode = docXml.querySelector('Periodo');
+          if (perNode) {
+            fechaIngresoXml = perNode.getAttribute('FechaIngreso') || '';
+            fechaRetiroRaw = perNode.getAttribute('FechaRetiro') || '';
+            fechaLiqInicioXml = perNode.getAttribute('FechaLiquidacionInicio') || '';
+            fechaLiqFinXml = perNode.getAttribute('FechaLiquidacionFin') || '';
+          }
+          const pagoNode = docXml.querySelector('Pago');
+          if (pagoNode) {
+            bancoXml = pagoNode.getAttribute('Banco') || '';
+            tipoCuentaXml = pagoNode.getAttribute('TipoCuenta') || '';
+            numeroCuentaXml = pagoNode.getAttribute('NumeroCuenta') || '';
+            metodoPagoXml = pagoNode.getAttribute('Metodo') || '';
+          }
+        } catch (_) { }
+      }
     }
 
     // Si la empresa no venía explícita en el XML, consultar la tabla de configuraciones settings
@@ -8179,12 +9749,21 @@ function parseNominaXmlConcepts(xmlStr: string) {
       }
     }
 
-    if (!companyName) companyName = 'EMPRESA REGISTRADA S.A.S.';
-    if (!companyNit) companyNit = '900000000-0';
+    if (!companyName) companyName = 'DOMESTIKO SAS';
+    if (!companyNit) companyNit = '901428834-2';
 
-    const devengosVal = rec.total_devengos || 0;
-    const deduccionesVal = rec.total_deducciones || 0;
-    const netoVal = rec.total_neto || 0;
+    let devengosVal = rec.total_devengos || 0;
+    let deduccionesVal = rec.total_deducciones || 0;
+    let netoVal = rec.total_neto || 0;
+
+    if (pj) {
+      if (pj.total_earned || pj.accrued_total) devengosVal = parseFloat(pj.total_earned || pj.accrued_total);
+      if (pj.deductions_total) deduccionesVal = parseFloat(pj.deductions_total);
+      if (pj.total_voucher || pj.payroll_total) netoVal = parseFloat(pj.total_voucher || pj.payroll_total);
+    }
+
+    const isApproved = (rec.estado_dian === 'APROBADO' && rec.cufe && !rec.cufe.startsWith('SIM-'));
+    const isPending = !isApproved;
     const cune = rec.cufe || '—';
 
     const valorEnLetras = formatNumeroALetras(netoVal);
@@ -8296,12 +9875,12 @@ function parseNominaXmlConcepts(xmlStr: string) {
     };
     const metodoPagoLabel = pmMap[pmCode] || (String(pmRaw).length > 3 ? String(pmRaw) : `${pmRaw} - Transferencia Bancaria`);
     const fechaIngresoLabel = empRule?.start_date || emp.date_hired || emp.hire_date || emp.fecha_ingreso || fechaIngresoXml || '—';
-    const fechaRetiroRaw = empRule?.end_date || (xml.match(/FechaRetiro="([^"]*)"/i) || [])[1] || empRule?.retirement_date || '';
+    fechaRetiroRaw = fechaRetiroRaw || empRule?.end_date || (xml.match(/FechaRetiro="([^"]*)"/i) || [])[1] || empRule?.retirement_date || '';
     const fechaRetiroLabel = fechaRetiroRaw ? `${fechaRetiroRaw} (Cese de Contrato)` : 'Vigente (Sin Retiro)';
     const fechaPagoLabel = fechaLiqFinXml || `${rec.ano}-${String(rec.mes).padStart(2, '0')}-30`;
     const centroCostoLabel = emp.cost_center || emp.centro_costo || 'General / Colaboradores';
-    const direccionLabel = emp.address || '—';
-    const ciudadDeptoLabel = (emp.city && emp.department) ? `${emp.city}, ${emp.department}` : (emp.city || emp.department || '—');
+    const direccionLabel = workAddressJson || emp.address || '—';
+    const ciudadDeptoLabel = workCityJson || ((emp.city && emp.department) ? `${emp.city}, ${emp.department}` : (emp.city || emp.department || '—'));
     const telefonoLabel = emp.phone || emp.phone2 || emp.contact_phone || '—';
     const correoLabel = emp.email || emp.email2 || '—';
 
@@ -8339,26 +9918,55 @@ function parseNominaXmlConcepts(xmlStr: string) {
           body * { visibility: hidden; }
           #printable-voucher, #printable-voucher * { visibility: visible; }
           #printable-voucher { position: absolute; left: 0; top: 0; width: 100%; font-size: 11px; padding: 0; }
-          .modal-footer, .modal-header-close { display: none !important; }
+          .modal-footer, .modal-header-close, .no-print { display: none !important; }
         }
         .ne-pdf-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 11px; }
         .ne-pdf-table th, .ne-pdf-table td { border: 1px solid #E5E7EB; padding: 4px 6px; text-align: left; }
         .ne-pdf-table th { background-color: #F9FAFB; font-weight: 600; }
       </style>
 
+      ${isPending ? `
+        <div class="bg-amber-50 border-2 border-dashed border-amber-300 text-amber-900 p-3 rounded-xl flex items-center justify-between mb-3 shadow-sm no-print">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-lg">
+              <i class="fas fa-file-invoice"></i>
+            </div>
+            <div>
+              <div class="font-extrabold text-sm text-amber-900 tracking-tight">VOLANTE PREVIO DE NÓMINA ELECTRÓNICA (BORRADOR PRE-FIRMA)</div>
+              <div class="text-3xs text-amber-800">
+                Este comprobante refleja la <strong>totalidad de los datos cargados en el archivo JSON</strong> para que corrobore cada concepto antes de firmar y emitir a la DIAN.
+              </div>
+            </div>
+          </div>
+          <span class="badge font-bold px-3 py-1 text-2xs bg-amber-200 text-amber-900 border border-amber-400 uppercase tracking-wide">
+            <i class="fas fa-clock mr-1"></i>Pre-Firma DIAN
+          </span>
+        </div>
+      ` : ''}
+
       <div class="p-4 text-left font-sans text-xs bg-white text-gray-800 space-y-3" id="printable-voucher">
         <!-- Encabezado -->
         <div class="flex justify-between items-start border-b border-rose-200 pb-3">
           <div class="space-y-1">
-            <h2 class="font-bold text-sm text-rose-700 tracking-tight">Documento Soporte de Pago de Nómina Electrónica</h2>
+            <h2 class="font-bold text-sm ${isPending ? 'text-amber-700' : 'text-rose-700'} tracking-tight">
+              ${isPending ? 'Documento Previo de Nómina Electrónica (Borrador Pre-Firma)' : 'Documento Soporte de Pago de Nómina Electrónica'}
+            </h2>
             <div class="font-bold text-base text-gray-900">${esc(companyName)}</div>
             <div class="text-gray-600 font-mono text-xs">NIT: ${esc(companyNit)}</div>
-            <div class="text-gray-500 text-xs">Periodo de pago: ${fechaLiqInicioXml || `01 de ${monthLabel} de ${rec.ano}`} al ${fechaLiqFinXml || `30 de ${monthLabel} de ${rec.ano}`}</div>
+            <div class="text-gray-500 text-xs">Periodo liquidado: ${fechaLiqInicioXml || `01 de ${monthLabel} de ${rec.ano}`} al ${fechaLiqFinXml || `30 de ${monthLabel} de ${rec.ano}`}</div>
             <div class="font-bold text-indigo-900 font-mono text-sm">Secuencia: ${esc(numSec)}</div>
-            <div class="text-gray-400 text-3xs">Fecha emisión: ${rec.fecha_envio || todayStr()} 12:00:00-05:00</div>
+            <div class="text-gray-400 text-3xs">Fecha de emisión: ${rec.fecha_envio || todayStr()} 12:00:00-05:00</div>
           </div>
           <div class="text-right">
-            <img src="${qrUrl}" alt="QR DIAN" class="w-20 h-20 border p-1 rounded-lg bg-white inline-block" />
+            ${isApproved ? `
+              <img src="${qrUrl}" alt="QR DIAN" class="w-20 h-20 border p-1 rounded-lg bg-white inline-block" />
+            ` : `
+              <div class="w-24 h-24 border-2 border-dashed border-amber-300 rounded-xl bg-amber-50 flex flex-col items-center justify-center p-2 text-center text-amber-800 inline-block">
+                <i class="fas fa-file-signature text-2xl text-amber-600 mb-1"></i>
+                <span class="font-bold text-3xs uppercase tracking-wider block">Borrador</span>
+                <span class="text-4xs text-amber-700 font-semibold block">Pre-Firma DIAN</span>
+              </div>
+            `}
           </div>
         </div>
 
@@ -8415,13 +10023,13 @@ function parseNominaXmlConcepts(xmlStr: string) {
           </tr>
         </table>
 
-        <!-- Tabla de Conceptos Dinámicos (Devengos vs Deducciones del XML) -->
+        <!-- Tabla de Conceptos Dinámicos (Devengos vs Deducciones del JSON) -->
         <table class="ne-pdf-table">
           <thead>
             <tr class="bg-gray-100 text-gray-900 border-b border-gray-300">
               <th style="width:10%">Código</th>
               <th style="width:42%">Descripción</th>
-              <th style="width:14%" class="text-center">Unidades</th>
+              <th style="width:14%" class="text-center">Unidades / %</th>
               <th style="width:17%" class="text-right">Devengos</th>
               <th style="width:17%" class="text-right">Deducciones</th>
             </tr>
@@ -8448,15 +10056,23 @@ function parseNominaXmlConcepts(xmlStr: string) {
         </div>
 
         <div class="p-2 border rounded-lg text-3xs text-gray-500">
-          <strong>Notas:</strong> Comprobante de nómina procesado electrónicamente. Documento válido ante las autoridades tributarias y laborales.
+          <strong>Notas:</strong> Comprobante de nómina procesado electrónicamente. Corrobore los importes contra su liquidación contable.
         </div>
 
         <!-- Bloque DIAN Legal & Firma Digital -->
-        <div class="border border-rose-200 rounded-xl p-2.5 bg-white space-y-1.5 font-mono text-3xs">
-          <div><span class="text-gray-500 font-sans font-bold">CUNE:</span> <span class="font-bold text-gray-800 break-all">${esc(cune)}</span></div>
-          <div><span class="text-gray-500 font-sans font-bold">Fecha Firmado:</span> <span class="text-gray-700">${rec.fecha_envio || todayStr()} 12:00:00-05:00</span></div>
-          <div><span class="text-gray-500 font-sans font-bold">Firma Digital:</span> <span class="text-gray-500 break-all">SMbWtszsoY4c35SftX23XLEjWd0w9oDxB/jkn9H3H0eb4kz3kccNtRuWUqia4Ygm...</span></div>
-        </div>
+        ${isApproved ? `
+          <div class="border border-rose-200 rounded-xl p-2.5 bg-white space-y-1.5 font-mono text-3xs">
+            <div><span class="text-gray-500 font-sans font-bold">CUNE:</span> <span class="font-bold text-gray-800 break-all">${esc(cune)}</span></div>
+            <div><span class="text-gray-500 font-sans font-bold">Fecha Firmado:</span> <span class="text-gray-700">${rec.fecha_envio || todayStr()} 12:00:00-05:00</span></div>
+            <div><span class="text-gray-500 font-sans font-bold">Firma Digital:</span> <span class="text-gray-500 break-all">SMbWtszsoY4c35SftX23XLEjWd0w9oDxB/jkn9H3H0eb4kz3kccNtRuWUqia4Ygm...</span></div>
+          </div>
+        ` : `
+          <div class="border border-amber-200 rounded-xl p-2.5 bg-amber-50/50 space-y-1 font-mono text-3xs">
+            <div><span class="text-amber-800 font-sans font-bold">Estado del Documento:</span> <span class="font-bold text-amber-900 uppercase">Borrador Previo (Pendiente de Firma y Transmisión a DIAN)</span></div>
+            <div><span class="text-gray-500 font-sans font-bold">Estructura Fuente:</span> <span class="text-gray-700">${isJson ? 'Payload Nativo JSON DIAN API (UBL 2.1)' : 'XML UBL 2.1 DIAN'}</span></div>
+            <div><span class="text-gray-500 font-sans font-bold">CUNE:</span> <span class="text-gray-400 italic">Se asignará y sellará digitalmente tras la firma ante la DIAN</span></div>
+          </div>
+        `}
 
         <div class="text-center text-3xs text-gray-400 border-t pt-2">
           Representación Gráfica de Nómina Individual. Software: GRAVY v2.0 | Emisión Electrónica DIAN UBL 2.1.
@@ -8464,10 +10080,22 @@ function parseNominaXmlConcepts(xmlStr: string) {
       </div>
     `;
 
-    openModal(`Representación Gráfica de Nómina — ${name} (${numSec})`, bodyHtml, `
-      <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
-      <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print mr-1"></i>Imprimir / Guardar PDF</button>
-    `, true);
+    const modalFooter = `
+      <div class="flex flex-wrap justify-between items-center w-full gap-2">
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" onclick="closeModal()">Cerrar</button>
+          <button class="btn btn-outline btn-sm border-gray-400 hover:bg-gray-100" onclick="window.print()"><i class="fas fa-print mr-1"></i>Imprimir / Guardar PDF</button>
+          <button class="btn btn-outline btn-sm border-indigo-400 text-indigo-700 hover:bg-indigo-50" onclick="closeModal(); window.openNominaWorkerDetailModal('${esc(id)}')"><i class="fas fa-code mr-1"></i>Ver JSON / XML</button>
+        </div>
+        ${isPending ? `
+          <button class="btn btn-primary btn-sm bg-emerald-600 hover:bg-emerald-700 font-bold" onclick="closeModal(); window.emitNominaElectronicaDian('${esc(id)}')">
+            <i class="fas fa-paper-plane mr-1"></i>Firmar y Transmitir ante la DIAN
+          </button>
+        ` : ''}
+      </div>
+    `;
+
+    openModal(isPending ? `Volante Previo de Nómina (Pre-Firma) — ${name} (${numSec})` : `Representación Gráfica de Nómina — ${name} (${numSec})`, bodyHtml, modalFooter, true);
   } catch (err: any) {
     showToast(err.message, 'error');
   }
@@ -8595,18 +10223,130 @@ function parseNominaXmlConcepts(xmlStr: string) {
   }
 };
 
+// Menú desplegable flotante de 3 puntos para acciones de Nómina Electrónica
+(window as any).openNominaRowActionMenu = function (e: MouseEvent, nomData: any) {
+  e.stopPropagation();
+  const oldMenu = document.getElementById('nomina-row-action-floating-menu');
+  if (oldMenu) oldMenu.remove();
+
+  const btn = (e.currentTarget || e.target) as HTMLElement;
+  const targetBtn = btn.closest('button') || btn;
+  const rect = targetBtn.getBoundingClientRect();
+
+  const menu = document.createElement('div');
+  menu.id = 'nomina-row-action-floating-menu';
+  menu.className = 'fixed z-50 bg-white rounded-2xl shadow-xl border border-gray-200/90 py-1.5 min-w-[230px] text-xs animate-in fade-in zoom-in-95 duration-100';
+
+  let itemsHtml = `
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-indigo-700 hover:bg-indigo-50 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('nomina-row-action-floating-menu')?.remove(); window.previewNominaModal('${nomData.id}')">
+      <i class="fas fa-file-invoice text-indigo-600 w-4"></i>
+      <span>Ver Volante Previo (Pre-Firma)</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('nomina-row-action-floating-menu')?.remove(); window.openNominaWorkerDetailModal('${nomData.id}')">
+      <i class="fas fa-eye text-gray-500 w-4"></i>
+      <span>Ver Detalle y JSON / XML</span>
+    </button>
+  `;
+
+  if (nomData.approved || nomData.hasCufe) {
+    itemsHtml += `
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-amber-800 hover:bg-amber-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('nomina-row-action-floating-menu')?.remove(); window.openNominaAjusteModal('${nomData.id}')">
+        <i class="fas fa-file-pen text-amber-600 w-4"></i>
+        <span>Emitir Nota de Ajuste DIAN</span>
+      </button>
+    `;
+  }
+
+  itemsHtml += `
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-blue-700 hover:bg-blue-50 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('nomina-row-action-floating-menu')?.remove(); window.checkNominaFtechStatus('${nomData.id}')">
+      <i class="fas fa-arrows-rotate text-blue-600 w-4"></i>
+      <span>Consultar Estado DIAN</span>
+    </button>
+    <div class="my-1 border-t border-gray-100"></div>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-purple-700 hover:bg-purple-50 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('nomina-row-action-floating-menu')?.remove(); window.downloadNominaPdf('${nomData.id}')">
+      <i class="fas fa-file-pdf text-purple-600 w-4"></i>
+      <span>Descargar PDF (Desprendible)</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-amber-700 hover:bg-amber-50 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('nomina-row-action-floating-menu')?.remove(); window.downloadNominaXml('${nomData.id}')">
+      <i class="fas fa-file-code text-amber-600 w-4"></i>
+      <span>Descargar XML UBL 2.1</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-indigo-700 hover:bg-indigo-50 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('nomina-row-action-floating-menu')?.remove(); window.resendNominaEmail('${nomData.id}')">
+      <i class="fas fa-envelope text-indigo-600 w-4"></i>
+      <span>Reenviar por Correo</span>
+    </button>
+  `;
+
+  menu.innerHTML = itemsHtml;
+  document.body.appendChild(menu);
+
+  const menuWidth = 230;
+  const menuHeight = menu.offsetHeight || 250;
+  let top = rect.bottom + 4;
+  let left = rect.right - menuWidth;
+
+  if (left < 10) left = 10;
+  if (top + menuHeight > window.innerHeight - 10) {
+    top = Math.max(10, rect.top - menuHeight - 4);
+  }
+
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+
+  const onDocClick = (ev: MouseEvent) => {
+    if (!menu.contains(ev.target as Node) && ev.target !== targetBtn && !targetBtn.contains(ev.target as Node)) {
+      menu.remove();
+      document.removeEventListener('click', onDocClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    }
+  };
+  const onScroll = () => {
+    menu.remove();
+    document.removeEventListener('click', onDocClick);
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', onScroll);
+  };
+
+  setTimeout(() => {
+    document.addEventListener('click', onDocClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+  }, 10);
+};
+
 function verXmlNominaElectronica(ne) {
-  const xml = ne.xml_generado || 'No hay XML generado';
-  const escapedXml = xml.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const content = (ne.xml_generado || '').trim();
+  const isJson = content.startsWith('{');
+  let displayBody = '';
+  let title = 'Documento Nómina Electrónica UBL 2.1';
+  let copyBtnText = 'Copiar XML';
+
+  if (isJson) {
+    title = 'Payload Nativo JSON (DIAN API — UBL 2.1)';
+    copyBtnText = 'Copiar JSON';
+    try {
+      const formatted = JSON.stringify(JSON.parse(content), null, 2);
+      displayBody = `<div class="text-left font-mono text-xs bg-gray-900 text-emerald-400 p-4 rounded-xl overflow-auto max-h-96" style="white-space: pre;">${esc(formatted)}</div>`;
+    } catch (_) {
+      displayBody = `<div class="text-left font-mono text-xs bg-gray-900 text-emerald-400 p-4 rounded-xl overflow-auto max-h-96" style="white-space: pre;">${esc(content)}</div>`;
+    }
+  } else {
+    title = 'XML Nómina Electrónica UBL 2.1';
+    copyBtnText = 'Copiar XML';
+    const escapedXml = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    displayBody = `<div class="text-left font-mono text-xs bg-gray-900 text-green-400 p-4 rounded-xl overflow-auto max-h-96" style="white-space: pre;">${escapedXml || 'No hay documento generado'}</div>`;
+  }
+
   openModal(
-    'XML Nómina Electrónica UBL 2.1',
-    `<div class="text-left font-mono text-xs bg-gray-900 text-green-400 p-4 rounded-xl overflow-auto max-h-96" style="white-space: pre;">${escapedXml}</div>`,
+    title,
+    displayBody,
     `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
-     <button class="btn btn-primary" id="btn-copy-xml"><i class="fas fa-copy mr-1"></i>Copiar XML</button>`
+     <button class="btn btn-primary" id="btn-copy-doc"><i class="fas fa-copy mr-1"></i>${copyBtnText}</button>`
   );
-  $('#btn-copy-xml')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(xml);
-    showToast('XML copiado al portapapeles', 'success');
+  $('#btn-copy-doc')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(content);
+    showToast(`${copyBtnText} copiado al portapapeles`, 'success');
   });
 }
 
@@ -9447,16 +11187,16 @@ async function printConsolidatedPayrollSummary(periodId: string) {
       totalIcbf += (l.icbf || 0);
       totalCaja += (l.caja_comp || 0);
 
-      totalCesantias += (l.cesantias || 0);
-      totalInteresesCes += (l.intereses_ces || 0);
-      totalPrima += (l.prima || 0);
-      totalVacaciones += (l.vacaciones || 0);
+    totalCesantias += (l.cesantias || 0);
+    totalInteresesCes += (l.intereses_ces || 0);
+    totalPrima += (l.prima || 0);
+    totalVacaciones += (l.vacaciones || 0);
 
-      const empName = l.expand?.employee_id?.name || 'Empleado sin nombre';
-      const empDocType = l.expand?.employee_id?.doc_type || 'CC';
-      const empDoc = l.expand?.employee_id?.doc_number || '—';
+    const empName = l.expand?.employee_id?.name || 'Empleado sin nombre';
+    const empDocType = l.expand?.employee_id?.doc_type || 'CC';
+    const empDoc = l.expand?.employee_id?.doc_number || '—';
 
-      return `
+    return `
         <tr>
           <td style="text-align:center;">${idx + 1}</td>
           <td style="font-weight:600;color:#0D2137;">${empName}</td>
@@ -9469,12 +11209,12 @@ async function printConsolidatedPayrollSummary(periodId: string) {
           <td style="border-bottom: 1px dashed #94A3B8;"></td>
         </tr>
       `;
-    }).join('');
+  }).join('');
 
-    const totalParafiscales = totalEmployerHealth + totalEmployerPension + totalEmployerArl + totalSena + totalIcbf + totalCaja;
-    const totalProvisiones = totalCesantias + totalInteresesCes + totalPrima + totalVacaciones;
+  const totalParafiscales = totalEmployerHealth + totalEmployerPension + totalEmployerArl + totalSena + totalIcbf + totalCaja;
+  const totalProvisiones = totalCesantias + totalInteresesCes + totalPrima + totalVacaciones;
 
-    const html = `<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -9631,16 +11371,16 @@ async function printConsolidatedPayrollSummary(periodId: string) {
 </body>
 </html>`;
 
-    const win = window.open('', '_blank', 'width=1100,height=800,scrollbars=yes');
-    if (!win) {
-      showToast('El navegador bloqueó la ventana emergente. Permite popups para esta página.', 'warning');
-      return;
-    }
-    win.document.write(html);
-    win.document.close();
-  } catch (err: any) {
-    showToast(err.message || 'Error al generar la lista de pago consolidada', 'error');
+  const win = window.open('', '_blank', 'width=1100,height=800,scrollbars=yes');
+  if (!win) {
+    showToast('El navegador bloqueó la ventana emergente. Permite popups para esta página.', 'warning');
+    return;
   }
+  win.document.write(html);
+  win.document.close();
+} catch (err: any) {
+  showToast(err.message || 'Error al generar la lista de pago consolidada', 'error');
+}
 }
 
 function generarPeriodosColombia(ano, mes, tipo) {
@@ -11211,8 +12951,12 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
   try {
     const periodsRaw = await pb.listAll('payroll_periods', { sort: '-date_from' });
     const periods = periodsRaw.filter(p => p.status === 'draft' || !p.status);
+    const { config } = await getNominaConfigWithRow().catch(() => ({ config: null }));
+    const smmlv = Number(config?.company_rules?.smmlv || 1750905);
+    const cstThreshold = smmlv * 2;
+
     const employees = await pb.listAll('third_parties', { filter: 'type="EMPLEADO" && active=true', sort: 'name' });
-    const suppliers = await pb.listAll('third_parties', { filter: 'type="PROVEEDOR" && active=true', sort: 'name' });
+    const thirdPartiesRaw = await pb.listAll('third_parties', { filter: 'active=true', sort: 'name' });
 
     if (!periods.length) {
       c.innerHTML = `
@@ -11226,14 +12970,39 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
       return;
     }
 
+    // Clasificar terceros para el selector
+    const suppliers = thirdPartiesRaw.filter(tp => tp.type === 'PROVEEDOR');
+    const otherThirdParties = thirdPartiesRaw.filter(tp => tp.type !== 'PROVEEDOR' && tp.type !== 'EMPLEADO');
+
+    // Mapear salarios de empleados para criterio CST (Art. 230 CST <= 2 SMMLV)
+    const empCstMap: Record<string, { salary: number; qualifies: boolean }> = {};
+    employees.forEach(emp => {
+      const empRule = config?.employee_rules?.find((r: any) => r.employee_id === emp.id);
+      const groupRule = config?.group_rules?.find((g: any) => g.group_id === empRule?.group_id);
+      const basicSalary = Number(empRule?.basic_salary ?? groupRule?.basic_salary ?? 0);
+      const qualifies = basicSalary > 0 ? basicSalary <= cstThreshold : true;
+      empCstMap[emp.id] = { salary: basicSalary, qualifies };
+    });
+
     const periodOptions = periods.map(p => `<option value="${esc(p.id)}" data-start="${p.date_from}" data-end="${p.date_to}">${esc(p.name)}</option>`).join('');
-    const supplierOptions = suppliers.map(s => `<option value="${esc(s.id)}">${esc(s.doc_number || '')} - ${esc(s.name)}</option>`).join('');
 
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
-           <h3 class="text-lg font-bold" style="color:#0D2137">Distribución Masiva de Dotaciones</h3>
-           <p class="text-sm" style="color:#6B7280">Filtra un proveedor, asocia su factura de compra y distribuye automáticamente el valor a los empleados seleccionados.</p>
+           <div class="flex items-center gap-2">
+             <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 text-sm">
+               <i class="fas fa-shirt"></i>
+             </span>
+             <h3 class="text-lg font-bold" style="color:#0D2137">Distribución Masiva de Dotaciones</h3>
+           </div>
+           <p class="text-xs text-gray-500 mt-1">
+             Asocia facturas de compra, documentos soporte o comprobantes contables a la dotación de tus empleados en cumplimiento del CST (Art. 230).
+           </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-outline btn-sm text-xs" onclick="navigate('nomina-novedades')">
+            <i class="fas fa-arrow-left mr-1"></i>Volver a Novedades
+          </button>
         </div>
       </div>
 
@@ -11241,47 +13010,75 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
         <!-- Columna izquierda: Configuración de la factura y distribución -->
         <div class="lg:col-span-1 space-y-4">
           <div class="bg-white rounded-2xl border p-5 space-y-4 shadow-sm" style="border-color:#EAF2F8">
-            <h4 class="font-bold text-gray-800 text-sm mb-3 border-b pb-2"><i class="fas fa-cogs mr-2 text-blue-600"></i>Configuración de Origen</h4>
+            <div class="flex items-center justify-between border-b pb-2">
+              <h4 class="font-bold text-gray-800 text-sm flex items-center">
+                <i class="fas fa-receipt mr-2 text-blue-600"></i>Origen de la Dotación
+              </h4>
+              <span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+                Paso 1
+              </span>
+            </div>
             
             <div class="form-group">
-              <label class="form-label text-xs font-semibold">Período de Nómina Target *</label>
-              <select id="dd-period" class="form-input">${periodOptions}</select>
+              <label class="form-label text-xs font-semibold text-gray-700">Período de Nómina Target *</label>
+              <select id="dd-period" class="form-input text-xs">${periodOptions}</select>
             </div>
 
             <div class="form-group">
-              <label class="form-label text-xs font-semibold">Proveedor *</label>
-              <select id="dd-supplier" class="form-input">
-                <option value="">-- Selecciona un proveedor --</option>
-                ${supplierOptions}
+              <div class="flex justify-between items-center mb-1">
+                <label class="form-label text-xs font-semibold text-gray-700 m-0">Tercero / Proveedor *</label>
+                <span class="text-[10px] text-gray-400">NIT o Razón Social</span>
+              </div>
+              <input id="dd-supplier-filter" type="text" class="form-input text-xs mb-1.5" placeholder="🔍 Filtrar lista de proveedores...">
+              <select id="dd-supplier" class="form-input text-xs" size="6" style="height:120px">
+                <option value="" disabled>-- Selecciona un tercero --</option>
+                <optgroup label="Proveedores Registrados (${suppliers.length})">
+                  ${suppliers.map(s => `<option value="${esc(s.id)}" data-doc="${esc(s.doc_number || '')}" data-name="${esc(s.name.toLowerCase())}">${esc(s.doc_number || '')} - ${esc(s.name)}</option>`).join('')}
+                </optgroup>
+                <optgroup label="Otros Terceros (${otherThirdParties.length})">
+                  ${otherThirdParties.map(s => `<option value="${esc(s.id)}" data-doc="${esc(s.doc_number || '')}" data-name="${esc(s.name.toLowerCase())}">[${esc(s.type)}] ${esc(s.doc_number || '')} - ${esc(s.name)}</option>`).join('')}
+                </optgroup>
               </select>
             </div>
 
             <div class="form-group">
-              <label class="form-label text-xs font-semibold">Factura de Compra Proveedor *</label>
-              <select id="dd-invoice" class="form-input" disabled>
-                <option value="">-- Selecciona primero un proveedor --</option>
+              <div class="flex justify-between items-center mb-1">
+                <label class="form-label text-xs font-semibold text-gray-700 m-0">Factura / Soporte de Compra *</label>
+                <button type="button" id="dd-btn-manual-toggle" class="text-[11px] text-blue-600 hover:text-blue-800 font-semibold underline">
+                  Digitar soporte manual
+                </button>
+              </div>
+              <select id="dd-invoice" class="form-input text-xs" disabled>
+                <option value="">-- Selecciona primero un tercero --</option>
               </select>
+              <div id="dd-invoice-status-banner" class="hidden text-xs p-2.5 rounded-xl border mt-2"></div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div class="form-group">
+                <label class="form-label text-xs font-semibold text-gray-700">Total Factura</label>
+                <input type="text" id="dd-total-invoice" class="form-input text-xs font-mono bg-gray-50 text-gray-600" disabled value="$ 0">
+              </div>
+              <div class="form-group">
+                <label class="form-label text-xs font-semibold text-gray-700">Saldo Disponible</label>
+                <input type="text" id="dd-balance-invoice" class="form-input text-xs font-mono bg-emerald-50 text-emerald-800 font-semibold border-emerald-200" disabled value="$ 0">
+              </div>
             </div>
 
             <div class="form-group">
-              <label class="form-label text-xs font-semibold">Valor Total Factura ($)</label>
-              <input type="text" id="dd-total-invoice" class="form-input" disabled value="0">
+              <label class="form-label text-xs font-semibold text-gray-700">Valor a Distribuir ($) *</label>
+              <input type="number" id="dd-amount-distribute" class="form-input text-sm font-mono font-bold text-blue-900" min="1" value="0">
+              <p class="text-[11px] text-gray-400 mt-1">Monto total que será prorrateado entre los empleados.</p>
             </div>
 
             <div class="form-group">
-              <label class="form-label text-xs font-semibold">Valor a Distribuir ($) *</label>
-              <input type="number" id="dd-amount-distribute" class="form-input" min="1" value="0">
-              <p class="text-xs text-gray-400 mt-1">Por defecto es el total de la factura, pero puedes editarlo.</p>
+              <label class="form-label text-xs font-semibold text-gray-700">Soporte / N° de Factura *</label>
+              <input type="text" id="dd-support" class="form-input text-xs font-mono" placeholder="Ej: FC-00000001, DSE-320...">
             </div>
 
             <div class="form-group">
-              <label class="form-label text-xs font-semibold">Soporte / Entrega Radicado</label>
-              <input type="text" id="dd-support" class="form-input" placeholder="Ej: FC-4827">
-            </div>
-
-            <div class="form-group">
-              <label class="form-label text-xs font-semibold">Descripción Novedad</label>
-              <textarea id="dd-desc" class="form-input" rows="2" placeholder="Ej: Dotación de ropa y calzado de labor..."></textarea>
+              <label class="form-label text-xs font-semibold text-gray-700">Descripción de la Novedad</label>
+              <textarea id="dd-desc" class="form-input text-xs" rows="2" placeholder="Ej: Dotación de calzado y vestido de labor período 2..."></textarea>
             </div>
           </div>
         </div>
@@ -11289,147 +13086,473 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
         <!-- Columna derecha: Empleados y Distribución -->
         <div class="lg:col-span-2 space-y-4">
           <div class="bg-white rounded-2xl border p-5 shadow-sm" style="border-color:#EAF2F8">
-            <h4 class="font-bold text-gray-800 text-sm mb-3 border-b pb-2 flex justify-between items-center">
-              <span><i class="fas fa-users mr-2 text-emerald-600"></i>Empleados Beneficiarios</span>
-              <span class="text-xs font-normal text-gray-500" id="dd-selected-count">0 seleccionados</span>
-            </h4>
-
-            <div class="flex gap-2 mb-3">
-              <input id="dd-emp-search" class="form-input flex-1 text-xs" placeholder="Buscar empleado por nombre o NIT...">
-              <button class="btn btn-outline btn-sm" id="dd-btn-select-all" type="button">Todos</button>
-              <button class="btn btn-outline btn-sm" id="dd-btn-deselect-all" type="button">Ninguno</button>
+            <div class="flex flex-wrap justify-between items-center border-b pb-3 mb-3 gap-2">
+              <div>
+                <h4 class="font-bold text-gray-800 text-sm flex items-center">
+                  <i class="fas fa-users mr-2 text-emerald-600"></i>Empleados Beneficiarios
+                </h4>
+                <p class="text-[11px] text-gray-500">
+                  CST Art. 230: Obligatorio para trabajadores con salario ≤ 2 SMMLV (${fmt(cstThreshold)}).
+                </p>
+              </div>
+              <div class="text-right">
+                <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200" id="dd-selected-count">
+                  0 seleccionados
+                </span>
+              </div>
             </div>
 
-            <div class="overflow-y-auto border rounded-xl p-2" style="max-height: 280px; border-color:#F0F0F0">
-              <table class="data-table text-xs text-left" id="dd-emp-table">
-                <thead>
+            <div class="flex flex-wrap gap-2 mb-3 items-center">
+              <div class="relative flex-1 min-w-[200px]">
+                <input id="dd-emp-search" class="form-input text-xs pl-8" placeholder="Buscar por nombre o documento...">
+                <i class="fas fa-search absolute left-3 top-2.5 text-gray-400 text-xs"></i>
+              </div>
+              <button class="btn btn-outline btn-sm text-xs font-medium" id="dd-btn-select-cst" type="button" title="Selecciona automáticamente quienes devengan hasta 2 SMMLV">
+                <i class="fas fa-shield-halved mr-1 text-emerald-600"></i>Solo con Derecho CST
+              </button>
+              <button class="btn btn-outline btn-sm text-xs" id="dd-btn-select-all" type="button">Todos</button>
+              <button class="btn btn-outline btn-sm text-xs" id="dd-btn-deselect-all" type="button">Ninguno</button>
+              <button class="btn btn-outline btn-sm text-xs text-blue-700 border-blue-200 hover:bg-blue-50" id="dd-btn-equidistribute" type="button" title="Repartir el valor en partes iguales">
+                <i class="fas fa-scale-balanced mr-1"></i>Equidistribuir
+              </button>
+            </div>
+
+            <div class="overflow-y-auto border rounded-xl" style="max-height: 320px; border-color:#F0F0F0">
+              <table class="data-table text-xs text-left w-full" id="dd-emp-table">
+                <thead class="bg-gray-50 text-gray-600 font-semibold sticky top-0 border-b">
                   <tr>
-                    <th width="40" class="text-center">Sel.</th>
-                    <th>Documento</th>
-                    <th>Nombre Empleado</th>
+                    <th width="40" class="text-center p-2">Sel.</th>
+                    <th class="p-2">Documento</th>
+                    <th class="p-2">Nombre Empleado</th>
+                    <th class="p-2">Criterio Legal CST</th>
+                    <th width="150" class="p-2 text-right">Valor Asignado ($)</th>
                   </tr>
                 </thead>
-                <tbody id="dd-emp-list">
-                  ${employees.map(e => `
-                    <tr class="emp-row" data-name="${esc(e.name.toLowerCase())}" data-doc="${esc(e.doc_number || '')}">
-                      <td class="text-center">
-                        <input type="checkbox" class="dd-emp-checkbox" value="${esc(e.id)}">
-                      </td>
-                      <td>${esc(e.doc_number || '')}</td>
-                      <td class="font-semibold">${esc(e.name)}</td>
-                    </tr>
-                  `).join('')}
+                <tbody id="dd-emp-list" class="divide-y divide-gray-100">
+                  ${employees.map(e => {
+                    const cst = empCstMap[e.id] || { salary: 0, qualifies: true };
+                    return `
+                      <tr class="emp-row hover:bg-slate-50 transition-colors" data-name="${esc(e.name.toLowerCase())}" data-doc="${esc(e.doc_number || '')}" data-cst="${cst.qualifies ? '1' : '0'}">
+                        <td class="text-center p-2">
+                          <input type="checkbox" class="dd-emp-checkbox" value="${esc(e.id)}">
+                        </td>
+                        <td class="p-2 font-mono text-gray-600">${esc(e.doc_number || '—')}</td>
+                        <td class="p-2 font-semibold text-gray-800">${esc(e.name)}</td>
+                        <td class="p-2">
+                          ${cst.qualifies
+                            ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-check text-[9px]"></i>≤ 2 SMMLV (Aplica)</span>`
+                            : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">> 2 SMMLV (Opcional)</span>`}
+                        </td>
+                        <td class="p-2 text-right">
+                          <input type="number" class="dd-emp-amount form-input form-input-sm text-right text-xs py-1 px-2 w-32 font-mono font-bold text-slate-700 inline-block" data-emp-id="${esc(e.id)}" value="0" min="0" step="100" disabled>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
                 </tbody>
               </table>
             </div>
 
-            <div class="mt-4 p-4 rounded-xl border space-y-3" style="background:#F8FAFC; border-color:#E2E8F0">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-semibold text-gray-700">Valor Unitario Proyectado por Empleado:</span>
-                <span class="text-lg font-bold text-blue-900" id="dd-unit-projection">$ 0</span>
+            <!-- Tarjeta de Cuadre y Proyección -->
+            <div class="mt-4 p-4 rounded-xl border bg-slate-50 space-y-3" style="border-color:#E2E8F0">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                  <span class="text-[11px] text-slate-500 block uppercase font-bold tracking-wider">Valor a Distribuir:</span>
+                  <span class="text-base font-bold text-slate-800 font-mono" id="dd-summary-target">$ 0</span>
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                  <span class="text-[11px] text-slate-500 block uppercase font-bold tracking-wider">Total Asignado:</span>
+                  <span class="text-base font-bold text-blue-900 font-mono" id="dd-summary-assigned">$ 0</span>
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                  <span class="text-[11px] text-slate-500 block uppercase font-bold tracking-wider">Diferencia / Saldo:</span>
+                  <span class="text-base font-bold text-emerald-600 font-mono" id="dd-summary-diff">$ 0</span>
+                </div>
               </div>
-              <p class="text-xs text-gray-500">
-                Fórmula: [Valor a Distribuir] / [Empleados Seleccionados]. Esto creará una novedad de tipo "Dotación (Entrega en Especie)" para cada empleado en el período target.
+              <div id="dd-summary-reconciliation-msg" class="text-xs p-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-between">
+                <span><i class="fas fa-check-circle mr-1 text-emerald-600"></i>Montos cuadrados al 100%.</span>
+                <span class="text-[11px] text-emerald-700 font-semibold" id="dd-unit-projection-info"></span>
+              </div>
+              <p class="text-[11px] text-gray-500">
+                <i class="fas fa-info-circle mr-1 text-blue-500"></i><strong>Efecto Contable:</strong> Crea una novedad por cada empleado de tipo "Dotación (Entrega en Especie)". Esta prestación no suma al valor neto en efectivo a pagar al trabajador, pero se transmite en el XML de Nómina Electrónica DIAN para deducibilidad tributaria (E.T. Art. 107 y 108).
               </p>
             </div>
 
             <div class="mt-5 flex justify-end gap-2 border-t pt-4">
               <button class="btn btn-outline" id="dd-btn-cancel" type="button">Cancelar</button>
-              <button class="btn btn-primary" id="dd-btn-process" type="button"><i class="fas fa-share-nodes mr-1"></i>Distribuir y Crear Novedades</button>
+              <button class="btn btn-primary" id="dd-btn-process" type="button">
+                <i class="fas fa-share-nodes mr-1.5"></i>Distribuir y Crear Novedades
+              </button>
             </div>
           </div>
         </div>
       </div>
     `;
 
-    // Eventos interactivos
+    // Elementos interactivos
     const selectSupplier = $('#dd-supplier') as HTMLSelectElement;
+    const filterSupplierInput = $('#dd-supplier-filter') as HTMLInputElement;
     const selectInvoice = $('#dd-invoice') as HTMLSelectElement;
     const inputTotalInvoice = $('#dd-total-invoice') as HTMLInputElement;
+    const inputBalanceInvoice = $('#dd-balance-invoice') as HTMLInputElement;
     const inputAmountDistribute = $('#dd-amount-distribute') as HTMLInputElement;
     const inputSupport = $('#dd-support') as HTMLInputElement;
     const inputDesc = $('#dd-desc') as HTMLTextAreaElement;
-    const labelProjection = $('#dd-unit-projection') as HTMLElement;
+    const invoiceStatusBanner = $('#dd-invoice-status-banner') as HTMLElement;
+    const btnManualToggle = $('#dd-btn-manual-toggle') as HTMLButtonElement;
+
+    const summaryTarget = $('#dd-summary-target') as HTMLElement;
+    const summaryAssigned = $('#dd-summary-assigned') as HTMLElement;
+    const summaryDiff = $('#dd-summary-diff') as HTMLElement;
+    const summaryMsg = $('#dd-summary-reconciliation-msg') as HTMLElement;
+    const unitProjectionInfo = $('#dd-unit-projection-info') as HTMLElement;
     const labelSelectedCount = $('#dd-selected-count') as HTMLElement;
 
-    // Calcular proyección
-    const recalcProjection = () => {
-      const amount = Number(inputAmountDistribute?.value || 0);
-      const checkedBoxes = document.querySelectorAll('.dd-emp-checkbox:checked');
-      const count = checkedBoxes.length;
-      labelSelectedCount.textContent = `${count} seleccionados`;
+    // Estado del formulario
+    let currentInvoices: any[] = [];
+    let isManualMode = false;
 
-      if (count > 0 && amount > 0) {
-        const unit = round2(amount / count);
-        labelProjection.textContent = fmt(unit);
+    // Filtro instantáneo de la lista de proveedores
+    filterSupplierInput?.addEventListener('input', () => {
+      const query = filterSupplierInput.value.toLowerCase().trim();
+      const options = selectSupplier.querySelectorAll('option');
+      options.forEach(opt => {
+        if (!opt.value) return;
+        const name = opt.getAttribute('data-name') || '';
+        const doc = opt.getAttribute('data-doc') || '';
+        const match = name.includes(query) || doc.includes(query);
+        opt.style.display = match ? '' : 'none';
+      });
+    });
+
+    // Activar/desactivar modo manual de ingreso
+    const setManualMode = (active: boolean) => {
+      isManualMode = active;
+      if (active) {
+        btnManualToggle.textContent = 'Volver a selector de facturas';
+        selectInvoice.disabled = true;
+        selectInvoice.innerHTML = '<option value="__manual__">📝 Modo Manual Activo (Caja Menor / Externo)</option>';
+        inputSupport.removeAttribute('readonly');
+        inputTotalInvoice.value = '$ 0 (Manual)';
+        inputBalanceInvoice.value = 'N/A';
+        invoiceStatusBanner.className = 'text-xs p-2.5 rounded-xl border mt-2 bg-amber-50 text-amber-800 border-amber-200 block';
+        invoiceStatusBanner.innerHTML = '<i class="fas fa-keyboard mr-1"></i><strong>Modo Manual:</strong> Ingresa el número de comprobante/soporte y el valor total a distribuir.';
+        inputSupport.focus();
       } else {
-        labelProjection.textContent = '$ 0';
+        btnManualToggle.textContent = 'Digitar soporte manual';
+        selectInvoice.disabled = false;
+        if (selectSupplier.value) {
+          selectSupplier.dispatchEvent(new Event('change'));
+        } else {
+          selectInvoice.innerHTML = '<option value="">-- Selecciona primero un tercero --</option>';
+          selectInvoice.disabled = true;
+          invoiceStatusBanner.className = 'hidden';
+        }
       }
     };
 
-    // Cambiar proveedor -> Cargar facturas en cascada
+    btnManualToggle?.addEventListener('click', () => {
+      setManualMode(!isManualMode);
+    });
+
+    // Recalcular balance de la tabla de empleados
+    const updateDistributionTable = (autoDistribute = false) => {
+      const targetAmount = Number(inputAmountDistribute?.value || 0);
+      const checkedRows = Array.from(document.querySelectorAll('#dd-emp-list .emp-row')).filter(r => {
+        const cb = r.querySelector('.dd-emp-checkbox') as HTMLInputElement;
+        return cb && cb.checked;
+      });
+
+      const checkedCount = checkedRows.length;
+      labelSelectedCount.textContent = `${checkedCount} seleccionados`;
+
+      if (autoDistribute && checkedCount > 0 && targetAmount > 0) {
+        const unit = round2(targetAmount / checkedCount);
+        let accumulated = 0;
+
+        checkedRows.forEach((r, idx) => {
+          const input = r.querySelector('.dd-emp-amount') as HTMLInputElement;
+          if (idx === checkedCount - 1) {
+            // El último absorbe el remanente de centavos por redondeo
+            const lastVal = round2(targetAmount - accumulated);
+            input.value = String(Math.max(0, lastVal));
+          } else {
+            input.value = String(unit);
+            accumulated = round2(accumulated + unit);
+          }
+        });
+      }
+
+      // Sumar el total actualmente asignado en todos los inputs activos
+      let totalAssigned = 0;
+      document.querySelectorAll('#dd-emp-list .emp-row').forEach((r: any) => {
+        const cb = r.querySelector('.dd-emp-checkbox') as HTMLInputElement;
+        const input = r.querySelector('.dd-emp-amount') as HTMLInputElement;
+        if (cb && cb.checked) {
+          input.disabled = false;
+          totalAssigned = round2(totalAssigned + Number(input.value || 0));
+        } else {
+          input.disabled = true;
+          input.value = '0';
+        }
+      });
+
+      const diff = round2(targetAmount - totalAssigned);
+
+      summaryTarget.textContent = `$ ${fmt(targetAmount)}`;
+      summaryAssigned.textContent = `$ ${fmt(totalAssigned)}`;
+      summaryDiff.textContent = `$ ${fmt(Math.abs(diff))}`;
+
+      if (checkedCount > 0 && targetAmount > 0) {
+        const approxUnit = round2(targetAmount / checkedCount);
+        unitProjectionInfo.textContent = `Promedio: $ ${fmt(approxUnit)} / emp`;
+      } else {
+        unitProjectionInfo.textContent = '';
+      }
+
+      if (Math.abs(diff) < 0.01 && targetAmount > 0) {
+        summaryDiff.className = 'text-base font-bold text-emerald-600 font-mono';
+        summaryMsg.className = 'text-xs p-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center justify-between';
+        summaryMsg.innerHTML = `<span><i class="fas fa-check-circle mr-1 text-emerald-600"></i>Montos cuadrados exactamente al 100%.</span><span class="text-[11px] font-semibold">${unitProjectionInfo.textContent}</span>`;
+      } else if (diff > 0) {
+        summaryDiff.className = 'text-base font-bold text-blue-700 font-mono';
+        summaryMsg.className = 'text-xs p-2 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 flex items-center justify-between';
+        summaryMsg.innerHTML = `<span><i class="fas fa-info-circle mr-1 text-blue-600"></i>Remanente por asignar: $ ${fmt(diff)}. Usa el botón "Equidistribuir" para repartirlo parejo.</span>`;
+      } else if (diff < 0) {
+        summaryDiff.className = 'text-base font-bold text-amber-700 font-mono';
+        summaryMsg.className = 'text-xs p-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 flex items-center justify-between';
+        summaryMsg.innerHTML = `<span><i class="fas fa-exclamation-triangle mr-1 text-amber-600"></i>El total asignado supera el valor a distribuir en $ ${fmt(Math.abs(diff))}.</span>`;
+      } else {
+        summaryDiff.className = 'text-base font-bold text-slate-600 font-mono';
+        summaryMsg.className = 'text-xs p-2 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-between';
+        summaryMsg.innerHTML = `<span><i class="fas fa-info-circle mr-1"></i>Ingresa un valor a distribuir y selecciona los empleados beneficiarios.</span>`;
+      }
+    };
+
+    // Cambiar proveedor -> Consulta unificada e inteligente de facturas
     selectSupplier?.addEventListener('change', async () => {
       const supplierId = selectSupplier.value;
+      if (!supplierId) return;
 
-      // Resetear campos dependientes
-      selectInvoice.innerHTML = '<option value="">-- Selecciona una factura --</option>';
+      isManualMode = false;
+      btnManualToggle.textContent = 'Digitar soporte manual';
+      selectInvoice.innerHTML = '<option value="">⏳ Buscando facturas en compras, documentos soporte y contabilidad...</option>';
       selectInvoice.disabled = true;
-      inputTotalInvoice.value = '0';
+      inputTotalInvoice.value = '$ 0';
+      inputBalanceInvoice.value = '$ 0';
       inputAmountDistribute.value = '0';
       inputSupport.value = '';
       inputDesc.value = '';
-      recalcProjection();
+      invoiceStatusBanner.className = 'hidden';
+      updateDistributionTable(false);
 
-      if (!supplierId) return;
-
-      selectInvoice.innerHTML = '<option value="">Cargando facturas...</option>';
       try {
-        const invoices = await pb.listAll('purchase_invoices', {
-          filter: `supplier_id = "${pb.escapeFilterValue(supplierId)}"`,
-          sort: '-date'
+        // 1. Consultar facturas en las 3 fuentes en paralelo
+        const [purInvs, supDocs, txList, txLines, prevDotaciones] = await Promise.all([
+          pb.listAll('purchase_invoices', {
+            filter: `supplier_id = "${pb.escapeFilterValue(supplierId)}"`,
+            sort: '-date'
+          }).catch(() => []),
+          pb.listAll('support_documents', {
+            filter: `supplier_id = "${pb.escapeFilterValue(supplierId)}"`,
+            sort: '-date'
+          }).catch(() => []),
+          pb.listAll('transactions', {
+            filter: `third_party_id = "${pb.escapeFilterValue(supplierId)}" && number ~ "FC-"`,
+            sort: '-date'
+          }).catch(() => []),
+          pb.listAll('tx_lines', {
+            filter: `third_party_id = "${pb.escapeFilterValue(supplierId)}" && credit > 0`,
+            fields: 'tx_id,credit'
+          }).catch(() => []),
+          pb.listAll('payroll_novelties', {
+            filter: `type = "DOTACION"`,
+            fields: 'support_number,amount'
+          }).catch(() => [])
+        ]);
+
+        // Mapear créditos de transacciones
+        const txCreditMap: Record<string, number> = {};
+        txLines.forEach((l: any) => {
+          txCreditMap[l.tx_id] = round2((txCreditMap[l.tx_id] || 0) + Number(l.credit || 0));
         });
 
-        if (invoices.length === 0) {
-          selectInvoice.innerHTML = '<option value="">Sin facturas registradas para este proveedor</option>';
-          selectInvoice.disabled = true;
+        // Mapear lo ya distribuido previamente por soporte
+        const usedBySupport: Record<string, number> = {};
+        prevDotaciones.forEach((n: any) => {
+          const s = (n.support_number || '').trim();
+          if (s) {
+            usedBySupport[s] = round2((usedBySupport[s] || 0) + Number(n.amount || 0));
+          }
+        });
+
+        // Unificar resultados sin duplicados
+        const seenNumbers = new Set<string>();
+        const unifiedList: any[] = [];
+
+        // A. purchase_invoices
+        purInvs.forEach((p: any) => {
+          const num = (p.number || p.id).trim();
+          if (num) seenNumbers.add(num);
+          const total = Number(p.total || p.payable_total || 0);
+          const alreadyUsed = round2(usedBySupport[num] || 0);
+          unifiedList.push({
+            id: p.id,
+            source: 'purchase_invoices',
+            sourceLabel: 'Factura Compra',
+            badgeClass: 'bg-blue-100 text-blue-800',
+            number: num,
+            date: p.date?.slice(0, 10) || '',
+            total,
+            alreadyUsed,
+            balance: Math.max(0, round2(total - alreadyUsed))
+          });
+        });
+
+        // B. support_documents
+        supDocs.forEach((d: any) => {
+          const num = (d.number || d.id).trim();
+          if (num) seenNumbers.add(num);
+          const total = Number(d.total || 0);
+          const alreadyUsed = round2(usedBySupport[num] || 0);
+          unifiedList.push({
+            id: d.id,
+            source: 'support_documents',
+            sourceLabel: 'Doc. Soporte',
+            badgeClass: 'bg-purple-100 text-purple-800',
+            number: num,
+            date: d.date?.slice(0, 10) || '',
+            total,
+            alreadyUsed,
+            balance: Math.max(0, round2(total - alreadyUsed))
+          });
+        });
+
+        // C. transactions (Comprobantes FC-)
+        txList.forEach((t: any) => {
+          const num = (t.number || t.id).trim();
+          if (seenNumbers.has(num)) return; // Evitar duplicar si ya vino de purchase_invoices
+          seenNumbers.add(num);
+          const total = round2(txCreditMap[t.id] || t.cross_amount || 0);
+          const alreadyUsed = round2(usedBySupport[num] || 0);
+          unifiedList.push({
+            id: t.id,
+            source: 'transactions',
+            sourceLabel: 'Comprobante FC',
+            badgeClass: 'bg-emerald-100 text-emerald-800',
+            number: num,
+            date: t.date?.slice(0, 10) || '',
+            total,
+            alreadyUsed,
+            balance: Math.max(0, round2(total - alreadyUsed))
+          });
+        });
+
+        currentInvoices = unifiedList;
+
+        if (unifiedList.length === 0) {
+          selectInvoice.innerHTML = `
+            <option value="">Sin facturas registradas en el sistema para este tercero</option>
+            <option value="__manual__">📝 Usar modo manual (Caja Menor / Soporte Externo)</option>
+          `;
+          selectInvoice.disabled = false;
+          invoiceStatusBanner.className = 'text-xs p-2.5 rounded-xl border mt-2 bg-amber-50 text-amber-800 border-amber-200 block';
+          invoiceStatusBanner.innerHTML = '<i class="fas fa-circle-info mr-1"></i>No hay facturas registradas para este proveedor. Puedes usar la opción <strong>"Digitar soporte manual"</strong>.';
         } else {
-          selectInvoice.innerHTML = '<option value="">-- Selecciona una factura --</option>' +
-            invoices.map(inv => `<option value="${esc(inv.id)}" data-total="${inv.total || 0}" data-number="${inv.number}">${esc(inv.number)} - Total: ${fmt(inv.total || 0)} (${inv.date?.slice(0, 10) || ''})</option>`).join('');
+          selectInvoice.innerHTML = '<option value="">-- Selecciona una factura o documento --</option>' +
+            unifiedList.map(inv => {
+              const statusTag = inv.balance <= 0
+                ? ' [AGOTADA 100%]'
+                : (inv.alreadyUsed > 0 ? ` [Disp: $${fmt(inv.balance)}]` : '');
+              return `<option value="${esc(inv.id)}" data-number="${esc(inv.number)}" data-total="${inv.total}" data-balance="${inv.balance}" data-used="${inv.alreadyUsed}" data-source="${inv.sourceLabel}">
+                [${inv.sourceLabel}] ${esc(inv.number)} — Total: $${fmt(inv.total)}${statusTag} (${inv.date})
+              </option>`;
+            }).join('') +
+            `<option value="__manual__">📝 [Ingreso Manual] Digitar soporte y valor libremente</option>`;
           selectInvoice.disabled = false;
         }
       } catch (err: any) {
-        selectInvoice.innerHTML = '<option value="">Error al cargar facturas</option>';
+        selectInvoice.innerHTML = '<option value="">Error al cargar facturas</option><option value="__manual__">📝 Continuar con ingreso manual</option>';
+        selectInvoice.disabled = false;
         showToast(`Error al cargar facturas: ${err.message}`, 'error');
       }
     });
 
-    // Cambiar factura
+    // Seleccionar una factura del desplegable
     selectInvoice?.addEventListener('change', () => {
-      const opt = selectInvoice.options[selectInvoice.selectedIndex];
-      if (opt && opt.value) {
-        const total = Number(opt.getAttribute('data-total') || 0);
-        const number = opt.getAttribute('data-number') || '';
-        inputTotalInvoice.value = fmt(total);
-        inputAmountDistribute.value = String(total);
-        inputSupport.value = number;
-        inputDesc.value = `Distribución de Dotación según Factura de Compra N° ${number}`;
-      } else {
-        inputTotalInvoice.value = '0';
+      const val = selectInvoice.value;
+      if (!val) {
+        inputTotalInvoice.value = '$ 0';
+        inputBalanceInvoice.value = '$ 0';
         inputAmountDistribute.value = '0';
         inputSupport.value = '';
         inputDesc.value = '';
+        invoiceStatusBanner.className = 'hidden';
+        updateDistributionTable(false);
+        return;
       }
-      recalcProjection();
+
+      if (val === '__manual__') {
+        setManualMode(true);
+        return;
+      }
+
+      const opt = selectInvoice.options[selectInvoice.selectedIndex];
+      const number = opt.getAttribute('data-number') || '';
+      const total = Number(opt.getAttribute('data-total') || 0);
+      const balance = Number(opt.getAttribute('data-balance') || 0);
+      const used = Number(opt.getAttribute('data-used') || 0);
+      const sourceLabel = opt.getAttribute('data-source') || 'Factura';
+
+      inputTotalInvoice.value = `$ ${fmt(total)}`;
+      inputBalanceInvoice.value = `$ ${fmt(balance)}`;
+      inputSupport.value = number;
+      inputDesc.value = `Distribución de Dotación según ${sourceLabel} N° ${number}`;
+
+      // Sugerir el saldo disponible (o el total si no se ha usado)
+      const suggestedAmount = balance > 0 ? balance : total;
+      inputAmountDistribute.value = String(suggestedAmount);
+
+      invoiceStatusBanner.className = 'text-xs p-2.5 rounded-xl border mt-2 bg-blue-50/70 text-blue-900 border-blue-200 block';
+      invoiceStatusBanner.innerHTML = `
+        <div class="flex flex-wrap justify-between items-center gap-2">
+          <div>
+            <strong>${sourceLabel}: ${number}</strong>
+            <div class="text-[11px] text-blue-700">Total: $ ${fmt(total)} | Ya Distribuido: $ ${fmt(used)}</div>
+          </div>
+          <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${balance > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">
+            Saldo Disponible: $ ${fmt(balance)}
+          </span>
+        </div>
+      `;
+
+      updateDistributionTable(true);
     });
 
-    inputAmountDistribute?.addEventListener('input', recalcProjection);
+    // Cambiar valor total a distribuir
+    inputAmountDistribute?.addEventListener('input', () => {
+      updateDistributionTable(true);
+    });
 
-    // Checkbox clicks
+    // Eventos en los checkboxes y campos de la tabla de empleados
     document.querySelectorAll('.dd-emp-checkbox').forEach(cb => {
-      cb.addEventListener('change', recalcProjection);
+      cb.addEventListener('change', () => {
+        updateDistributionTable(true);
+      });
     });
 
-    // Buscar empleados
+    document.querySelectorAll('.dd-emp-amount').forEach(inp => {
+      inp.addEventListener('input', () => {
+        updateDistributionTable(false);
+      });
+    });
+
+    // Botón para repartir parejo
+    $('#dd-btn-equidistribute')?.addEventListener('click', () => {
+      updateDistributionTable(true);
+    });
+
+    // Filtro rápido de empleados por texto
     const searchInput = $('#dd-emp-search') as HTMLInputElement;
     searchInput?.addEventListener('input', () => {
       const val = searchInput.value.toLowerCase().trim();
@@ -11441,19 +13564,30 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
       });
     });
 
+    // Botón: Solo con Derecho CST
+    $('#dd-btn-select-cst')?.addEventListener('click', () => {
+      document.querySelectorAll('#dd-emp-list .emp-row').forEach((row: any) => {
+        const cb = row.querySelector('.dd-emp-checkbox') as HTMLInputElement;
+        const isCst = row.getAttribute('data-cst') === '1';
+        cb.checked = isCst;
+      });
+      updateDistributionTable(true);
+      showToast('Seleccionados los empleados con salario ≤ 2 SMMLV (CST Art. 230)', 'info');
+    });
+
     // Seleccionar todos / ninguno
     $('#dd-btn-select-all')?.addEventListener('click', () => {
       document.querySelectorAll('.dd-emp-checkbox').forEach((cb: any) => {
         cb.checked = true;
       });
-      recalcProjection();
+      updateDistributionTable(true);
     });
 
     $('#dd-btn-deselect-all')?.addEventListener('click', () => {
       document.querySelectorAll('.dd-emp-checkbox').forEach((cb: any) => {
         cb.checked = false;
       });
-      recalcProjection();
+      updateDistributionTable(false);
     });
 
     $('#dd-btn-cancel')?.addEventListener('click', () => {
@@ -11464,60 +13598,73 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
     $('#dd-btn-process')?.addEventListener('click', async () => {
       const periodSelect = $('#dd-period') as HTMLSelectElement;
       const periodId = periodSelect.value;
-      const amount = Number(inputAmountDistribute.value || 0);
       const support = inputSupport.value.trim();
       const desc = inputDesc.value.trim();
 
-      const checkedBoxes = document.querySelectorAll('.dd-emp-checkbox:checked');
-      const selectedEmpIds = Array.from(checkedBoxes).map((cb: any) => cb.value);
+      const checkedRows = Array.from(document.querySelectorAll('#dd-emp-list .emp-row')).filter(r => {
+        const cb = r.querySelector('.dd-emp-checkbox') as HTMLInputElement;
+        return cb && cb.checked;
+      });
 
       if (!periodId) return showToast('Selecciona un período de nómina target', 'warning');
-      if (amount <= 0) return showToast('El valor a distribuir debe ser mayor a cero', 'warning');
-      if (!selectedEmpIds.length) return showToast('Selecciona al menos un empleado beneficiario', 'warning');
+      if (!support) return showToast('Ingresa el número de soporte o factura', 'warning');
+      if (!checkedRows.length) return showToast('Selecciona al menos un empleado beneficiario', 'warning');
+
+      // Obtener asignaciones por empleado
+      const allocations: { empId: string; amount: number }[] = [];
+      let totalAssigned = 0;
+
+      for (const row of checkedRows) {
+        const cb = row.querySelector('.dd-emp-checkbox') as HTMLInputElement;
+        const input = row.querySelector('.dd-emp-amount') as HTMLInputElement;
+        const amt = Number(input?.value || 0);
+        if (amt <= 0) {
+          return showToast('Todos los empleados seleccionados deben tener un monto asignado mayor a cero', 'warning');
+        }
+        allocations.push({ empId: cb.value, amount: amt });
+        totalAssigned = round2(totalAssigned + amt);
+      }
 
       const btn = $('#dd-btn-process') as HTMLButtonElement;
       if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Procesando...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Procesando novedades...';
       }
 
       try {
         const optPeriod = periodSelect.options[periodSelect.selectedIndex];
         const dateFrom = optPeriod.getAttribute('data-start') || '';
         const dateTo = optPeriod.getAttribute('data-end') || '';
-        const valuePerEmp = round2(amount / selectedEmpIds.length);
 
-        showToast(`Distribuyendo $${fmt(valuePerEmp)} a cada uno de los ${selectedEmpIds.length} empleados...`, 'info');
-
-        // Crear las novedades en PocketBase
-        for (const empId of selectedEmpIds) {
+        // Crear las novedades individuales en PocketBase
+        for (const item of allocations) {
           await pb.create('payroll_novelties', {
             period_id: periodId,
-            employee_id: empId,
+            employee_id: item.empId,
             type: 'DOTACION',
             date_from: dateFrom,
             date_to: dateTo || undefined,
             qty: 0,
-            amount: valuePerEmp,
+            amount: item.amount,
             support_number: support || undefined,
             description: desc || undefined,
             status: 'draft'
           });
         }
 
-        showToast('Distribución de dotación completada. Novedades registradas con éxito.', 'success');
+        showToast(`¡Distribución completada! Se crearon ${allocations.length} novedades de dotación por un total de $ ${fmt(totalAssigned)}.`, 'success');
         navigate('nomina-novedades');
       } catch (err: any) {
         showToast(`Error al distribuir dotaciones: ${err.message}`, 'error');
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-share-nodes mr-1"></i>Distribuir y Crear Novedades';
+          btn.innerHTML = '<i class="fas fa-share-nodes mr-1.5"></i>Distribuir y Crear Novedades';
         }
       }
     });
 
   } catch (err: any) {
-    c.innerHTML = `<div class="p-8 text-center text-red-500">${esc(err.message)}</div>`;
+    c.innerHTML = `<div class="p-8 text-center text-red-500 font-bold">${esc(err.message)}</div>`;
   }
 }
 

@@ -1,6 +1,12 @@
 /**
  * GRAVY Landing Page — script.js
- * Interactividad moderna, scroll reveal, contadores numéricos, acordeón FAQ y conexión WhatsApp.
+ * Lógica interactiva de alta gama:
+ * 1. Header scroll y navegación activa.
+ * 2. Menú móvil táctil.
+ * 3. Vitrina interactiva de software (Showcase con pestañas).
+ * 4. Filtrado reactivo de 20+ módulos.
+ * 5. Wizard de diagnóstico y cotización paso a paso (Lead Funnel a WhatsApp).
+ * 6. Acordeón accesible de preguntas frecuentes (FAQ).
  */
 
 'use strict';
@@ -8,21 +14,21 @@
 document.addEventListener('DOMContentLoaded', () => {
 
   /* ==========================================================================
-     1. HEADER ELEVADO & NAVEGACIÓN ACTIVA AL HACER SCROLL
+     1. HEADER ELEVADO & NAVEGACIÓN ACTIVA
      ========================================================================== */
   const header   = document.getElementById('header');
   const navLinks = document.querySelectorAll('.nav-link');
   const sections = document.querySelectorAll('section[id]');
 
   const handleHeaderScroll = () => {
-    if (window.scrollY > 40) {
+    if (window.scrollY > 30) {
       header.classList.add('header-scrolled');
     } else {
       header.classList.remove('header-scrolled');
     }
 
     let currentSectionId = '';
-    const scrollPosition = window.scrollY + 140;
+    const scrollPosition = window.scrollY + 130;
 
     sections.forEach(section => {
       const top    = section.offsetTop;
@@ -61,13 +67,36 @@ document.addEventListener('DOMContentLoaded', () => {
     navLinks.forEach(link => {
       link.addEventListener('click', () => {
         navMenu.classList.remove('open');
-        menuIcon.className = 'fas fa-bars';
+        if (menuIcon) menuIcon.className = 'fas fa-bars';
       });
     });
   }
 
   /* ==========================================================================
-     3. FILTRADO DINÁMICO DE MÓDULOS
+     3. VITRINA INTERACTIVA DE PANTALLAS (SHOWCASE TABS)
+     ========================================================================== */
+  const showcaseTabs   = document.querySelectorAll('.showcase-tab');
+  const showcasePanels = document.querySelectorAll('.showcase-panel');
+
+  showcaseTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      showcaseTabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      const targetTab = tab.getAttribute('data-tab');
+
+      showcasePanels.forEach(panel => {
+        if (panel.id === `tab-panel-${targetTab}`) {
+          panel.classList.add('active');
+        } else {
+          panel.classList.remove('active');
+        }
+      });
+    });
+  });
+
+  /* ==========================================================================
+     4. FILTRADO DINÁMICO DE 20+ MÓDULOS
      ========================================================================== */
   const filterButtons = document.querySelectorAll('.filter-btn');
   const moduleCards   = document.querySelectorAll('.module-card');
@@ -86,165 +115,175 @@ document.addEventListener('DOMContentLoaded', () => {
           setTimeout(() => {
             card.style.opacity = '1';
             card.style.transform = 'translateY(0)';
-          }, 30);
+          }, 20);
         } else {
           card.style.opacity = '0';
-          card.style.transform = 'translateY(12px)';
+          card.style.transform = 'translateY(8px)';
           setTimeout(() => {
             card.style.display = 'none';
-          }, 240);
+          }, 200);
         }
       });
     });
   });
 
   /* ==========================================================================
-     4. CONTADORES NUMÉRICOS ANIMADOS
+     5. WIZARD INTERACTIVO DE DIAGNÓSTICO & COTIZACIÓN
      ========================================================================== */
-  const counterEls = document.querySelectorAll('.stat-number[data-target]');
-
-  const animateCounter = (el) => {
-    const target   = parseFloat(el.getAttribute('data-target'));
-    const suffix   = el.getAttribute('data-suffix') || '';
-    const decimals = parseInt(el.getAttribute('data-decimals') || '0', 10);
-    const duration = 1600;
-    const startTime = performance.now();
-    const easeOut   = t => 1 - Math.pow(1 - t, 3);
-
-    const step = (now) => {
-      const elapsed  = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const value    = target * easeOut(progress);
-
-      el.textContent = value.toFixed(decimals) + suffix;
-
-      if (progress < 1) {
-        requestAnimationFrame(step);
-      } else {
-        el.textContent = target.toFixed(decimals) + suffix;
-      }
-    };
-
-    requestAnimationFrame(step);
+  const wizardState = {
+    sector: '',
+    challenge: '',
+    name: '',
+    phone: '',
+    company: '',
+    city: ''
   };
 
-  const counterObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        animateCounter(entry.target);
-        counterObserver.unobserve(entry.target);
+  // Nodos de pasos y contenidos
+  const stepNodes = [
+    document.getElementById('wizard-node-1'),
+    document.getElementById('wizard-node-2'),
+    document.getElementById('wizard-node-3')
+  ];
+
+  const stepContents = [
+    document.getElementById('step-1'),
+    document.getElementById('step-2'),
+    document.getElementById('step-3')
+  ];
+
+  const btnNext1 = document.getElementById('btn-next-step-1');
+  const btnPrev2 = document.getElementById('btn-prev-step-2');
+  const btnNext2 = document.getElementById('btn-next-step-2');
+  const btnPrev3 = document.getElementById('btn-prev-step-3');
+  const leadForm = document.getElementById('wizard-lead-form');
+
+  const goToStep = (targetStepIndex) => {
+    stepNodes.forEach((node, idx) => {
+      node.classList.remove('active');
+      if (idx < targetStepIndex) {
+        node.classList.add('completed');
+      } else {
+        node.classList.remove('completed');
+      }
+      if (idx === targetStepIndex) {
+        node.classList.add('active');
       }
     });
-  }, { threshold: 0.4 });
 
-  counterEls.forEach(el => counterObserver.observe(el));
+    stepContents.forEach((content, idx) => {
+      content.classList.toggle('active', idx === targetStepIndex);
+    });
+  };
+
+  // Selección en Paso 1 (Sector)
+  const sectorCards = document.querySelectorAll('.wizard-option-card[data-wizard-type="sector"]');
+  sectorCards.forEach(card => {
+    card.addEventListener('click', () => {
+      sectorCards.forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      wizardState.sector = card.getAttribute('data-value') || '';
+      if (btnNext1) btnNext1.removeAttribute('disabled');
+    });
+  });
+
+  if (btnNext1) {
+    btnNext1.addEventListener('click', () => {
+      if (wizardState.sector) goToStep(1);
+    });
+  }
+
+  // Selección en Paso 2 (Reto)
+  const challengeCards = document.querySelectorAll('.wizard-option-card[data-wizard-type="challenge"]');
+  challengeCards.forEach(card => {
+    card.addEventListener('click', () => {
+      challengeCards.forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      wizardState.challenge = card.getAttribute('data-value') || '';
+      if (btnNext2) btnNext2.removeAttribute('disabled');
+    });
+  });
+
+  if (btnPrev2) {
+    btnPrev2.addEventListener('click', () => goToStep(0));
+  }
+
+  if (btnNext2) {
+    btnNext2.addEventListener('click', () => {
+      if (wizardState.challenge) goToStep(2);
+    });
+  }
+
+  if (btnPrev3) {
+    btnPrev3.addEventListener('click', () => goToStep(1));
+  }
+
+  // Envío final del formulario y generación de WhatsApp
+  if (leadForm) {
+    leadForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const nameInput    = document.getElementById('wizard-name');
+      const phoneInput   = document.getElementById('wizard-phone');
+      const companyInput = document.getElementById('wizard-company');
+      const cityInput    = document.getElementById('wizard-city');
+
+      wizardState.name    = nameInput ? nameInput.value.trim() : '';
+      wizardState.phone   = phoneInput ? phoneInput.value.trim() : '';
+      wizardState.company = companyInput ? companyInput.value.trim() : 'No indicada';
+      wizardState.city    = cityInput ? cityInput.value.trim() : 'Colombia';
+
+      if (!wizardState.name || !wizardState.phone) {
+        alert('Por favor completa tu Nombre y WhatsApp para recibir la demostración.');
+        return;
+      }
+
+      // Mensaje estructurado para el asesor
+      const textMessage = 
+`¡Hola equipo GRAVY! 👋 Acabo de realizar el diagnóstico express en su sitio web:
+
+🏢 *Modelo de Empresa:* ${wizardState.sector || 'Comercial'}
+⚠️ *Dificultad a resolver:* ${wizardState.challenge || 'Optimización operativa'}
+👤 *Contacto:* ${wizardState.name}
+📱 *WhatsApp:* ${wizardState.phone}
+🏬 *Empresa:* ${wizardState.company}
+📍 *Ciudad:* ${wizardState.city}
+
+Quiero agendar una demostración guiada del ERP y recibir la cotización correspondiente.`;
+
+      const encodedMessage = encodeURIComponent(textMessage);
+      // Número comercial de atención (formato internacional Colombia +57)
+      const whatsappUrl = `https://wa.me/573105550000?text=${encodedMessage}`;
+
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    });
+  }
 
   /* ==========================================================================
-     5. ACORDEÓN DE PREGUNTAS FRECUENTES (FAQ)
+     6. ACORDEÓN DE PREGUNTAS FRECUENTES (FAQ)
      ========================================================================== */
   const faqItems = document.querySelectorAll('.faq-item');
 
   faqItems.forEach(item => {
-    const question = item.querySelector('.faq-question');
-    const answer   = item.querySelector('.faq-answer');
+    const trigger = item.querySelector('.faq-trigger');
+    if (trigger) {
+      trigger.addEventListener('click', () => {
+        const isOpen = item.classList.contains('open');
 
-    if (question && answer) {
-      question.addEventListener('click', () => {
-        const isOpen = answer.classList.contains('open');
-
-        // Cierra los demás acordeones para mantener orden visual
+        // Cierra los demás para navegación limpia
         faqItems.forEach(otherItem => {
           if (otherItem !== item) {
-            otherItem.classList.remove('active');
-            const otherQuestion = otherItem.querySelector('.faq-question');
-            const otherAnswer   = otherItem.querySelector('.faq-answer');
-            if (otherQuestion) otherQuestion.setAttribute('aria-expanded', 'false');
-            if (otherAnswer)   otherAnswer.classList.remove('open');
+            otherItem.classList.remove('open');
+            const otherTrigger = otherItem.querySelector('.faq-trigger');
+            if (otherTrigger) otherTrigger.setAttribute('aria-expanded', 'false');
           }
         });
 
-        item.classList.toggle('active', !isOpen);
-        answer.classList.toggle('open', !isOpen);
-        question.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
+        // Alterna el actual
+        item.classList.toggle('open', !isOpen);
+        trigger.setAttribute('aria-expanded', String(!isOpen));
       });
     }
   });
-
-  /* ==========================================================================
-     6. FORMULARIO DE CONTACTO & ASESORÍA CON WHATSAPP
-     ========================================================================== */
-  const contactForm = document.getElementById('contact-form');
-  const formSuccess = document.getElementById('form-success');
-  const formError   = document.getElementById('form-error');
-
-  if (contactForm) {
-    contactForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      if (formSuccess) formSuccess.style.display = 'none';
-      if (formError)   formError.style.display   = 'none';
-
-      const name  = document.getElementById('form-name')?.value.trim();
-      const phone = document.getElementById('form-phone')?.value.trim();
-      const email = document.getElementById('form-email')?.value.trim();
-      const plan  = document.getElementById('form-plan')?.value || 'general';
-      const msg   = document.getElementById('form-msg')?.value.trim();
-
-      if (!name || !phone || !email || !msg) {
-        if (formError) {
-          formError.style.display = 'flex';
-          formError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-        return;
-      }
-
-      const submitBtn    = contactForm.querySelector('button[type="submit"]');
-      const originalHtml = submitBtn.innerHTML;
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando solicitud...';
-
-      setTimeout(() => {
-        submitBtn.disabled  = false;
-        submitBtn.innerHTML = originalHtml;
-        if (formSuccess) {
-          formSuccess.style.display = 'flex';
-          formSuccess.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-        contactForm.reset();
-
-        // Enlace automático a WhatsApp con el mensaje estructurado
-        setTimeout(() => {
-          const textMsg = encodeURIComponent(
-            `*Solicitud de Información GRAVY v2.0*\n` +
-            `• *Nombre:* ${name}\n` +
-            `• *Teléfono:* ${phone}\n` +
-            `• *Correo:* ${email}\n` +
-            `• *Módulo:* ${plan.toUpperCase()}\n` +
-            `• *Detalle:* ${msg}`
-          );
-          window.open(`https://wa.me/573233273136?text=${textMsg}`, '_blank');
-        }, 1200);
-      }, 1000);
-    });
-  }
-
-  /* ==========================================================================
-     7. SCROLL REVEAL SUAVE
-     ========================================================================== */
-  const revealElements = document.querySelectorAll('.reveal-up');
-
-  if ('IntersectionObserver' in window) {
-    const revealObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('is-visible');
-          revealObserver.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
-
-    revealElements.forEach(el => revealObserver.observe(el));
-  } else {
-    revealElements.forEach(el => el.classList.add('is-visible'));
-  }
 
 });

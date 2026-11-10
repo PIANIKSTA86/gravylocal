@@ -52,5 +52,6 @@ import './modules/rutas-visitas.ts';
 import './modules/niif.ts';
 import './modules/devoluciones.ts';
 import './modules/legal-center.ts';
+import './modules/seguimiento-modal.ts';
 
 import './app.ts';

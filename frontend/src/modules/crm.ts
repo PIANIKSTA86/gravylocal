@@ -211,17 +211,30 @@ function _renderDealCard(d: Deal, stage: any) {
   let docBadgeHtml = '';
   if (d.invoice_id) {
     const invNum = d.expand?.invoice_id?.number || 'Ver Factura';
-    docBadgeHtml = `<div class="mt-2"><span class="px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer inline-flex items-center gap-1" style="background:#ECFDF5; color:#059669; border: 1.5px solid #A7F3D0;" onclick="window._viewInvoiceDirect('${d.invoice_id}')" title="Ver Factura"><i class="fas fa-file-invoice"></i> ${invNum}</span></div>`;
+    docBadgeHtml = `
+      <div class="mt-2 flex items-center justify-between gap-1">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer inline-flex items-center gap-1" style="background:#ECFDF5; color:#059669; border: 1.5px solid #A7F3D0;" onclick="window._viewInvoiceDirect('${d.invoice_id}')" title="Ver Factura"><i class="fas fa-file-invoice"></i> ${invNum}</span>
+        <button type="button" class="px-1.5 py-0.5 rounded text-[9px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 cursor-pointer flex items-center gap-1" onclick="window.openDocumentTrackingModal('invoice', '${d.invoice_id}')" title="Ver Expediente de Seguimiento"><i class="fas fa-route"></i> Seguimiento</button>
+      </div>
+    `;
   } else if (d.sales_order_id) {
     const ordNum = d.expand?.sales_order_id?.number || 'Ver Pedido';
     docBadgeHtml = `
       <div class="mt-2 flex flex-wrap gap-1 items-center justify-between">
         <span class="px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer inline-flex items-center gap-1" style="background:#EFF6FF; color:#1B72E8; border: 1.5px solid #BFDBFE;" onclick="window._viewOrderDirect('${d.sales_order_id}')" title="Ver Pedido"><i class="fas fa-file-signature"></i> ${ordNum}</span>
-        <button class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-green-600 hover:bg-green-700 text-white border-none cursor-pointer flex items-center gap-0.5" onclick="window._invoiceSalesOrderDirectFromCRM('${d.sales_order_id}')" title="Facturar este Pedido"><i class="fas fa-receipt"></i> Facturar</button>
+        <div class="flex items-center gap-1">
+          <button type="button" class="px-1.5 py-0.5 rounded text-[9px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 cursor-pointer flex items-center gap-1" onclick="window.openDocumentTrackingModal('order', '${d.sales_order_id}')" title="Ver Expediente de Seguimiento"><i class="fas fa-route"></i></button>
+          <button class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-green-600 hover:bg-green-700 text-white border-none cursor-pointer flex items-center gap-0.5" onclick="window._invoiceSalesOrderDirectFromCRM('${d.sales_order_id}')" title="Facturar este Pedido"><i class="fas fa-receipt"></i> Facturar</button>
+        </div>
       </div>
     `;
   } else if (d.stage === 'PROPUESTA' || d.stage === 'NEGOCIACION') {
-    docBadgeHtml = `<div class="mt-2 text-right"><button class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white border-none cursor-pointer inline-flex items-center gap-1" onclick="window._convertDealToOrder('${d.id}')" title="Crear Pedido/Cotización para esta oportunidad"><i class="fas fa-file-signature"></i> Crear Pedido</button></div>`;
+    docBadgeHtml = `
+      <div class="mt-2 flex items-center justify-between gap-1">
+        <button type="button" class="px-1.5 py-0.5 rounded text-[9px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 cursor-pointer flex items-center gap-1" onclick="window.openCustomerTrackingModal('${d.client_id}')" title="Ver Historial 360° del Cliente"><i class="fas fa-clock-rotate-left"></i> Historial 360°</button>
+        <button class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white border-none cursor-pointer inline-flex items-center gap-1" onclick="window._convertDealToOrder('${d.id}')" title="Crear Pedido para esta oportunidad"><i class="fas fa-file-signature"></i> Crear Pedido</button>
+      </div>
+    `;
   }
 
   return `

@@ -29,7 +29,7 @@ function getPageContainer(container?: HTMLElement | null, pageKey?: string): HTM
   // Retornar la pestaña activa actual si existe
   const active = document.querySelector('#page-content .tab-pane.active') as HTMLElement;
   if (active) return active;
-  
+
   // Buscar cualquier tab-pane existente
   const anyPane = document.querySelector('#page-content .tab-pane') as HTMLElement;
   if (anyPane) return anyPane;
@@ -111,8 +111,8 @@ function roundDecimals(val: number, decimals: number = _decimalPlaces): number {
   return Math.round((Number(val || 0) + Number.EPSILON) * factor) / factor;
 }
 
-function fmt(n)   { return _fmtCOP.format(n ?? 0); }
-function fmtN(n)  { return _fmtNum.format(n ?? 0); }
+function fmt(n) { return _fmtCOP.format(n ?? 0); }
+function fmtN(n) { return _fmtNum.format(n ?? 0); }
 function parseNum(s) { return parseFloat(String(s ?? '').replace(/[^0-9.\-]/g, '')) || 0; }
 
 if (typeof window !== 'undefined') {
@@ -192,7 +192,7 @@ function fmtDate(d) {
 function translateText(text: string): string {
   if (!text) return '';
   let res = text;
-  
+
   const translations = [
     { eng: 'drafts', esp: 'borradores' },
     { eng: 'draft', esp: 'borrador' },
@@ -227,9 +227,9 @@ function translateText(text: string): string {
 /* ── Toasts ───────────────────────────────────────────────── */
 const TOAST_ICONS = {
   success: 'fa-check-circle',
-  error:   'fa-times-circle',
+  error: 'fa-times-circle',
   warning: 'fa-exclamation-triangle',
-  info:    'fa-info-circle',
+  info: 'fa-info-circle',
 };
 
 function showToast(msg, type = 'success', duration = 3500) {
@@ -259,20 +259,20 @@ function getDianErrorMessage(err: any, fallback = 'Error en la comunicación con
   // 2. Inspect err.response
   if (!raw && err.response && typeof err.response === 'object') {
     raw = err.response.data?.providerError ||
-          err.response.data?.dianResponse ||
-          err.response.data?.message ||
-          err.response.data?.error ||
-          err.response.message || '';
+      err.response.data?.dianResponse ||
+      err.response.data?.message ||
+      err.response.data?.error ||
+      err.response.message || '';
   }
 
   // 3. Inspect err.message directly
   if (!raw && typeof err.message === 'string') {
     const m = err.message.trim();
     if (!m.includes('status of 400') &&
-        !m.includes('status of 500') &&
-        !m.includes('Failed to load resource') &&
-        !m.includes('ClientResponseError') &&
-        !m.includes('Failed to fetch')) {
+      !m.includes('status of 500') &&
+      !m.includes('Failed to load resource') &&
+      !m.includes('ClientResponseError') &&
+      !m.includes('Failed to fetch')) {
       raw = m;
     }
   }
@@ -290,7 +290,7 @@ function getDianErrorMessage(err: any, fallback = 'Error en la comunicación con
     .replace(/^Facturatech Hub Error \(\d+\):\s*/i, '')
     .replace(/^Error al consultar estado Facturatech:\s*/i, '')
     .replace(/^Facturatech:\s*/i, '')
-    .replace(/^MATIAS API(?:\s+Error)?:\s*/i, '')
+    .replace(/^(?:MATIAS|DIAN)\s*API(?:\s+Error)?:\s*/i, '')
     .trim();
 
   return clean || fallback;
@@ -368,24 +368,24 @@ function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide: 
   }
 
   const titleLower = titleClean.toLowerCase();
-  const isDocumentForm = !forceDialog && (wide || 
-    titleLower.includes('factura') || 
-    titleLower.includes('tercero') || 
-    titleLower.includes('producto') || 
-    titleLower.includes('compra') || 
-    titleLower.includes('pedido') || 
-    titleLower.includes('transaccion') || 
-    titleLower.includes('transacción') || 
-    titleLower.includes('recaudo') || 
-    titleLower.includes('egreso') || 
-    titleLower.includes('nomina') || 
-    titleLower.includes('nómina') || 
-    titleLower.includes('toma de inventario') || 
-    titleLower.includes('reserva') || 
-    titleLower.includes('cotizacion') || 
-    titleLower.includes('cotización') || 
-    titleLower.includes('crear') || 
-    titleLower.includes('nuevo') || 
+  const isDocumentForm = !forceDialog && (wide ||
+    titleLower.includes('factura') ||
+    titleLower.includes('tercero') ||
+    titleLower.includes('producto') ||
+    titleLower.includes('compra') ||
+    titleLower.includes('pedido') ||
+    titleLower.includes('transaccion') ||
+    titleLower.includes('transacción') ||
+    titleLower.includes('recaudo') ||
+    titleLower.includes('egreso') ||
+    titleLower.includes('nomina') ||
+    titleLower.includes('nómina') ||
+    titleLower.includes('toma de inventario') ||
+    titleLower.includes('reserva') ||
+    titleLower.includes('cotizacion') ||
+    titleLower.includes('cotización') ||
+    titleLower.includes('crear') ||
+    titleLower.includes('nuevo') ||
     titleLower.includes('nueva'));
 
   if (isDocumentForm && typeof (window as any).openDocumentTab === 'function') {
@@ -495,8 +495,8 @@ function closeModal() {
 
     // 2. Si es una pestaña de documento (doc-*), cerrar la pestaña activa
     const curPage = (window as any).currentPage;
-    if (typeof curPage === 'string' && typeof (window as any).closeTab === 'function' && 
-       (curPage.startsWith('doc-') || curPage.startsWith('nueva-') || curPage.startsWith('editar-') || curPage.startsWith('nuevo-') || curPage.startsWith('iniciar-') || curPage.startsWith('programar-') || curPage.startsWith('registrar-') || curPage.startsWith('configuracion-'))) {
+    if (typeof curPage === 'string' && typeof (window as any).closeTab === 'function' &&
+      (curPage.startsWith('doc-') || curPage.startsWith('nueva-') || curPage.startsWith('editar-') || curPage.startsWith('nuevo-') || curPage.startsWith('iniciar-') || curPage.startsWith('programar-') || curPage.startsWith('registrar-') || curPage.startsWith('configuracion-'))) {
       try {
         (window as any).closeTab(curPage);
       } catch (e) {
@@ -1310,23 +1310,23 @@ const DIAN_CIIU = [
 ];
 
 const TAX_REGIMES = [
-  { code: 'COMUN',        name: 'Responsable de IVA' },
-  { code: 'NO_RESP',      name: 'No Responsable de IVA' },
+  { code: 'COMUN', name: 'Responsable de IVA' },
+  { code: 'NO_RESP', name: 'No Responsable de IVA' },
   { code: 'SIMPLIFICADO', name: 'Régimen Simple de Tributación / Simplificado' },
-  { code: 'GRAN_CONTR',   name: 'Gran Contribuyente' },
+  { code: 'GRAN_CONTR', name: 'Gran Contribuyente' },
 ];
 
 const PERSON_TYPES = [
-  { code: 'NATURAL',  name: 'Persona Natural' },
+  { code: 'NATURAL', name: 'Persona Natural' },
   { code: 'JURIDICA', name: 'Persona Jurídica' },
 ];
 
 const TP_TYPES = [
-  { code: 'CLIENTE',     name: 'Cliente' },
-  { code: 'PROVEEDOR',   name: 'Proveedor' },
-  { code: 'EMPLEADO',    name: 'Empleado' },
+  { code: 'CLIENTE', name: 'Cliente' },
+  { code: 'PROVEEDOR', name: 'Proveedor' },
+  { code: 'EMPLEADO', name: 'Empleado' },
   { code: 'PROPIETARIO', name: 'Propietario' },
-  { code: 'OTRO',        name: 'Otro' },
+  { code: 'OTRO', name: 'Otro' },
 ];
 
 /* Departamentos de Colombia (DANE) */
@@ -1346,21 +1346,21 @@ function calcDV(nit) {
 }
 
 const CROSS_DOC_TYPES = [
-  'Factura de Venta','Factura de Compra','Recibo de Caja',
-  'Comprobante de Egreso','Nota Crédito','Nota Débito',
-  'Orden de Compra','Contrato','Otro',
+  'Factura de Venta', 'Factura de Compra', 'Recibo de Caja',
+  'Comprobante de Egreso', 'Nota Crédito', 'Nota Débito',
+  'Orden de Compra', 'Contrato', 'Otro',
 ];
 
-const CROSS_PURPOSES = ['Causar','Recaudar','Reportar Cartera'];
+const CROSS_PURPOSES = ['Causar', 'Recaudar', 'Reportar Cartera'];
 
 const ROLES = {
-  admin:    { label: 'Administrador',  badge: 'badge-orange'  },
-  contador: { label: 'Contador',       badge: 'badge-blue'    },
-  auxiliar: { label: 'Auxiliar',       badge: 'badge-green'   },
-  cajero:   { label: 'Cajero POS',     badge: 'badge-purple'  },
-  vendedor: { label: 'Vendedor',       badge: 'badge-teal'    },
-  auditor:  { label: 'Auditor',        badge: 'badge-gray'    },
-  viewer:   { label: 'Visualizador',   badge: 'badge-gray'    },
+  admin: { label: 'Administrador', badge: 'badge-orange' },
+  contador: { label: 'Contador', badge: 'badge-blue' },
+  auxiliar: { label: 'Auxiliar', badge: 'badge-green' },
+  cajero: { label: 'Cajero POS', badge: 'badge-purple' },
+  vendedor: { label: 'Vendedor', badge: 'badge-teal' },
+  auditor: { label: 'Auditor', badge: 'badge-gray' },
+  viewer: { label: 'Visualizador', badge: 'badge-gray' },
   propietario: { label: 'Propietario PH', badge: 'badge-pink' },
 };
 
@@ -1428,7 +1428,7 @@ function syncActiveCompanyCache(info?: {
       sessionStorage.removeItem('company_name');
       sessionStorage.removeItem('company_nit');
       sessionStorage.removeItem('company_address');
-    } catch (_) {}
+    } catch (_) { }
     if (!info || Object.keys(info).length === 1) return;
   }
 
@@ -1442,7 +1442,7 @@ function syncActiveCompanyCache(info?: {
       localStorage.setItem('active_company_name', name);
       localStorage.setItem('company_name', name);
       sessionStorage.setItem('company_name', name);
-    } catch (_) {}
+    } catch (_) { }
   }
   if (info.companyNit !== undefined) {
     (window as any).COMPANY_NIT_CACHE = nit;
@@ -1450,7 +1450,7 @@ function syncActiveCompanyCache(info?: {
       localStorage.setItem('active_company_nit', nit);
       localStorage.setItem('company_nit', nit);
       sessionStorage.setItem('company_nit', nit);
-    } catch (_) {}
+    } catch (_) { }
   }
   if (info.companyAddress !== undefined) {
     (window as any).COMPANY_ADDRESS_CACHE = addr;
@@ -1458,7 +1458,7 @@ function syncActiveCompanyCache(info?: {
       localStorage.setItem('active_company_address', addr);
       localStorage.setItem('company_address', addr);
       sessionStorage.setItem('company_address', addr);
-    } catch (_) {}
+    } catch (_) { }
   }
 
   try {
@@ -1472,7 +1472,7 @@ function syncActiveCompanyCache(info?: {
         localStorage.setItem('gravy_active_company', JSON.stringify(parsed));
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 }
 
 function getActiveCompanyHeaderSync(optObj: any = {}) {
@@ -1480,7 +1480,7 @@ function getActiveCompanyHeaderSync(optObj: any = {}) {
   try {
     const rawComp = localStorage.getItem('gravy_active_company');
     if (rawComp) activeComp = JSON.parse(rawComp);
-  } catch (_) {}
+  } catch (_) { }
 
   const topbarName = String(document.getElementById('topbar-company')?.textContent || '').trim();
   const validTopbarName = topbarName && topbarName.toLowerCase() !== 'cargando...' ? topbarName : '';
@@ -1552,7 +1552,7 @@ function exportToExcel(data, headers, filename, options?: any) {
     try {
       const stored = JSON.parse(localStorage.getItem('pb_user') || 'null');
       if (stored) resolvedUser = stored.full_name || stored.name || stored.username || stored.email;
-    } catch (_) {}
+    } catch (_) { }
   }
   if (!resolvedUser || String(resolvedUser).toLowerCase() === 'usuario') {
     resolvedUser = sessionStorage.getItem('user_name') || localStorage.getItem('user_name') || localStorage.getItem('hub_user_name') || 'Usuario';
@@ -1682,10 +1682,10 @@ function exportToExcel(data, headers, filename, options?: any) {
 }
 
 /* ── Helpers de formulario ───────────────────────────────── */
-function getInputVal(id)   { return ($(`#${id}`)?.value ?? '').trim(); }
-function getCheckVal(id)   { return !!$(`#${id}`)?.checked; }
-function getSelectVal(id)  { return $(`#${id}`)?.value ?? ''; }
-function setInputVal(id, v){ const el = $(`#${id}`); if (el) el.value = v ?? ''; }
+function getInputVal(id) { return ($(`#${id}`)?.value ?? '').trim(); }
+function getCheckVal(id) { return !!$(`#${id}`)?.checked; }
+function getSelectVal(id) { return $(`#${id}`)?.value ?? ''; }
+function setInputVal(id, v) { const el = $(`#${id}`); if (el) el.value = v ?? ''; }
 
 // --- VITE MIGRATION GLOBALS ---
 (window as any).getCheckVal = getCheckVal;
@@ -1754,7 +1754,7 @@ async function showStockBreakdownModal(productId: string, productName: string) {
       (window as any).API.getInventoryStock({ productId }),
       (window as any).API.getIncomingStockForProduct(productId)
     ]);
-    
+
     let overlay = document.getElementById('stock-details-overlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -1762,7 +1762,7 @@ async function showStockBreakdownModal(productId: string, productName: string) {
       overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(5,8,20,.6);backdrop-filter:blur(4px);z-index:250;align-items:center;justify-content:center;padding:16px';
       document.body.appendChild(overlay);
     }
-    
+
     let whRowsHtml = '';
     if (!stocks.length) {
       whRowsHtml = `<tr><td colspan="2" class="text-center py-4 text-gray-400 font-medium"><i class="fas fa-warehouse mr-1"></i>Sin inventario en ninguna bodega.</td></tr>`;
@@ -1852,7 +1852,7 @@ async function showStockBreakdownModal(productId: string, productName: string) {
         </div>
       </div>
     `;
-    
+
     overlay.style.display = 'flex';
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al obtener inventario', 'error');
@@ -1876,7 +1876,7 @@ function parseTableValue(text: string): any {
   if (/^-?[\d.,]+$/.test(cleaned)) {
     const hasComma = cleaned.includes(',');
     const hasDot = cleaned.includes('.');
-    
+
     if (hasComma && hasDot) {
       cleaned = cleaned.replace(/\./g, '').replace(/,/g, '.');
     } else if (hasComma) {
@@ -1951,9 +1951,9 @@ function makeTableSortable(table: HTMLTableElement, onSort?: () => void) {
   headers.forEach((th, index) => {
     const cleanText = th.textContent?.trim().toLowerCase() || '';
     if (
-      th.classList.contains('no-sort') || 
-      cleanText === 'acciones' || 
-      cleanText === 'acción' || 
+      th.classList.contains('no-sort') ||
+      cleanText === 'acciones' ||
+      cleanText === 'acción' ||
       cleanText === ''
     ) {
       return;
@@ -1982,8 +1982,8 @@ function makeTableSortable(table: HTMLTableElement, onSort?: () => void) {
       th.setAttribute('data-sort-dir', nextDir);
       const icon = th.querySelector('.sort-icon');
       if (icon) {
-        icon.className = nextDir === 'asc' 
-          ? 'fas fa-sort-up text-blue-600 ml-1 text-xs sort-icon' 
+        icon.className = nextDir === 'asc'
+          ? 'fas fa-sort-up text-blue-600 ml-1 text-xs sort-icon'
           : 'fas fa-sort-down text-blue-600 ml-1 text-xs sort-icon';
       }
 
@@ -2011,8 +2011,8 @@ function reapplyTableSort(table: HTMLTableElement) {
       if (icon) {
         if (index === colIndex) {
           h.setAttribute('data-sort-dir', dirStr);
-          icon.className = dirStr === 'asc' 
-            ? 'fas fa-sort-up text-blue-600 ml-1 text-xs sort-icon' 
+          icon.className = dirStr === 'asc'
+            ? 'fas fa-sort-up text-blue-600 ml-1 text-xs sort-icon'
             : 'fas fa-sort-down text-blue-600 ml-1 text-xs sort-icon';
         } else {
           h.removeAttribute('data-sort-dir');
@@ -2097,7 +2097,7 @@ class GlobalSalesCart {
         this.activeWarehouse = data.activeWarehouse || null;
         this.activeMode = data.activeMode || 'venta';
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   saveToStorage() {
@@ -2109,7 +2109,7 @@ class GlobalSalesCart {
         activeMode: this.activeMode,
       }));
       window.dispatchEvent(new CustomEvent('gravy-cart-updated'));
-    } catch (_) {}
+    } catch (_) { }
   }
 
   setCartMode(newMode: 'venta' | 'reserva'): boolean {

@@ -1494,6 +1494,7 @@ function renderProductRows(products) {
       <td>${statusBadge}</td>
       <td>
         <div class="flex gap-1">
+          <button class="btn btn-outline btn-sm text-blue-600" title="Ver Seguimiento y Disponibilidad" style="border-color:#93c5fd;color:#2563eb" onclick="window.openProductTrackingModal('${esc(p.id)}')"><i class="fas fa-boxes-packing"></i></button>
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="viewProductDetail('${esc(p.id)}')"><i class="fas fa-eye"></i></button>
           ${can('canWrite') ? `<button class="btn btn-outline btn-sm" title="Editar" onclick="editProduct('${esc(p.id)}')"><i class="fas fa-pen"></i></button>` : ''}
           ${can('canWrite') ? `<button class="btn btn-outline btn-sm" title="${p.active ? 'Desactivar' : 'Activar'}" onclick="toggleProductStatus('${esc(p.id)}', ${!p.active})">
@@ -1655,7 +1656,10 @@ async function viewProductDetail(id) {
           ${imageHtml}
         </div>
       </div>`,
-      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      `<div class="flex items-center justify-between w-full">
+        <button class="btn btn-outline text-blue-600 border-blue-300" onclick="window.openProductTrackingModal('${p.id}')"><i class="fas fa-boxes-packing mr-1"></i>Ver Disponibilidad y Seguimiento</button>
+        <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+      </div>`,
       true
     );
   } catch (err) { showToast(err.message, 'error'); }

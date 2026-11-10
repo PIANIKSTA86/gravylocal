@@ -90,7 +90,9 @@ async function loadCdePage(c: HTMLElement) {
         <p class="text-sm" style="color:#6B7280">Buzón tributario de facturas recibidas (IMAP / Excel DIAN / XML), gestión de eventos RADIAN y contabilización ERP.</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button class="btn btn-primary" id="btn-sync-imap" title="Conectar al buzón de correo IMAP y sincronizar facturas"><i class="fas fa-inbox mr-1.5"></i>Sincronizar Correo</button>
+        <button class="btn btn-primary" id="btn-sync-dian-token" style="background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%); color: white; border: none; box-shadow: 0 4px 12px rgba(37,99,235,0.25);" title="Descargar facturas emitidas y recibidas directamente desde la DIAN con el enlace de acceso del representante legal"><i class="fas fa-bolt mr-1.5 text-amber-300"></i>Sincronizar DIAN con Token</button>
+        <button class="btn btn-outline" id="btn-audit-dian" style="border-color: #0284C7; color: #0369A1;" title="Auditoría tributaria y cruce automático de compras y ventas GRAVY vs DIAN con detección de compras manuales"><i class="fas fa-scale-balanced mr-1.5 text-sky-600"></i>Auditoría Fiscal DIAN</button>
+        <button class="btn btn-outline" id="btn-sync-imap" title="Conectar al buzón de correo IMAP y sincronizar facturas"><i class="fas fa-inbox mr-1.5"></i>Sincronizar Correo</button>
         <button class="btn btn-outline" id="btn-import-excel-dian" title="Importar reporte oficial Excel descargado de DIAN Muisca"><i class="fas fa-file-excel mr-1.5 text-emerald-600"></i>Importar Excel DIAN</button>
         <button class="btn btn-outline" id="btn-import-cufe" title="Importar documento directamente por su CUFE / TrackId"><i class="fas fa-barcode mr-1.5 text-indigo-600"></i>Importar CUFE</button>
         <button class="btn btn-outline" id="btn-cde-config" title="Configurar cuentas predeterminadas y reglas"><i class="fas fa-gear mr-1"></i>Configuración</button>
@@ -147,6 +149,7 @@ async function loadCdePage(c: HTMLElement) {
       </select>
       <select id="cde-source-f" class="form-input" style="max-width:160px">
         <option value="">Todos los orígenes</option>
+        <option value="dian_token">Token DIAN</option>
         <option value="email">Buzón IMAP</option>
         <option value="excel_dian">Excel DIAN</option>
         <option value="manual_cufe">CUFE Manual</option>
@@ -189,6 +192,8 @@ async function loadCdePage(c: HTMLElement) {
 
   dropZone?.addEventListener('click', () => fileInput?.click());
   fileInput?.addEventListener('change', (e: any) => handleFilesSelected(e.target.files, c));
+  document.getElementById('btn-sync-dian-token')?.addEventListener('click', () => openDianTokenSyncModal());
+  document.getElementById('btn-audit-dian')?.addEventListener('click', () => openDianAuditModal());
   document.getElementById('btn-cde-config')?.addEventListener('click', () => openCdeSettingsModal(c));
   document.getElementById('btn-sync-imap')?.addEventListener('click', () => syncImapInbox());
   document.getElementById('btn-import-excel-dian')?.addEventListener('click', () => openExcelImportModal());
@@ -442,6 +447,13 @@ function renderDocRow(d: ElecDoc) {
               <span class="text-[9px] text-rose-700 bg-rose-100 border border-rose-200 px-1.5 py-0.2 rounded font-semibold">Disputa</span>
             </a>
           </div>
+
+          <div class="py-1 border-t border-slate-100 bg-slate-50/70 rounded-b-xl">
+            <a href="javascript:void(0)" onclick="window._closeAllRadianMenus(); window._syncRadianDocEvents('${d.id}')" class="px-3 py-2 flex items-center justify-between text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 text-[11px] font-semibold transition" title="Consultar en tiempo real ante la DIAN si este documento ya tiene eventos registrados (030, 032, 033)">
+              <span class="flex items-center gap-1.5"><i class="fas fa-arrows-rotate text-indigo-500"></i>Sincronizar Eventos DIAN</span>
+              <span class="text-[9px] text-indigo-700 bg-indigo-100 border border-indigo-200 px-1.5 py-0.2 rounded font-bold">Consultar</span>
+            </a>
+          </div>
         </div>
       </div>
     `;
@@ -614,7 +626,8 @@ async function handleFilesSelected(files: FileList, c: HTMLElement) {
 
       // Auto-encolar CUFE en el servicio de eventos DIAN para disponibilidad inmediata
       if (parsedData.uuid) {
-        fetch('/api/radian/import-cufe', {
+        const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+        fetch(`${baseUrl}/api/radian/import-cufe`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3227,17 +3240,17 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
             </div>
           </div>
 
-          <!-- Estado y Vinculación con MATIAS API -->
+          <!-- Estado y Vinculación con DIAN API -->
           <div class="mt-4 pt-3 border-t border-violet-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-violet-50/70 p-3.5 rounded-xl border border-violet-200">
             <div>
-              <div class="text-[10px] font-bold uppercase tracking-wider text-violet-700 mb-0.5">Estado en Proveedor Tecnológico DIAN (MATIAS API)</div>
+              <div class="text-[10px] font-bold uppercase tracking-wider text-violet-700 mb-0.5">Estado en Proveedor Tecnológico DIAN (DIAN API)</div>
               <div id="matias-sync-status-indicator" class="flex items-center gap-1.5 mt-1">
-                <span class="badge bg-slate-100 text-slate-500 text-[11px]"><i class="fas fa-spinner fa-spin mr-1"></i>Consultando MATIAS API...</span>
+                <span class="badge bg-slate-100 text-slate-500 text-[11px]"><i class="fas fa-spinner fa-spin mr-1"></i>Consultando DIAN API...</span>
               </div>
             </div>
             <div>
               <button type="button" id="btn-sync-matias-person" class="btn btn-sm btn-outline border-violet-400 text-violet-700 hover:bg-violet-600 hover:text-white text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 font-semibold transition active:scale-98">
-                <i class="fas fa-cloud-arrow-up"></i>Vincular Firmante en MATIAS API
+                <i class="fas fa-cloud-arrow-up"></i>Vincular Firmante en DIAN API
               </button>
             </div>
           </div>
@@ -3358,20 +3371,20 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
         } else {
           container.innerHTML = `
             <span class="badge bg-amber-100 text-amber-800 text-[11px] font-semibold border border-amber-300 flex items-center gap-1">
-              <i class="fas fa-triangle-exclamation text-amber-600"></i>Sin vincular en MATIAS API. Presione el botón lateral para sincronizar.
+              <i class="fas fa-triangle-exclamation text-amber-600"></i>Sin vincular en DIAN API. Presione el botón lateral para sincronizar.
             </span>
           `;
         }
       } catch (_) {
         container.innerHTML = `
-          <span class="badge bg-slate-100 text-slate-500 text-[11px]">No se pudo verificar el estado con MATIAS API</span>
+          <span class="badge bg-slate-100 text-slate-500 text-[11px]">No se pudo verificar el estado con DIAN API</span>
         `;
       }
     };
 
     checkMatiasPersonStatus();
 
-    // Listener para el botón "Vincular Firmante en MATIAS API"
+    // Listener para el botón "Vincular Firmante en DIAN API"
     document.getElementById('btn-sync-matias-person')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-sync-matias-person') as HTMLButtonElement;
       const dni = (document.getElementById('cde-cfg-resp-dni') as HTMLInputElement)?.value.trim();
@@ -3387,7 +3400,7 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
 
       const origText = btn.innerHTML;
       btn.disabled = true;
-      btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Vinculando en MATIAS API...`;
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Vinculando en DIAN API...`;
 
       try {
         // Guardar primero en settings local
@@ -3420,10 +3433,10 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
 
         const data = await res.json();
         if (!res.ok || !data.success) {
-          throw new Error(data.error || 'Error al vincular persona en MATIAS API');
+          throw new Error(data.error || 'Error al vincular persona en DIAN API');
         }
 
-        (window as any).showToast(data.message || 'Firmante vinculado exitosamente en MATIAS API.', 'success');
+        (window as any).showToast(data.message || 'Firmante vinculado exitosamente en DIAN API.', 'success');
         await checkMatiasPersonStatus();
       } catch (err: any) {
         (window as any).showToast(`Error al sincronizar firmante: ${err.message}`, 'error');
@@ -3660,7 +3673,8 @@ function openExcelImportModal() {
       reader.onload = async () => {
         try {
           const base64Data = (reader.result as string).split(',')[1];
-          const res = await fetch('/api/radian/import-excel', {
+          const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+          const res = await fetch(`${baseUrl}/api/radian/import-excel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ document_base64: base64Data })
@@ -3733,7 +3747,8 @@ function openCufeImportModal() {
     btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Consultando...`;
 
     try {
-      const res = await fetch('/api/radian/import-cufe', {
+      const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+      const res = await fetch(`${baseUrl}/api/radian/import-cufe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cufe, number, supplier_name })
@@ -3752,6 +3767,817 @@ function openCufeImportModal() {
     }
   });
 }
+
+/**
+ * Modal táctil para la sincronización oficial de documentos DIAN mediante Token de Acceso Único
+ */
+function openDianTokenSyncModal() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const firstDayOfMonth = `${yyyy}-${mm}-01`;
+  const todayStr = `${yyyy}-${mm}-${dd}`;
+
+  // Cálculo mes anterior
+  const prevMonthDate = new Date(yyyy, now.getMonth() - 1, 1);
+  const prevMonthEnd = new Date(yyyy, now.getMonth(), 0);
+  const prevMonthFrom = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
+  const prevMonthTo = `${prevMonthEnd.getFullYear()}-${String(prevMonthEnd.getMonth() + 1).padStart(2, '0')}-${String(prevMonthEnd.getDate()).padStart(2, '0')}`;
+
+  const htmlBody = `
+    <div class="space-y-4 text-xs" id="dian-token-modal-content">
+      <!-- Explicativo Normativo y Operativo -->
+      <div class="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl flex items-start gap-3">
+        <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+          <i class="fas fa-key text-sm"></i>
+        </div>
+        <div class="leading-relaxed text-slate-700">
+          <div class="font-bold text-blue-950 text-xs mb-0.5">Autenticación Segura mediante Token Único DIAN</div>
+          Pegue el enlace oficial o código Token enviado al correo del Representante Legal tras solicitar el ingreso en 
+          <strong class="text-blue-700">catalogo-vpfe.dian.gov.co</strong>. GRAVY establecerá la sesión autenticada y conciliará los documentos oficiales directamente en su buzón tributario.
+        </div>
+      </div>
+
+      <!-- Campo de Entrada del Token -->
+      <div class="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="block font-bold text-slate-800 text-xs">
+            <i class="fas fa-link text-indigo-500 mr-1"></i>Enlace de Acceso / Token DIAN *
+          </label>
+          <button type="button" id="btn-paste-dian-token" class="text-[11px] text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 transition">
+            <i class="fas fa-paste"></i>Pegar del Portapapeles
+          </button>
+        </div>
+        <textarea id="dian-token-input" rows="3" 
+          class="form-input w-full font-mono text-xs p-2.5 rounded-xl border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" 
+          placeholder="Pegue aquí el enlace completo recibido (ej: https://catalogo-vpfe.dian.gov.co/User/AuthToken?token=... o el GUID)"></textarea>
+        <p class="text-[11px] text-slate-400">
+          <i class="fas fa-clock mr-1"></i>Vigencia DIAN: Recuerde que el token vence a los 60 minutos o tras ser consumido en otra ventana.
+        </p>
+      </div>
+
+      <!-- Selector de Tipo de Documentos y Fechas -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <!-- Grupo de Documentos -->
+        <div class="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2">
+          <label class="block font-bold text-slate-800 text-xs">
+            <i class="fas fa-folder-tree text-amber-500 mr-1"></i>Grupo de Documentos
+          </label>
+          <div class="space-y-1.5 pt-1">
+            <label class="flex items-center gap-2 cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 transition">
+              <input type="radio" name="dian-doc-group" value="received" checked class="text-blue-600 focus:ring-blue-500">
+              <span class="font-medium text-slate-700">Documentos Recibidos (Compras)</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 transition">
+              <input type="radio" name="dian-doc-group" value="sent" class="text-blue-600 focus:ring-blue-500">
+              <span class="font-medium text-slate-700">Documentos Emitidos (Ventas)</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer p-1.5 rounded-lg hover:bg-slate-50 transition">
+              <input type="radio" name="dian-doc-group" value="all" class="text-blue-600 focus:ring-blue-500">
+              <span class="font-medium text-slate-700">Todos (Conciliación Global)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Rango de Fechas con Presets -->
+        <div class="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-2">
+          <label class="block font-bold text-slate-800 text-xs">
+            <i class="fas fa-calendar-day text-blue-500 mr-1"></i>Rango de Fechas
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <span class="text-[10px] text-slate-400 font-semibold block mb-0.5">Desde</span>
+              <input type="date" id="dian-sync-from" class="form-input w-full text-xs" value="${firstDayOfMonth}">
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 font-semibold block mb-0.5">Hasta</span>
+              <input type="date" id="dian-sync-to" class="form-input w-full text-xs" value="${todayStr}">
+            </div>
+          </div>
+          <div class="flex gap-1.5 pt-1">
+            <button type="button" class="btn-preset-date text-[10px] px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-md text-slate-700 font-medium transition" 
+              data-from="${firstDayOfMonth}" data-to="${todayStr}">Mes Actual</button>
+            <button type="button" class="btn-preset-date text-[10px] px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-md text-slate-700 font-medium transition" 
+              data-from="${prevMonthFrom}" data-to="${prevMonthTo}">Mes Anterior</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Opciones Avanzadas -->
+      <div class="flex items-center justify-between px-1">
+        <label class="flex items-center gap-2 cursor-pointer text-[11px] text-slate-600 font-medium">
+          <input type="checkbox" id="dian-dry-run-check" class="rounded text-blue-600 focus:ring-blue-500">
+          <span>Solo previsualizar conciliación (Sin alterar registros de la base)</span>
+        </label>
+      </div>
+
+      <!-- Contenedor Dinámico de Progreso / Resultados -->
+      <div id="dian-sync-progress-area" class="hidden"></div>
+    </div>
+  `;
+
+  const htmlFooter = `
+    <div class="flex items-center justify-between w-full" id="dian-token-modal-footer">
+      <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+        <i class="fas fa-shield-halved text-emerald-600"></i>Cifrado TLS 1.3 directo con DIAN
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btn-submit-dian-sync" style="background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);">
+          <i class="fas fa-cloud-arrow-down mr-1.5"></i>Iniciar Descarga y Conciliación
+        </button>
+      </div>
+    </div>
+  `;
+
+  (window as any).openModal('Sincronización Oficial DIAN vía Token de Acceso', htmlBody, htmlFooter, false);
+
+  // Botón pegar del portapapeles
+  document.getElementById('btn-paste-dian-token')?.addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const input = document.getElementById('dian-token-input') as HTMLTextAreaElement;
+      if (input && text) {
+        input.value = text.trim();
+        (window as any).showToast('Enlace pegado desde el portapapeles.', 'info');
+      }
+    } catch (_) {
+      (window as any).showToast('Haga clic derecho o Ctrl+V para pegar el enlace.', 'info');
+    }
+  });
+
+  // Presets de fecha
+  document.querySelectorAll('.btn-preset-date').forEach((btn: any) => {
+    btn.addEventListener('click', () => {
+      const fromInput = document.getElementById('dian-sync-from') as HTMLInputElement;
+      const toInput = document.getElementById('dian-sync-to') as HTMLInputElement;
+      if (fromInput && btn.dataset.from) fromInput.value = btn.dataset.from;
+      if (toInput && btn.dataset.to) toInput.value = btn.dataset.to;
+    });
+  });
+
+  // Evento principal de sincronización
+  const submitBtn = document.getElementById('btn-submit-dian-sync') as HTMLButtonElement;
+  submitBtn?.addEventListener('click', async () => {
+    const tokenInput = (document.getElementById('dian-token-input') as HTMLTextAreaElement)?.value.trim();
+    if (!tokenInput) {
+      return (window as any).showToast('Por favor ingrese el enlace o código Token de la DIAN.', 'warning');
+    }
+
+    const docGroup = (document.querySelector('input[name="dian-doc-group"]:checked') as HTMLInputElement)?.value || 'received';
+    const dateFrom = (document.getElementById('dian-sync-from') as HTMLInputElement)?.value;
+    const dateTo = (document.getElementById('dian-sync-to') as HTMLInputElement)?.value;
+    const dryRun = (document.getElementById('dian-dry-run-check') as HTMLInputElement)?.checked;
+
+    const progressArea = document.getElementById('dian-sync-progress-area');
+    if (progressArea) {
+      progressArea.classList.remove('hidden');
+      progressArea.innerHTML = `
+        <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+          <div class="flex items-center justify-between text-xs font-bold text-slate-700">
+            <span id="dian-sync-status-msg"><i class="fas fa-spinner fa-spin mr-2 text-blue-600"></i>Estableciendo conexión segura con DIAN...</span>
+            <span class="text-blue-600" id="dian-sync-step-badge">Fase 1/4</span>
+          </div>
+          <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+            <div id="dian-sync-progress-bar" class="bg-blue-600 h-full w-1/4 transition-all duration-500"></div>
+          </div>
+          <div class="grid grid-cols-4 gap-2 text-[10px] text-slate-400 font-medium text-center pt-1">
+            <div class="text-blue-600 font-bold" id="step-lbl-1"><i class="fas fa-circle-check mr-1"></i>1. Token</div>
+            <div id="step-lbl-2">2. Sesión ASP</div>
+            <div id="step-lbl-3">3. Listados</div>
+            <div id="step-lbl-4">4. Conciliar</div>
+          </div>
+        </div>
+      `;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1.5"></i>Procesando...`;
+
+    // Animación visual de fases progresivas
+    const updateProgress = (step: number, msg: string, percent: string) => {
+      const msgEl = document.getElementById('dian-sync-status-msg');
+      const badgeEl = document.getElementById('dian-sync-step-badge');
+      const barEl = document.getElementById('dian-sync-progress-bar');
+      if (msgEl) msgEl.innerHTML = `<i class="fas fa-spinner fa-spin mr-2 text-blue-600"></i>${msg}`;
+      if (badgeEl) badgeEl.textContent = `Fase ${step}/4`;
+      if (barEl) barEl.style.width = percent;
+      for (let s = 1; s <= 4; s++) {
+        const lbl = document.getElementById(`step-lbl-${s}`);
+        if (lbl) {
+          if (s < step) {
+            lbl.className = 'text-emerald-600 font-bold';
+            lbl.innerHTML = `<i class="fas fa-circle-check mr-1"></i>${lbl.textContent?.replace(/^[0-9]\.\s*/, '')}`;
+          } else if (s === step) {
+            lbl.className = 'text-blue-600 font-bold';
+          } else {
+            lbl.className = 'text-slate-400';
+          }
+        }
+      }
+    };
+
+    setTimeout(() => updateProgress(2, 'Validando cookies y sesión segura en catalogo-vpfe...', '50%'), 800);
+    setTimeout(() => updateProgress(3, 'Extrayendo reportes oficiales de documentos...', '75%'), 1800);
+
+    try {
+      const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+      const res = await fetch(`${baseUrl}/api/dian/sync-by-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token_url: tokenInput,
+          document_group: docGroup,
+          date_from: dateFrom,
+          date_to: dateTo,
+          dry_run: dryRun
+        })
+      });
+
+      const data = await res.json();
+      updateProgress(4, 'Finalizando conciliación en base de datos local...', '100%');
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'La DIAN no autorizó la sesión o el token es inválido.');
+      }
+
+      // Renderizar resumen de conciliación
+      const summary = data.summary || {};
+      const recons = data.reconciliation || [];
+      const totalEval = summary.totalEvaluated || 0;
+      const createdCount = summary.created || 0;
+      const updatedCount = summary.updated || 0;
+
+      const modalContent = document.getElementById('dian-token-modal-content');
+      if (modalContent) {
+        modalContent.innerHTML = `
+          <div class="space-y-4 text-xs animate-fadeIn">
+            <!-- Header Éxito -->
+            <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3.5">
+              <div class="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 text-lg shadow-sm">
+                <i class="fas fa-circle-check"></i>
+              </div>
+              <div>
+                <h4 class="font-bold text-emerald-950 text-sm">Sincronización Oficial DIAN Finalizada</h4>
+                <p class="text-emerald-800 text-xs mt-0.5">${data.message || 'La consulta tributaria concluyó exitosamente.'}</p>
+              </div>
+            </div>
+
+            <!-- KPIs de Conciliación -->
+            <div class="grid grid-cols-3 gap-3">
+              <div class="p-3 bg-white rounded-xl border border-slate-200 text-center">
+                <div class="text-[11px] text-slate-400 font-semibold uppercase">Documentos DIAN</div>
+                <div class="text-xl font-bold text-slate-800 mt-0.5">${totalEval}</div>
+              </div>
+              <div class="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                <div class="text-[11px] text-emerald-700 font-semibold uppercase">Nuevos en ERP</div>
+                <div class="text-xl font-bold text-emerald-700 mt-0.5">+${createdCount}</div>
+              </div>
+              <div class="p-3 bg-blue-50 rounded-xl border border-blue-200 text-center">
+                <div class="text-[11px] text-blue-700 font-semibold uppercase">Verificados/Al Día</div>
+                <div class="text-xl font-bold text-blue-700 mt-0.5">${updatedCount}</div>
+              </div>
+            </div>
+
+            <!-- Tabla de Documentos Conciliados -->
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div class="p-2.5 bg-slate-50 border-b border-slate-200 font-bold text-slate-700 text-xs flex justify-between items-center">
+                <span><i class="fas fa-list-check mr-1.5 text-blue-600"></i>Detalle de Documentos Conciliados</span>
+                <span class="text-[10px] text-slate-400 font-normal">Período: ${summary.dateFrom} al ${summary.dateTo}</span>
+              </div>
+              <div class="max-h-56 overflow-y-auto">
+                <table class="w-full text-left text-xs">
+                  <thead class="bg-slate-50 text-slate-500 font-semibold text-[11px] border-b border-slate-200 sticky top-0">
+                    <tr>
+                      <th class="p-2">Número</th>
+                      <th class="p-2">Emisor</th>
+                      <th class="p-2 text-right">Total</th>
+                      <th class="p-2 text-center">Resultado</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    ${recons.length > 0 ? recons.map((r: any) => `
+                      <tr class="hover:bg-slate-50">
+                        <td class="p-2 font-mono font-bold text-slate-800">${(window as any).esc(r.number || 'RECIBIDA')}</td>
+                        <td class="p-2 text-slate-600 truncate max-w-44">${(window as any).esc(r.emitter || 'PROVEEDOR')}</td>
+                        <td class="p-2 text-right font-semibold text-slate-800">$${Number(r.total || 0).toLocaleString('es-CO')}</td>
+                        <td class="p-2 text-center">
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${r.action === 'created' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}">
+                            ${r.action === 'created' ? '<i class="fas fa-plus mr-1"></i>Incorporado' : '<i class="fas fa-check mr-1"></i>Conciliado'}
+                          </span>
+                        </td>
+                      </tr>
+                    `).join('') : `
+                      <tr>
+                        <td colspan="4" class="p-6 text-center text-slate-400">
+                          <i class="fas fa-inbox text-2xl mb-1 block"></i>
+                          No se encontraron documentos adicionales en el período seleccionado.
+                        </td>
+                      </tr>
+                    `}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      const modalFooter = document.getElementById('dian-token-modal-footer');
+      if (modalFooter) {
+        modalFooter.innerHTML = `
+          <div class="text-[11px] text-emerald-600 font-semibold flex items-center gap-1.5">
+            <i class="fas fa-circle-check"></i>Buzón sincronizado en el Centro de Documentos
+          </div>
+          <div>
+            <button class="btn btn-primary" id="btn-close-and-refresh-cde" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);">
+              <i class="fas fa-check mr-1.5"></i>Aceptar y Ver en Buzón
+            </button>
+          </div>
+        `;
+        document.getElementById('btn-close-and-refresh-cde')?.addEventListener('click', () => {
+          (window as any).closeModal();
+          renderDocumentosElectronicos();
+        });
+      }
+
+      (window as any).showToast('Sincronización completada exitosamente.', 'success');
+
+    } catch (err: any) {
+      if (progressArea) progressArea.classList.add('hidden');
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = `<i class="fas fa-cloud-arrow-down mr-1.5"></i>Iniciar Descarga y Conciliación`;
+      (window as any).showToast(err.message, 'error', 8000);
+    }
+  });
+}
+
+/**
+ * -----------------------------------------------------------------------------
+ * MÓDULO DE AUDITORÍA Y CRUCE TRIBUTARIO (GRAVY vs DIAN)
+ * Conciliación algorítmica de facturas y compras manuales, detección de omisiones,
+ * descarga de XMLs y exportación en Excel (.xlsx) y PDF.
+ * -----------------------------------------------------------------------------
+ */
+async function openDianAuditModal() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${yyyy}-${mm}-${dd}`;
+  
+  // Por defecto 90 días atrás para abarcar el trimestre contable
+  const pastDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const pastYyyy = pastDate.getFullYear();
+  const pastMm = String(pastDate.getMonth() + 1).padStart(2, '0');
+  const pastDd = String(pastDate.getDate()).padStart(2, '0');
+  const pastStr = `${pastYyyy}-${pastMm}-${pastDd}`;
+
+  let currentAuditData: any = null;
+  let activeTabFilter = 'all';
+
+  const htmlBody = `
+    <div class="space-y-4 text-xs font-sans max-h-[82vh] flex flex-col" id="dian-audit-container">
+      <!-- Toolbar Superior: Fechas y Botones de Acción -->
+      <div class="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="font-bold text-slate-700 text-xs">Período de Cruce:</label>
+          <div class="flex items-center gap-1.5">
+            <input type="date" id="audit-date-from" value="${pastStr}" class="form-input text-xs py-1 px-2 rounded-lg border-slate-300">
+            <span class="text-slate-400 font-semibold">a</span>
+            <input type="date" id="audit-date-to" value="${todayStr}" class="form-input text-xs py-1 px-2 rounded-lg border-slate-300">
+          </div>
+          <button class="btn btn-primary btn-sm py-1 px-3 text-xs" id="btn-run-audit-query">
+            <i class="fas fa-arrows-rotate mr-1"></i>Cruzar Ahora
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button class="btn btn-outline btn-sm py-1 px-2.5 text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50" id="btn-export-audit-excel" title="Exportar papel de trabajo de auditoría a Excel">
+            <i class="fas fa-file-excel mr-1 text-emerald-600"></i>Excel (.xlsx)
+          </button>
+          <button class="btn btn-outline btn-sm py-1 px-2.5 text-xs text-blue-700 border-blue-300 hover:bg-blue-50" id="btn-trigger-xml-sync" title="Encolar y descargar XMLs oficiales vía DIAN API">
+            <i class="fas fa-cloud-arrow-down mr-1 text-blue-600"></i>Descargar XMLs
+          </button>
+        </div>
+      </div>
+
+      <!-- Tarjetas KPI -->
+      <div class="grid grid-cols-2 md:grid-cols-6 gap-2 shrink-0" id="audit-kpi-cards">
+        <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
+          <div class="text-[10px] text-slate-500 font-semibold uppercase">Total DIAN</div>
+          <div class="text-sm font-bold text-slate-800 mt-0.5" id="kpi-total-dian">$0</div>
+          <div class="text-[10px] text-slate-400" id="kpi-count-dian">0 documentos</div>
+        </div>
+        <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
+          <div class="text-[10px] text-slate-500 font-semibold uppercase">Total ERP</div>
+          <div class="text-sm font-bold text-slate-800 mt-0.5" id="kpi-total-erp">$0</div>
+          <div class="text-[10px] text-slate-400" id="kpi-count-erp">Causado en libros</div>
+        </div>
+        <div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+          <div class="text-[10px] text-emerald-700 font-semibold uppercase">Conciliados 100%</div>
+          <div class="text-sm font-bold text-emerald-700 mt-0.5" id="kpi-conciliados">0</div>
+          <div class="text-[10px] text-emerald-600">Pleno soporte</div>
+        </div>
+        <div class="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-center">
+          <div class="text-[10px] text-amber-700 font-semibold uppercase">Manuales por Unificar</div>
+          <div class="text-sm font-bold text-amber-700 mt-0.5" id="kpi-manual-match">0</div>
+          <div class="text-[10px] text-amber-600">Evita duplicado</div>
+        </div>
+        <div class="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-center">
+          <div class="text-[10px] text-blue-700 font-semibold uppercase">Pendientes en ERP</div>
+          <div class="text-sm font-bold text-blue-700 mt-0.5" id="kpi-pending">0</div>
+          <div class="text-[10px] text-blue-600">Por contabilizar</div>
+        </div>
+        <div class="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-center">
+          <div class="text-[10px] text-rose-700 font-semibold uppercase">Riesgo Fiscal</div>
+          <div class="text-sm font-bold text-rose-700 mt-0.5" id="kpi-riesgo">0</div>
+          <div class="text-[10px] text-rose-600">Solo en ERP</div>
+        </div>
+      </div>
+
+      <!-- Pestañas de Filtro Rápido -->
+      <div class="flex items-center gap-1 border-b border-slate-200 pb-1 text-xs shrink-0 overflow-x-auto" id="audit-filter-tabs">
+        <button class="px-3 py-1 font-bold text-blue-600 border-b-2 border-blue-600 audit-tab-btn" data-filter="all">
+          Todos (<span id="tab-count-all">0</span>)
+        </button>
+        <button class="px-3 py-1 font-semibold text-slate-500 hover:text-slate-700 audit-tab-btn" data-filter="manual">
+          <i class="fas fa-link text-amber-500 mr-1"></i>Manuales por Unificar (<span id="tab-count-manual">0</span>)
+        </button>
+        <button class="px-3 py-1 font-semibold text-slate-500 hover:text-slate-700 audit-tab-btn" data-filter="pending">
+          <i class="fas fa-clock text-blue-500 mr-1"></i>Pendientes Contabilizar (<span id="tab-count-pending">0</span>)
+        </button>
+        <button class="px-3 py-1 font-semibold text-slate-500 hover:text-slate-700 audit-tab-btn" data-filter="conciliated">
+          <i class="fas fa-circle-check text-emerald-500 mr-1"></i>Conciliados 100% (<span id="tab-count-conciliated">0</span>)
+        </button>
+        <button class="px-3 py-1 font-semibold text-slate-500 hover:text-slate-700 audit-tab-btn" data-filter="risk">
+          <i class="fas fa-triangle-exclamation text-rose-500 mr-1"></i>Riesgo Fiscal (<span id="tab-count-risk">0</span>)
+        </button>
+      </div>
+
+      <!-- Tabla de Cruce Fila a Fila con Scroll -->
+      <div class="flex-1 overflow-y-auto border border-slate-200 rounded-xl bg-white min-h-[300px]">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10">
+            <tr>
+              <th class="p-2.5">Estado Cruce</th>
+              <th class="p-2.5">Fecha</th>
+              <th class="p-2.5">Folio / Número</th>
+              <th class="p-2.5">Proveedor / Tercero</th>
+              <th class="p-2.5 text-right">Total DIAN</th>
+              <th class="p-2.5 text-right">Total ERP</th>
+              <th class="p-2.5 text-center">XML</th>
+              <th class="p-2.5 text-center">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="audit-table-body" class="divide-y divide-slate-100">
+            <tr>
+              <td colspan="8" class="p-8 text-center text-slate-400">
+                <i class="fas fa-arrows-rotate fa-spin text-2xl mb-2 block"></i>
+                Ejecutando cruce tributario inteligente...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  const htmlFooter = `
+    <div class="flex items-center justify-between w-full text-xs">
+      <div class="text-slate-500 flex items-center gap-1.5">
+        <i class="fas fa-shield-halved text-blue-600"></i> Auditoría fiscal en tiempo real conforme a la Resolución 000085 de 2022 y Art. 771-2 E.T.
+      </div>
+      <div>
+        <button class="btn btn-outline text-xs py-1.5 px-3" onclick="window.closeModal()">Cerrar</button>
+      </div>
+    </div>
+  `;
+
+  (window as any).openModal('Auditoría & Cruce Fiscal DIAN vs GRAVY', htmlBody, htmlFooter, true);
+
+  // Función para renderizar la tabla según los datos y el filtro activo
+  function renderAuditTable() {
+    if (!currentAuditData || !currentAuditData.items) return;
+    const tbody = document.getElementById('audit-table-body');
+    if (!tbody) return;
+
+    let items = currentAuditData.items;
+    if (activeTabFilter === 'manual') {
+      items = items.filter((it: any) => it.match_type === 'coincidencia_manual_exacta' || it.match_type === 'coincidencia_manual_fuzzy');
+    } else if (activeTabFilter === 'pending') {
+      items = items.filter((it: any) => it.match_type === 'pendiente');
+    } else if (activeTabFilter === 'conciliated') {
+      items = items.filter((it: any) => it.match_type === 'conciliado_100');
+    } else if (activeTabFilter === 'risk') {
+      items = items.filter((it: any) => it.match_type === 'solo_en_erp_riesgo');
+    }
+
+    if (items.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="p-8 text-center text-slate-400">
+            <i class="fas fa-inbox text-2xl mb-1 block"></i>
+            No hay documentos en este criterio de auditoría.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = items.map((it: any) => {
+      let badgeHtml = '';
+      let actionBtnHtml = '';
+
+      if (it.match_type === 'conciliado_100') {
+        badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800"><i class="fas fa-check-circle mr-1"></i>100% Conciliado</span>`;
+        actionBtnHtml = `<span class="text-emerald-600 font-semibold text-[11px]"><i class="fas fa-lock mr-1"></i>Al Día</span>`;
+      } else if (it.match_type === 'coincidencia_manual_exacta' || it.match_type === 'coincidencia_manual_fuzzy') {
+        const isExact = it.match_type === 'coincidencia_manual_exacta';
+        badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800" title="Detectada compra manual en ERP (${it.matched_erp_number || ''}) sin CUFE"><i class="fas fa-link mr-1"></i>${isExact ? 'Compra Manual (Exacta)' : 'Posible Manual (Fuzzy)'}</span>`;
+        actionBtnHtml = `
+          <button class="btn btn-warning btn-xs py-1 px-2 text-[10px] font-bold" onclick="window._linkDianManualPurchase('${it.cufe}', '${it.matched_erp_id}', '${it.matched_erp_type}')" title="Asignar CUFE y XML oficial a la compra manual existente sin duplicar contabilidad">
+            <i class="fas fa-link mr-1"></i>Unificar CUFE
+          </button>
+        `;
+      } else if (it.match_type === 'solo_en_erp_riesgo') {
+        badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800" title="Gasto o compra registrado en ERP que no figura en la DIAN"><i class="fas fa-triangle-exclamation mr-1"></i>Solo en ERP (Riesgo)</span>`;
+        actionBtnHtml = `<span class="text-rose-600 font-semibold text-[11px]"><i class="fas fa-flag mr-1"></i>Sin Soporte DIAN</span>`;
+      } else {
+        badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800"><i class="fas fa-clock mr-1"></i>Pendiente ERP</span>`;
+        actionBtnHtml = `
+          <button class="btn btn-primary btn-xs py-1 px-2 text-[10px] font-bold" onclick="window.openDocHomologationModal('${it.id}')" title="Homologar y Contabilizar en ERP">
+            <i class="fas fa-magic mr-1"></i>Contabilizar
+          </button>
+        `;
+      }
+
+      const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+      const xmlIcon = it.has_xml 
+        ? `<a href="${baseUrl}/api/files/electronic_documents/${it.id}/${it.xml_file || ''}?download=1" target="_blank" class="text-emerald-600 hover:text-emerald-800 font-bold" title="Descargar XML oficial DIAN"><i class="fas fa-file-code text-base"></i></a>`
+        : `<span class="text-slate-300" title="XML pendiente de descarga"><i class="fas fa-file-code text-sm"></i></span>`;
+
+      return `
+        <tr class="hover:bg-slate-50">
+          <td class="p-2.5">${badgeHtml}</td>
+          <td class="p-2.5 font-mono text-slate-600">${it.date || ''}</td>
+          <td class="p-2.5 font-bold font-mono text-slate-800">${(window as any).esc(it.number || '')}</td>
+          <td class="p-2.5">
+            <div class="font-semibold text-slate-800 truncate max-w-44">${(window as any).esc(it.emitter_name || '')}</div>
+            <div class="text-[10px] text-slate-400 font-mono">NIT: ${it.emitter_nit || ''}</div>
+          </td>
+          <td class="p-2.5 text-right font-mono font-bold text-slate-800">$${Number(it.total_dian || 0).toLocaleString('es-CO')}</td>
+          <td class="p-2.5 text-right font-mono text-slate-700">$${Number(it.total_erp || 0).toLocaleString('es-CO')}</td>
+          <td class="p-2.5 text-center">${xmlIcon}</td>
+          <td class="p-2.5 text-center">${actionBtnHtml}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Función para ejecutar la consulta de auditoría
+  async function runAudit() {
+    const fromVal = (document.getElementById('audit-date-from') as HTMLInputElement)?.value || '';
+    const toVal = (document.getElementById('audit-date-to') as HTMLInputElement)?.value || '';
+
+    const tbody = document.getElementById('audit-table-body');
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" class="p-8 text-center text-slate-400">
+            <i class="fas fa-arrows-rotate fa-spin text-2xl mb-2 block text-blue-600"></i>
+            Cruzando registros contables y fiscales...
+          </td>
+        </tr>
+      `;
+    }
+
+    try {
+      const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+      const authToken = (window as any).pb?.authToken || (window as any).pb?.authStore?.token || localStorage.getItem('pb_token') || '';
+      const resp = await fetch(`${baseUrl}/api/dian/audit-reconciliation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({ date_from: fromVal, date_to: toVal })
+      });
+
+      const resData = await resp.json();
+      if (!resData.success) throw new Error(resData.error || 'Fallo al ejecutar auditoría.');
+
+      currentAuditData = resData;
+      const kpis = resData.kpis || {};
+
+      // Actualizar KPIs
+      const elKpiTotalDian = document.getElementById('kpi-total-dian');
+      if (elKpiTotalDian) elKpiTotalDian.textContent = `$${Number(kpis.totalDianAmount || 0).toLocaleString('es-CO')}`;
+      const elKpiCountDian = document.getElementById('kpi-count-dian');
+      if (elKpiCountDian) elKpiCountDian.textContent = `${(resData.items || []).filter((i: any) => i.total_dian > 0).length} en DIAN`;
+
+      const elKpiTotalErp = document.getElementById('kpi-total-erp');
+      if (elKpiTotalErp) elKpiTotalErp.textContent = `$${Number(kpis.totalErpAmount || 0).toLocaleString('es-CO')}`;
+
+      const elKpiConciliados = document.getElementById('kpi-conciliados');
+      if (elKpiConciliados) elKpiConciliados.textContent = String(kpis.countConciliados || 0);
+
+      const elKpiManual = document.getElementById('kpi-manual-match');
+      if (elKpiManual) elKpiManual.textContent = String(kpis.countManualMatch || 0);
+
+      const elKpiPending = document.getElementById('kpi-pending');
+      if (elKpiPending) elKpiPending.textContent = String(kpis.countPending || 0);
+
+      const elKpiRiesgo = document.getElementById('kpi-riesgo');
+      if (elKpiRiesgo) elKpiRiesgo.textContent = String(kpis.countRiesgo || 0);
+
+      // Actualizar conteos en pestañas
+      const allItems = resData.items || [];
+      const elTabAll = document.getElementById('tab-count-all');
+      if (elTabAll) elTabAll.textContent = String(allItems.length);
+      const elTabManual = document.getElementById('tab-count-manual');
+      if (elTabManual) elTabManual.textContent = String(allItems.filter((i: any) => i.match_type === 'coincidencia_manual_exacta' || i.match_type === 'coincidencia_manual_fuzzy').length);
+      const elTabPending = document.getElementById('tab-count-pending');
+      if (elTabPending) elTabPending.textContent = String(allItems.filter((i: any) => i.match_type === 'pendiente').length);
+      const elTabConciliated = document.getElementById('tab-count-conciliated');
+      if (elTabConciliated) elTabConciliated.textContent = String(allItems.filter((i: any) => i.match_type === 'conciliado_100').length);
+      const elTabRisk = document.getElementById('tab-count-risk');
+      if (elTabRisk) elTabRisk.textContent = String(allItems.filter((i: any) => i.match_type === 'solo_en_erp_riesgo').length);
+
+      renderAuditTable();
+
+    } catch (eAudit: any) {
+      if (tbody) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="8" class="p-8 text-center text-rose-500 font-semibold">
+              <i class="fas fa-circle-exclamation text-2xl mb-1 block"></i>
+              ${eAudit.message}
+            </td>
+          </tr>
+        `;
+      }
+    }
+  }
+
+  // Listener para pestañas de filtro
+  document.querySelectorAll('.audit-tab-btn').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      document.querySelectorAll('.audit-tab-btn').forEach(b => {
+        b.classList.remove('font-bold', 'text-blue-600', 'border-b-2', 'border-blue-600');
+        b.classList.add('font-semibold', 'text-slate-500');
+      });
+      const target = ev.currentTarget as HTMLElement;
+      target.classList.remove('text-slate-500');
+      target.classList.add('font-bold', 'text-blue-600', 'border-b-2', 'border-blue-600');
+      activeTabFilter = target.getAttribute('data-filter') || 'all';
+      renderAuditTable();
+    });
+  });
+
+  // Botón "Cruzar Ahora"
+  document.getElementById('btn-run-audit-query')?.addEventListener('click', () => runAudit());
+
+  // Botón "Descargar XMLs"
+  document.getElementById('btn-trigger-xml-sync')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-trigger-xml-sync') as HTMLButtonElement;
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Descargando XMLs...`;
+    }
+    try {
+      const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+      const authToken = (window as any).pb?.authToken || (window as any).pb?.authStore?.token || localStorage.getItem('pb_token') || '';
+      
+      let targetCufes: string[] = [];
+      if (currentAuditData && Array.isArray(currentAuditData.items)) {
+        targetCufes = currentAuditData.items.filter((it: any) => !it.has_xml && it.cufe).map((it: any) => it.cufe);
+      }
+
+      const resp = await fetch(`${baseUrl}/api/dian/sync-xml-files`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({ cufes: targetCufes.slice(0, 50), limit: 50 })
+      });
+      const data = await resp.json();
+      (window as any).showToast(data.message || 'Descarga de XMLs procesada.', (data.downloaded > 0) ? 'success' : 'info');
+      runAudit();
+    } catch (eXml: any) {
+      (window as any).showToast(`Error al descargar XMLs: ${eXml.message}`, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-cloud-arrow-down mr-1 text-blue-600"></i>Descargar XMLs`;
+      }
+    }
+  });
+
+  // Exportar a Excel (.xlsx)
+  document.getElementById('btn-export-audit-excel')?.addEventListener('click', () => {
+    if (!currentAuditData || !currentAuditData.items) {
+      return (window as any).showToast('No hay datos para exportar. Ejecute el cruce primero.', 'warning');
+    }
+    const XLSX = (window as any).XLSX;
+    if (!XLSX) {
+      return (window as any).showToast('Librería XLSX no disponible.', 'error');
+    }
+
+    const items = currentAuditData.items;
+    const kpis = currentAuditData.kpis || {};
+
+    // Hoja 1: Resumen
+    const summaryData = [
+      ['AUDITORÍA Y CRUCE FISCAL DIAN vs GRAVY'],
+      ['Fecha de Generación:', new Date().toLocaleString('es-CO')],
+      ['Período Evaluado:', `${currentAuditData.date_from || 'Histórico'} al ${currentAuditData.date_to || 'Hoy'}`],
+      [],
+      ['INDICADOR DE CONCILIACIÓN', 'VALOR'],
+      ['Total Facturación DIAN:', kpis.totalDianAmount || 0],
+      ['Total Causado en ERP:', kpis.totalErpAmount || 0],
+      ['Tasa de Conciliación:', `${kpis.reconciliationRate || 0}%`],
+      ['Documentos 100% Conciliados:', kpis.countConciliados || 0],
+      ['Compras Manuales por Unificar:', kpis.countManualMatch || 0],
+      ['Pendientes de Causar en ERP:', kpis.countPending || 0],
+      ['Riesgo Fiscal (Solo en ERP):', kpis.countRiesgo || 0]
+    ];
+
+    // Hoja 2: Detalle
+    const detailData = [
+      ['Estado Cruce', 'Fecha Emisión', 'Folio / Número', 'NIT Proveedor', 'Razón Social Proveedor', 'Total DIAN (COP)', 'Total ERP (COP)', 'Diferencia (COP)', 'XML Descargado', 'CUFE Oficial', 'Ref. Compra ERP']
+    ];
+
+    items.forEach((it: any) => {
+      let stName = 'Pendiente ERP';
+      if (it.match_type === 'conciliado_100') stName = '100% Conciliado';
+      else if (it.match_type === 'coincidencia_manual_exacta') stName = 'Compra Manual (Exacta)';
+      else if (it.match_type === 'coincidencia_manual_fuzzy') stName = 'Compra Manual (Aproximada)';
+      else if (it.match_type === 'solo_en_erp_riesgo') stName = 'Solo en ERP (Riesgo Fiscal)';
+
+      detailData.push([
+        stName,
+        it.date || '',
+        it.number || '',
+        it.emitter_nit || '',
+        it.emitter_name || '',
+        it.total_dian || 0,
+        it.total_erp || 0,
+        it.difference || 0,
+        it.has_xml ? 'SÍ' : 'NO',
+        it.cufe || '',
+        it.matched_erp_number || ''
+      ]);
+    });
+
+    const wb = XLSX.utils.book_new();
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    const wsDetail = XLSX.utils.aoa_to_sheet(detailData);
+
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen_Ejecutivo');
+    XLSX.utils.book_append_sheet(wb, wsDetail, 'Detalle_Cruce_Fiscal');
+
+    XLSX.writeFile(wb, `Auditoria_DIAN_vs_GRAVY_${todayStr}.xlsx`);
+    (window as any).showToast('Archivo Excel descargado exitosamente.', 'success');
+  });
+
+  // Ejecutar primera carga
+  runAudit();
+}
+
+// Acción global para enlazar compra manual con CUFE
+(window as any)._linkDianManualPurchase = async function(cufe: string, erpId: string, erpType: string) {
+  if (!confirm('¿Confirma unificar esta compra manual con el documento oficial DIAN? El CUFE y el XML quedarán asociados al registro contable existente sin duplicar el asiento.')) {
+    return;
+  }
+  try {
+    const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+    const authToken = (window as any).pb?.authToken || (window as any).pb?.authStore?.token || localStorage.getItem('pb_token') || '';
+    const resp = await fetch(`${baseUrl}/api/dian/link-manual-purchase`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+      },
+      body: JSON.stringify({ cufe, erp_id: erpId, erp_type: erpType })
+    });
+    const resData = await resp.json();
+    if (!resData.success) throw new Error(resData.error || 'Error al unificar compra.');
+
+    (window as any).showToast(resData.message || 'Compra manual unificada exitosamente.', 'success');
+    
+    // Disparar recarga de la auditoría
+    const runBtn = document.getElementById('btn-run-audit-query');
+    if (runBtn) runBtn.click();
+
+  } catch (err: any) {
+    (window as any).showToast(`Error al unificar: ${err.message}`, 'error');
+  }
+};
+
+(window as any).openDianAuditModal = openDianAuditModal;
 
 async function openRadianEventModal(docId: string, code: '030' | '032' | '033') {
   try {
@@ -4045,7 +4871,7 @@ async function openRadianHistoryModal(docId: string) {
               ${cude ? `
                 <div class="flex items-center justify-between gap-2">
                   <div class="truncate"><strong>CUDE:</strong> ${(window as any).esc(cude)}</div>
-                  <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1.5 text-indigo-600 hover:bg-indigo-50" title="Copiar CUDE" onclick="navigator.clipboard.writeText('${(window as any).esc(cude)}'); (window as any).showToast('CUDE copiado al portapapeles', 'info')">
+                  <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1.5 text-indigo-600 hover:bg-indigo-50" title="Copiar CUDE" onclick="navigator.clipboard.writeText('${(window as any).esc(cude)}'); window.showToast('CUDE copiado al portapapeles', 'info')">
                     <i class="fas fa-copy mr-1"></i>Copiar
                   </button>
                 </div>
@@ -4109,7 +4935,8 @@ async function openRadianHistoryModal(docId: string) {
         syncBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1.5"></i>Consultando DIAN...`;
       }
       try {
-        const res = await fetch('/api/radian/sync-event-status', {
+        const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+        const res = await fetch(`${baseUrl}/api/radian/sync-event-status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ docId })
@@ -4167,6 +4994,33 @@ if (typeof window !== 'undefined' && !(window as any)._radianMenuListenerAttache
   (window as any)._radianMenuListenerAttached = true;
 }
 
+async function syncRadianDocEvents(docId: string) {
+  try {
+    (window as any).showToast('Consultando estado de eventos ante la DIAN...', 'info');
+    const baseUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+    const authToken = (window as any).pb?.authToken || (window as any).pb?.authStore?.token || localStorage.getItem('pb_token') || '';
+    const res = await fetch(`${baseUrl}/api/radian/sync-event-status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+      },
+      body: JSON.stringify({ docId })
+    });
+    const resData = await res.json();
+    if (res.ok && resData.success) {
+      const toastType = resData.hasEvents ? 'success' : (resData.isContado ? 'info' : 'warning');
+      (window as any).showToast(resData.message || 'Estado DIAN sincronizado correctamente.', toastType);
+      await renderDocumentosElectronicos();
+    } else {
+      throw new Error(resData.error || 'No se pudo sincronizar los eventos con la DIAN.');
+    }
+  } catch (err: any) {
+    (window as any).showToast(`Error al sincronizar eventos: ${err.message}`, 'error');
+  }
+}
+
+(window as any)._syncRadianDocEvents = syncRadianDocEvents;
 (window as any)._toggleRadianMenu = toggleRadianMenu;
 (window as any)._closeAllRadianMenus = closeAllRadianMenus;
 (window as any).viewDocXmlDetails = viewDocXmlDetails;

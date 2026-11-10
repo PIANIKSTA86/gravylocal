@@ -2517,7 +2517,10 @@
           <!-- Menú de Usuario Dropdown -->
           <div class="user-menu-container flex-shrink-0" id="user-menu-container">
             <button id="btn-user-menu" class="user-menu-btn" aria-label="Menú de usuario">
-              <div class="user-menu-avatar" id="navbar-avatar">U</div>
+              <div class="user-menu-avatar" id="navbar-avatar" style="position:relative">
+                U
+                <span id="user-avatar-notif-dot" style="display:none; position:absolute; top:-2px; right:-2px; width:9px; height:9px; border-radius:50%; background:#EF4444; border:2px solid #FFFFFF"></span>
+              </div>
               <span class="user-menu-name hidden md:inline" id="navbar-username">Usuario</span>
               <i class="fas fa-chevron-down user-menu-chevron" id="navbar-chevron"></i>
             </button>
@@ -2529,6 +2532,11 @@
                 <div class="user-dropdown-role" id="dropdown-role">Rol</div>
               </div>
               <div class="user-dropdown-list">
+                <a href="#" class="user-dropdown-item dropdown-item" data-page="agenda-pagos" id="dropdown-nav-notif">
+                  <i class="fas fa-bell" style="color:var(--accent-lavender, #7C3AED)"></i>
+                  <span class="flex-1 font-medium">Notificaciones y Alertas</span>
+                  <span id="user-dropdown-notif-badge" class="px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 rounded-full" style="display:none">0</span>
+                </a>
                 <a href="#" class="user-dropdown-item dropdown-item" data-page="configuracion">
                   <i class="fas fa-sliders"></i>
                   <span>Configuración</span>

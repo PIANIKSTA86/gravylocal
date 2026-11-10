@@ -559,7 +559,7 @@ function buildNominaPayrollPayload(rec) {
     } catch (_) { }
   }
 
-    const formatPaymentMethod = function(m) {
+  const formatPaymentMethod = function (m) {
     const str = String(m || '').trim();
     const code = (str.match(/\d+/) || [str])[0];
     const methods = {
@@ -657,22 +657,22 @@ function buildNominaPayrollPayload(rec) {
     empEmail: empEmail,
     cargo: cargo,
     costCenter: emp ? (emp.getString("cost_center") || "General / Colaboradores") : "General / Colaboradores",
-    basicSalary: empRule.basic_salary || (emp ? emp.getFloat("salary_base") : 0) || 1750905,
-    bankName: emp ? (emp.getString("bank_name") || "Bancolombia") : "Bancolombia",
+    basicSalary: empRule.basic_salary || (emp ? emp.getFloat("salary_base") : 0) || totalDevengos || 0,
+    bankName: emp ? (emp.getString("bank_name") || "") : "",
     bankAccountType: emp ? (emp.getString("bank_account_type") || "Ahorros") : "Ahorros",
-    bankAccount: emp ? (emp.getString("bank_account") || "06185364532") : "06185364532",
+    bankAccount: emp ? (emp.getString("bank_account") || "") : "",
     dateHired: fIngreso,
     startDate: fIngreso,
     fIngreso: fIngreso,
     dateEnd: fRetiro,
     retirementDate: fRetiro,
     paymentMethod: formatPaymentMethod(emp ? emp.getString("payment_method") : "42"),
-    healthEntity: epsName || (emp ? emp.getString("eps") : "") || "EPS SURA",
-    pensionEntity: afpName || (empRule.is_pensioner ? "Pensionado (Exento)" : (emp ? emp.getString("afp") : "")) || "Pensionado (Exento)",
-    arlEntity: arlName ? `${arlName} - Riesgo ${arlRiskLevel} (${arlRate})` : ((emp ? emp.getString("arl") : "") || "ARL SURA - Riesgo 1 (0.522%)"),
-    cajaEntity: cajaName || (emp ? emp.getString("caja_compensacion") : "") || "CCF COMFENALCO DEL VALLE DEL CAUCA - COMFENALCO VALLE",
-    fechasPago: "2026-09-30",
-    issueDate: rec.getString("fecha_envio") || "2026-10-09 15:42:03 12:00:00-05:00",
+    healthEntity: epsName || (emp ? emp.getString("eps") : "") || "No asignada",
+    pensionEntity: afpName || (empRule.is_pensioner ? "Pensionado (Exento)" : (emp ? emp.getString("afp") : "")) || "No asignada",
+    arlEntity: arlName ? `${arlName} - Riesgo ${arlRiskLevel} (${arlRate})` : ((emp ? emp.getString("arl") : "") || "No asignada"),
+    cajaEntity: cajaName || (emp ? emp.getString("caja_compensacion") : "") || "No asignada",
+    fechasPago: rec.getString("fecha_envio")?.slice(0, 10) || `${rec.getInt("ano")}-${String(rec.getInt("mes")).padStart(2, "0")}-30`,
+    issueDate: rec.getString("fecha_envio") || new Date().toISOString().replace('T', ' ').slice(0, 19),
     cune: cune,
     totalDevengos: totalDevengos,
     totalDeducciones: totalDeducciones,

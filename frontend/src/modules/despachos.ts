@@ -285,16 +285,15 @@ function _renderDeliveriesTab(deliveries: Delivery[], vehicles: Vehicle[]) {
                   <td class="text-xs truncate max-w-xs" title="${(window as any).esc(d.address)}">${(window as any).esc(d.address)}</td>
                   <td class="text-right font-mono text-xs">${d.weight ? (window as any).fmtN(d.weight) : '—'}</td>
                   <td><span class="badge ${meta.badge}">${meta.label}</span></td>
-                  <td>
-                    <div class="flex gap-1 flex-wrap">
-                      <button class="btn btn-outline btn-sm" title="Imprimir Hoja de Ruta" onclick="window._printHojaRuta('${(window as any).esc(d.id)}')"><i class="fas fa-print"></i></button>
-                      <button class="btn btn-outline btn-sm" title="Editar" onclick="window._editDelivery('${(window as any).esc(d.id)}')"><i class="fas fa-pen"></i></button>
-                      ${!d.invoice_id ? `
-                        <button class="btn btn-primary btn-sm" title="Facturar esta entrega" onclick="window.invoiceDeliveryDirect('${(window as any).esc(d.id)}')"><i class="fas fa-file-invoice-dollar mr-1"></i> Facturar</button>
-                      ` : `
-                        <button class="btn btn-outline btn-sm text-green-600" style="border-color:#059669" title="Ver Factura Vinculada" onclick="window.viewSalesInvoiceFromDelivery('${(window as any).esc(d.invoice_id)}')"><i class="fas fa-file-invoice"></i></button>
-                      `}
-                      <button class="btn btn-danger btn-sm" title="Eliminar" onclick="window._deleteDelivery('${(window as any).esc(d.id)}', '${(window as any).esc(d.number)}')"><i class="fas fa-trash"></i></button>
+                  <td class="text-right">
+                    <div class="inline-flex items-center gap-1.5 justify-end">
+                      <button type="button" class="btn btn-outline btn-sm px-2.5 text-gray-700 hover:text-purple-700 hover:border-purple-300 transition-all inline-flex items-center gap-1.5 shadow-2xs" title="Ver detalle de despacho" onclick="window._editDelivery('${(window as any).esc(d.id)}')">
+                        <i class="fas fa-eye text-xs text-purple-600"></i>
+                        <span class="text-xs font-semibold">Ver</span>
+                      </button>
+                      <button type="button" class="btn btn-outline btn-sm px-2 text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-300 shadow-2xs transition-colors" title="Más opciones" onclick="window.openDeliveryActionMenu(event, { id: '${(window as any).esc(d.id)}', number: '${(window as any).esc(d.number)}', status: '${(window as any).esc(d.status)}', invoice_id: '${(window as any).esc(d.invoice_id || '')}' })">
+                        <i class="fas fa-ellipsis-vertical text-xs"></i>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -2396,6 +2395,100 @@ async function _resolveDispatchProducts(d: Delivery) {
       (window as any).viewSalesInvoiceDetail(invoiceId);
     }
   }, 250);
+};
+
+// Menú flotante de acciones para Despachos
+(window as any).openDeliveryActionMenu = function(e: MouseEvent, delData: any) {
+  e.stopPropagation();
+  const oldMenu = document.getElementById('del-row-action-floating-menu');
+  if (oldMenu) oldMenu.remove();
+
+  const btn = (e.currentTarget || e.target) as HTMLElement;
+  const targetBtn = btn.closest('button') || btn;
+  const rect = targetBtn.getBoundingClientRect();
+
+  const menu = document.createElement('div');
+  menu.id = 'del-row-action-floating-menu';
+  menu.className = 'fixed z-50 bg-white rounded-2xl shadow-xl border border-gray-200/90 py-1.5 min-w-[220px] text-xs animate-in fade-in zoom-in-95 duration-100';
+
+  let itemsHtml = `
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-blue-700 hover:bg-blue-50 hover:text-blue-900 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('del-row-action-floating-menu')?.remove(); window.openDocumentTrackingModal('delivery', '${delData.id}')">
+      <i class="fas fa-route text-blue-600 w-4"></i>
+      <span>Expediente de Seguimiento</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('del-row-action-floating-menu')?.remove(); window._editDelivery('${delData.id}')">
+      <i class="fas fa-eye text-gray-500 w-4"></i>
+      <span>Ver y Editar Despacho</span>
+    </button>
+    <div class="my-1 border-t border-gray-100"></div>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('del-row-action-floating-menu')?.remove(); window._printHojaRuta('${delData.id}')">
+      <i class="fas fa-print text-gray-500 w-4"></i>
+      <span>Imprimir Hoja de Ruta</span>
+    </button>
+  `;
+
+  if (!delData.invoice_id) {
+    itemsHtml += `
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-emerald-800 hover:bg-emerald-50 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('del-row-action-floating-menu')?.remove(); window.invoiceDeliveryDirect('${delData.id}')">
+        <i class="fas fa-file-invoice-dollar text-emerald-600 w-4"></i>
+        <span>Facturar esta Entrega</span>
+      </button>
+    `;
+  } else {
+    itemsHtml += `
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('del-row-action-floating-menu')?.remove(); window.viewSalesInvoiceFromDelivery('${delData.invoice_id}')">
+        <i class="fas fa-file-invoice text-emerald-600 w-4"></i>
+        <span>Ver Factura Vinculada</span>
+      </button>
+    `;
+  }
+
+  itemsHtml += `
+    <div class="my-1 border-t border-gray-100"></div>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-rose-700 hover:bg-rose-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('del-row-action-floating-menu')?.remove(); window._deleteDelivery('${delData.id}', '${delData.number}')">
+      <i class="fas fa-trash text-rose-600 w-4"></i>
+      <span>Eliminar Despacho</span>
+    </button>
+  `;
+
+  menu.innerHTML = itemsHtml;
+  document.body.appendChild(menu);
+
+  const menuWidth = 220;
+  const menuHeight = menu.offsetHeight || 220;
+  let top = rect.bottom + 4;
+  let left = rect.right - menuWidth;
+
+  if (left < 10) left = 10;
+  if (top + menuHeight > window.innerHeight - 10) {
+    top = Math.max(10, rect.top - menuHeight - 4);
+  }
+
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+
+  const onDocClick = (ev: MouseEvent) => {
+    if (!menu.contains(ev.target as Node) && ev.target !== targetBtn && !targetBtn.contains(ev.target as Node)) {
+      menu.remove();
+      document.removeEventListener('click', onDocClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    }
+  };
+  const onScroll = () => {
+    menu.remove();
+    document.removeEventListener('click', onDocClick);
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', onScroll);
+  };
+
+  setTimeout(() => {
+    document.addEventListener('click', onDocClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+  }, 20);
 };
 
 // Registrar globalmente

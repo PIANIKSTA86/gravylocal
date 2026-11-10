@@ -579,6 +579,8 @@ async function checkUpcomingVencimientos() {
   const badge = document.getElementById('notif-badge');
   const countEl = document.getElementById('notif-critical-count');
   const listEl = document.getElementById('notif-list');
+  const userDropdownBadge = document.getElementById('user-dropdown-notif-badge');
+  const userAvatarDot = document.getElementById('user-avatar-notif-dot');
   if (!pb || !pb.currentUser) return;
 
   try {
@@ -603,6 +605,11 @@ async function checkUpcomingVencimientos() {
     if (alerts.length > 0) {
       if (badge) badge.style.display = 'block';
       if (countEl) countEl.innerText = `${alerts.length} Alertas`;
+      if (userDropdownBadge) {
+        userDropdownBadge.style.display = 'inline-flex';
+        userDropdownBadge.textContent = `${alerts.length}`;
+      }
+      if (userAvatarDot) userAvatarDot.style.display = 'block';
 
       if (listEl) {
         listEl.innerHTML = alerts.map((a: any) => {
@@ -635,6 +642,8 @@ async function checkUpcomingVencimientos() {
     } else {
       if (badge) badge.style.display = 'none';
       if (countEl) countEl.innerText = '0 Alertas';
+      if (userDropdownBadge) userDropdownBadge.style.display = 'none';
+      if (userAvatarDot) userAvatarDot.style.display = 'none';
       if (listEl) {
         listEl.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:12px">Sin vencimientos críticos en los próximos 3 días.</p>`;
       }

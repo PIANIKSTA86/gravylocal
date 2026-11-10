@@ -328,28 +328,135 @@ function renderOrderRow(ord: any) {
           ${isEntregado && ord.status !== 'invoiced' ? '<span class="badge badge-green text-[10px]"><i class="fas fa-check mr-1"></i>Entregado</span>' : ''}
         </div>
       </td>
-      <td>
-        <div class="flex gap-1 flex-wrap">
-          <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewSalesOrderDetail('${(window as any).esc(ord.id)}')"><i class="fas fa-eye"></i></button>
-          <button class="btn btn-outline btn-sm text-blue-600" style="border-color:#3b82f6" title="Imprimir Carta (Comercial)" onclick="window.printOrderCarta('${(window as any).esc(ord.id)}')"><i class="fas fa-print"></i></button>
-          <button class="btn btn-outline btn-sm text-indigo-700" style="border-color:#4f46e5;color:#4f46e5" title="Imprimir Orden de Alistamiento / Despacho (Logística)" onclick="window.printOrderPicking('${(window as any).esc(ord.id)}')"><i class="fas fa-boxes-packing"></i></button>
-          <button class="btn btn-outline btn-sm text-orange-600" style="border-color:#f97316" title="Imprimir Tirilla" onclick="window.printOrderTirilla('${(window as any).esc(ord.id)}')"><i class="fas fa-receipt"></i></button>
-          ${ord.status === 'pending' ? `
-            <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#7C3AED;color:#7C3AED" onclick="window.editSalesOrder('${(window as any).esc(ord.id)}')"><i class="fas fa-pen"></i></button>
-            ${!isEnDespacho && !isEntregado ? `
-              <button class="btn btn-outline btn-sm text-purple-700" style="border-color:#7C3AED; background:#F5F3FF" title="Despachar a Logística" onclick="window.dispatchSalesOrderDirect('${(window as any).esc(ord.id)}')"><i class="fas fa-truck"></i> Despachar</button>
-            ` : ''}
-            <button class="btn btn-primary btn-sm" title="Facturar" onclick="window.invoiceSalesOrderDirect('${(window as any).esc(ord.id)}')"><i class="fas fa-receipt"></i> Facturar</button>
-            <button class="btn btn-danger btn-sm" title="Anular" onclick="window.cancelSalesOrderDirect('${(window as any).esc(ord.id)}', '${(window as any).esc(ord.number)}')"><i class="fas fa-ban"></i></button>
-          ` : ''}
-          ${ord.status === 'invoiced' && ord.invoice_id ? `
-            <button class="btn btn-outline btn-sm text-green-600" style="border-color:#059669" title="Ver factura asociada" onclick="window.viewSalesInvoiceFromOrder('${(window as any).esc(ord.invoice_id)}')"><i class="fas fa-file-invoice"></i></button>
-          ` : ''}
+      <td class="text-right">
+        <div class="inline-flex items-center gap-1.5 justify-end">
+          <button type="button" class="btn btn-outline btn-sm px-2.5 text-gray-700 hover:text-purple-700 hover:border-purple-300 transition-all inline-flex items-center gap-1.5 shadow-2xs" title="Ver detalle de pedido" onclick="window.viewSalesOrderDetail('${(window as any).esc(ord.id)}')">
+            <i class="fas fa-eye text-xs text-purple-600"></i>
+            <span class="text-xs font-semibold">Ver</span>
+          </button>
+          <button type="button" class="btn btn-outline btn-sm px-2 text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-300 shadow-2xs transition-colors" title="Más opciones" onclick="window.openOrderActionMenu(event, { id: '${(window as any).esc(ord.id)}', number: '${(window as any).esc(ord.number)}', status: '${(window as any).esc(ord.status)}', fulfillment_status: '${(window as any).esc(ord.fulfillment_status || '')}', invoice_id: '${(window as any).esc(ord.invoice_id || '')}', isEnDespacho: ${isEnDespacho}, isEntregado: ${isEntregado} })">
+            <i class="fas fa-ellipsis-vertical text-xs"></i>
+          </button>
         </div>
       </td>
     </tr>
   `;
 }
+
+(window as any).openOrderActionMenu = function(e: MouseEvent, ordData: any) {
+  e.stopPropagation();
+  const oldMenu = document.getElementById('ord-row-action-floating-menu');
+  if (oldMenu) oldMenu.remove();
+
+  const btn = (e.currentTarget || e.target) as HTMLElement;
+  const targetBtn = btn.closest('button') || btn;
+  const rect = targetBtn.getBoundingClientRect();
+
+  const menu = document.createElement('div');
+  menu.id = 'ord-row-action-floating-menu';
+  menu.className = 'fixed z-50 bg-white rounded-2xl shadow-xl border border-gray-200/90 py-1.5 min-w-[220px] text-xs animate-in fade-in zoom-in-95 duration-100';
+
+  const isPending = ordData.status === 'pending';
+  const isInvoiced = ordData.status === 'invoiced';
+  const isEnDespacho = !!ordData.isEnDespacho;
+  const isEntregado = !!ordData.isEntregado;
+
+  let itemsHtml = `
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-blue-700 hover:bg-blue-50 hover:text-blue-900 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.openDocumentTrackingModal('order', '${ordData.id}')">
+      <i class="fas fa-route text-blue-600 w-4"></i>
+      <span>Expediente de Seguimiento</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.viewSalesOrderDetail('${ordData.id}')">
+      <i class="fas fa-eye text-gray-500 w-4"></i>
+      <span>Ver detalle completo</span>
+    </button>
+    <div class="my-1 border-t border-gray-100"></div>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.printOrderCarta('${ordData.id}')">
+      <i class="fas fa-print text-gray-500 w-4"></i>
+      <span>Imprimir Formato Carta</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.printOrderPicking('${ordData.id}')">
+      <i class="fas fa-boxes-packing text-indigo-600 w-4"></i>
+      <span>Imprimir Picking / Alistamiento</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.printOrderTirilla('${ordData.id}')">
+      <i class="fas fa-receipt text-amber-600 w-4"></i>
+      <span>Imprimir Tirilla POS</span>
+    </button>
+  `;
+
+  if (isPending) {
+    itemsHtml += `
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-purple-700 hover:bg-purple-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.editSalesOrder('${ordData.id}')">
+        <i class="fas fa-pen text-purple-600 w-4"></i>
+        <span>Editar Pedido</span>
+      </button>
+      ${(!isEnDespacho && !isEntregado) ? `
+        <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-purple-800 hover:bg-purple-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.dispatchSalesOrderDirect('${ordData.id}')">
+          <i class="fas fa-truck text-purple-600 w-4"></i>
+          <span>Despachar a Logística</span>
+        </button>
+      ` : ''}
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-emerald-800 hover:bg-emerald-50 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.invoiceSalesOrderDirect('${ordData.id}')">
+        <i class="fas fa-file-invoice-dollar text-emerald-600 w-4"></i>
+        <span>Facturar Pedido</span>
+      </button>
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-rose-700 hover:bg-rose-50 flex items-center gap-2.5 transition-colors font-medium" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.cancelSalesOrderDirect('${ordData.id}', '${ordData.number}')">
+        <i class="fas fa-ban text-rose-600 w-4"></i>
+        <span>Anular Pedido</span>
+      </button>
+    `;
+  }
+
+  if (isInvoiced && ordData.invoice_id) {
+    itemsHtml += `
+      <div class="my-1 border-t border-gray-100"></div>
+      <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.viewSalesInvoiceFromOrder('${ordData.invoice_id}')">
+        <i class="fas fa-file-invoice text-emerald-600 w-4"></i>
+        <span>Ver Factura Asociada</span>
+      </button>
+    `;
+  }
+
+  menu.innerHTML = itemsHtml;
+  document.body.appendChild(menu);
+
+  const menuWidth = 220;
+  const menuHeight = menu.offsetHeight || 260;
+  let top = rect.bottom + 4;
+  let left = rect.right - menuWidth;
+
+  if (left < 10) left = 10;
+  if (top + menuHeight > window.innerHeight - 10) {
+    top = Math.max(10, rect.top - menuHeight - 4);
+  }
+
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+
+  const onDocClick = (ev: MouseEvent) => {
+    if (!menu.contains(ev.target as Node) && ev.target !== targetBtn && !targetBtn.contains(ev.target as Node)) {
+      menu.remove();
+      document.removeEventListener('click', onDocClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    }
+  };
+  const onScroll = () => {
+    menu.remove();
+    document.removeEventListener('click', onDocClick);
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', onScroll);
+  };
+
+  setTimeout(() => {
+    document.addEventListener('click', onDocClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+  }, 20);
+};
 
 function filterOrderTable() {
   const q = ((document.getElementById('ord-q') as HTMLInputElement)?.value || '').toLowerCase().trim();
@@ -1390,7 +1497,8 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 
     const footer = `
       <div class="flex justify-between items-center w-full">
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
+          <button class="btn btn-outline" style="border-color:#2563eb;color:#2563eb" onclick="window.openDocumentTrackingModal('order', '${ord.id}')"><i class="fas fa-route mr-1"></i> Expediente de Seguimiento</button>
           <button class="btn btn-outline" style="border-color:#3b82f6;color:#3b82f6" onclick="window.printOrderCarta('${ord.id}')"><i class="fas fa-print mr-1"></i> Imprimir Carta</button>
           <button class="btn btn-outline" style="border-color:#4f46e5;color:#4f46e5" onclick="window.printOrderPicking('${ord.id}')"><i class="fas fa-boxes-packing mr-1"></i> Alistamiento / Despacho</button>
           <button class="btn btn-outline" style="border-color:#f97316;color:#f97316" onclick="window.printOrderTirilla('${ord.id}')"><i class="fas fa-receipt mr-1"></i> Imprimir Tirilla</button>

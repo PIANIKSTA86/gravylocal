@@ -214,12 +214,179 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
           parsed.earn = parsed.accrued;
         }
 
-        if (parsed.earn && Array.isArray(parsed.earn.other_concepts)) {
-          parsed.earn.other_concepts.forEach(function(oc) {
-            if (!oc.conceptS && oc.salary_concept) oc.conceptS = oc.salary_concept;
-            if (!oc.conceptNS && oc.non_salary_concept) oc.conceptNS = oc.non_salary_concept;
-            if (!oc.description && oc.concept_description) oc.description = oc.concept_description;
-          });
+        if (parsed.earn) {
+          // 1. Primas de Servicios: service_bonus -> bonus
+          if (parsed.earn.service_bonus && !parsed.earn.bonus) {
+            parsed.earn.bonus = {
+              amount: String(parsed.earn.service_bonus.amount || "1"),
+              payment: parseFloat(parsed.earn.service_bonus.payment || "0").toFixed(2),
+              non_salary_payment: parseFloat(parsed.earn.service_bonus.non_salary_payment || "0").toFixed(2)
+            };
+          }
+          if (parsed.earn.bonus) {
+            if (!parsed.earn.bonus.amount) parsed.earn.bonus.amount = "1";
+            if (!parsed.earn.bonus.payment) parsed.earn.bonus.payment = "0.00";
+            if (!parsed.earn.bonus.non_salary_payment) parsed.earn.bonus.non_salary_payment = "0.00";
+            delete parsed.earn.service_bonus;
+          }
+
+          // 2. Cesantías e Intereses de Cesantías: severance -> cesantias
+          if (parsed.earn.severance && !parsed.earn.cesantias) {
+            parsed.earn.cesantias = {
+              payment: parseFloat(parsed.earn.severance.payment || "0").toFixed(2),
+              percentage: String(parsed.earn.severance.percentage || "12.00"),
+              interest_payment: parseFloat(parsed.earn.severance.payment_interest || parsed.earn.severance.interest_payment || "0").toFixed(2)
+            };
+          }
+          if (parsed.earn.cesantias) {
+            if (!parsed.earn.cesantias.percentage) parsed.earn.cesantias.percentage = "12.00";
+            if (parsed.earn.cesantias.payment_interest && !parsed.earn.cesantias.interest_payment) {
+              parsed.earn.cesantias.interest_payment = parsed.earn.cesantias.payment_interest;
+              delete parsed.earn.cesantias.payment_interest;
+            }
+            delete parsed.earn.severance;
+          }
+
+          // 3. Incapacidades: work_disabilities -> incapacity
+          if (parsed.earn.work_disabilities && !parsed.earn.incapacity) {
+            parsed.earn.incapacity = parsed.earn.work_disabilities.map(function(w) {
+              return {
+                start_date: w.start_date,
+                final_date: w.final_date,
+                amount: String(w.amount || "1"),
+                type_id: parseInt(w.type_id || w.type || "1", 10),
+                payment: parseFloat(w.payment || "0").toFixed(2)
+              };
+            });
+            delete parsed.earn.work_disabilities;
+          }
+
+          // 4. Licencias: maternities / paid_leaves / non_paid_leaves -> licenses
+          if (!parsed.earn.licenses && (parsed.earn.maternities || parsed.earn.paid_leaves || parsed.earn.non_paid_leaves)) {
+            parsed.earn.licenses = {};
+            if (Array.isArray(parsed.earn.maternities) && parsed.earn.maternities.length > 0) {
+              const m = parsed.earn.maternities[0];
+              parsed.earn.licenses.licenseMP = {
+                start_date: m.start_date,
+                final_date: m.final_date,
+                amount: String(m.amount || "1"),
+                payment: parseFloat(m.payment || "0").toFixed(2)
+              };
+            }
+            if (Array.isArray(parsed.earn.paid_leaves) && parsed.earn.paid_leaves.length > 0) {
+              const pl = parsed.earn.paid_leaves[0];
+              parsed.earn.licenses.licenseR = {
+                start_date: pl.start_date,
+                final_date: pl.final_date,
+                amount: String(pl.amount || "1"),
+                payment: parseFloat(pl.payment || "0").toFixed(2)
+              };
+            }
+            if (Array.isArray(parsed.earn.non_paid_leaves) && parsed.earn.non_paid_leaves.length > 0) {
+              const npl = parsed.earn.non_paid_leaves[0];
+              parsed.earn.licenses.licenseNR = {
+                start_date: npl.start_date,
+                final_date: npl.final_date,
+                amount: String(npl.amount || "1")
+              };
+            }
+            delete parsed.earn.maternities;
+            delete parsed.earn.paid_leaves;
+            delete parsed.earn.non_paid_leaves;
+          }
+
+          // 5. Bonificaciones: salary_bonus / non_salary_bonus -> bonusS / bonusNS
+          if (Array.isArray(parsed.earn.bonuses)) {
+            parsed.earn.bonuses.forEach(function(b) {
+              if (!b.bonusS && b.salary_bonus) b.bonusS = parseFloat(b.salary_bonus).toFixed(2);
+              if (!b.bonusNS && b.non_salary_bonus) b.bonusNS = parseFloat(b.non_salary_bonus).toFixed(2);
+              delete b.salary_bonus;
+              delete b.non_salary_bonus;
+            });
+          }
+
+          // 6. Auxilios: aid -> assistances (assistanceS / assistanceNS)
+          if (parsed.earn.aid && !parsed.earn.assistances) {
+            parsed.earn.assistances = parsed.earn.aid.map(function(a) {
+              return {
+                assistanceS: parseFloat(a.assistanceS || a.salary_assistance || "0").toFixed(2),
+                assistanceNS: parseFloat(a.assistanceNS || a.non_salary_assistance || "0").toFixed(2)
+              };
+            });
+            delete parsed.earn.aid;
+          }
+          if (Array.isArray(parsed.earn.assistances)) {
+            parsed.earn.assistances.forEach(function(a) {
+              if (!a.assistanceS && a.salary_assistance) a.assistanceS = parseFloat(a.salary_assistance).toFixed(2);
+              if (!a.assistanceNS && a.non_salary_assistance) a.assistanceNS = parseFloat(a.non_salary_assistance).toFixed(2);
+              delete a.salary_assistance;
+              delete a.non_salary_assistance;
+            });
+          }
+
+          // 7. Huelga legal
+          if (parsed.earn.legal_strike && !parsed.earn.legal_strikes) {
+            parsed.earn.legal_strikes = parsed.earn.legal_strike;
+            delete parsed.earn.legal_strike;
+          }
+
+          // 8. Otros conceptos
+          if (Array.isArray(parsed.earn.other_concepts)) {
+            parsed.earn.other_concepts.forEach(function(oc) {
+              if (!oc.conceptS && oc.salary_concept) oc.conceptS = oc.salary_concept;
+              if (!oc.conceptNS && oc.non_salary_concept) oc.conceptNS = oc.non_salary_concept;
+              if (!oc.description && oc.concept_description) oc.description = oc.concept_description;
+            });
+          }
+
+          // 9. Bonos de alimentación (vouchers -> bondEPCTVs)
+          if (parsed.earn.vouchers && !parsed.earn.bondEPCTVs) {
+            parsed.earn.bondEPCTVs = parsed.earn.vouchers.map(function(v) {
+              const val = parseFloat(v.payment || "0").toFixed(2);
+              return { paymentS: "0.00", paymentNS: val, payment_foodS: "0.00", payment_foodNS: val };
+            });
+            delete parsed.earn.vouchers;
+          }
+
+          // 10. Indemnización (indemnities -> indemnification)
+          if (parsed.earn.indemnities && !parsed.earn.indemnification) {
+            const first = parsed.earn.indemnities[0];
+            parsed.earn.indemnification = parseFloat(first?.indemnity || "0").toFixed(2);
+            delete parsed.earn.indemnities;
+          }
+
+          // 11. Reintegros devengos (refunds -> refund)
+          if (parsed.earn.refunds && !parsed.earn.refund) {
+            const first = parsed.earn.refunds[0];
+            parsed.earn.refund = parseFloat(first?.refund || "0").toFixed(2);
+            delete parsed.earn.refunds;
+          }
+
+          // 12. Pagos a terceros devengos (third_party_payments -> payments_third_party)
+          if (parsed.earn.third_party_payments && !parsed.earn.payments_third_party) {
+            parsed.earn.payments_third_party = parsed.earn.third_party_payments.map(function(p) {
+              return { payment_third_party: parseFloat(p.third_party_payment || "0").toFixed(2) };
+            });
+            delete parsed.earn.third_party_payments;
+          }
+
+          // 13. Teletrabajo (telecommuting -> teleworking)
+          if (parsed.earn.telecommuting && !parsed.earn.teleworking) {
+            parsed.earn.teleworking = parseFloat(parsed.earn.telecommuting || "0").toFixed(2);
+            delete parsed.earn.telecommuting;
+          }
+
+          // 14. Apoyo sostenimiento (support_sustainability -> sustaining_support)
+          if (parsed.earn.support_sustainability && !parsed.earn.sustaining_support) {
+            parsed.earn.sustaining_support = parseFloat(parsed.earn.support_sustainability || "0").toFixed(2);
+            delete parsed.earn.support_sustainability;
+          }
+
+          // 15. Bonificación por retiro (end_work_bonus -> withdrawal_bonus)
+          if (parsed.earn.end_work_bonus && !parsed.earn.withdrawal_bonus) {
+            parsed.earn.withdrawal_bonus = parseFloat(parsed.earn.end_work_bonus || "0").toFixed(2);
+            delete parsed.earn.end_work_bonus;
+          }
         }
 
         if (parsed.deductions) {
@@ -239,6 +406,56 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
           }
           if (!parsed.deductions.retefuente && parsed.deductions.withholding_at_source) {
             parsed.deductions.retefuente = parsed.deductions.withholding_at_source;
+          }
+
+          // Sindicato (labor_union -> trade_union)
+          if (parsed.deductions.labor_union && !parsed.deductions.trade_union) {
+            parsed.deductions.trade_union = parsed.deductions.labor_union.map(function(u) {
+              return {
+                percentage: String(u.percentage || "1.00"),
+                deduction: parseFloat(u.deduction || "0").toFixed(2)
+              };
+            });
+            delete parsed.deductions.labor_union;
+          }
+
+          // Sanciones (public_sanction / private_sanction -> sanctionPublic / sanctionPriv)
+          if (Array.isArray(parsed.deductions.sanctions)) {
+            parsed.deductions.sanctions.forEach(function(s) {
+              if (!s.sanctionPublic && s.public_sanction) s.sanctionPublic = parseFloat(s.public_sanction).toFixed(2);
+              if (!s.sanctionPriv && s.private_sanction) s.sanctionPriv = parseFloat(s.private_sanction).toFixed(2);
+              delete s.public_sanction;
+              delete s.private_sanction;
+            });
+          }
+
+          // Libranzas (orders -> libranzas)
+          if (parsed.deductions.orders && !parsed.deductions.libranzas) {
+            parsed.deductions.libranzas = parsed.deductions.orders.map(function(o) {
+              return {
+                description: o.description || "Libranza",
+                deduction: parseFloat(o.deduction || "0").toFixed(2)
+              };
+            });
+            delete parsed.deductions.orders;
+          }
+
+          // Pensión voluntaria (pension_voluntary -> voluntary_pension)
+          if (parsed.deductions.pension_voluntary && !parsed.deductions.voluntary_pension) {
+            parsed.deductions.voluntary_pension = parseFloat(parsed.deductions.pension_voluntary || "0").toFixed(2);
+            delete parsed.deductions.pension_voluntary;
+          }
+
+          // Embargos (tax_liens -> tax_embargo)
+          if (parsed.deductions.tax_liens && !parsed.deductions.tax_embargo) {
+            parsed.deductions.tax_embargo = parseFloat(parsed.deductions.tax_liens || "0").toFixed(2);
+            delete parsed.deductions.tax_liens;
+          }
+
+          // Planes complementarios (supplementary_plan -> complementary_plan)
+          if (parsed.deductions.supplementary_plan && !parsed.deductions.complementary_plan) {
+            parsed.deductions.complementary_plan = parseFloat(parsed.deductions.supplementary_plan || "0").toFixed(2);
+            delete parsed.deductions.supplementary_plan;
           }
         }
 

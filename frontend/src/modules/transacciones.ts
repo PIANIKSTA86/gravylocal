@@ -2303,6 +2303,9 @@ async function saveTransaction(approve = false) {
       txDesc = `[Ajuste DIAN: ${conceptEl.value}] ${txDesc}`;
     }
     if (isSinRef) {
+      if (conceptEl && ['1', '2', '4', '6'].includes(conceptEl.value)) {
+        return showToast('Para Notas SIN referencia, la DIAN solo permite conceptos "5 - Otros" o "3 - Rebaja total"', 'warning');
+      }
       txDesc = `[SIN_REFERENCIA] ${txDesc}`;
       validLines.forEach(l => { l.cross_doc_ref = ''; });
     }

@@ -17,6 +17,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 routerAdd("GET", "/api/ph/integrity-check", (c) => {
   try {
+    const cutoffDate = String(c.queryParam("cutoff_date") || c.queryParam("to_date") || "").trim();
+
     // 1. Cargar todas las propiedades activas
     const props = arrayOf(new DynamicModel({ id: "", code: "", name: "", owner_id: "" }));
     $app.db().newQuery("SELECT id, code, name, owner_id FROM ph_properties ORDER BY code ASC").all(props);
@@ -26,44 +28,57 @@ routerAdd("GET", "/api/ph/integrity-check", (c) => {
     }
 
     const propById = {};
+    const propByCode = {};
     for (const p of props) {
       propById[p.id] = p;
+      propByCode[String(p.code || "").trim().toUpperCase()] = p;
     }
 
-    // 2. Cargar facturas activas
-    const invoices = arrayOf(new DynamicModel({
+    // 2. Cargar facturas (todas para mapear referencias, y filtradas por corte para facturación activa)
+    const allInvoices = arrayOf(new DynamicModel({
       id: "", number: "", period: "", date: "", total: -0, status: "", property_id: "", tx_id: ""
     }));
     $app.db().newQuery(
       "SELECT id, number, period, date, total, status, property_id, tx_id " +
       "FROM ph_invoices WHERE status != 'voided' AND tx_id != ''"
-    ).all(invoices);
+    ).all(allInvoices);
 
-    const invByNum = {};
+    const allInvByNum = {};
     const invsByProp = {};
-    for (const inv of invoices) {
+    for (const inv of allInvoices) {
       const nKey = String(inv.number || "").trim().toUpperCase();
-      invByNum[nKey] = inv;
-      if (!invsByProp[inv.property_id]) invsByProp[inv.property_id] = [];
-      invsByProp[inv.property_id].push(inv);
+      allInvByNum[nKey] = inv;
+
+      // Solo acumulamos facturado si la fecha de la factura es <= cutoffDate (si se especificó)
+      const invDate = String(inv.date || "").slice(0, 10);
+      if (!cutoffDate || invDate <= cutoffDate) {
+        if (!invsByProp[inv.property_id]) invsByProp[inv.property_id] = [];
+        invsByProp[inv.property_id].push(inv);
+      }
     }
 
-    // 3. Cargar movimientos contables en cuenta 13459501
+    // 3. Cargar movimientos contables en cuenta 13459501 (respetando fecha de corte)
     const c13Lines = arrayOf(new DynamicModel({
-      id: "", tx_id: "", debit: -0, credit: -0, description: "", cross_doc_ref: "", third_party_id: ""
+      id: "", tx_id: "", debit: -0, credit: -0, description: "", cross_doc_ref: "", third_party_id: "", tx_num: ""
     }));
-    $app.db().newQuery(`
-      SELECT l.id, l.tx_id, l.debit, l.credit, l.description, l.cross_doc_ref, l.third_party_id
+
+    let c13Sql = `
+      SELECT l.id, l.tx_id, l.debit, l.credit, l.description, l.cross_doc_ref, l.third_party_id, t.number as tx_num
       FROM tx_lines l
       INNER JOIN transactions t ON t.id = l.tx_id
       INNER JOIN accounts a ON a.id = l.account_id
       WHERE a.code = '13459501' AND t.status = 'active'
-    `).all(c13Lines);
+    `;
+    if (cutoffDate) {
+      c13Sql += ` AND t.date <= '${cutoffDate}'`;
+    }
+
+    $app.db().newQuery(c13Sql).all(c13Lines);
 
     // Mapeo de saldo contable por unidad
     const unitLedger = {};
     for (const p of props) {
-      unitLedger[p.id] = { debits: 0, credits: 0, balance: 0 };
+      unitLedger[p.id] = { debits: 0, credits: 0, cruceDebits: 0, balance: 0 };
     }
 
     for (const l of c13Lines) {
@@ -79,23 +94,33 @@ routerAdd("GET", "/api/ph/integrity-check", (c) => {
         }
       } else if (ref) {
         const baseInvNum = ref.split("-").slice(0, 3).join("-");
-        const inv = invByNum[baseInvNum] || invByNum[ref];
+        const inv = allInvByNum[baseInvNum] || allInvByNum[ref];
         if (inv) matchedPropId = inv.property_id;
       }
 
       if (!matchedPropId && l.description) {
-        for (const p of props) {
-          if (l.description.indexOf("Unidad " + p.code) !== -1 || l.description.indexOf(p.name) !== -1) {
-            matchedPropId = p.id;
-            break;
+        const bracketMatch = String(l.description).match(/\[([0-9a-zA-Z_-]+)\]/);
+        if (bracketMatch && propByCode[bracketMatch[1].toUpperCase()]) {
+          matchedPropId = propByCode[bracketMatch[1].toUpperCase()].id;
+        } else {
+          for (const p of props) {
+            if (l.description.indexOf("Unidad " + p.code) !== -1 || l.description.indexOf(p.name) !== -1) {
+              matchedPropId = p.id;
+              break;
+            }
           }
         }
       }
 
       if (matchedPropId && unitLedger[matchedPropId]) {
-        unitLedger[matchedPropId].debits += Number(l.debit || 0);
-        unitLedger[matchedPropId].credits += Number(l.credit || 0);
-        unitLedger[matchedPropId].balance += (Number(l.debit || 0) - Number(l.credit || 0));
+        const deb = Number(l.debit || 0);
+        const cred = Number(l.credit || 0);
+        unitLedger[matchedPropId].debits += deb;
+        unitLedger[matchedPropId].credits += cred;
+        unitLedger[matchedPropId].balance += (deb - cred);
+        if (deb > 0 && (String(l.tx_num || "").indexOf("RC-") === 0 || String(l.description || "").indexOf("Cruce / Aplicación") !== -1)) {
+          unitLedger[matchedPropId].cruceDebits += deb;
+        }
       }
     }
 
@@ -109,8 +134,9 @@ routerAdd("GET", "/api/ph/integrity-check", (c) => {
       let facturado = 0;
       for (const inv of pInvs) facturado += Number(inv.total || 0);
 
-      const ledger = unitLedger[p.id] || { debits: 0, credits: 0, balance: 0 };
-      const recaudado = ledger.credits;
+      const ledger = unitLedger[p.id] || { debits: 0, credits: 0, cruceDebits: 0, balance: 0 };
+      // En cuenta 13, el recaudo atribuible a cartera descuenta los débitos de cruce interno
+      const recaudado = Math.max(0, ledger.credits - (ledger.cruceDebits || 0));
       const carteraBal = Math.round((facturado - recaudado) * 100) / 100;
       const libroBal = Math.round(ledger.balance * 100) / 100;
 
@@ -185,8 +211,62 @@ cronAdd("ph_nightly_integrity_audit", "0 3 * * *", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. GUARDIAS PREVENTIVAS EN PH_INVOICES
+// 3. GUARDIAS PREVENTIVAS EN PH_INVOICES (BLINDAJE DE INTEGRIDAD CONTABLE)
 // ─────────────────────────────────────────────────────────────────────────────
+onRecordBeforeCreateRequest((e) => {
+  const status = String(e.record.getString("status") || "");
+  const txId = String(e.record.getString("tx_id") || "").trim();
+  const invTotal = Number(e.record.getFloat("total") || 0);
+  const invNumber = String(e.record.getString("number") || "");
+
+  // Invariante de causación contable atómica: si se marca posted y tiene tx_id
+  if (status === "posted" && txId) {
+    try {
+      const debitsRow = new DynamicModel({ sum_debits: -0 });
+      $app.db().newQuery(
+        "SELECT COALESCE(SUM(l.debit), 0) as sum_debits FROM tx_lines l " +
+        "INNER JOIN accounts a ON a.id = l.account_id " +
+        "WHERE l.tx_id = {:txId} AND a.code LIKE '13%'"
+      ).bind({ txId: txId }).one(debitsRow);
+
+      const sumDebits = Number(debitsRow.sum_debits || 0);
+      if (sumDebits > 0 && Math.abs(invTotal - sumDebits) > 0.01) {
+        console.warn(`[GRAVY-PH-GUARD] Auto-ajustando Factura nueva ${invNumber}: Total (${invTotal}) alineado con débito contable oficial (${sumDebits}).`);
+        e.record.set("total", sumDebits);
+        e.record.set("subtotal", sumDebits);
+      }
+    } catch (_) {}
+  }
+  e.next();
+}, "ph_invoices");
+
+onRecordBeforeUpdateRequest((e) => {
+  const status = String(e.record.getString("status") || "");
+  const txId = String(e.record.getString("tx_id") || "").trim();
+  const invTotal = Number(e.record.getFloat("total") || 0);
+  const invNumber = String(e.record.getString("number") || "");
+
+  // Invariante de causación contable atómica: si se marca posted y tiene tx_id
+  if (status === "posted" && txId) {
+    try {
+      const debitsRow = new DynamicModel({ sum_debits: -0 });
+      $app.db().newQuery(
+        "SELECT COALESCE(SUM(l.debit), 0) as sum_debits FROM tx_lines l " +
+        "INNER JOIN accounts a ON a.id = l.account_id " +
+        "WHERE l.tx_id = {:txId} AND a.code LIKE '13%'"
+      ).bind({ txId: txId }).one(debitsRow);
+
+      const sumDebits = Number(debitsRow.sum_debits || 0);
+      if (sumDebits > 0 && Math.abs(invTotal - sumDebits) > 0.01) {
+        console.warn(`[GRAVY-PH-GUARD] Auto-ajustando Factura ${invNumber}: Total satélite (${invTotal}) alineado con débito contable oficial (${sumDebits}).`);
+        e.record.set("total", sumDebits);
+        e.record.set("subtotal", sumDebits);
+      }
+    } catch (_) {}
+  }
+  e.next();
+}, "ph_invoices");
+
 onRecordUpdateRequest((e) => {
   const status = String(e.record.getString("status") || "");
   const txId = String(e.record.getString("tx_id") || "").trim();

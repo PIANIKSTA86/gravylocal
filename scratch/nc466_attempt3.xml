@@ -1,0 +1,322 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<CreditNote xmlns="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2" xmlns:sts="http://www.dian.gov.co/contratos/facturaelectronica/v1/Structures" xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" xmlns:xades141="http://uri.etsi.org/01903/v1.4.1#" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2     http://docs.oasis-open.org/ubl/os-UBL-2.1/xsd/maindoc/UBL-CreditNote-2.1.xsd">
+  <ext:UBLExtensions>
+    <ext:UBLExtension>
+      <ext:ExtensionContent>
+        <sts:DianExtensions>
+          <sts:InvoiceControl>
+            <sts:InvoiceAuthorization>18760000001</sts:InvoiceAuthorization>
+            <sts:AuthorizationPeriod>
+              <cbc:StartDate>2026-10-18</cbc:StartDate>
+              <cbc:EndDate>2030-01-01</cbc:EndDate>
+            </sts:AuthorizationPeriod>
+            <sts:AuthorizedInvoices>
+              <sts:Prefix>NC</sts:Prefix>
+              <sts:From>1</sts:From>
+              <sts:To>1000</sts:To>
+            </sts:AuthorizedInvoices>
+          </sts:InvoiceControl>
+          <sts:InvoiceSource>
+            <cbc:IdentificationCode listAgencyID="6" listAgencyName="United Nations Economic Commission for Europe" listSchemeURI="urn:oasis:names:specification:ubl:codelist:gc:CountryIdentificationCode-2.1">CO</cbc:IdentificationCode>
+          </sts:InvoiceSource>
+          <sts:SoftwareProvider>
+            <sts:ProviderID schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)" schemeID="2" schemeName="31">901428834</sts:ProviderID>
+            <sts:SoftwareID schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)">f8bdc0ce-8f5f-4730-9631-d7592da6cec5</sts:SoftwareID>
+          </sts:SoftwareProvider>
+          <sts:SoftwareSecurityCode schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)">f95901e44a38ef78fd9320433f8910f8e204a6fa0f921682243253b3d5e3163fdc94c96367012acec6f053f0f201dd85</sts:SoftwareSecurityCode>
+          <sts:AuthorizationProvider>
+            <sts:AuthorizationProviderID schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)" schemeID="4" schemeName="31">800197268</sts:AuthorizationProviderID>
+          </sts:AuthorizationProvider>
+          <sts:QRCode>https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=164854b2b9933ef950d79112d22f70359ef4f324965f3766b44f7234c880374cf1b6dc8bfab4aa830bfdcaad1434a7f3</sts:QRCode>
+        </sts:DianExtensions>
+      </ext:ExtensionContent>
+    </ext:UBLExtension>
+    <ext:UBLExtension>
+      <ext:ExtensionContent><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="MATIAS-API-DE276F9C4F5F2B697CA4B85E2858EF4B7C1A2331"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference Id="REF-FE6749CECAA26436EE3E453BE485AAAD023DCF2D" URI=""><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>kF+zy3NRVBkaiNwM9KKYYBZPXFZYrmMyfqTnvAmikfQ=</ds:DigestValue></ds:Reference><ds:Reference URI="#KEY-INFO-05605EF4D1F1D419F7321F7939927F55733F3EB9"><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>N/ykLGidiDAsfx5vRDrpXUwrLCukiwmPoeM5r+l9VoY=</ds:DigestValue></ds:Reference><ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#SIGNED-PROPS-0512C2EC5D195812469C487F0F94109D917C3E1E"><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>0wVNy0ynZ/jyiY0H/++0rG2G4/B1XZfunx1Eh1J7IYc=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue Id="SIG-VALUE-2BCC1C620264BDA3FA6C0DF02B40705B6F8B049E">My5ulkQJd6ErebL7Ph7DrpHJqs+79mi15BVPDHdaVbca0vw0ozM1tPW+fPNIuwc+fgInVGf0C4By2N7rNzlSVFBdOtT/b+sD1oJCU6QPeW7dXXAxRSEyAv/zUeECFAV8xovOQeOhcoJaJeoXporvms0e5U6dxKSRniFkyDjhnwxvnhqThm6gesRqtC7P67jW7n8sg/Idacxbkw5kfHp7CiHmn99rHf8YzJuGmhRuNKTYI4WgHkk+TGShwlrMVxMSNcSQX0Tl7zNdqEn2ETEPFNBPMf7RTsdsPa6H2UPIRBVoATKSYywhY4qZE2Jx06o6vYCRYWoizpSQNMuJ0PcxUw==</ds:SignatureValue><ds:KeyInfo Id="KEY-INFO-05605EF4D1F1D419F7321F7939927F55733F3EB9"><ds:X509Data><ds:X509Certificate>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</ds:X509Certificate></ds:X509Data></ds:KeyInfo><ds:Object><xades:QualifyingProperties Target="#MATIAS-API-DE276F9C4F5F2B697CA4B85E2858EF4B7C1A2331"><xades:SignedProperties Id="SIGNED-PROPS-0512C2EC5D195812469C487F0F94109D917C3E1E"><xades:SignedSignatureProperties><xades:SigningTime>2026-11-10T21:08:28.925-05:00</xades:SigningTime><xades:SigningCertificate><xades:Cert><xades:CertDigest><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>Iy1rlH3M0nHjLWPaqj46TYkNM2xh3llLBNCcXhzLxDY=</ds:DigestValue></xades:CertDigest><xades:IssuerSerial><ds:X509IssuerName>CN=VIAFIRMA TSA SUB CA,serialNumber=VATES-B91052142,OU=VIAFIRMA QTSP,O=VIAFIRMA SOCIEDAD LIMITADA,C=ES</ds:X509IssuerName><ds:X509SerialNumber>449077070252275852388632100045359613279278531421</ds:X509SerialNumber></xades:IssuerSerial></xades:Cert></xades:SigningCertificate><xades:SignaturePolicyIdentifier><xades:SignaturePolicyId><xades:SigPolicyId><xades:Identifier>https://facturaelectronica.dian.gov.co/politicadefirma/v2/politicadefirmav2.pdf</xades:Identifier></xades:SigPolicyId><xades:SigPolicyHash><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>dMoMvtcG5aIzgYo0tIsSQeVJBDnUnfSOfBpxXrmor0Y=</ds:DigestValue></xades:SigPolicyHash></xades:SignaturePolicyId></xades:SignaturePolicyIdentifier><xades:SignerRole><xades:ClaimedRoles><xades:ClaimedRole>supplier</xades:ClaimedRole></xades:ClaimedRoles></xades:SignerRole></xades:SignedSignatureProperties></xades:SignedProperties></xades:QualifyingProperties></ds:Object></ds:Signature></ext:ExtensionContent>
+    </ext:UBLExtension>
+  </ext:UBLExtensions>
+  <cbc:UBLVersionID>UBL 2.1</cbc:UBLVersionID>
+  <cbc:CustomizationID>22</cbc:CustomizationID>
+  <cbc:ProfileID>DIAN 2.1: Nota Crédito de Factura Electrónica de Venta</cbc:ProfileID>
+  <cbc:ProfileExecutionID>1</cbc:ProfileExecutionID>
+  <cbc:ID>NC466</cbc:ID>
+  <cbc:UUID schemeID="1" schemeName="CUDE-SHA384">164854b2b9933ef950d79112d22f70359ef4f324965f3766b44f7234c880374cf1b6dc8bfab4aa830bfdcaad1434a7f3</cbc:UUID>
+  <cbc:IssueDate>2026-11-10</cbc:IssueDate>
+  <cbc:IssueTime>21:08:28-05:00</cbc:IssueTime>
+  <cbc:CreditNoteTypeCode>91</cbc:CreditNoteTypeCode>
+  <cbc:Note>[SIN_REFERENCIA] Nota Crédito NC-00000466 - SURTIACABADOS EN OBRA SAS</cbc:Note>
+  <cbc:DocumentCurrencyCode>COP</cbc:DocumentCurrencyCode>
+  <cbc:LineCountNumeric>4</cbc:LineCountNumeric>
+  <cac:DiscrepancyResponse>
+    <cbc:ReferenceID>NC466</cbc:ReferenceID>
+    <cbc:ResponseCode>5</cbc:ResponseCode>
+    <cbc:Description>Descuento comercial por pronto pago</cbc:Description>
+  </cac:DiscrepancyResponse>
+  <cac:AccountingSupplierParty>
+    <cbc:AdditionalAccountID>1</cbc:AdditionalAccountID>
+    <cac:Party>
+      <cac:PartyIdentification>
+        <cbc:ID schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)" schemeID="2" schemeName="31">901428834</cbc:ID>
+      </cac:PartyIdentification>
+      <cac:PartyName>
+        <cbc:Name>DOMESTIKO SAS</cbc:Name>
+      </cac:PartyName>
+      <cac:PhysicalLocation>
+        <cac:Address>
+          <cbc:ID>76001</cbc:ID>
+          <cbc:CityName>Cali</cbc:CityName>
+          <cbc:CountrySubentity>Valle del Cauca</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode>76</cbc:CountrySubentityCode>
+          <cac:AddressLine>
+            <cbc:Line>Calle 29 #5 52</cbc:Line>
+          </cac:AddressLine>
+          <cac:Country>
+            <cbc:IdentificationCode>CO</cbc:IdentificationCode>
+            <cbc:Name languageID="es">Colombia</cbc:Name>
+          </cac:Country>
+        </cac:Address>
+      </cac:PhysicalLocation>
+      <cac:PartyTaxScheme>
+        <cbc:RegistrationName>DOMESTIKO SAS</cbc:RegistrationName>
+        <cbc:CompanyID schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)" schemeID="2" schemeName="31">901428834</cbc:CompanyID>
+        <cbc:TaxLevelCode listName="48">R-99-PN</cbc:TaxLevelCode>
+        <cac:RegistrationAddress>
+          <cbc:ID>76001</cbc:ID>
+          <cbc:CityName>Cali</cbc:CityName>
+          <cbc:CountrySubentity>Valle del Cauca</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode>76</cbc:CountrySubentityCode>
+          <cac:AddressLine>
+            <cbc:Line>Calle 29 #5 52</cbc:Line>
+          </cac:AddressLine>
+          <cac:Country>
+            <cbc:IdentificationCode>CO</cbc:IdentificationCode>
+            <cbc:Name languageID="es">Colombia</cbc:Name>
+          </cac:Country>
+        </cac:RegistrationAddress>
+        <cac:TaxScheme>
+          <cbc:ID>01</cbc:ID>
+          <cbc:Name>IVA</cbc:Name>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>DOMESTIKO SAS</cbc:RegistrationName>
+        <cbc:CompanyID schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)" schemeID="2" schemeName="31">901428834</cbc:CompanyID>
+        <cac:CorporateRegistrationScheme>
+          <cbc:ID>NC</cbc:ID>
+          <cbc:Name>No tiene</cbc:Name>
+        </cac:CorporateRegistrationScheme>
+      </cac:PartyLegalEntity>
+      <cac:Contact>
+        <cbc:Telephone>3233273136</cbc:Telephone>
+        <cbc:ElectronicMail>tesoreria@domestiko.co</cbc:ElectronicMail>
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty>
+    <cbc:AdditionalAccountID>1</cbc:AdditionalAccountID>
+    <cac:Party>
+      <cac:PartyIdentification>
+        <cbc:ID schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)" schemeID="8" schemeName="31">901641302</cbc:ID>
+      </cac:PartyIdentification>
+      <cac:PartyName>
+        <cbc:Name>SURTIACABADOS EN OBRA SAS</cbc:Name>
+      </cac:PartyName>
+      <cac:PhysicalLocation>
+        <cac:Address>
+          <cbc:ID>76892</cbc:ID>
+          <cbc:CityName>Yumbo</cbc:CityName>
+          <cbc:PostalZone>76892</cbc:PostalZone>
+          <cbc:CountrySubentity>Valle del Cauca</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode>76</cbc:CountrySubentityCode>
+          <cac:AddressLine>
+            <cbc:Line>CR 3 9 62</cbc:Line>
+          </cac:AddressLine>
+          <cac:Country>
+            <cbc:IdentificationCode>CO</cbc:IdentificationCode>
+            <cbc:Name languageID="es">Colombia</cbc:Name>
+          </cac:Country>
+        </cac:Address>
+      </cac:PhysicalLocation>
+      <cac:PartyTaxScheme>
+        <cbc:RegistrationName>SURTIACABADOS EN OBRA SAS</cbc:RegistrationName>
+        <cbc:CompanyID schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)" schemeID="8" schemeName="31">901641302</cbc:CompanyID>
+        <cbc:TaxLevelCode listName="49">R-99-PN</cbc:TaxLevelCode>
+        <cac:RegistrationAddress>
+          <cbc:ID>76892</cbc:ID>
+          <cbc:CityName>Yumbo</cbc:CityName>
+          <cbc:CountrySubentity>Valle del Cauca</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode>76</cbc:CountrySubentityCode>
+          <cac:AddressLine>
+            <cbc:Line>CR 3 9 62</cbc:Line>
+          </cac:AddressLine>
+          <cac:Country>
+            <cbc:IdentificationCode>CO</cbc:IdentificationCode>
+            <cbc:Name languageID="es">Colombia</cbc:Name>
+          </cac:Country>
+        </cac:RegistrationAddress>
+        <cac:TaxScheme>
+          <cbc:ID>ZZ</cbc:ID>
+          <cbc:Name>No aplica</cbc:Name>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+      <cac:PartyLegalEntity>
+        <cbc:RegistrationName>SURTIACABADOS EN OBRA SAS</cbc:RegistrationName>
+        <cbc:CompanyID schemeAgencyID="195" schemeAgencyName="CO, DIAN (Dirección de Impuestos y Aduanas Nacionales)" schemeID="8" schemeName="31">901641302</cbc:CompanyID>
+        <cac:CorporateRegistrationScheme>
+          <cbc:ID>NC</cbc:ID>
+          <cbc:Name>0000000-00</cbc:Name>
+        </cac:CorporateRegistrationScheme>
+      </cac:PartyLegalEntity>
+      <cac:Contact>
+        <cbc:Telephone>3196964697</cbc:Telephone>
+        <cbc:ElectronicMail>surtiacabadosenobra@gmail.com</cbc:ElectronicMail>
+      </cac:Contact>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+  <cac:PaymentMeans>
+    <cbc:ID>2</cbc:ID>
+    <cbc:PaymentMeansCode>10</cbc:PaymentMeansCode>
+    <cbc:PaymentDueDate>2026-12-10</cbc:PaymentDueDate>
+    <cbc:PaymentID>1</cbc:PaymentID>
+  </cac:PaymentMeans>
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="COP">50213.66</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="COP">264282.39</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="COP">50213.66</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:Percent>19.00</cbc:Percent>
+        <cac:TaxScheme>
+          <cbc:ID>01</cbc:ID>
+          <cbc:Name>IVA</cbc:Name>
+        </cac:TaxScheme>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="COP">264282.35</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="COP">264282.35</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="COP">314496.00</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="COP">314496.00</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:CreditNoteLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:CreditedQuantity unitCode="MTK">1.44</cbc:CreditedQuantity>
+    <cbc:LineExtensionAmount currencyID="COP">37754.63</cbc:LineExtensionAmount>
+    <cbc:FreeOfChargeIndicator>false</cbc:FreeOfChargeIndicator>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="COP">7173.38</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="COP">37754.63</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="COP">7173.38</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:Percent>19.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID>01</cbc:ID>
+            <cbc:Name>IVA</cbc:Name>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Description>PISO CERAMICO GRAN CHACO HD/1.44/60X60/4F</cbc:Description>
+      <cac:StandardItemIdentification>
+        <cbc:ID schemeID="999" schemeName="Estándar de adopción del contribuyente" schemeAgencyID="">1C1380C2</cbc:ID>
+      </cac:StandardItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="COP">26218.49</cbc:PriceAmount>
+      <cbc:BaseQuantity unitCode="MTK">1.44</cbc:BaseQuantity>
+    </cac:Price>
+  </cac:CreditNoteLine>
+  <cac:CreditNoteLine>
+    <cbc:ID>2</cbc:ID>
+    <cbc:CreditedQuantity unitCode="MTK">1.44</cbc:CreditedQuantity>
+    <cbc:LineExtensionAmount currencyID="COP">37754.63</cbc:LineExtensionAmount>
+    <cbc:FreeOfChargeIndicator>false</cbc:FreeOfChargeIndicator>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="COP">7173.38</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="COP">37754.63</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="COP">7173.38</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:Percent>19.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID>01</cbc:ID>
+            <cbc:Name>IVA</cbc:Name>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Description>PISO CERAMICO MAMORE MARRON HD/1.44/60X60/4F</cbc:Description>
+      <cac:StandardItemIdentification>
+        <cbc:ID schemeID="999" schemeName="Estándar de adopción del contribuyente" schemeAgencyID="">1C1368C2</cbc:ID>
+      </cac:StandardItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="COP">26218.49</cbc:PriceAmount>
+      <cbc:BaseQuantity unitCode="MTK">1.44</cbc:BaseQuantity>
+    </cac:Price>
+  </cac:CreditNoteLine>
+  <cac:CreditNoteLine>
+    <cbc:ID>3</cbc:ID>
+    <cbc:CreditedQuantity unitCode="MTK">4.32</cbc:CreditedQuantity>
+    <cbc:LineExtensionAmount currencyID="COP">113263.88</cbc:LineExtensionAmount>
+    <cbc:FreeOfChargeIndicator>false</cbc:FreeOfChargeIndicator>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="COP">21520.14</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="COP">113263.88</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="COP">21520.14</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:Percent>19.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID>01</cbc:ID>
+            <cbc:Name>IVA</cbc:Name>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Description>PISO CERAMICO OPULENZA MARRON MG/1.44/60X60/4F</cbc:Description>
+      <cac:StandardItemIdentification>
+        <cbc:ID schemeID="999" schemeName="Estándar de adopción del contribuyente" schemeAgencyID="">1C1250A2</cbc:ID>
+      </cac:StandardItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="COP">26218.49</cbc:PriceAmount>
+      <cbc:BaseQuantity unitCode="MTK">4.32</cbc:BaseQuantity>
+    </cac:Price>
+  </cac:CreditNoteLine>
+  <cac:CreditNoteLine>
+    <cbc:ID>4</cbc:ID>
+    <cbc:CreditedQuantity unitCode="MTK">2.88</cbc:CreditedQuantity>
+    <cbc:LineExtensionAmount currencyID="COP">75509.25</cbc:LineExtensionAmount>
+    <cbc:FreeOfChargeIndicator>false</cbc:FreeOfChargeIndicator>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="COP">14346.76</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cbc:TaxableAmount currencyID="COP">75509.25</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="COP">14346.76</cbc:TaxAmount>
+        <cac:TaxCategory>
+          <cbc:Percent>19.00</cbc:Percent>
+          <cac:TaxScheme>
+            <cbc:ID>01</cbc:ID>
+            <cbc:Name>IVA</cbc:Name>
+          </cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+    <cac:Item>
+      <cbc:Description>PISO CERAMICO NUMA GREY HD/1.44/60X60/4F</cbc:Description>
+      <cac:StandardItemIdentification>
+        <cbc:ID schemeID="999" schemeName="Estándar de adopción del contribuyente" schemeAgencyID="">1C1068A2</cbc:ID>
+      </cac:StandardItemIdentification>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="COP">26218.49</cbc:PriceAmount>
+      <cbc:BaseQuantity unitCode="MTK">2.88</cbc:BaseQuantity>
+    </cac:Price>
+  </cac:CreditNoteLine>
+</CreditNote>

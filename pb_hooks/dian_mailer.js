@@ -645,6 +645,27 @@ function buildNominaPayrollPayload(rec) {
 
   const cargo = empRule.position || (emp ? (emp.getString("cargo") || emp.getString("notes") || "") : "") || "Colaborador";
 
+  let predNumber = "";
+  let predCune = "";
+  let predDate = "";
+  let payrollType = "";
+  if (xmlGenerado.trim().startsWith('{')) {
+    try {
+      const jx = JSON.parse(xmlGenerado);
+      payrollType = jx.payroll_type || "";
+      const p = jx.deleting_predecessor || jx.replacing_predecessor || jx.relevant_predecessor;
+      if (p) {
+        predNumber = p.number || p.document_number || "";
+        predCune = p.cune || "";
+        predDate = p.generation_date || "";
+      }
+    } catch (_) {}
+  }
+
+  const recAno = rec.getInt("ano") || 2026;
+  const recMes = rec.getInt("mes") || 9;
+  const recMesStr = String(recMes).padStart(2, "0");
+
   return {
     companyName: getSetting("company_name", "DOMESTIKO SAS"),
     companyNit: getSetting("company_nit", "901428834"),
@@ -671,13 +692,21 @@ function buildNominaPayrollPayload(rec) {
     pensionEntity: afpName || (empRule.is_pensioner ? "Pensionado (Exento)" : (emp ? emp.getString("afp") : "")) || "No asignada",
     arlEntity: arlName ? `${arlName} - Riesgo ${arlRiskLevel} (${arlRate})` : ((emp ? emp.getString("arl") : "") || "No asignada"),
     cajaEntity: cajaName || (emp ? emp.getString("caja_compensacion") : "") || "No asignada",
-    fechasPago: rec.getString("fecha_envio")?.slice(0, 10) || `${rec.getInt("ano")}-${String(rec.getInt("mes")).padStart(2, "0")}-30`,
+    fechasPago: rec.getString("fecha_envio")?.slice(0, 10) || `${recAno}-${recMesStr}-30`,
     issueDate: rec.getString("fecha_envio") || new Date().toISOString().replace('T', ' ').slice(0, 19),
     cune: cune,
     totalDevengos: totalDevengos,
     totalDeducciones: totalDeducciones,
     totalNeto: totalNeto,
-    valorEnLetras: formatNumeroALetras(totalNeto)
+    valorEnLetras: formatNumeroALetras(totalNeto),
+    ano: recAno,
+    mes: recMes,
+    settlementStartDate: `${recAno}-${recMesStr}-01`,
+    settlementEndDate: `${recAno}-${recMesStr}-30`,
+    predecessorNumber: predNumber,
+    predecessorCune: predCune,
+    predecessorDate: predDate,
+    payrollType: payrollType
   };
 }
 

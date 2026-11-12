@@ -727,21 +727,16 @@ onRecordCreateRequest((e) => {
         } catch(_) {}
 
         if (!targetDocRef) {
-          let propSeq = "";
-          try {
-            const priorInvs = $app.findRecordsByFilter("ph_invoices", "property_id = '" + propertyId + "' && number ~ 'CF-'", "-period", 1, 0);
-            if (priorInvs && priorInvs.length > 0 && priorInvs[0].get("number")) {
-              propSeq = priorInvs[0].get("number").split("-")[2];
-            }
-          } catch(_) {}
-
-          if (propSeq) {
-            targetDocRef = "CF-" + pCode + "-" + propSeq + "-ADM";
-          } else {
-            const pCodeStr = propRecord ? String(propRecord.get("code") || "") : "";
-            targetDocRef = "CF-" + pCode + "-" + (pCodeStr || "ADM") + "-ADM";
-          }
+          // Si la factura del período aún no existe en el sistema, NUNCA adivinamos el consecutivo numérico.
+          // En su lugar, generamos una referencia de anticipo vinculada indisolublemente al inmueble y período:
+          // ANTICIPO-YYYYMM-{propertyId}
+          targetDocRef = "ANTICIPO-" + pCode + "-" + propertyId;
         }
+
+        const isAdvance = targetDocRef.startsWith("ANTICIPO-");
+        const lineDesc = isAdvance
+          ? ("Anticipo cuota de administración " + curPeriod + partialLabel + " - " + propCodeName)
+          : ("Abono a " + targetDocRef + partialLabel + " - " + propCodeName);
 
         plannedLines.push({
           account_id: cxcAccId,
@@ -749,7 +744,7 @@ onRecordCreateRequest((e) => {
           cross_doc_ref: targetDocRef,
           debit: 0,
           credit: quotaAmt,
-          description: "Abono a " + targetDocRef + partialLabel + " - " + propCodeName
+          description: lineDesc
         });
         remainingAnt = Math.round((remainingAnt - quotaAmt) * 100) / 100;
         curPeriod = getNextPeriodStr(curPeriod);

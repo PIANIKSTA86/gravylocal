@@ -6449,6 +6449,8 @@ const API = {
       }
       const refDate = cutoffDate || new Date().toISOString().slice(0, 10);
 
+      const allInvoices = [...invoices];
+
       // Filtrar facturas que fueron emitidas después de la fecha de corte si se especificó
       if (cutoffDate) {
         invoices = invoices.filter(inv => {
@@ -6515,13 +6517,21 @@ const API = {
         });
 
         for (const tl of txLines) {
-          // En cuenta 13%, el abono o pago reduce la cartera mediante crédito neto
+          // Solo se omiten los débitos de causación original de las facturas (que ya están representados en invoice.total)
+          // Los créditos en comprobantes de saldo inicial (AP) o recaudos son abonos/anticipos legítimos
+          const txIdStr = String(tl.tx_id || (tl.expand?.tx_id?.id) || "");
+          const isDebit = Number(tl.debit || 0) > 0;
+          const txNum = String(tl.expand?.tx_id?.number || "").toUpperCase();
+          const isCausationDebit = isDebit && causalityTxIds.has(txIdStr) && !txNum.startsWith("RC-");
+          if (isCausationDebit) continue;
+
+          // En cuenta 13%, los créditos son abonos (+) y los débitos de cruce/compensación restan abonos previos (-)
           const valAbono = Number(tl.credit || 0) - Number(tl.debit || 0);
-          if (valAbono <= 0) continue; // Un abono o anticipo en cartera siempre es un crédito (CR > DB)
+          if (Math.abs(valAbono) < 0.0001) continue;
 
           const ref = String(tl.cross_doc_ref || "").trim().toUpperCase();
 
-          // Buscamos si esta referencia pertenece a alguna de nuestras facturas
+          // Buscamos si esta referencia pertenece a alguna de nuestras facturas en el corte
           const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + "-"));
 
           if (matchedInv) {
@@ -6548,6 +6558,23 @@ const API = {
             // Soporte saldo inicial de anticipos por unidad (ANT-{propId})
             const pidKey = ref.substring(4).toLowerCase();
             advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+          } else if (ref.startsWith("CF-")) {
+            // Si es un recaudo que cruza una factura posterior a la fecha de corte,
+            // ese recaudo representa un anticipo a favor del inmueble al corte actual
+            const baseInvNum = ref.split("-").slice(0, 3).join("-");
+            const rawInv = (allInvoices || []).find((i: any) => String(i.number || "").trim().toUpperCase() === baseInvNum);
+            if (rawInv && rawInv.property_id) {
+              const pidKey = String(rawInv.property_id).toLowerCase();
+              advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+            } else if (tl.description) {
+              for (const p of properties) {
+                if (tl.description.includes(`Unidad ${p.code}`) || (p.name && tl.description.includes(p.name)) || (p.code && tl.description.includes(`- ${p.code}`))) {
+                  const pidKey = String(p.id).toLowerCase();
+                  advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+                  break;
+                }
+              }
+            }
           } else if (tl.description) {
             // Fallback por descripción explícita de unidad (ej: "Unidad 2603" o "Apartamento. B-603")
             for (const p of properties) {
@@ -6927,7 +6954,7 @@ const API = {
 
     const [dataset, sysIntegrity] = await Promise.all([
       this._getPhCarteraDataset(propertyId, fromPeriod, toPeriod, forceRefresh),
-      this.getPhSystemIntegrity().catch(() => null),
+      this.getPhSystemIntegrity(toPeriod).catch(() => null),
     ]);
 
     const { invoices, rows } = dataset;
@@ -7142,9 +7169,13 @@ const API = {
   /**
    * Auditoría de integridad contable de todo el sistema en tiempo real.
    * Valida cuadre 100% de todas las unidades habitacionales: Cartera PH vs Libro Auxiliar 13459501.
+   * Si se provee cutoffDate, audita la foto exacta a esa fecha de corte.
    */
-  async getPhSystemIntegrity() {
-    const res = await fetch(`${pb.baseUrl}/api/ph/integrity-check`, {
+  async getPhSystemIntegrity(cutoffDate = '') {
+    const url = cutoffDate
+      ? `${pb.baseUrl}/api/ph/integrity-check?cutoff_date=${encodeURIComponent(cutoffDate)}`
+      : `${pb.baseUrl}/api/ph/integrity-check`;
+    const res = await fetch(url, {
       headers: {
         ...((pb as any).authToken ? { Authorization: `Bearer ${(pb as any).authToken}` } : {}),
       },

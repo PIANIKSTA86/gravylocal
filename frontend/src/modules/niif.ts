@@ -155,7 +155,7 @@ function getNextPeriod(period: string): string {
 }
 
 function extractAssetAcquisitionPeriod(a: any): string | null {
-  const rawDate = String(a?.purchase_date || a?.start_service_date || a?.invoice_date || '').trim();
+  const rawDate = String(a?.start_service_date || a?.purchase_date || a?.invoice_date || '').trim();
   if (!rawDate) return null;
   const m = rawDate.match(/^(\d{4})-(\d{2})/);
   if (m) return `${m[1]}-${m[2]}`;
@@ -168,23 +168,20 @@ function extractAssetAcquisitionPeriod(a: any): string | null {
 
 /**
  * Determina el primer periodo (YYYY-MM) en que el activo debe iniciar depreciación:
- * - Si tiene Depreciación Inmediata (<= 50 UVT): inicia en el MISMO mes de compra (100% en 1 cuota).
- * - Si tiene Depreciación Estándar: inicia a mes completo en el MES SIGUIENTE al de su compra.
+ * - A partir de la fecha de puesta en servicio (start_service_date) o fecha de compra (purchase_date).
+ * - Tanto para activos estándar (cuota proporcional por días calendario reales) como menor cuantía (<= 50 UVT - 100%),
+ *   la depreciación inicia en el MISMO mes de compra/servicio (Art. 128 E.T. / NIC 16 p. 55).
  */
 function getAssetFirstDepreciationPeriod(a: any): string | null {
   if (a?.is_depreciable === false) return null;
-  const acqPeriod = extractAssetAcquisitionPeriod(a);
-  if (!acqPeriod) return null;
-  if (a?.is_immediate_depreciation === true) {
-    return acqPeriod;
-  }
-  return getNextPeriod(acqPeriod);
+  return extractAssetAcquisitionPeriod(a);
 }
 
 function evaluateAssetDepreciationForPeriod(a: any, targetPeriod: string) {
   const cost = Number(a?.cost || 0);
   const isImmediate = a?.is_immediate_depreciation === true;
   const residual = isImmediate ? 0 : Number(a?.residual_value || 0);
+  const refDateStr = String(a?.start_service_date || a?.purchase_date || a?.invoice_date || '').trim();
   const acqDateStr = a?.purchase_date || a?.start_service_date || '';
   const acqPeriod = extractAssetAcquisitionPeriod(a);
   const firstEligiblePeriod = getAssetFirstDepreciationPeriod(a);
@@ -205,6 +202,9 @@ function evaluateAssetDepreciationForPeriod(a: any, targetPeriod: string) {
       acqPeriod,
       firstEligiblePeriod: null,
       isImmediate: false,
+      isProportional: false,
+      activeDays: 0,
+      totalDaysInMonth: 0,
       deprNIIF: 0,
       deprFiscal: 0,
       prevAccumNIIF,
@@ -216,21 +216,20 @@ function evaluateAssetDepreciationForPeriod(a: any, targetPeriod: string) {
     };
   }
 
-  // 1. Validar fecha de compra / entrada frente al periodo liquidado
+  // 1. Validar fecha de compra / entrada frente al periodo liquidado (excluir si es compra futura)
   if (firstEligiblePeriod && targetPeriod < firstEligiblePeriod) {
-    const reasonLabel = isImmediate
-      ? `Comprado en ${acqDateStr || acqPeriod} — Depreciación inmediata aplica en ${firstEligiblePeriod}`
-      : (targetPeriod === acqPeriod
-          ? `Comprado en ${acqDateStr || acqPeriod} (mismo mes) — Inicia depreciación en ${firstEligiblePeriod}`
-          : `Comprado en ${acqDateStr || acqPeriod} (fecha posterior) — Inicia depreciación en ${firstEligiblePeriod}`);
+    const reasonLabel = `Comprado en ${acqDateStr || acqPeriod} (fecha posterior al periodo ${targetPeriod}) — Inicia depreciación en ${firstEligiblePeriod}`;
     return {
       eligible: false,
-      reasonCode: targetPeriod < (acqPeriod || '') ? 'future_purchase' : 'same_month_purchase',
+      reasonCode: 'future_purchase',
       reasonLabel,
       acqDateStr,
       acqPeriod,
       firstEligiblePeriod,
       isImmediate,
+      isProportional: false,
+      activeDays: 0,
+      totalDaysInMonth: 0,
       deprNIIF: 0,
       deprFiscal: 0,
       prevAccumNIIF,
@@ -253,6 +252,9 @@ function evaluateAssetDepreciationForPeriod(a: any, targetPeriod: string) {
       acqPeriod,
       firstEligiblePeriod,
       isImmediate,
+      isProportional: false,
+      activeDays: 0,
+      totalDaysInMonth: 0,
       deprNIIF: 0,
       deprFiscal: 0,
       prevAccumNIIF,
@@ -264,12 +266,46 @@ function evaluateAssetDepreciationForPeriod(a: any, targetPeriod: string) {
     };
   }
 
-  // 3. Calcular cuotas del periodo (100% si es Depreciación Inmediata <= 50 UVT, o cuota nominal según vida útil)
+  // 3. Calcular cuotas del periodo (100% si es Depreciación Inmediata <= 50 UVT, o cuota nominal con prorrata en mes de compra)
   const lifeNIIF = isImmediate ? 1 : (Number(a?.useful_life_niif) || 1);
   const lifeFiscal = isImmediate ? 1 : (Number(a?.useful_life_fiscal) || 1);
 
-  const nominalNIIF = isImmediate ? maxNIIF : (maxNIIF / lifeNIIF);
-  const nominalFiscal = isImmediate ? maxFiscal : (maxFiscal / lifeFiscal);
+  const fullNominalNIIF = isImmediate ? maxNIIF : (maxNIIF / lifeNIIF);
+  const fullNominalFiscal = isImmediate ? maxFiscal : (maxFiscal / lifeFiscal);
+
+  let nominalNIIF = fullNominalNIIF;
+  let nominalFiscal = fullNominalFiscal;
+  let isProportional = false;
+  let activeDays = 0;
+  let totalDaysInMonth = 0;
+
+  // Prorrata por días calendario reales en el mes de adquisición o entrada en operación
+  if (!isImmediate && acqPeriod && targetPeriod === acqPeriod) {
+    const [yrStr, moStr] = targetPeriod.split('-');
+    const yr = Number(yrStr);
+    const mo = Number(moStr);
+    totalDaysInMonth = new Date(yr, mo, 0).getDate(); // Días reales del mes (28, 29, 30 ó 31)
+
+    let dayOfPurchase = 1;
+    const dayMatch = refDateStr.match(/^\d{4}-\d{2}-(\d{1,2})/);
+    if (dayMatch) {
+      dayOfPurchase = parseInt(dayMatch[1], 10);
+    } else {
+      const d = new Date(refDateStr);
+      if (!isNaN(d.getTime())) {
+        dayOfPurchase = d.getUTCDate();
+      }
+    }
+    dayOfPurchase = Math.min(Math.max(1, dayOfPurchase), totalDaysInMonth);
+
+    activeDays = (totalDaysInMonth - dayOfPurchase) + 1;
+    if (activeDays < totalDaysInMonth) {
+      isProportional = true;
+      const proportion = activeDays / totalDaysInMonth;
+      nominalNIIF = Math.round(fullNominalNIIF * proportion);
+      nominalFiscal = Math.round(fullNominalFiscal * proportion);
+    }
+  }
 
   const deprNIIF = Math.min(nominalNIIF, remainingNIIF);
   const deprFiscal = Math.min(nominalFiscal, remainingFiscal);
@@ -283,6 +319,9 @@ function evaluateAssetDepreciationForPeriod(a: any, targetPeriod: string) {
       acqPeriod,
       firstEligiblePeriod,
       isImmediate,
+      isProportional: false,
+      activeDays,
+      totalDaysInMonth,
       deprNIIF: 0,
       deprFiscal: 0,
       prevAccumNIIF,
@@ -297,11 +336,16 @@ function evaluateAssetDepreciationForPeriod(a: any, targetPeriod: string) {
   return {
     eligible: true,
     reasonCode: 'ok',
-    reasonLabel: isImmediate ? 'Depreciación Inmediata (<= 50 UVT - 100%)' : 'Cuota mensual ordinaria',
+    reasonLabel: isImmediate
+      ? 'Depreciación Inmediata (<= 50 UVT - 100%)'
+      : (isProportional ? `Cuota mensual proporcional (${activeDays}/${totalDaysInMonth} días)` : 'Cuota mensual ordinaria'),
     acqDateStr,
     acqPeriod,
     firstEligiblePeriod,
     isImmediate,
+    isProportional,
+    activeDays,
+    totalDaysInMonth,
     deprNIIF,
     deprFiscal,
     prevAccumNIIF,
@@ -4116,8 +4160,9 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
                 const lifeFiscal = isImm ? 1 : (a.useful_life_fiscal || 1);
                 const resVal = isImm ? 0 : (a.residual_value || 0);
 
-                let revertNIIF = Math.round(((a.cost || 0) - resVal) / lifeNIIF);
-                let revertFiscal = Math.round((a.cost || 0) / lifeFiscal);
+                const evalFallback = evaluateAssetDepreciationForPeriod(a, month);
+                let revertNIIF = evalFallback.deprNIIF || Math.round(((a.cost || 0) - resVal) / lifeNIIF);
+                let revertFiscal = evalFallback.deprFiscal || Math.round((a.cost || 0) / lifeFiscal);
                 let restoredPeriod = fallbackPrevPeriod;
 
                 // Si el evento guardó metadatos exactos [DEPR_META:niif=...;fiscal=...;prevPeriod=...], usarlos

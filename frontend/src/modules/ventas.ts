@@ -1163,6 +1163,35 @@ window.soOnPaymentDianCodeChange = function() {
   });
 };
 
+(window as any).soToggleSinRef = function(checked: boolean) {
+  const conceptSelect = document.getElementById('so-dian-concept') as HTMLSelectElement;
+  if (!conceptSelect) return;
+  const restrictedConcepts = ['1', '2', '4', '6'];
+  Array.from(conceptSelect.options).forEach(opt => {
+    if (restrictedConcepts.includes(opt.value)) {
+      opt.disabled = checked;
+      if (checked) {
+        opt.setAttribute('data-orig-text', opt.text);
+        if (!opt.text.includes('(Requiere factura)')) {
+          opt.text = opt.text + ' (Requiere factura)';
+        }
+      } else {
+        const orig = opt.getAttribute('data-orig-text');
+        if (orig) opt.text = orig;
+      }
+    }
+  });
+  if (checked) {
+    if (restrictedConcepts.includes(conceptSelect.value) || !conceptSelect.value) {
+      conceptSelect.value = '5'; // 5 = Otros (Válido para notas sin referencia según Anexo 1.9 DIAN)
+    }
+    const showToast = (window as any).showToast;
+    if (typeof showToast === 'function') {
+      showToast('Modo Sin Referencia: La DIAN (Anexo 1.9) sólo admite concepto 5 (Otros) o 3 (Rebaja comercial)', 'info');
+    }
+  }
+};
+
 (window as any).soUpdateNcLossVisibility = function() {
   const txTypeId = (document.getElementById('so-tx-type') as HTMLSelectElement)?.value;
   const txTypes = (window as any).__soTxTypesCache || [];
@@ -2158,7 +2187,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <span>¿Pérdida / Daño? (Gasto sin reingreso)</span>
           </label>
           <label class="flex items-center gap-2 text-xs font-bold text-red-900 cursor-pointer select-none bg-red-100/80 hover:bg-red-200/80 px-3 py-1.5 rounded-lg border border-red-300 transition-colors">
-            <input type="checkbox" id="so-dian-sin-ref" class="w-4 h-4 accent-red-600 rounded cursor-pointer">
+            <input type="checkbox" id="so-dian-sin-ref" class="w-4 h-4 accent-red-600 rounded cursor-pointer" onchange="window.soToggleSinRef ? window.soToggleSinRef(this.checked) : null">
             <span>Nota SIN Referencia a Factura</span>
           </label>
         </div>
@@ -4114,6 +4143,9 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       notes = `[Ajuste DIAN: ${dianConcept.value}] ` + notes;
     }
     if (isSinRef) {
+      if (dianConcept && ['1', '2', '4', '6'].includes(dianConcept.value)) {
+        throw new Error('Para Notas SIN referencia a factura previa, la DIAN solo permite el concepto "5 - Otros" o "3 - Rebaja total". Por favor ajusta el concepto de ajuste.');
+      }
       notes = `[SIN_REFERENCIA] ` + notes;
     }
 

@@ -1,9 +1,5 @@
-const { DatabaseSync } = require('node:sqlite');
+const sqlite3 = require('sqlite3').verbose();
+const db = new sqlite3.Database('empresas/empresa_8094/pb_data/data.db');
 
-try {
-  const db = new DatabaseSync('pb_data/data.db');
-  const txs = db.prepare("SELECT id, created, number, date, amount, total_tax, description FROM transactions ORDER BY created DESC LIMIT 5").all();
-  console.log(JSON.stringify(txs, null, 2));
-} catch (e) {
-  console.error(e.message);
-}
+db.all('SELECT l.debit, l.credit, l.cross_doc_ref, l.description, a.code FROM tx_lines l JOIN accounts a ON a.id = l.account_id WHERE l.tx_id = "b7n2p8yyxqocnqb"', (e, r) => console.log('b7n2p8yyxqocnqb:', r));
+db.all('SELECT l.debit, l.credit, l.cross_doc_ref, l.description, a.code FROM tx_lines l JOIN accounts a ON a.id = l.account_id WHERE l.tx_id = "zsjz6u7ri4o4ukp"', (e, r) => console.log('zsjz6u7ri4o4ukp:', r));

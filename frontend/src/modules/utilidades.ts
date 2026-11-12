@@ -1,4 +1,4 @@
-﻿/**
+/**
 * GRAVY v2.0 — utilidades.js
 * Módulo de Utilidades: herramientas de administración y mantenimiento.
 */
@@ -730,8 +730,8 @@ function _downloadMassFixedAssetsTemplate() {
     ['responsable', 'NO', 'Email, Cédula o Nombre', 'Usuario responsable o custodio del activo registrado en el sistema.', 'admin@empresa.com'],
     ['proveedor', 'NO', 'NIT o Documento', 'Número de identificación o NIT del proveedor en el directorio de terceros.', '900123456'],
     ['ubicacion', 'NO', 'Texto Libre', 'Ubicación física del bien (oficina, piso, bodega, sede).', 'Sede Principal - Oficina 302'],
-    ['fecha_compra', 'NO', 'Fecha (YYYY-MM-DD)', 'Fecha de adquisición de la factura de compra.', '2025-01-15'],
-    ['fecha_puesta_servicio', 'NO', 'Fecha (YYYY-MM-DD)', 'Fecha de puesta en marcha o inicio de depreciación. Si se omite, toma la fecha de compra.', '2025-02-01'],
+    ['fecha_compra', 'NO', 'Fecha (YYYY-MM-DD)', 'Fecha de adquisición de la factura de compra. Los activos deprecian proporcionalmente por días calendario en el mes de compra/servicio.', '2025-01-15'],
+    ['fecha_puesta_servicio', 'NO', 'Fecha (YYYY-MM-DD)', 'Fecha de puesta en marcha o inicio de depreciación. Si se define, rige la proporción de días del primer mes (NIC 16). Si se omite, toma la fecha de compra.', '2025-02-01'],
     ['factura_numero', 'NO', 'Texto', 'Número de factura o documento de soporte de la compra.', 'FE-10892'],
     ['marca', 'NO', 'Texto', 'Marca del fabricante del equipo o vehículo.', 'Lenovo'],
     ['modelo', 'NO', 'Texto', 'Modelo específico del bien.', 'ThinkPad E14 Gen 4'],

@@ -104,34 +104,32 @@ async function renderConciliacion(c?: any) {
 
         ${can('canWrite') ? `
         <div class="flex flex-wrap items-center justify-between gap-2 mt-4 pt-3 border-t" style="border-color:#F3F4F6">
-          <div class="flex flex-wrap gap-2">
-            <button class="btn btn-secondary" id="btn-suggest-recon" style="background:#EEF2FF;color:#4F46E5;border-color:#C7D2FE">
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="btn btn-primary" id="btn-suggest-recon" style="background:#4F46E5;border-color:#4338CA;color:#FFFFFF">
               <i class="fas fa-wand-magic-sparkles mr-1"></i> Sugerir Conciliación Automatizada
             </button>
             <button class="btn btn-secondary" id="btn-gen-adjustment-note" style="background:#F0FDF4;color:#15803D;border-color:#BBF7D0">
               <i class="fas fa-file-invoice-dollar mr-1"></i> Generar Nota de Ajuste (<span id="unrecon-count">0</span>)
             </button>
-            <button class="btn btn-primary" id="btn-pair-selected" disabled>
-              <i class="fas fa-link mr-1"></i> Conciliar Selección
-            </button>
-            <button class="btn btn-secondary" id="btn-save-draft" style="background:#F0F9FF;color:#0369A1;border-color:#BAE6FD" title="Guardar avance preliminar de la conciliación sin emitir cierre formal">
-              <i class="fas fa-bookmark mr-1 text-sky-600"></i> Guardar Borrador
-            </button>
             <button class="btn btn-secondary" id="btn-close-recon" style="background:#ECFDF5;color:#047857;border-color:#A7F3D0" title="Cerrar período y certificar conciliación formal">
               <i class="fas fa-lock mr-1"></i> Cerrar Conciliación
             </button>
-            <button class="btn btn-secondary" id="btn-export-excel" style="background:#F0FDF4;color:#166534;border-color:#BBF7D0" title="Exportar Papel de Trabajo Completo a Excel (NIIF / Revisoría)">
+            <div class="h-6 w-px bg-gray-200 mx-1 hidden md:block"></div>
+            <button class="btn btn-outline" id="btn-save-draft" title="Guardar avance preliminar de la conciliación sin emitir cierre formal">
+              <i class="fas fa-bookmark mr-1 text-sky-600"></i> Borrador
+            </button>
+            <button class="btn btn-outline" id="btn-export-excel" title="Exportar Papel de Trabajo Completo a Excel (NIIF / Revisoría)">
               <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Papel de Trabajo (Excel)
             </button>
-            <button class="btn btn-secondary" id="btn-history-recon" style="background:#F8FAFC;color:#475569;border-color:#CBD5E1" title="Ver actas y certificados emitidos">
-              <i class="fas fa-certificate mr-1"></i> Actas / Certificados
+            <button class="btn btn-outline" id="btn-history-recon" title="Ver actas y certificados emitidos">
+              <i class="fas fa-certificate mr-1 text-blue-600"></i> Actas / Certificados
             </button>
-            <button class="btn btn-outline" id="btn-clear-movs" style="border-color:#FECACA;color:#DC2626">
+            <button class="btn btn-outline text-red-600 border-red-200 hover:bg-red-50" id="btn-clear-movs" title="Limpiar Extracto">
               <i class="fas fa-trash-can mr-1"></i> Limpiar Extracto
             </button>
           </div>
           <div class="text-xs text-gray-500 font-medium">
-            <i class="fas fa-info-circle text-blue-500 mr-1"></i> Marca movimientos a la izquierda y derecha para emparejar (admite cruces 1:1, 1:N y N:1).
+            <i class="fas fa-keyboard text-slate-400 mr-1"></i> Atajo: <kbd class="px-1.5 py-0.5 bg-gray-100 border rounded text-[11px] font-mono">Espacio</kbd> seleccionar · <kbd class="px-1.5 py-0.5 bg-gray-100 border rounded text-[11px] font-mono">Enter</kbd> conciliar
           </div>
         </div>
         ` : ''}
@@ -172,8 +170,8 @@ async function renderConciliacion(c?: any) {
         </div>
       </div>
 
-      <!-- BARRA DE TOTALIZACIÓN Y COMPARACIÓN DE SELECCIÓN EN TIEMPO REAL -->
-      <div id="selection-summary-bar" style="display:none;" class="mb-4 bg-white border border-blue-200 rounded-2xl p-3.5 shadow-sm">
+      <!-- DOCK FLOTANTE / STICKY DE COMPARACIÓN Y CRUCE EN TIEMPO REAL -->
+      <div id="selection-summary-bar" style="display:none;" class="sticky bottom-4 z-30 bg-white/95 backdrop-blur-md border border-slate-300 rounded-2xl p-3.5 shadow-2xl transition-all duration-200">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <!-- Columna Izquierda: Libro Auxiliar Seleccionado -->
           <div class="flex items-center gap-3">
@@ -182,7 +180,7 @@ async function renderConciliacion(c?: any) {
             </div>
             <div>
               <div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
-                Libro Auxiliar Seleccionado (<span id="sel-aux-count" class="text-blue-700 font-extrabold">0</span>)
+                Libro Auxiliar (<span id="sel-aux-count" class="text-blue-700 font-extrabold">0</span>)
               </div>
               <div class="text-base font-extrabold text-gray-900" id="sel-aux-net">$0</div>
               <div class="text-[11px] text-gray-500" id="sel-aux-detail">Déb: $0 | Cré: $0</div>
@@ -200,7 +198,7 @@ async function renderConciliacion(c?: any) {
           <div class="flex items-center gap-3">
             <div class="text-right">
               <div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
-                Extracto Bancario Seleccionado (<span id="sel-bank-count" class="text-emerald-700 font-extrabold">0</span>)
+                Extracto Bancario (<span id="sel-bank-count" class="text-emerald-700 font-extrabold">0</span>)
               </div>
               <div class="text-base font-extrabold text-gray-900" id="sel-bank-net">$0</div>
               <div class="text-[11px] text-gray-500" id="sel-bank-detail">Ingresos: $0 | Egresos: $0</div>
@@ -210,10 +208,13 @@ async function renderConciliacion(c?: any) {
             </div>
           </div>
 
-          <!-- Acciones de Selección -->
+          <!-- Acciones de Selección dentro del Dock -->
           <div class="flex items-center gap-2 shrink-0">
+            <button class="btn btn-primary px-4 py-2 font-bold shadow-md" id="btn-pair-selected" disabled>
+              <i class="fas fa-link mr-1"></i> Conciliar Selección <kbd class="ml-1 text-[10px] bg-black/20 px-1.5 py-0.5 rounded font-mono">Enter</kbd>
+            </button>
             <button class="btn btn-outline btn-sm text-gray-600 hover:text-red-600 font-semibold" id="btn-clear-selection" title="Desmarcar todos los movimientos seleccionados">
-              <i class="fas fa-xmark mr-1"></i> Desmarcar Todo
+              <i class="fas fa-xmark mr-1"></i> Desmarcar
             </button>
           </div>
         </div>
@@ -399,11 +400,11 @@ async function renderConciliacion(c?: any) {
 
       btnPair.disabled = !isBalanced;
       if (isBalanced) {
-        btnPair.className = 'btn btn-primary';
+        btnPair.className = 'btn btn-primary px-4 py-2 font-bold shadow-md';
         const label = diff > 0.001 ? `Δ ${fmt(diff)}` : 'Exacto';
-        btnPair.innerHTML = `<i class="fas fa-link mr-1"></i> Conciliar Selección (${selectedLeft.length}:${selectedRight.length}) [${label}]`;
+        btnPair.innerHTML = `<i class="fas fa-link mr-1"></i> Conciliar Selección (${selectedLeft.length}:${selectedRight.length}) [${label}] <kbd class="ml-1 text-[10px] bg-black/20 px-1.5 py-0.5 rounded font-mono">Enter</kbd>`;
       } else {
-        btnPair.className = 'btn btn-secondary';
+        btnPair.className = 'btn btn-secondary px-4 py-2 font-medium';
         btnPair.innerHTML = `<i class="fas fa-scale-unbalanced mr-1"></i> Descuadre: ${fmt(diff)} (${selectedLeft.length}:${selectedRight.length})`;
       }
     };
@@ -431,6 +432,14 @@ async function renderConciliacion(c?: any) {
         tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400">No hay movimientos contables en este período mensual.</td></tr>`;
         return;
       }
+
+      // Orden cronológico uniforme con el extracto bancario (más antiguo a más reciente)
+      filtered.sort((a, b) => {
+        const da = a.expand?.tx_id?.date || '';
+        const db = b.expand?.tx_id?.date || '';
+        if (da !== db) return da.localeCompare(db);
+        return (a.line_order || 0) - (b.line_order || 0);
+      });
 
       tbody.innerHTML = filtered.map(l => {
         const date = l.expand?.tx_id?.date || '';
@@ -518,6 +527,13 @@ async function renderConciliacion(c?: any) {
         return;
       }
 
+      // Orden cronológico uniforme con el libro contable (más antiguo a más reciente)
+      filtered.sort((a, b) => {
+        const da = a.date || '';
+        const db = b.date || '';
+        return da.localeCompare(db);
+      });
+
       tbody.innerHTML = filtered.map(m => {
         const date = m.date || '';
         const desc = m.description || 'Movimiento Banco';
@@ -587,6 +603,41 @@ async function renderConciliacion(c?: any) {
     };
 
     const updateKPIs = () => {
+      const kpiAuxNet = $('#kpi-aux-net');
+      const kpiBankNet = $('#kpi-bank-net');
+      const kpiDiff = $('#kpi-diff');
+      const kpiProgress = $('#kpi-progress');
+      const kpiAuxCounts = $('#kpi-aux-counts');
+      const kpiBankCounts = $('#kpi-bank-counts');
+      const kpiMatchCounts = $('#kpi-match-counts');
+
+      // Si el período está formalmente cerrado y certificado, exhibir con fidelidad absoluta las cifras del Acta Oficial
+      if (_isPeriodLocked && _activeReconciliation) {
+        const c = _activeReconciliation;
+        const officialBook = Number(c.book_balance ?? 0);
+        const officialBank = Number(c.bank_balance ?? 0);
+        const officialDiff = Number(c.difference ?? 0);
+        const officialRecCount = Number(c.reconciled_count ?? movements.length);
+        const officialTotal = movements.length || 1;
+        const officialPct = Math.min(100, Math.round((officialRecCount / officialTotal) * 100));
+
+        if (kpiAuxNet) kpiAuxNet.textContent = fmt(officialBook);
+        if (kpiBankNet) kpiBankNet.textContent = fmt(officialBank);
+        if (kpiDiff) {
+          kpiDiff.textContent = fmt(officialDiff);
+          kpiDiff.className = `text-lg font-bold mt-1 ${Math.abs(officialDiff) < 1 ? 'text-emerald-600' : 'text-amber-600'}`;
+        }
+        if (kpiProgress) kpiProgress.textContent = `${officialPct}%`;
+        if (kpiAuxCounts) kpiAuxCounts.textContent = `${txLines.length} reg (Oficial auditado)`;
+        if (kpiBankCounts) kpiBankCounts.textContent = `${movements.length} reg (Oficial auditado)`;
+        if (kpiMatchCounts) kpiMatchCounts.textContent = `${officialRecCount} de ${movements.length} conciliados`;
+
+        if ($('#unrecon-count')) $('#unrecon-count').textContent = '0';
+        if ($('#badge-aux-count')) $('#badge-aux-count').textContent = String(txLines.length);
+        if ($('#badge-bank-count')) $('#badge-bank-count').textContent = String(movements.length);
+        return;
+      }
+
       const auxDeb = txLines.reduce((s, l) => s + (l.debit || 0), 0);
       const auxCred = txLines.reduce((s, l) => s + (l.credit || 0), 0);
       const auxNet = auxDeb - auxCred;
@@ -599,14 +650,6 @@ async function renderConciliacion(c?: any) {
       const reconciledCount = movements.filter(m => m.reconciled || txLineByMovId.has(m.id)).length;
       const totalCount = movements.length || 1;
       const pct = Math.round((reconciledCount / totalCount) * 100);
-
-      const kpiAuxNet = $('#kpi-aux-net');
-      const kpiBankNet = $('#kpi-bank-net');
-      const kpiDiff = $('#kpi-diff');
-      const kpiProgress = $('#kpi-progress');
-      const kpiAuxCounts = $('#kpi-aux-counts');
-      const kpiBankCounts = $('#kpi-bank-counts');
-      const kpiMatchCounts = $('#kpi-match-counts');
 
       if (kpiAuxNet) kpiAuxNet.textContent = fmt(auxNet);
       if (kpiBankNet) kpiBankNet.textContent = fmt(bankNet);
@@ -638,7 +681,7 @@ async function renderConciliacion(c?: any) {
       if (tbodyBank) tbodyBank.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando extracto del mes...</td></tr>`;
 
       try {
-        // 1. Cargar Extracto Bancario del mes exacto (bank_movements)
+        // 1. Cargar Extracto Bancario estrictamente del período mensual (bank_movements)
         const bankFilters = [];
         if (_selectedBankId) bankFilters.push(`bank_account_id = "${pb.escapeFilterValue(_selectedBankId)}"`);
         if (_filterFrom) bankFilters.push(`date >= "${pb.escapeFilterValue(_filterFrom)}"`);
@@ -650,7 +693,7 @@ async function renderConciliacion(c?: any) {
           expand: 'bank_account_id,tx_line_id',
         });
 
-        // 2. Cargar Libro Auxiliar Contable exacto del mes seleccionado (tx_lines)
+        // 2. Cargar Libro Auxiliar Contable estrictamente del período mensual seleccionado (tx_lines)
         const currentBankAcc = bankAccounts.find(b => b.id === _selectedBankId);
         const bankAccId = currentBankAcc?.account_id;
 
@@ -679,7 +722,7 @@ async function renderConciliacion(c?: any) {
           txLines = await pb.listAll('tx_lines', {
             filter: txFilters.join(' && '),
             expand: 'tx_id,third_party_id',
-            sort: '-tx_id.date,line_order',
+            sort: 'tx_id.date,line_order',
             ignoreBranch: true,
             ignoreCostCenter: true,
           });
@@ -687,16 +730,26 @@ async function renderConciliacion(c?: any) {
           txLines = [];
         }
 
-        // 3. Reconstruir mapas de vínculos
+        // 3. Reconstruir mapas de vínculos (soportando N:1 y M:N con matched_tx_line_ids)
         movByTxLineId.clear();
         txLineByMovId.clear();
         movCountByTxLineId.clear();
         movements.forEach(m => {
-          if (m.tx_line_id) {
-            movByTxLineId.set(m.tx_line_id, m);
-            txLineByMovId.set(m.id, m.expand?.tx_line_id || { id: m.tx_line_id });
-            const prevCount = movCountByTxLineId.get(m.tx_line_id) || 0;
-            movCountByTxLineId.set(m.tx_line_id, prevCount + 1);
+          const matchedIds: string[] = [];
+          if (Array.isArray(m.matched_tx_line_ids) && m.matched_tx_line_ids.length > 0) {
+            matchedIds.push(...m.matched_tx_line_ids);
+          } else if (m.tx_line_id) {
+            matchedIds.push(m.tx_line_id);
+          }
+
+          matchedIds.forEach(lId => {
+            movByTxLineId.set(lId, m);
+            const prevCount = movCountByTxLineId.get(lId) || 0;
+            movCountByTxLineId.set(lId, prevCount + 1);
+          });
+
+          if (matchedIds.length > 0) {
+            txLineByMovId.set(m.id, m.expand?.tx_line_id || { id: matchedIds[0] });
           }
         });
 
@@ -930,33 +983,35 @@ async function renderConciliacion(c?: any) {
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Conciliando...'; }
 
       try {
+        const leftIds = selectedLeft.map(cb => cb.value);
+        const rightIds = selectedRight.map(cb => cb.value);
         const promises: Promise<any>[] = [];
 
         if (selectedLeft.length === 1) {
           // 1 asiento contable a la izquierda y N movimientos de extracto a la derecha (Ej: 1 Nota Bancaria contra varios cobros de extracto)
-          const primaryLineId = selectedLeft[0].value;
+          const primaryLineId = leftIds[0];
           selectedRight.forEach(cb => {
             promises.push(pb.update('bank_movements', cb.value, {
               reconciled: true,
-              tx_line_id: primaryLineId
+              tx_line_id: primaryLineId,
+              matched_tx_line_ids: [primaryLineId]
             }));
           });
         } else if (selectedRight.length === 1) {
           // N asientos contables a la izquierda y 1 movimiento de extracto a la derecha (Ej: N recibos contra 1 consignación bancaria global)
-          const primaryMovId = selectedRight[0].value;
-          const primaryLineId = selectedLeft[0].value;
+          const primaryMovId = rightIds[0];
           promises.push(pb.update('bank_movements', primaryMovId, {
             reconciled: true,
-            tx_line_id: primaryLineId
+            tx_line_id: leftIds[0],
+            matched_tx_line_ids: leftIds
           }));
         } else {
           // M a N
-          const primaryLineId = selectedLeft[0].value;
-          selectedRight.forEach((cb, idx) => {
-            const assignedLineId = selectedLeft[idx] ? selectedLeft[idx].value : primaryLineId;
+          selectedRight.forEach((cb) => {
             promises.push(pb.update('bank_movements', cb.value, {
               reconciled: true,
-              tx_line_id: assignedLineId
+              tx_line_id: leftIds[0],
+              matched_tx_line_ids: leftIds
             }));
           });
         }
@@ -1067,6 +1122,22 @@ async function renderConciliacion(c?: any) {
       if (_isPeriodLocked) return showToast('No se puede limpiar extracto: la conciliación de este período está bloqueada y certificada.', 'warning');
       openClearMovementsModal(bankAccounts, movements);
     });
+
+    // Atajos de teclado para ergonomía contable (Pilar IV Human Interface Design)
+    const handleReconKeydown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+
+      if (e.key === 'Enter') {
+        const btnPair = $('#btn-pair-selected') as HTMLButtonElement | null;
+        if (btnPair && !btnPair.disabled) {
+          e.preventDefault();
+          btnPair.click();
+        }
+      }
+    };
+    c.setAttribute('tabindex', '0');
+    c.addEventListener('keydown', handleReconKeydown);
 
     await reloadAllData();
   } catch (err: any) {
@@ -1454,14 +1525,31 @@ async function toggleRecon(id: string, reconciled: boolean) {
       }
     }
     if (!reconciled) {
-      await pb.update('bank_movements', id, { reconciled: false, tx_line_id: '', reconciliation_id: '' });
-      showToast('Desconciliado: se liberó el vínculo contable del movimiento', 'info');
+      const executeUnpair = async () => {
+        try {
+          await pb.update('bank_movements', id, { reconciled: false, tx_line_id: '', matched_tx_line_ids: [] });
+          showToast('Desconciliado: se liberó el vínculo contable del movimiento', 'info');
+          if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
+          else renderConciliacion();
+        } catch (err: any) {
+          showToast(err.message, 'error');
+        }
+      };
+
+      if (typeof (window as any).confirmDialog === 'function') {
+        (window as any).confirmDialog(
+          '<i class="fas fa-triangle-exclamation text-amber-500 mr-2"></i>¿Desconciliar movimiento bancario?',
+          'Esta acción desvinculará este movimiento del extracto de las partidas contables emparejadas. ¿Deseas continuar?',
+          executeUnpair,
+          true
+        );
+      } else {
+        await executeUnpair();
+      }
     } else {
-      showToast('Para conciliar, selecciona el movimiento bancario junto a su asiento contable y pulsa "Emparejar"', 'warning');
+      showToast('Para conciliar, selecciona el movimiento bancario junto a su asiento contable y pulsa "Conciliar Selección"', 'warning');
       return;
     }
-    if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
-    else renderConciliacion();
   } catch (err: any) { showToast(err.message, 'error'); }
 }
 
@@ -1525,7 +1613,8 @@ async function buildReconSuggestions(bankAccount: any, movements: any[], dayWind
   if (dates.length > 0) {
     const minD = dates[0];
     const maxD = dates[dates.length - 1];
-    dateFilter = ` && tx_id.date >= "${pb.escapeFilterValue(minD)}" && tx_id.date <= "${pb.escapeFilterValue(maxD)} 23:59:59"`;
+    const windowMinD = _dateMinusDays(minD, dayWindow || 30);
+    dateFilter = ` && tx_id.date >= "${pb.escapeFilterValue(windowMinD)}" && tx_id.date <= "${pb.escapeFilterValue(maxD)} 23:59:59"`;
   }
 
   const safeFilter = targetAccountIds.map(id => `account_id="${pb.escapeFilterValue(id)}"`).join(' || ');
@@ -1553,10 +1642,14 @@ async function buildReconSuggestions(bankAccount: any, movements: any[], dayWind
     });
   }
 
-  // Partidas contables que ya estén debidamente conciliadas
-  const usedLineIds = new Set(
-    movements.filter(m => m.reconciled && m.tx_line_id).map(m => m.tx_line_id)
-  );
+  // Partidas contables que ya estén debidamente conciliadas (soportando N:1 y M:N)
+  const usedLineIds = new Set<string>();
+  movements.filter(m => m.reconciled).forEach(m => {
+    if (m.tx_line_id) usedLineIds.add(m.tx_line_id);
+    if (Array.isArray(m.matched_tx_line_ids)) {
+      m.matched_tx_line_ids.forEach((id: string) => usedLineIds.add(id));
+    }
+  });
 
   const remainingLines = txLines.filter(l => !usedLineIds.has(l.id) && l.expand?.tx_id);
   // Movimientos pendientes: no conciliados o con vínculo huérfano pendiente
@@ -3890,14 +3983,14 @@ async function openCloseReconciliationModal(
           pendingBankCount: pendingBankMovs.length,
           pendingBookCount: pendingTxLines.length,
         },
-        pendingBankItems: pendingBankMovs.slice(0, 50).map(m => ({
+        pendingBankItems: pendingBankMovs.map(m => ({
           date: m.date,
           description: m.description,
           debit: m.debit,
           credit: m.credit,
           ref: m.ref,
         })),
-        pendingBookItems: pendingTxLines.slice(0, 50).map(l => ({
+        pendingBookItems: pendingTxLines.map(l => ({
           date: l.expand?.tx_id?.date,
           comp: l.expand?.tx_id?.number,
           description: l.description,
@@ -4460,7 +4553,7 @@ async function openReconciliationsHistoryModal(bankAccount: any) {
                 <i class="fas fa-file-lines text-emerald-700"></i>
               </button>
               ${(can('canWrite') && isClosed) ? `
-              <button class="btn btn-outline btn-sm text-amber-600 border-amber-300" style="padding:2px 6px; font-size:11px;" title="Reabrir Conciliación" onclick="window._reopenReconciliation('${esc(c.id)}')">
+              <button class="btn btn-outline btn-sm text-amber-600 border-amber-300" style="padding:2px 6px; font-size:11px;" title="Reabrir Conciliación bajo condición" onclick="window._openReopenConditionModal('${esc(c.id)}')">
                 <i class="fas fa-lock-open"></i>
               </button>` : ''}
             </div>
@@ -4470,24 +4563,119 @@ async function openReconciliationsHistoryModal(bankAccount: any) {
     }).join('');
   };
 
-  (window as any)._reopenReconciliation = async (reconId: string) => {
-    if (!confirm('¿Estás seguro de REABRIR este período de conciliación?\n\nEsta acción quitará el bloqueo formal para permitir ajustes contables o re-conciliaciones. Se registrará la reapertura en la auditoría.')) {
+  (window as any)._openReopenConditionModal = (reconId: string) => {
+    const recon = closures.find(c => c.id === reconId);
+    if (!recon) return;
+
+    // Condición 1: Permiso de Rol
+    const userRole = (pb.currentUser?.role || '').toLowerCase();
+    const isAuthorized = userRole === 'admin' || userRole === 'contador' || userRole === 'superadmin' || can('canDelete');
+    if (!isAuthorized) {
+      showToast('Acceso denegado: Solo usuarios con rol de Administrador o Contador pueden reabrir conciliaciones certificadas.', 'error');
       return;
     }
 
-    try {
-      await pb.update('bank_reconciliations', reconId, {
-        status: 'reopened',
-        reopened_by: pb.currentUser?.id || null,
-        reopened_at: new Date().toISOString(),
-      });
-      showToast('Período de conciliación reabierto correctamente', 'info');
-      closeModal();
-      if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
-      else renderConciliacion();
-    } catch (err: any) {
-      showToast('Error reabriendo conciliación: ' + err.message, 'error');
+    // Condición 2: Secuencia Cronológica Inversa (No reabrir si existe un período posterior cerrado)
+    const laterClosures = closures.filter(c => c.id !== reconId && c.status === 'closed' && (c.period_start > recon.period_end || c.period_end > recon.period_end));
+    if (laterClosures.length > 0) {
+      const later = laterClosures[0];
+      openModal(
+        '<i class="fas fa-triangle-exclamation text-amber-600 mr-2"></i> Reapertura Bloqueada por Control Cronológico',
+        `
+        <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 mb-3">
+          <div class="font-bold mb-1.5 flex items-center gap-2">
+            <i class="fas fa-lock text-amber-700"></i>
+            <span>Período posterior cerrado y certificado</span>
+          </div>
+          Existe una Conciliación Bancaria cerrada para un período posterior (<strong>${esc(later.period_start)} al ${esc(later.period_end)}</strong>).
+          <br><br>
+          Por normativa contable y principio de devengo/integridad de balance, <strong>no se puede reabrir un período histórico dejando los períodos subsiguientes cerrados</strong>, ya que las partidas conciliatorias perderían consistencia cronológica.
+          <br><br>
+          <span class="font-bold text-amber-950"><i class="fas fa-circle-info mr-1"></i>Condición requerida:</span> Debe reabrir primero el período posterior más reciente (<strong>${esc(later.period_start)} al ${esc(later.period_end)}</strong>) antes de reabrir este período.
+        </div>
+        `,
+        '<button class="btn btn-outline" onclick="closeModal()">Entendido</button>',
+        false
+      );
+      return;
     }
+
+    // Condición 3: Motivo formal y confirmación escrita
+    openModal(
+      '<i class="fas fa-lock-open text-amber-600 mr-2"></i> Reapertura Condicionada de Conciliación Bancaria',
+      `
+      <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 mb-3">
+        <div class="font-bold mb-1 flex items-center gap-1.5">
+          <i class="fas fa-triangle-exclamation text-amber-600"></i>
+          <span>Advertencia de Control Interno y Auditoría</span>
+        </div>
+        Estás solicitando reabrir formalmente la Conciliación del <strong>${esc(recon.period_start)} al ${esc(recon.period_end)}</strong> de la cuenta <strong>${esc(bankAccount.bank)} (${esc(bankAccount.number)})</strong>.
+        <p class="mb-0 text-[11px] text-amber-800 mt-1">
+          Al reabrir, se removerá el bloqueo de inmutabilidad para permitir correcciones o ajustes. Se registrará tu usuario, fecha y justificación en la pista de auditoría oficial.
+        </p>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label font-bold text-xs text-gray-700 block mb-1">
+          Motivo formal / Justificación de la reapertura <span class="text-red-500">*</span>
+        </label>
+        <textarea id="reopen-reason-text" class="form-input w-full text-xs" rows="3" placeholder="Ej: Ajuste de cheque devuelto / Hallazgo de auditoría / Corrección de extracto..."></textarea>
+        <p class="text-[11px] text-gray-400 mt-0.5">Obligatorio (mínimo 10 caracteres). Queda registrado en el historial.</p>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label font-bold text-xs text-gray-700 block mb-1">
+          Para confirmar la reapertura, escribe la palabra <span class="font-mono text-red-600 font-extrabold">REABRIR</span>:
+        </label>
+        <input id="reopen-confirm-word" type="text" class="form-input w-full text-xs font-mono font-bold uppercase" placeholder="REABRIR">
+      </div>
+      `,
+      `
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary bg-amber-600 border-amber-700 hover:bg-amber-700 text-white" id="btn-do-conditioned-reopen">
+        <i class="fas fa-lock-open mr-1"></i> Confirmar Reapertura
+      </button>
+      `,
+      false
+    );
+
+    $('#btn-do-conditioned-reopen')?.addEventListener('click', async () => {
+      const reasonVal = (getInputVal('reopen-reason-text') || '').trim();
+      const confirmWord = (getInputVal('reopen-confirm-word') || '').trim().toUpperCase();
+
+      if (reasonVal.length < 10) {
+        return showToast('Debes ingresar una justificación formal de al menos 10 caracteres.', 'warning');
+      }
+
+      if (confirmWord !== 'REABRIR') {
+        return showToast('Debes escribir la palabra REABRIR para confirmar la operación.', 'warning');
+      }
+
+      const btn = $('#btn-do-conditioned-reopen') as HTMLButtonElement | null;
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Reabriendo período...'; }
+
+      try {
+        const currentUser = pb.currentUser;
+        const currentUserName = currentUser?.name || currentUser?.email || 'Usuario';
+        const auditLogNote = `[REAPERTURA ${todayStr()} por ${currentUserName}]: ${reasonVal}\n` + (recon.notes || '');
+
+        await pb.update('bank_reconciliations', reconId, {
+          status: 'reopened',
+          reopened_by: currentUser?.id || null,
+          reopened_at: new Date().toISOString(),
+          reopen_reason: reasonVal,
+          notes: auditLogNote
+        });
+
+        showToast('Período de conciliación reabierto bajo condición satisfactoriamente.', 'success');
+        closeModal();
+        if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
+        else renderConciliacion();
+      } catch (err: any) {
+        showToast('Error reabriendo conciliación: ' + (err.message || ''), 'error');
+        if (btn) btn.disabled = false;
+      }
+    });
   };
 
   openModal(

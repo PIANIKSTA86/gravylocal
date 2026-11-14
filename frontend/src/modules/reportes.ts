@@ -7823,47 +7823,70 @@ async function renderClientPaymentsHistory() {
   thirds.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
   const now = new Date();
-  const startDefault = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const startDefault = `${now.getFullYear()}-01-01`;
   const endDefault = todayStr();
 
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
-      <h4 class="font-bold mb-3" style="color:#0D2137">Historial de Pagos de Cartera por Cliente</h4>
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-        <div class="form-group md:col-span-2">
-          <label class="form-label">Cliente</label>
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div>
+          <h4 class="font-bold text-base" style="color:#0D2137">Historial de Pagos y Cartera por Cliente</h4>
+          <p class="text-xs text-gray-500 mt-0.5">Auditoría integral por factura: valor original, retenciones tributarias, abonos aplicados y saldos pendientes.</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-sm btn-outline text-xs" id="btn-pdf-hist" disabled><i class="fas fa-file-pdf text-red-500 mr-1.5"></i> PDF</button>
+          <button class="btn btn-sm btn-outline text-xs" id="btn-exp-hist" disabled><i class="fas fa-file-excel text-emerald-600 mr-1.5"></i> Excel</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 mb-3">
+        <div class="form-group md:col-span-5">
+          <label class="form-label text-xs font-semibold text-gray-700">Cliente / Tercero</label>
           <div class="relative">
-            <input type="text" id="hist-third-search" class="form-input w-full text-xs" placeholder="— Seleccione Cliente (Escribe para buscar...) —" autocomplete="off" />
+            <input type="text" id="hist-third-search" class="form-input w-full text-xs" placeholder="— Seleccione Cliente (Escribe nombre o NIT...) —" autocomplete="off" />
             <input type="hidden" id="hist-third" value="" />
-            <div id="hist-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:250px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:90"></div>
+            <div id="hist-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,.15);z-index:90"></div>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Desde</label>
-          <input id="hist-start" type="date" class="form-input" value="${startDefault}">
+        <div class="form-group md:col-span-2">
+          <label class="form-label text-xs font-semibold text-gray-700">Desde</label>
+          <input id="hist-start" type="date" class="form-input text-xs" value="${startDefault}">
         </div>
-        <div class="form-group">
-          <label class="form-label">Hasta</label>
-          <input id="hist-end" type="date" class="form-input" value="${endDefault}">
+        <div class="form-group md:col-span-2">
+          <label class="form-label text-xs font-semibold text-gray-700">Hasta</label>
+          <input id="hist-end" type="date" class="form-input text-xs" value="${endDefault}">
+        </div>
+        <div class="form-group md:col-span-3">
+          <label class="form-label text-xs font-semibold text-gray-700">Filtro de Estado</label>
+          <select id="hist-status-filter" class="form-input text-xs">
+            <option value="ALL">Todas las Facturas</option>
+            <option value="PENDING">Con Saldo / En Mora</option>
+            <option value="PAID">100% Pagadas / Saldadas</option>
+          </select>
         </div>
       </div>
       
-      <div class="flex flex-wrap gap-2 justify-between items-center mt-4 pt-3 border-t" style="border-color:#F3F4F6">
-        <div class="flex gap-1.5">
+      <div class="flex flex-wrap gap-2 justify-between items-center mt-3 pt-3 border-t" style="border-color:#F3F4F6">
+        <div class="flex flex-wrap gap-1.5">
           <button class="btn btn-xs btn-outline" id="btn-preset-30">Últimos 30 días</button>
           <button class="btn btn-xs btn-outline" id="btn-preset-month">Este Mes</button>
           <button class="btn btn-xs btn-outline" id="btn-preset-year">Este Año</button>
-          <button class="btn btn-xs btn-outline" id="btn-preset-prev">Año Anterior</button>
+          <button class="btn btn-xs btn-outline" id="btn-preset-all">Histórico Completo</button>
         </div>
-        <div class="flex gap-2">
-          <button class="btn btn-primary" id="btn-gen-hist"><i class="fas fa-filter"></i> Generar</button>
-          <button class="btn btn-outline" id="btn-pdf-hist" disabled><i class="fas fa-file-pdf"></i> PDF</button>
-          <button class="btn btn-outline" id="btn-exp-hist" disabled><i class="fas fa-file-excel"></i> Exportar</button>
+        <div>
+          <button class="btn btn-primary text-xs px-4" id="btn-gen-hist"><i class="fas fa-magnifying-glass mr-1.5"></i> Consultar Cartera</button>
         </div>
       </div>
     </div>
-    <div id="hist-results" class="p-8 text-center" style="color:#9CA3AF">
-      <i class="fas fa-magnifying-glass mr-2"></i>Busca un cliente, elige el rango de fechas y presiona Generar.
+
+    <div id="hist-results" class="p-10 text-center" style="color:#9CA3AF">
+      <div class="max-w-md mx-auto">
+        <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+          <i class="fas fa-folder-open text-xl"></i>
+        </div>
+        <h5 class="text-sm font-bold text-gray-700 mb-1">Sin consulta activa</h5>
+        <p class="text-xs text-gray-500">Selecciona un cliente para auditar sus facturas emitidas, retenciones tributarias practicadas, recibos de caja aplicados y saldo pendiente.</p>
+      </div>
     </div>
   `;
 
@@ -7874,8 +7897,7 @@ async function renderClientPaymentsHistory() {
     thirds
   );
 
-  let lastGeneratedPayments = [];
-  let selectedThird = null;
+  let lastGeneratedData: any = null;
   let dateFrom = '';
   let dateTo = '';
 
@@ -7909,9 +7931,8 @@ async function renderClientPaymentsHistory() {
     setDatesAndGenerate(tStart, tEnd);
   });
 
-  $('#btn-preset-prev')?.addEventListener('click', () => {
-    const prevYear = new Date().getFullYear() - 1;
-    setDatesAndGenerate(`${prevYear}-01-01`, `${prevYear}-12-31`);
+  $('#btn-preset-all')?.addEventListener('click', () => {
+    setDatesAndGenerate('2020-01-01', todayStr());
   });
 
   const generate = async () => {
@@ -7921,218 +7942,243 @@ async function renderClientPaymentsHistory() {
     const thirdId = getInputVal('hist-third');
     const start = getInputVal('hist-start');
     const end = getInputVal('hist-end');
+    const statusFilter = getInputVal('hist-status-filter') || 'ALL';
 
-    if (!thirdId) return showToast('Selecciona un cliente.', 'warning');
-    if (!start || !end) return showToast('Selecciona el rango de fechas.', 'warning');
+    if (!thirdId) return showToast('Selecciona un cliente para consultar su historial de pagos.', 'warning');
 
-    results.innerHTML = '<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando historial de pagos...</div>';
+    results.innerHTML = `
+      <div class="p-12 text-center text-gray-500">
+        <i class="fas fa-spinner fa-spin text-2xl text-blue-600 mb-3"></i>
+        <p class="text-xs font-semibold text-gray-600">Auditando facturas, retenciones y pagos de cartera en SQLite...</p>
+      </div>
+    `;
 
     try {
-      const [{ accounts }, thirdParties] = await Promise.all([
-        ensureAccountsSaldos(),
-        ensureThirdParties(),
-      ]);
-
-      selectedThird = thirdParties.find((t: any) => t.id === thirdId);
       dateFrom = start;
       dateTo = end;
 
-      // Cuentas de Cartera / Cuentas por Cobrar (Clase 13)
-      const cxcAccIds = accounts
-        .filter((a: any) => String(a.code || '').startsWith('13'))
-        .map((a: any) => a.id)
-        .join(',');
+      const endpointUrl = `/api/gravy/report-client-cartera-history?thirdId=${thirdId}&fromDate=${start}&toDate=${end}&statusFilter=${statusFilter}${getScopeQueryParams()}`;
+      const res: any = await pb.send(endpointUrl, { method: 'GET' });
 
-      // Endpoint de consulta indexada ultrarrápido (del lado del servidor)
-      const res: any = await pb.send(
-        `/api/gravy/report-auxiliary?fromDate=${start}&toDate=${end}&thirdId=${thirdId}&accountIds=${cxcAccIds}${getScopeQueryParams()}`,
-        { method: 'GET' }
-      );
+      lastGeneratedData = res;
 
-      const periodLines = res?.periodLines || [];
+      const invoices = res?.invoices || [];
+      const uncrossed = res?.uncrossed_payments || [];
+      const summary = res?.summary || {};
+      const third = res?.third || {};
 
-      // Filtrar líneas de abono o crédito recibidas en la cuenta de cartera
-      const payments = periodLines
-        .filter((l: any) => Number(l.credito || 0) > 0.0001)
-        .map((l: any) => ({
-          id: l.txId || l.id,
-          date: l.fecha || '',
-          number: l.comprobante || 'S/N',
-          tx_type_name: l.accountName || 'Recibo de Caja',
-          tx_type_prefix: l.comprobante ? l.comprobante.split('-')[0] : 'RC',
-          account_code: l.accountCode || '',
-          account_name: l.accountName || '',
-          cross_doc_ref: l.doc_cruce || '',
-          description: l.descripcion || 'Abono de cartera',
-          amount: Number(l.credito || 0)
-        }))
-        .sort((a: any, b: any) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
-
-      lastGeneratedPayments = payments;
-
-      if (!payments.length) {
-        results.innerHTML = '<div class="p-8 text-center text-gray-500"><i class="fas fa-circle-exclamation mr-2"></i>No se encontraron pagos registrados para este cliente en el periodo seleccionado.</div>';
+      if (!invoices.length && !uncrossed.length) {
+        results.innerHTML = `
+          <div class="p-12 text-center text-gray-500">
+            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-amber-50 flex items-center justify-center text-amber-500">
+              <i class="fas fa-circle-info text-xl"></i>
+            </div>
+            <h5 class="text-sm font-bold text-gray-700 mb-1">Sin movimientos de cartera</h5>
+            <p class="text-xs text-gray-400">No se encontraron facturas ni abonos registrados para ${esc(third.name || 'este cliente')} con los filtros seleccionados.</p>
+          </div>
+        `;
         ($('#btn-pdf-hist') as HTMLButtonElement).disabled = true;
         ($('#btn-exp-hist') as HTMLButtonElement).disabled = true;
         return;
       }
 
-      const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-      const count = payments.length;
-      const avg = totalPaid / count;
-      const lastPayment = payments[payments.length - 1];
-
-      // KPI Cards
+      // ── KPI CARDS ─────────────────────────────────────────────────────────────
       const kpisHtml = `
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 text-left">
-          <div class="bg-white p-4 rounded-2xl border flex items-center justify-between shadow-sm" style="border-color:#E5E7EB">
-            <div>
-              <p class="text-xs font-semibold" style="color:#6B7280">Total Recaudado</p>
-              <h4 class="text-lg font-bold mt-1" style="color:#059669">${fmt(totalPaid)}</h4>
-            </div>
-            <div class="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600">
-              <i class="fas fa-hand-holding-dollar"></i>
-            </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5 text-left">
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Facturación Bruta</p>
+            <h4 class="text-base font-bold text-slate-800 mt-1 font-mono">${fmt(summary.total_gross || 0)}</h4>
+            <span class="text-[10px] text-slate-400 font-medium">${summary.count_invoices || 0} facturas emitidas</span>
           </div>
-          <div class="bg-white p-4 rounded-2xl border flex items-center justify-between shadow-sm" style="border-color:#E5E7EB">
-            <div>
-              <p class="text-xs font-semibold" style="color:#6B7280">Nº Abonos / Pagos</p>
-              <h4 class="text-lg font-bold mt-1" style="color:#7C3AED">${fmtN(count)}</h4>
-            </div>
-            <div class="w-10 h-10 rounded-full flex items-center justify-center bg-blue-50 text-blue-600">
-              <i class="fas fa-receipt"></i>
-            </div>
+
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-[11px] font-semibold text-amber-700 uppercase tracking-wider flex items-center gap-1">
+              <i class="fas fa-shield-halved text-amber-500"></i> Retenciones
+            </p>
+            <h4 class="text-base font-bold text-amber-700 mt-1 font-mono">- ${fmt(summary.total_retentions || 0)}</h4>
+            <span class="text-[10px] text-amber-600/80 font-medium">ReteFuente / ICA / IVA</span>
           </div>
-          <div class="bg-white p-4 rounded-2xl border flex items-center justify-between shadow-sm" style="border-color:#E5E7EB">
-            <div>
-              <p class="text-xs font-semibold" style="color:#6B7280">Pago Promedio</p>
-              <h4 class="text-lg font-bold mt-1" style="color:#4F46E5">${fmt(avg)}</h4>
-            </div>
-            <div class="w-10 h-10 rounded-full flex items-center justify-center bg-indigo-50 text-indigo-600">
-              <i class="fas fa-calculator"></i>
-            </div>
+
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
+              <i class="fas fa-circle-check text-emerald-500"></i> Pagos Aplicados
+            </p>
+            <h4 class="text-base font-bold text-emerald-700 mt-1 font-mono">- ${fmt(summary.total_payments || 0)}</h4>
+            <span class="text-[10px] text-emerald-600/80 font-medium">${summary.count_paid || 0} facturas saldadas</span>
           </div>
-          <div class="bg-white p-4 rounded-2xl border flex items-center justify-between shadow-sm" style="border-color:#E5E7EB">
-            <div>
-              <p class="text-xs font-semibold" style="color:#6B7280">Último Pago</p>
-              <h4 class="text-sm font-bold mt-1" style="color:#D97706">${fmt(lastPayment.amount)}</h4>
-              <p class="text-[10px] text-gray-400 font-semibold">${lastPayment.date}</p>
-            </div>
-            <div class="w-10 h-10 rounded-full flex items-center justify-center bg-amber-50 text-amber-600">
-              <i class="fas fa-calendar-check"></i>
+
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+            <p class="text-[11px] font-semibold text-purple-700 uppercase tracking-wider flex items-center gap-1">
+              <i class="fas fa-file-invoice text-purple-500"></i> Notas Crédito
+            </p>
+            <h4 class="text-base font-bold text-purple-700 mt-1 font-mono">- ${fmt(summary.total_notes || 0)}</h4>
+            <span class="text-[10px] text-purple-600/80 font-medium">Devoluciones / Ajustes</span>
+          </div>
+
+          <div class="bg-white p-3.5 rounded-xl border ${summary.total_pending > 0.5 ? 'border-rose-200 bg-rose-50/20' : 'border-emerald-200 bg-emerald-50/20'} shadow-sm col-span-2 md:col-span-1">
+            <p class="text-[11px] font-semibold ${summary.total_pending > 0.5 ? 'text-rose-700' : 'text-emerald-700'} uppercase tracking-wider">Saldo Pendiente</p>
+            <h4 class="text-base font-bold ${summary.total_pending > 0.5 ? 'text-rose-700' : 'text-emerald-700'} mt-1 font-mono">${fmt(summary.total_pending || 0)}</h4>
+            <span class="text-[10px] font-medium ${summary.total_pending > 0.5 ? 'text-rose-600' : 'text-emerald-600'}">
+              ${summary.total_pending > 0.5 ? `${summary.count_pending} pendientes` : 'Al día'}
+            </span>
+          </div>
+        </div>
+      `;
+
+      // ── BARRA DE PESTAÑAS / VISTAS (SIN .tab-pane PARA EVITAR DISPLAY:NONE GLOBAL) ──────
+      const tabsHtml = `
+        <div class="flex items-center justify-between border-b border-slate-200 mb-4 pb-1">
+          <div class="flex gap-2">
+            <button type="button" class="px-4 py-2 text-xs font-bold border-b-2 border-blue-600 text-blue-600 transition-colors flex items-center gap-2" id="hist-tab-btn-invoices">
+              <i class="fas fa-file-lines"></i> Facturas Compactas
+              <span class="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-700 font-bold">${invoices.length}</span>
+            </button>
+            <button type="button" class="px-4 py-2 text-xs font-bold border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors flex items-center gap-2" id="hist-tab-btn-uncrossed">
+              <i class="fas fa-hand-holding-dollar"></i> Recaudos No Cruzados / Anticipos
+              <span class="px-2 py-0.5 rounded-full text-[10px] ${uncrossed.length ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-500'} font-bold">${uncrossed.length}</span>
+            </button>
+          </div>
+          <div class="text-[11px] text-gray-500 hidden sm:block">
+            Cliente: <strong class="text-gray-800">${esc(third.name || '')}</strong> (NIT: ${esc(third.doc_number || 'S/N')})
+          </div>
+        </div>
+      `;
+
+      // ── TABLA COMPACTA: EXACTAMENTE 1 RENGLÓN POR FACTURA ─────────────────────
+      let invoicesRowsHtml = '';
+      if (invoices.length === 0) {
+        invoicesRowsHtml = `<tr><td colspan="10" class="p-8 text-center text-gray-400 text-xs">No hay facturas que coincidan con los filtros seleccionados.</td></tr>`;
+      } else {
+        invoicesRowsHtml = invoices.map((inv: any, idx: number) => {
+          let statusBadge = '';
+          if (inv.status_cartera === 'PAGADA') {
+            statusBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800"><i class="fas fa-check mr-1"></i>Pagada</span>';
+          } else if (inv.status_cartera === 'MORA') {
+            statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800"><i class="fas fa-clock mr-1"></i>Mora ${inv.days_overdue}d</span>`;
+          } else if (inv.status_cartera === 'PARCIAL') {
+            statusBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800"><i class="fas fa-pie-chart mr-1"></i>Parcial</span>';
+          } else {
+            statusBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">Sin Abonos</span>';
+          }
+
+          const paymentsCount = (inv.payments && inv.payments.length) || 0;
+
+          return `
+            <tr class="hover:bg-blue-50/40 transition-colors border-b border-slate-200 text-xs">
+              <td class="py-2.5 px-3 font-semibold text-slate-900 whitespace-nowrap text-left">
+                <span class="text-blue-700 font-bold">${esc(inv.invoice_number)}</span>
+              </td>
+              <td class="py-2.5 px-3 text-gray-600 whitespace-nowrap text-left">${esc(inv.invoice_date)}</td>
+              <td class="py-2.5 px-3 text-gray-600 whitespace-nowrap text-left">${esc(inv.due_date || inv.invoice_date)}</td>
+              <td class="py-2.5 px-3 whitespace-nowrap text-left">${statusBadge}</td>
+              <td class="py-2.5 px-3 text-right font-mono font-medium text-slate-800">${fmt(inv.gross_amount)}</td>
+              <td class="py-2.5 px-3 text-right font-mono ${inv.total_retentions > 0 ? 'text-amber-700 font-semibold' : 'text-gray-400'}">
+                ${inv.total_retentions > 0 ? fmt(inv.total_retentions) : '$0'}
+              </td>
+              <td class="py-2.5 px-3 text-right font-mono ${inv.total_notes > 0 ? 'text-purple-700 font-semibold' : 'text-gray-400'}">
+                ${inv.total_notes > 0 ? fmt(inv.total_notes) : '$0'}
+              </td>
+              <td class="py-2.5 px-3 text-right font-mono ${inv.total_payments > 0 ? 'text-emerald-700 font-bold' : 'text-gray-400'}">
+                ${inv.total_payments > 0 ? fmt(inv.total_payments) : '$0'}
+              </td>
+              <td class="py-2.5 px-3 text-right font-mono font-bold ${inv.pending_balance > 0.5 ? 'text-rose-700' : 'text-emerald-700'}">
+                ${fmt(inv.pending_balance)}
+              </td>
+              <td class="py-2 px-3 text-center whitespace-nowrap">
+                ${paymentsCount > 0 ? `
+                  <button type="button" class="btn btn-xs btn-outline py-0.5 px-2 text-[10px] btn-view-rc-modal hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300" data-idx="${idx}" title="Ver recibos aplicados">
+                    <i class="fas fa-receipt mr-1 text-blue-600"></i> ${paymentsCount}
+                  </button>
+                ` : `
+                  <span class="text-[10px] text-gray-300">—</span>
+                `}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      const invoicesTableHtml = `
+        <div id="hist-invoices-pane" style="display:block">
+          <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div class="overflow-x-auto" style="max-height: 520px">
+              <table class="data-table w-full text-left">
+                <thead class="sticky top-0 bg-slate-100 text-slate-700 text-[11px] font-bold uppercase tracking-wider z-10 border-b border-slate-300">
+                  <tr>
+                    <th class="py-2.5 px-3 text-left">Factura</th>
+                    <th class="py-2.5 px-3 text-left">Emisión</th>
+                    <th class="py-2.5 px-3 text-left">Vencimiento</th>
+                    <th class="py-2.5 px-3 text-left">Estado</th>
+                    <th class="py-2.5 px-3 text-right">Vr. Original (Bruto)</th>
+                    <th class="py-2.5 px-3 text-right">Retenciones</th>
+                    <th class="py-2.5 px-3 text-right">Notas Crédito</th>
+                    <th class="py-2.5 px-3 text-right">Abonos Recaudados</th>
+                    <th class="py-2.5 px-3 text-right">Saldo Pendiente</th>
+                    <th class="py-2.5 px-3 text-center">Recibos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${invoicesRowsHtml}
+                </tbody>
+                <tfoot>
+                  <tr class="bg-slate-100 font-bold text-xs text-slate-800 border-t-2 border-slate-300">
+                    <td colspan="4" class="py-3 px-3 text-left">TOTALES GENERALES</td>
+                    <td class="py-3 px-3 text-right font-mono">${fmt(summary.total_gross || 0)}</td>
+                    <td class="py-3 px-3 text-right font-mono text-amber-700">${fmt(summary.total_retentions || 0)}</td>
+                    <td class="py-3 px-3 text-right font-mono text-purple-700">${fmt(summary.total_notes || 0)}</td>
+                    <td class="py-3 px-3 text-right font-mono text-emerald-700">${fmt(summary.total_payments || 0)}</td>
+                    <td class="py-3 px-3 text-right font-mono ${summary.total_pending > 0.5 ? 'text-rose-700' : 'text-emerald-700'}">${fmt(summary.total_pending || 0)}</td>
+                    <td class="py-3 px-3 text-center text-[10px] text-gray-500">—</td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </div>
         </div>
       `;
 
-      // Monthly Trend SVG Chart
-      const monthlyMap = new Map();
-      for (const p of payments) {
-        const mKey = p.date.substring(0, 7);
-        monthlyMap.set(mKey, (monthlyMap.get(mKey) || 0) + p.amount);
+      // ── TABLA DE ANTICIPOS / RECAUDOS NO CRUZADOS ──────────────────────────────
+      let uncrossedRowsHtml = '';
+      if (uncrossed.length === 0) {
+        uncrossedRowsHtml = `<tr><td colspan="5" class="p-8 text-center text-gray-400 text-xs">No hay anticipos ni abonos sin cruce pendientes para este cliente.</td></tr>`;
+      } else {
+        uncrossedRowsHtml = uncrossed.map((p: any) => `
+          <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+            <td class="py-2 px-3 text-gray-600">${esc(p.date)}</td>
+            <td class="py-2 px-3 font-semibold text-slate-800 whitespace-nowrap">
+              <span class="px-1.5 py-0.5 rounded text-[9px] bg-amber-100 text-amber-800 font-bold mr-1">RC</span>
+              ${esc(p.number)}
+            </td>
+            <td class="py-2 px-3 text-gray-500">${esc(p.tx_type || 'Recibo de Caja')}</td>
+            <td class="py-2 px-3 text-gray-700">${esc(p.description)}</td>
+            <td class="py-2 px-3 text-right font-mono font-bold text-emerald-700">${fmt(p.amount)}</td>
+          </tr>
+        `).join('');
       }
-      const sortedMonths = [...monthlyMap.keys()].sort();
-      const monthlyData = sortedMonths.map(m => ({ month: m, amount: monthlyMap.get(m) }));
 
-      let chartHtml = '';
-      if (monthlyData.length > 0) {
-        const svgW = 600;
-        const svgH = 160;
-        const padL = 60;
-        const padR = 20;
-        const padT = 15;
-        const padB = 30;
-        const chartW = svgW - padL - padR;
-        const chartH = svgH - padT - padB;
-
-        const maxVal = Math.max(...monthlyData.map(d => d.amount), 1000);
-        let gridHtml = '';
-        for (let i = 0; i <= 3; i++) {
-          const yPos = padT + (chartH * i / 3);
-          const val = maxVal * (3 - i) / 3;
-          gridHtml += `
-            <line x1="${padL}" y1="${yPos}" x2="${svgW - padR}" y2="${yPos}" stroke="#F3F4F6" stroke-width="1" stroke-dasharray="3,3" />
-            <text x="${padL - 8}" y="${yPos + 3}" fill="#9CA3AF" font-size="8" text-anchor="end">${fmt(val)}</text>
-          `;
-        }
-
-        const barSpacing = chartW / Math.max(monthlyData.length, 1);
-        const barW = Math.min(barSpacing * 0.45, 30);
-
-        let barsHtml = '';
-        monthlyData.forEach((d, idx) => {
-          const xCenter = padL + (idx * barSpacing) + (barSpacing / 2);
-          const h = (d.amount / maxVal) * chartH;
-          const y = padT + chartH - h;
-          const x = xCenter - barW / 2;
-
-          const monthParts = d.month.split('-');
-          const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-          const label = `${monthNames[parseInt(monthParts[1], 10) - 1]} ${monthParts[0].substring(2)}`;
-
-          barsHtml += `
-            <g class="group cursor-pointer">
-              <rect x="${x}" y="${y}" width="${barW}" height="${Math.max(h, 3)}" fill="url(#histPaymentGrad)" rx="3" class="transition-all hover:opacity-80" />
-              <text x="${xCenter}" y="${svgH - padB + 14}" fill="#4B5563" font-size="8" font-weight="600" text-anchor="middle">${label}</text>
-              <title>${label}: ${fmt(d.amount)}</title>
-            </g>
-          `;
-        });
-
-        chartHtml = `
-          <div class="bg-white p-4 rounded-2xl border mb-6" style="border-color:#E5E7EB">
-            <h5 class="text-xs font-bold mb-3 text-left" style="color:#0D2137"><i class="fas fa-chart-bar mr-1 text-emerald-600"></i>Tendencia de Recaudo Mensual</h5>
-            <div style="height: 160px; max-width: 600px; margin: 0 auto;">
-              <svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="100%">
-                <defs>
-                  <linearGradient id="histPaymentGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stop-color="#10B981" />
-                    <stop offset="100%" stop-color="#059669" />
-                  </linearGradient>
-                </defs>
-                ${gridHtml}
-                ${barsHtml}
-                <line x1="${padL}" y1="${padT + chartH}" x2="${svgW - padR}" y2="${padT + chartH}" stroke="#D1D5DB" stroke-width="1" />
-              </svg>
+      const uncrossedTableHtml = `
+        <div id="hist-uncrossed-pane" style="display:none">
+          <div class="bg-amber-50/50 p-3 rounded-lg border border-amber-200 mb-3 text-xs text-amber-800 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-triangle-exclamation text-amber-600 text-sm"></i>
+              <span>Abonos recibidos en tesorería sin documento de cruce formal (anticipos o pagos a cuenta general).</span>
             </div>
+            <strong class="font-mono text-sm">${fmt(summary.total_uncrossed || 0)}</strong>
           </div>
-        `;
-      }
-
-      const tableRowsHtml = payments.map(p => `
-        <tr class="hover:bg-slate-50 transition-colors">
-          <td class="whitespace-nowrap text-left">${esc(p.date)}</td>
-          <td class="font-semibold whitespace-nowrap text-left"><span class="px-2 py-0.5 rounded-full text-[9px] bg-slate-100 text-slate-700 mr-1.5 font-bold">${esc(p.tx_type_prefix)}</span>${esc(p.number)}</td>
-          <td class="text-gray-600 text-xs text-left">${esc(p.account_code)} - ${esc(p.account_name)}</td>
-          <td class="text-gray-500 font-mono text-xs whitespace-nowrap text-left">${esc(p.cross_doc_ref || 'Sin cruce')}</td>
-          <td class="text-left"><div class="max-w-[240px] truncate text-xs" title="${esc(p.description)}">${esc(p.description)}</div></td>
-          <td class="text-right font-semibold text-emerald-700">${fmt(p.amount)}</td>
-        </tr>
-      `).join('');
-
-      const tableHtml = `
-        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
-          <div class="overflow-x-auto" style="max-height: 400px">
-            <table class="data-table w-full">
-              <thead class="sticky top-0 bg-slate-50 z-10">
+          <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <table class="data-table w-full text-left">
+              <thead class="bg-slate-100 text-slate-700 text-[11px] font-bold uppercase tracking-wider border-b border-slate-300">
                 <tr>
-                  <th class="text-left">Fecha</th>
-                  <th class="text-left">Comprobante</th>
-                  <th class="text-left">Cuenta de Cartera</th>
-                  <th class="text-left">Doc Referencia</th>
-                  <th class="text-left">Detalle / Concepto</th>
-                  <th class="text-right">Valor Pagado</th>
+                  <th class="py-2.5 px-3 text-left">Fecha</th>
+                  <th class="py-2.5 px-3 text-left">Comprobante</th>
+                  <th class="py-2.5 px-3 text-left">Tipo</th>
+                  <th class="py-2.5 px-3 text-left">Concepto</th>
+                  <th class="py-2.5 px-3 text-right">Valor Recibido</th>
                 </tr>
               </thead>
               <tbody>
-                ${tableRowsHtml}
+                ${uncrossedRowsHtml}
               </tbody>
-              <tfoot>
-                <tr class="bg-slate-50 font-bold">
-                  <td colspan="5" class="text-left">Total recaudado en el periodo</td>
-                  <td class="text-right text-emerald-800">${fmt(totalPaid)}</td>
-                </tr>
-              </tfoot>
             </table>
           </div>
         </div>
@@ -8140,17 +8186,120 @@ async function renderClientPaymentsHistory() {
 
       results.innerHTML = `
         ${kpisHtml}
-        ${chartHtml}
-        ${tableHtml}
+        ${tabsHtml}
+        ${invoicesTableHtml}
+        ${uncrossedTableHtml}
       `;
+
+      // ── NAVEGACIÓN ENTRE FACTURAS Y ANTICIPOS ──────────────────────────────────
+      const btnInvoices = document.getElementById('hist-tab-btn-invoices');
+      const btnUncrossed = document.getElementById('hist-tab-btn-uncrossed');
+      const paneInvoices = document.getElementById('hist-invoices-pane');
+      const paneUncrossed = document.getElementById('hist-uncrossed-pane');
+
+      btnInvoices?.addEventListener('click', () => {
+        btnInvoices.classList.add('border-blue-600', 'text-blue-600');
+        btnInvoices.classList.remove('border-transparent', 'text-gray-500');
+        btnUncrossed?.classList.remove('border-blue-600', 'text-blue-600');
+        btnUncrossed?.classList.add('border-transparent', 'text-gray-500');
+
+        if (paneInvoices) paneInvoices.style.display = 'block';
+        if (paneUncrossed) paneUncrossed.style.display = 'none';
+      });
+
+      btnUncrossed?.addEventListener('click', () => {
+        btnUncrossed.classList.add('border-blue-600', 'text-blue-600');
+        btnUncrossed.classList.remove('border-transparent', 'text-gray-500');
+        btnInvoices?.classList.remove('border-blue-600', 'text-blue-600');
+        btnInvoices?.classList.add('border-transparent', 'text-gray-500');
+
+        if (paneInvoices) paneInvoices.style.display = 'none';
+        if (paneUncrossed) paneUncrossed.style.display = 'block';
+      });
+
+      // ── MODAL AUXILIAR DE RECIBOS APLICADOS (A DEMANDA) ───────────────────────
+      results.querySelectorAll('.btn-view-rc-modal').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.getAttribute('data-idx') || '0', 10);
+          const targetInv = invoices[idx];
+          if (!targetInv) return;
+
+          const modalBackdrop = document.createElement('div');
+          modalBackdrop.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+          modalBackdrop.style.backdropFilter = 'blur(2px)';
+
+          const pRowsHtml = (targetInv.payments || []).map((p: any) => `
+            <tr class="border-b border-slate-100 hover:bg-slate-50 text-xs">
+              <td class="py-2 px-3 text-gray-600 whitespace-nowrap">${esc(p.date)}</td>
+              <td class="py-2 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                <span class="px-1.5 py-0.5 rounded text-[9px] ${p.is_nc ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'} font-bold mr-1">
+                  ${p.is_nc ? 'NC' : 'RC'}
+                </span>
+                ${esc(p.number)}
+              </td>
+              <td class="py-2 px-3 text-gray-500">${esc(p.tx_type || 'Abono')}</td>
+              <td class="py-2 px-3 text-gray-700">${esc(p.description)}</td>
+              <td class="py-2 px-3 text-right font-mono font-bold ${p.is_nc ? 'text-purple-700' : 'text-emerald-700'}">
+                ${fmt(p.amount)}
+              </td>
+            </tr>
+          `).join('');
+
+          modalBackdrop.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-5 overflow-hidden animate-scale-in">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-200 mb-3">
+                <div>
+                  <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
+                    <i class="fas fa-receipt text-blue-600"></i> Recibos de Caja aplicados a ${esc(targetInv.invoice_number)}
+                  </h4>
+                  <p class="text-xs text-gray-500 mt-0.5">Total recaudado: <strong class="text-emerald-700 font-mono">${fmt(targetInv.total_payments)}</strong></p>
+                </div>
+                <button type="button" class="btn-close-modal text-gray-400 hover:text-gray-700 text-lg p-1.5">&times;</button>
+              </div>
+              <div class="overflow-x-auto max-h-72">
+                <table class="data-table w-full text-left">
+                  <thead class="bg-slate-50 text-slate-600 text-[10px] font-bold uppercase tracking-wider">
+                    <tr>
+                      <th class="py-2 px-3">Fecha</th>
+                      <th class="py-2 px-3">Comprobante</th>
+                      <th class="py-2 px-3">Tipo</th>
+                      <th class="py-2 px-3">Concepto</th>
+                      <th class="py-2 px-3 text-right">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${pRowsHtml}
+                  </tbody>
+                </table>
+              </div>
+              <div class="mt-4 pt-3 border-t border-slate-100 text-right">
+                <button type="button" class="btn btn-sm btn-primary px-4 btn-close-modal text-xs">Cerrar</button>
+              </div>
+            </div>
+          `;
+
+          const closeModal = () => modalBackdrop.remove();
+          modalBackdrop.querySelectorAll('.btn-close-modal').forEach(b => b.addEventListener('click', closeModal));
+          modalBackdrop.addEventListener('click', (ev) => {
+            if (ev.target === modalBackdrop) closeModal();
+          });
+          document.body.appendChild(modalBackdrop);
+        });
+      });
 
       ($('#btn-pdf-hist') as HTMLButtonElement).disabled = false;
       ($('#btn-exp-hist') as HTMLButtonElement).disabled = false;
 
     } catch (err) {
-      results.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
-      lastGeneratedPayments = [];
-      selectedThird = null;
+      results.innerHTML = `
+        <div class="p-8 text-center text-red-500">
+          <i class="fas fa-circle-exclamation text-2xl mb-2"></i>
+          <p class="text-xs font-semibold">Error al consultar el historial de cartera:</p>
+          <p class="text-xs text-gray-500 mt-1">${esc(err.message)}</p>
+        </div>
+      `;
+      lastGeneratedData = null;
       ($('#btn-pdf-hist') as HTMLButtonElement).disabled = true;
       ($('#btn-exp-hist') as HTMLButtonElement).disabled = true;
     }
@@ -8158,90 +8307,119 @@ async function renderClientPaymentsHistory() {
 
   $('#btn-gen-hist')?.addEventListener('click', generate);
 
+  // ── EXPORTACIÓN A EXCEL COMPACTA (1 RENGLÓN POR FACTURA) ─────────────────────
   $('#btn-exp-hist')?.addEventListener('click', () => {
-    if (!lastGeneratedPayments.length || !selectedThird) return;
-    const rows = lastGeneratedPayments.map(p => ({
-      fecha: p.date,
-      comprobante: `${p.tx_type_prefix}-${p.number}`,
-      tipo_comprobante: p.tx_type_name,
-      cuenta_codigo: p.account_code,
-      cuenta_nombre: p.account_name,
-      documento_referencia: p.cross_doc_ref,
-      concepto: p.description,
-      valor_pagado: p.amount
+    if (!lastGeneratedData || !lastGeneratedData.invoices) return;
+    const invs = lastGeneratedData.invoices;
+    const third = lastGeneratedData.third || {};
+
+    const rows = invs.map((inv: any) => ({
+      factura: inv.invoice_number,
+      fecha_emision: inv.invoice_date,
+      fecha_vencimiento: inv.due_date || inv.invoice_date,
+      estado_cartera: inv.status_cartera,
+      dias_mora: inv.days_overdue || 0,
+      vr_original_bruto: inv.gross_amount,
+      retenciones_totales: inv.total_retentions,
+      notas_credito: inv.total_notes,
+      abonos_recaudados: inv.total_payments,
+      saldo_pendiente: inv.pending_balance
     }));
+
     exportToExcel(rows, [
-      { key: 'fecha', label: 'Fecha' },
-      { key: 'comprobante', label: 'Comprobante' },
-      { key: 'tipo_comprobante', label: 'Tipo' },
-      { key: 'cuenta_codigo', label: 'Código Cuenta' },
-      { key: 'cuenta_nombre', label: 'Nombre Cuenta' },
-      { key: 'documento_referencia', label: 'Doc Referencia' },
-      { key: 'concepto', label: 'Concepto' },
-      { key: 'valor_pagado', label: 'Valor Pagado' }
-    ], `Historial_Pagos_${selectedThird.doc_number || 'Cliente'}_${dateFrom}_a_${dateTo}`);
+      { key: 'factura', label: 'Factura / Doc' },
+      { key: 'fecha_emision', label: 'Emisión' },
+      { key: 'fecha_vencimiento', label: 'Vencimiento' },
+      { key: 'estado_cartera', label: 'Estado' },
+      { key: 'dias_mora', label: 'Días Mora' },
+      { key: 'vr_original_bruto', label: 'Vr. Original (Bruto)' },
+      { key: 'retenciones_totales', label: 'Retenciones' },
+      { key: 'notas_credito', label: 'Notas Crédito' },
+      { key: 'abonos_recaudados', label: 'Abonos Recaudados' },
+      { key: 'saldo_pendiente', label: 'Saldo Pendiente' }
+    ], `Historial_Cartera_Compacto_${third.doc_number || 'Cliente'}_${dateFrom}_a_${dateTo}`);
   });
 
+  // ── EXPORTACIÓN A PDF COMPACTA Y SIN INCONSISTENCIAS (1 RENGLÓN POR FACTURA) ──
   $('#btn-pdf-hist')?.addEventListener('click', async () => {
-    if (!lastGeneratedPayments.length || !selectedThird) return;
+    if (!lastGeneratedData || !lastGeneratedData.invoices) return;
     try {
       const jsPdfCtor = getPdfCtorOrWarn();
       if (!jsPdfCtor) return;
 
+      const third = lastGeneratedData.third || {};
+      const summary = lastGeneratedData.summary || {};
       const headerCtx = await getPdfHeaderContext();
-      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const doc = new jsPdfCtor({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+
       const header = drawPdfHeader(doc, headerCtx, {
-        title: 'HISTORIAL DE PAGOS DE CARTERA',
+        title: 'ESTADO DE CUENTA E HISTORIAL DE PAGOS DE CARTERA',
         subtitles: [
-          `Cliente: ${selectedThird.doc_number || ''} - ${selectedThird.name}`,
-          `Periodo: ${dateFrom} a ${dateTo}`
+          `Cliente: ${third.doc_number || ''} - ${third.name || ''}`,
+          `Periodo Auditado: ${dateFrom} a ${dateTo}`
         ],
       });
 
-      const totalPaid = lastGeneratedPayments.reduce((s, p) => s + p.amount, 0);
-      const body = lastGeneratedPayments.map(p => [
-        p.date,
-        `${p.tx_type_prefix}-${p.number}`,
-        p.cross_doc_ref || 'Sin cruce',
-        `${p.account_code} - ${p.account_name}`,
-        p.description,
-        fmtPdfNum(p.amount)
+      // Exactamente 1 renglón por factura
+      const body = lastGeneratedData.invoices.map((inv: any) => [
+        inv.invoice_number,
+        inv.invoice_date,
+        inv.due_date || inv.invoice_date,
+        inv.status_cartera === 'MORA' ? `Mora (${inv.days_overdue}d)` : inv.status_cartera,
+        fmtPdfNum(inv.gross_amount),
+        fmtPdfNum(inv.total_retentions),
+        fmtPdfNum(inv.total_notes),
+        fmtPdfNum(inv.total_payments),
+        fmtPdfNum(inv.pending_balance)
       ]);
 
-      body.push(['TOTAL RECAUDADO', '', '', '', '', fmtPdfNum(totalPaid)]);
+      body.push([
+        'TOTALES GENERALES',
+        '',
+        '',
+        '',
+        fmtPdfNum(summary.total_gross || 0),
+        fmtPdfNum(summary.total_retentions || 0),
+        fmtPdfNum(summary.total_notes || 0),
+        fmtPdfNum(summary.total_payments || 0),
+        fmtPdfNum(summary.total_pending || 0)
+      ]);
 
       doc.autoTable({
         startY: header.startY,
-        head: [['Fecha', 'Comprobante', 'Doc Ref', 'Cuenta', 'Detalle/Concepto', 'Valor Pagado']],
+        head: [['Factura / Doc', 'Emisión', 'Vencimiento', 'Estado', 'Vr. Original', 'Retenciones', 'Notas Crédito', 'Recaudado', 'Saldo Pendiente']],
         body,
         theme: 'plain',
-        margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
-        styles: { font: 'helvetica', fontSize: 7, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0, overflow: 'linebreak' },
-        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.2, lineWidth: { bottom: 0.25 } },
+        margin: { top: header.startY, left: 24, right: 24, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 7.5, textColor: [45, 45, 45], cellPadding: 3, lineWidth: 0 },
+        headStyles: { fillColor: [232, 238, 248], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.8, lineWidth: { bottom: 0.5 } },
         columnStyles: {
-          0: { cellWidth: 50 },
-          1: { cellWidth: 70 },
-          2: { cellWidth: 60 },
-          3: { cellWidth: 120 },
-          4: { cellWidth: 160 },
+          0: { cellWidth: 85 },
+          1: { cellWidth: 65 },
+          2: { cellWidth: 65 },
+          3: { cellWidth: 70 },
+          4: { cellWidth: 90, halign: 'right' },
           5: { cellWidth: 80, halign: 'right' },
+          6: { cellWidth: 75, halign: 'right' },
+          7: { cellWidth: 95, halign: 'right' },
+          8: { cellWidth: 95, halign: 'right' },
         },
         didParseCell: (data: any) => {
           if (data.section !== 'body') return;
           const isTotal = data.row.index === body.length - 1;
           if (isTotal) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.fillColor = [235, 240, 248];
             data.cell.styles.textColor = [13, 33, 55];
-            data.cell.styles.lineWidth = { top: 0.2 };
+            data.cell.styles.lineWidth = { top: 0.5 };
             data.cell.styles.lineColor = [13, 33, 55];
           }
         },
         didDrawPage: (data: any) => drawPdfFooter(doc, data.pageNumber),
       });
 
-      doc.save(`historial_pagos_${selectedThird.doc_number || 'Cliente'}_${dateFrom}_a_${dateTo}.pdf`);
-      showToast('Historial de pagos PDF descargado.', 'success');
+      doc.save(`estado_cuenta_${third.doc_number || 'Cliente'}_${dateFrom}_a_${dateTo}.pdf`);
+      showToast('Historial y Estado de Cartera PDF descargado.', 'success');
     } catch (err) {
       showToast(`Error al generar PDF: ${err.message}`, 'error');
     }

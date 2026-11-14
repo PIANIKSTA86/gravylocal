@@ -352,7 +352,7 @@ const pb = {
   },
 
   /** Registro de evento de auditoría */
-  async logAudit(action, entity, entityId = null, details = '') {
+  async logAudit(action, entity, entityId = null, details = '', extra: any = {}) {
     try {
       if (!this.authToken) return;
       await fetch(`${this.baseUrl}/api/audit-event`, {
@@ -363,6 +363,11 @@ const pb = {
           entity: String(entity || ''),
           entity_id: entityId ? String(entityId) : '',
           details: String(details || ''),
+          doc_number: extra.doc_number ? String(extra.doc_number) : '',
+          doc_label: extra.doc_label ? String(extra.doc_label) : '',
+          amounts: extra.amounts || null,
+          diff: extra.diff || null,
+          snapshot: extra.snapshot || null,
         }),
       });
     } catch (_) {
@@ -462,7 +467,7 @@ const API = {
   },
 
   // -- auditoria ---------------------------------------------
-  async logAudit(action, entity, entityId = null, details = '') {
+  async logAudit(action, entity, entityId = null, details = '', extra: any = {}) {
     try {
       if (!pb.authToken) return;
       await fetch(`${pb.baseUrl}/api/audit-event`, {
@@ -473,10 +478,15 @@ const API = {
           entity: String(entity || ''),
           entity_id: entityId ? String(entityId) : '',
           details: String(details || ''),
+          doc_number: extra.doc_number ? String(extra.doc_number) : '',
+          doc_label: extra.doc_label ? String(extra.doc_label) : '',
+          amounts: extra.amounts || null,
+          diff: extra.diff || null,
+          snapshot: extra.snapshot || null,
         }),
       });
     } catch (_) {
-      // Nunca romper flujos de negocio por falla de auditorÃ­a.
+      // Nunca romper flujos de negocio por falla de auditoría.
     }
   },
 

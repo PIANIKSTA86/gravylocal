@@ -93,6 +93,20 @@ onBootstrap((e) => {
     }
   }
 
+  // Asegurar que bank_reconciliations cuente con el campo reopen_reason
+  try {
+    const rc = $app.findCollectionByNameOrId('bank_reconciliations');
+    if (!rc.fields.getByName('reopen_reason')) {
+      rc.fields.add(new Field({
+        name: 'reopen_reason',
+        type: 'text',
+        required: false
+      }));
+      $app.save(rc);
+      console.log('[GRAVY] Campo reopen_reason añadido a bank_reconciliations.');
+    }
+  } catch (_) {}
+
   // 2. Enriquecer bank_accounts con third_party_id y default_tx_type_id
   try {
     const bankAccounts = $app.findCollectionByNameOrId('bank_accounts');
@@ -128,12 +142,14 @@ onBootstrap((e) => {
     console.error('[GRAVY] Error actualizando campos de bank_accounts:', errBa);
   }
 
-  // 3. Enriquecer bank_movements con reconciliation_id
+  // 3. Enriquecer bank_movements con reconciliation_id y matched_tx_line_ids (para relaciones N:1 / M:N)
   try {
     const bankMovements = $app.findCollectionByNameOrId('bank_movements');
     const reconColId = reconCol ? reconCol.id : (function() {
       try { return $app.findCollectionByNameOrId('bank_reconciliations').id; } catch(_) { return null; }
     })();
+
+    let needsSaveBm = false;
 
     if (!bankMovements.fields.getByName('reconciliation_id') && reconColId) {
       bankMovements.fields.add(new Field({
@@ -143,10 +159,24 @@ onBootstrap((e) => {
         collectionId: reconColId,
         cascadeDelete: false
       }));
-      $app.save(bankMovements);
+      needsSaveBm = true;
       console.log('[GRAVY] Campo reconciliation_id añadido a bank_movements.');
     }
+
+    if (!bankMovements.fields.getByName('matched_tx_line_ids')) {
+      bankMovements.fields.add(new Field({
+        name: 'matched_tx_line_ids',
+        type: 'json',
+        required: false
+      }));
+      needsSaveBm = true;
+      console.log('[GRAVY] Campo matched_tx_line_ids (JSON) añadido a bank_movements.');
+    }
+
+    if (needsSaveBm) {
+      $app.save(bankMovements);
+    }
   } catch (errBmMov) {
-    console.error('[GRAVY] Error actualizando campo reconciliation_id en bank_movements:', errBmMov);
+    console.error('[GRAVY] Error actualizando campos en bank_movements:', errBmMov);
   }
 });

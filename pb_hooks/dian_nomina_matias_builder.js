@@ -393,16 +393,42 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
           if (!parsed.deductions.health && parsed.deductions.eps_type) {
             parsed.deductions.health = parsed.deductions.eps_type;
           }
+          if (parsed.deductions.health) {
+            const hDed = parseFloat(parsed.deductions.health.deduction || "0");
+            if (hDed === 0) parsed.deductions.health.percentage = "0.00";
+          }
           if (!parsed.deductions.pension_fund && parsed.deductions.pension_type) {
             parsed.deductions.pension_fund = parsed.deductions.pension_type;
           }
-          if (!parsed.deductions.fundSP && parsed.deductions.deduction_sp) {
-            parsed.deductions.fundSP = {
-              percentage: parsed.deductions.deduction_sp.percentage || "1.00",
-              deduction: parsed.deductions.deduction_sp.deduction_sp || parsed.deductions.deduction_sp.deduction || "0.00",
-              percentageSub: "0.00",
-              deductionSub: "0.00"
-            };
+          if (parsed.deductions.pension_fund) {
+            const pDed = parseFloat(parsed.deductions.pension_fund.deduction || "0");
+            if (pDed === 0) {
+              parsed.deductions.pension_fund.percentage = "0.00";
+              parsed.deductions.pension_fund.deduction = "0.00";
+            }
+          }
+          if (!parsed.deductions.fundSP) {
+            if (parsed.deductions.deduction_sp) {
+              parsed.deductions.fundSP = {
+                percentage: String(parsed.deductions.deduction_sp.percentage || "1.00"),
+                deduction: parseFloat(parsed.deductions.deduction_sp.deduction_sp || parsed.deductions.deduction_sp.deduction || "0").toFixed(2),
+                percentageSub: "0.00",
+                deductionSub: "0.00"
+              };
+            } else {
+              parsed.deductions.fundSP = {
+                percentage: "0.00",
+                deduction: "0.00",
+                percentageSub: "0.00",
+                deductionSub: "0.00"
+              };
+            }
+          } else {
+            // Asegurar que fundSP tenga todos los campos requeridos por la vista de Matías API
+            if (!parsed.deductions.fundSP.percentage) parsed.deductions.fundSP.percentage = "0.00";
+            if (!parsed.deductions.fundSP.deduction) parsed.deductions.fundSP.deduction = "0.00";
+            if (!parsed.deductions.fundSP.percentageSub) parsed.deductions.fundSP.percentageSub = "0.00";
+            if (!parsed.deductions.fundSP.deductionSub) parsed.deductions.fundSP.deductionSub = "0.00";
           }
           if (!parsed.deductions.retefuente && parsed.deductions.withholding_at_source) {
             parsed.deductions.retefuente = parsed.deductions.withholding_at_source;
@@ -701,17 +727,21 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
     earn.vacations = {};
     if (vacComunesMatch) {
       const b = vacComunesMatch[0];
+      const rawCant = extractAttrFromBlock(b, 'Cantidad') || '1';
+      const cantInt = Math.max(1, Math.round(parseFloat(rawCant) || 1));
       earn.vacations.common = {
         start_date: extractAttrFromBlock(b, 'FechaInicio') || settlementStart,
         final_date: extractAttrFromBlock(b, 'FechaFin') || settlementEnd,
-        amount: String(extractAttrFromBlock(b, 'Cantidad') || '1'),
+        amount: String(cantInt),
         payment: parseFloat(extractAttrFromBlock(b, 'Pago') || '0').toFixed(2)
       };
     }
     if (vacCompMatch) {
       const b = vacCompMatch[0];
+      const rawCant = extractAttrFromBlock(b, 'Cantidad') || '1';
+      const cantInt = Math.max(1, Math.round(parseFloat(rawCant) || 1));
       earn.vacations.paid = {
-        amount: String(extractAttrFromBlock(b, 'Cantidad') || '1'),
+        amount: String(cantInt),
         payment: parseFloat(extractAttrFromBlock(b, 'Pago') || '0').toFixed(2)
       };
     }
@@ -721,8 +751,10 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
   const primasMatch = xml.match(/<Primas\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/Primas>)/i);
   if (primasMatch) {
     const b = primasMatch[0];
+    const rawCant = extractAttrFromBlock(b, 'Cantidad') || '180';
+    const cantInt = Math.max(1, Math.round(parseFloat(rawCant) || 180));
     earn.bonus = {
-      amount: String(extractAttrFromBlock(b, 'Cantidad') || '180'),
+      amount: String(cantInt),
       payment: parseFloat(extractAttrFromBlock(b, 'Pago') || '0').toFixed(2),
       non_salary_payment: parseFloat(extractAttrFromBlock(b, 'PagoNS') || '0').toFixed(2)
     };
@@ -745,10 +777,12 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
     earn.incapacity = [];
     for (let i = 0; i < incaps.length; i++) {
       const b = incaps[i].full;
+      const rawCant = extractAttrFromBlock(b, 'Cantidad') || '1';
+      const cantInt = Math.max(1, Math.round(parseFloat(rawCant) || 1));
       earn.incapacity.push({
         start_date: extractAttrFromBlock(b, 'FechaInicio') || settlementStart,
         final_date: extractAttrFromBlock(b, 'FechaFin') || settlementEnd,
-        amount: String(extractAttrFromBlock(b, 'Cantidad') || '1'),
+        amount: String(cantInt),
         type_id: parseInt(extractAttrFromBlock(b, 'Tipo') || '1', 10),
         payment: parseFloat(extractAttrFromBlock(b, 'Pago') || '0').toFixed(2)
       });
@@ -763,28 +797,34 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
     earn.licenses = {};
     if (licMPMatch) {
       const b = licMPMatch[0];
+      const rawCant = extractAttrFromBlock(b, 'Cantidad') || '1';
+      const cantInt = Math.max(1, Math.round(parseFloat(rawCant) || 1));
       earn.licenses.licenseMP = {
         start_date: extractAttrFromBlock(b, 'FechaInicio') || settlementStart,
         final_date: extractAttrFromBlock(b, 'FechaFin') || settlementEnd,
-        amount: String(extractAttrFromBlock(b, 'Cantidad') || '1'),
+        amount: String(cantInt),
         payment: parseFloat(extractAttrFromBlock(b, 'Pago') || '0').toFixed(2)
       };
     }
     if (licRMatch) {
       const b = licRMatch[0];
+      const rawCant = extractAttrFromBlock(b, 'Cantidad') || '1';
+      const cantInt = Math.max(1, Math.round(parseFloat(rawCant) || 1));
       earn.licenses.licenseR = {
         start_date: extractAttrFromBlock(b, 'FechaInicio') || settlementStart,
         final_date: extractAttrFromBlock(b, 'FechaFin') || settlementEnd,
-        amount: String(extractAttrFromBlock(b, 'Cantidad') || '1'),
+        amount: String(cantInt),
         payment: parseFloat(extractAttrFromBlock(b, 'Pago') || '0').toFixed(2)
       };
     }
     if (licNRMatch) {
       const b = licNRMatch[0];
+      const rawCant = extractAttrFromBlock(b, 'Cantidad') || '1';
+      const cantInt = Math.max(1, Math.round(parseFloat(rawCant) || 1));
       earn.licenses.licenseNR = {
         start_date: extractAttrFromBlock(b, 'FechaInicio') || settlementStart,
         final_date: extractAttrFromBlock(b, 'FechaFin') || settlementEnd,
-        amount: String(extractAttrFromBlock(b, 'Cantidad') || '1')
+        amount: String(cantInt)
       };
     }
   }
@@ -909,8 +949,8 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
   const dedPensionPct = getAttrFromXml(dedXml, "FondoPension", "Porcentaje") || "4.00";
 
   const deductions = {
-    health: { percentage: dedSaludPct, deduction: dedSaludVal.toFixed(2) },
-    pension_fund: { percentage: dedPensionPct, deduction: dedPensionVal.toFixed(2) }
+    health: { percentage: dedSaludVal > 0 ? dedSaludPct : "0.00", deduction: dedSaludVal.toFixed(2) },
+    pension_fund: { percentage: dedPensionVal > 0 ? dedPensionPct : "0.00", deduction: dedPensionVal.toFixed(2) }
   };
 
   // Fondo de Solidaridad Pensional (fundSP)
@@ -919,14 +959,19 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
     const b = fspMatch[0];
     const spVal = parseFloat(extractAttrFromBlock(b, 'DeduccionSP') || '0');
     const subVal = parseFloat(extractAttrFromBlock(b, 'DeduccionSub') || '0');
-    if (spVal > 0 || subVal > 0) {
-      deductions.fundSP = {
-        percentage: extractAttrFromBlock(b, 'Porcentaje') || '1.00',
-        deduction: spVal.toFixed(2),
-        percentageSub: extractAttrFromBlock(b, 'PorcentajeSub') || '0.00',
-        deductionSub: subVal.toFixed(2)
-      };
-    }
+    deductions.fundSP = {
+      percentage: extractAttrFromBlock(b, 'Porcentaje') || (spVal > 0 ? '1.00' : '0.00'),
+      deduction: spVal.toFixed(2),
+      percentageSub: extractAttrFromBlock(b, 'PorcentajeSub') || (subVal > 0 ? '1.00' : '0.00'),
+      deductionSub: subVal.toFixed(2)
+    };
+  } else {
+    deductions.fundSP = {
+      percentage: "0.00",
+      deduction: "0.00",
+      percentageSub: "0.00",
+      deductionSub: "0.00"
+    };
   }
 
   // Sindicatos

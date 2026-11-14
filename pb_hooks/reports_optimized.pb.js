@@ -2269,3 +2269,406 @@ routerAdd("GET", "/api/gravy/report-cost-centers", (c) => {
     return c.json(500, { error: "Error en reporte de centros de costo: " + err.message });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENDPOINT OPTIMIZADO: Historial Integral de Pagos y Cartera por Cliente
+// Resuelve en SQLite la auditoría Maestro-Detalle por Factura:
+// Bruto original, retenciones en venta, retenciones en recaudo, pagos aplicados,
+// notas crédito, saldo pendiente y anticipos/abonos no cruzados.
+// ─────────────────────────────────────────────────────────────────────────────
+routerAdd("GET", "/api/gravy/report-client-cartera-history", (c) => {
+  let authRecord = null;
+  try {
+    if (c && c.auth) authRecord = c.auth;
+    else if (c && typeof c.requestInfo === "function") {
+      const ri = c.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    }
+  } catch (_) {}
+  if (!authRecord) {
+    return c.json(401, { error: "No autorizado" });
+  }
+
+  let queryParams = {};
+  try {
+    if (c && typeof c.requestInfo === "function") {
+      queryParams = c.requestInfo().query || {};
+    }
+  } catch (_) {}
+  if (!queryParams) queryParams = {};
+
+  let thirdId = String(queryParams.thirdId || (c.queryParam ? c.queryParam("thirdId") : '') || '').trim();
+  if (!thirdId) {
+    return c.json(400, { error: "El parámetro thirdId es requerido." });
+  }
+
+  let fromDate = String(queryParams.fromDate || (c.queryParam ? c.queryParam("fromDate") : '') || '').trim();
+  let toDate = String(queryParams.toDate || (c.queryParam ? c.queryParam("toDate") : '') || '').trim();
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || '').trim();
+  let statusFilter = String(queryParams.statusFilter || queryParams.status || 'ALL').trim().toUpperCase();
+
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
+
+  try {
+    // 1. Obtener datos del tercero
+    const thirdModel = new DynamicModel({
+      id: "",
+      name: "",
+      doc_number: "",
+      doc_type: "",
+      phone: "",
+      email: "",
+      address: "",
+      city: "",
+      type: ""
+    });
+    try {
+      $app.db().newQuery("SELECT id, name, doc_number, doc_type, phone, email, address, city, type FROM third_parties WHERE id = {:id} LIMIT 1")
+        .bind({ id: thirdId })
+        .one(thirdModel);
+    } catch (_) {}
+
+    // 2. Facturas registradas en la tabla 'invoices' para este cliente
+    let sqlInvoices = `
+      SELECT 
+        inv.id,
+        inv.number,
+        inv.date,
+        COALESCE(NULLIF(TRIM(inv.due_date), ''), inv.date) as due_date,
+        inv.total,
+        inv.subtotal,
+        inv.iva_total,
+        inv.ret_total,
+        inv.payable_total,
+        inv.status,
+        COALESCE(inv.notes, '') as notes,
+        COALESCE(inv.payment_method, '') as payment_method
+      FROM invoices inv
+      WHERE inv.customer_id = {:thirdId}
+        AND inv.status != 'cancelled'
+        AND inv.number NOT LIKE 'NC-%'
+    `;
+    const invBinds = { thirdId: thirdId };
+    if (branchId) {
+      sqlInvoices += " AND inv.branch_id = {:branchId} ";
+      invBinds.branchId = branchId;
+    }
+    sqlInvoices += " ORDER BY inv.date ASC, inv.number ASC ";
+
+    const invQuery = $app.db().newQuery(sqlInvoices);
+    invQuery.bind(invBinds);
+    const invoicesData = arrayOf(new DynamicModel({
+      id: "",
+      number: "",
+      date: "",
+      due_date: "",
+      total: -0,
+      subtotal: -0,
+      iva_total: -0,
+      ret_total: -0,
+      payable_total: -0,
+      status: "",
+      notes: "",
+      payment_method: ""
+    }));
+    invQuery.all(invoicesData);
+
+    // Mapeo indexado de facturas
+    const invMap = {};
+    for (let i = 0; i < invoicesData.length; i++) {
+      const row = invoicesData[i];
+      invMap[row.number] = row;
+      const matches = row.number.match(/\\d+$/);
+      if (matches && matches[0]) {
+        invMap[matches[0]] = row;
+        const trimmedNum = String(parseInt(matches[0], 10));
+        invMap[trimmedNum] = row;
+      }
+    }
+
+    // 3. Obtener todas las líneas de cartera (cuentas 13) para este tercero
+    let sqlLines = `
+      SELECT
+        l.id as line_id,
+        l.debit,
+        l.credit,
+        COALESCE(TRIM(l.cross_doc_ref), '') as cross_doc_ref,
+        COALESCE(NULLIF(TRIM(l.description), ''), NULLIF(TRIM(t.description), ''), '') as line_desc,
+        t.id as tx_id,
+        t.date as tx_date,
+        t.number as tx_number,
+        t.description as tx_desc,
+        COALESCE(t.teso_params, '') as teso_params,
+        COALESCE(tt.name, 'Movimiento') as tx_type_name,
+        COALESCE(tt.code, '') as tx_type_code,
+        a.code as account_code,
+        a.name as account_name
+      FROM tx_lines l
+      INNER JOIN transactions t ON t.id = l.tx_id
+      INNER JOIN accounts a ON a.id = l.account_id
+      LEFT JOIN transaction_types tt ON tt.id = t.tx_type_id
+      WHERE t.status = 'active'
+        AND (l.third_party_id = {:thirdId} OR (COALESCE(l.third_party_id, '') = '' AND t.third_party_id = {:thirdId}))
+        AND (a.code LIKE '1305%' OR (a.code LIKE '13%' AND (a.maneja_cruce = 1 OR a.maneja_cruce = 'true')))
+    `;
+    const lineBinds = { thirdId: thirdId };
+    if (branchId) {
+      sqlLines += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId} ";
+      lineBinds.branchId = branchId;
+    }
+    if (costCenterId) {
+      sqlLines += " AND l.cost_center_id = {:costCenterId} ";
+      lineBinds.costCenterId = costCenterId;
+    }
+    sqlLines += " ORDER BY t.date ASC, t.number ASC, COALESCE(l.line_order, 0) ASC ";
+
+    const lineQuery = $app.db().newQuery(sqlLines);
+    lineQuery.bind(lineBinds);
+    const linesData = arrayOf(new DynamicModel({
+      line_id: "",
+      debit: -0,
+      credit: -0,
+      cross_doc_ref: "",
+      line_desc: "",
+      tx_id: "",
+      tx_date: "",
+      tx_number: "",
+      tx_desc: "",
+      teso_params: "",
+      tx_type_name: "",
+      tx_type_code: "",
+      account_code: "",
+      account_name: ""
+    }));
+    lineQuery.all(linesData);
+
+    // 4. Agrupación Maestro-Detalle por Factura
+    const docGroups = {};
+    const uncrossedPayments = [];
+
+    // Sembrar primero todas las facturas
+    for (let i = 0; i < invoicesData.length; i++) {
+      const inv = invoicesData[i];
+      docGroups[inv.number] = {
+        invoice_id: inv.id,
+        invoice_number: inv.number,
+        invoice_date: inv.date,
+        due_date: inv.due_date,
+        gross_amount: Number(inv.total || 0),
+        subtotal: Number(inv.subtotal || 0),
+        iva_total: Number(inv.iva_total || 0),
+        ret_invoice: Number(inv.ret_total || 0),
+        ret_payments: 0,
+        total_payments: 0,
+        total_notes: 0,
+        initial_debits: Number(inv.payable_total || inv.total || 0),
+        payments: []
+      };
+    }
+
+    // Procesar cada línea de cartera
+    for (let i = 0; i < linesData.length; i++) {
+      const line = linesData[i];
+      const ref = String(line.cross_doc_ref || '').trim();
+
+      if (!ref || ref === 'SIN_DOC' || ref.startsWith('ANTICIPO-') || ref.startsWith('ANT-')) {
+        if (Number(line.credit || 0) > 0.0001) {
+          uncrossedPayments.push({
+            tx_id: line.tx_id,
+            date: line.tx_date,
+            number: line.tx_number,
+            tx_type: line.tx_type_name,
+            description: line.line_desc || line.tx_desc || 'Abono sin cruce / anticipo',
+            amount: Number(line.credit || 0)
+          });
+        }
+        continue;
+      }
+
+      let matchedInv = invMap[ref];
+      let canonicalRef = matchedInv ? matchedInv.number : ref;
+
+      if (!docGroups[canonicalRef]) {
+        docGroups[canonicalRef] = {
+          invoice_id: matchedInv ? matchedInv.id : "",
+          invoice_number: canonicalRef,
+          invoice_date: matchedInv ? matchedInv.date : line.tx_date,
+          due_date: matchedInv ? matchedInv.due_date : line.tx_date,
+          gross_amount: matchedInv ? Number(matchedInv.total || 0) : 0,
+          subtotal: 0,
+          iva_total: 0,
+          ret_invoice: matchedInv ? Number(matchedInv.ret_total || 0) : 0,
+          ret_payments: 0,
+          total_payments: 0,
+          total_notes: 0,
+          initial_debits: 0,
+          payments: []
+        };
+      }
+
+      const grp = docGroups[canonicalRef];
+
+      if (Number(line.debit || 0) > 0.0001) {
+        grp.initial_debits += Number(line.debit || 0);
+        if (grp.gross_amount === 0) {
+          grp.gross_amount = Number(line.debit || 0);
+        }
+      }
+
+      if (Number(line.credit || 0) > 0.0001) {
+        const isNC = (
+          line.tx_type_code === 'NC' || 
+          line.tx_number.startsWith('NC-') || 
+          (line.tx_type_name || '').toLowerCase().indexOf('crédito') !== -1 ||
+          (line.line_desc || '').toLowerCase().indexOf('nota crédito') !== -1
+        );
+
+        if (isNC) {
+          grp.total_notes += Number(line.credit || 0);
+        } else {
+          grp.total_payments += Number(line.credit || 0);
+        }
+
+        grp.payments.push({
+          tx_id: line.tx_id,
+          date: line.tx_date,
+          number: line.tx_number,
+          tx_type: line.tx_type_name || (isNC ? 'Nota Crédito' : 'Recibo de Caja'),
+          is_nc: isNC,
+          description: line.line_desc || line.tx_desc,
+          amount: Number(line.credit || 0)
+        });
+      }
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const finalInvoices = [];
+
+    let sumGross = 0;
+    let sumRetentions = 0;
+    let sumPayments = 0;
+    let sumNotes = 0;
+    let sumBalance = 0;
+
+    const groupKeys = Object.keys(docGroups);
+    for (let k = 0; k < groupKeys.length; k++) {
+      const g = docGroups[groupKeys[k]];
+
+      if (g.gross_amount === 0 && g.initial_debits === 0 && g.total_payments === 0 && g.total_notes === 0) {
+        continue;
+      }
+
+      const totalRet = g.ret_invoice + g.ret_payments;
+      const baseOriginal = g.gross_amount > 0 ? g.gross_amount : g.initial_debits;
+      
+      let rawBalance = baseOriginal - totalRet - g.total_notes - g.total_payments;
+      if (Math.abs(rawBalance) < 0.5) rawBalance = 0;
+      if (rawBalance < 0) rawBalance = 0;
+
+      g.total_retentions = totalRet;
+      g.pending_balance = rawBalance;
+
+      let daysOverdue = 0;
+      if (rawBalance > 0.5 && g.due_date && g.due_date < today) {
+        const d1 = new Date(g.due_date + "T00:00:00");
+        const d2 = new Date(today + "T00:00:00");
+        daysOverdue = Math.max(0, Math.floor((d2.getTime() - d1.getTime()) / 86400000));
+      }
+      g.days_overdue = daysOverdue;
+
+      if (rawBalance <= 0.5) {
+        g.status_cartera = 'PAGADA';
+      } else if (daysOverdue > 0) {
+        g.status_cartera = 'MORA';
+      } else if (g.total_payments > 0 || g.total_notes > 0) {
+        g.status_cartera = 'PARCIAL';
+      } else {
+        g.status_cartera = 'PENDIENTE';
+      }
+
+      let inDateRange = true;
+      if (fromDate || toDate) {
+        const invDateOk = (!fromDate || g.invoice_date >= fromDate) && (!toDate || g.invoice_date <= toDate);
+        let hasPaymentInRange = false;
+        for (let pIdx = 0; pIdx < g.payments.length; pIdx++) {
+          const p = g.payments[pIdx];
+          if ((!fromDate || p.date >= fromDate) && (!toDate || p.date <= toDate)) {
+            hasPaymentInRange = true;
+            break;
+          }
+        }
+        inDateRange = invDateOk || hasPaymentInRange;
+      }
+
+      if (!inDateRange) continue;
+
+      if (statusFilter === 'PENDING' && g.status_cartera === 'PAGADA') continue;
+      if (statusFilter === 'PAID' && g.status_cartera !== 'PAGADA') continue;
+
+      sumGross += baseOriginal;
+      sumRetentions += totalRet;
+      sumPayments += g.total_payments;
+      sumNotes += g.total_notes;
+      sumBalance += rawBalance;
+
+      finalInvoices.push(g);
+    }
+
+    finalInvoices.sort((a, b) => {
+      const dateA = a.invoice_date || '';
+      const dateB = b.invoice_date || '';
+      if (dateB !== dateA) return dateB.localeCompare(dateA);
+      return (b.invoice_number || '').localeCompare(a.invoice_number || '');
+    });
+
+    const filteredUncrossed = [];
+    for (let u = 0; u < uncrossedPayments.length; u++) {
+      const up = uncrossedPayments[u];
+      if (fromDate && up.date < fromDate) continue;
+      if (toDate && up.date > toDate) continue;
+      filteredUncrossed.push(up);
+    }
+
+    let sumUncrossed = 0;
+    for (let u = 0; u < filteredUncrossed.length; u++) {
+      sumUncrossed += filteredUncrossed[u].amount;
+    }
+
+    let countPaid = 0;
+    let countPending = 0;
+    for (let f = 0; f < finalInvoices.length; f++) {
+      if (finalInvoices[f].status_cartera === 'PAGADA') countPaid++;
+      else countPending++;
+    }
+
+    return c.json(200, {
+      third: {
+        id: thirdModel.id || thirdId,
+        name: thirdModel.name || "Cliente",
+        doc_number: thirdModel.doc_number || "",
+        doc_type: thirdModel.doc_type || "",
+        phone: thirdModel.phone || "",
+        email: thirdModel.email || "",
+        address: thirdModel.address || ""
+      },
+      invoices: finalInvoices,
+      uncrossed_payments: filteredUncrossed,
+      summary: {
+        total_gross: sumGross,
+        total_retentions: sumRetentions,
+        total_payments: sumPayments,
+        total_notes: sumNotes,
+        total_pending: sumBalance,
+        total_uncrossed: sumUncrossed,
+        total_collected: sumPayments + sumUncrossed,
+        count_invoices: finalInvoices.length,
+        count_paid: countPaid,
+        count_pending: countPending
+      }
+    });
+  } catch (err) {
+    return c.json(500, { error: "Error en historial de cartera: " + err.message });
+  }
+});

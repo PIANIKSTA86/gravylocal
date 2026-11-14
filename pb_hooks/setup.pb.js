@@ -1758,6 +1758,11 @@ routerAdd("POST", "/api/audit-event", (e) => {
   const entity    = String(body.entity    || "").slice(0, 100).trim();
   const entityId  = String(body.entity_id || "").slice(0, 100).trim();
   const details   = String(body.details   || "").slice(0, 500).trim();
+  const docNumber = String(body.doc_number || "").slice(0, 100).trim();
+  const docLabel  = String(body.doc_label  || "").slice(0, 100).trim();
+  const amounts   = body.amounts || null;
+  const diff      = body.diff || null;
+  const snapshot  = body.snapshot || null;
 
   if (!action || !entity) {
     e.json(400, { message: "Los campos action y entity son obligatorios" });
@@ -1783,6 +1788,11 @@ routerAdd("POST", "/api/audit-event", (e) => {
       username,
     };
     if (userId) payload.user_id = userId;
+    if (docNumber) payload.doc_number = docNumber;
+    if (docLabel) payload.doc_label = docLabel;
+    if (amounts) payload.amounts = amounts;
+    if (diff) payload.diff = diff;
+    if (snapshot) payload.snapshot = snapshot;
 
     const log = new Record(auditCol, payload);
     $app.save(log);

@@ -420,9 +420,12 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
           dueDate = "";
         }
 
-        // Validación de tercero obligatorio
+        // Validación de tercero obligatorio y fallback a tercero del encabezado
         const reqThird = Boolean(accRec.getBool("requires_third_party") || accRec.get("requires_third_party") === true || accRec.get("requires_third_party") === 1);
-        const lineThird = String(line.third_party_id || "").trim();
+        let lineThird = String(line.third_party_id || "").trim();
+        if (!lineThird) {
+          lineThird = String(txRec.getString("third_party_id") || (txData && txData.third_party_id) || "").trim();
+        }
         if (reqThird && !lineThird) {
           throw new Error(`Línea ${i + 1}: La cuenta "${accRec.getString("code")} - ${accRec.getString("name")}" requiere tercero obligatorio.`);
         }
@@ -446,8 +449,8 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
         if (lineBranchId) {
           lineRec.set("branch_id", lineBranchId);
         }
-        if (line.third_party_id && String(line.third_party_id).trim()) {
-          lineRec.set("third_party_id", String(line.third_party_id).trim());
+        if (lineThird) {
+          lineRec.set("third_party_id", lineThird);
         }
         if (line.cost_center_id && String(line.cost_center_id).trim()) {
           lineRec.set("cost_center_id", String(line.cost_center_id).trim());
@@ -929,7 +932,10 @@ routerAdd("POST", "/api/gravy/bulk-tx-batch", (e) => {
       }
 
       const reqThird = Boolean(accRec.getBool("requires_third_party") || accRec.get("requires_third_party") === true || accRec.get("requires_third_party") === 1);
-      const lineThird = String(line.third_party_id || "").trim();
+      let lineThird = String(line.third_party_id || "").trim();
+      if (!lineThird) {
+        lineThird = String(txRec.getString("third_party_id") || (txData && txData.third_party_id) || "").trim();
+      }
       if (reqThird && !lineThird) {
         throw new Error(`Línea ${i + 1}: La cuenta "${accRec.getString("code")} - ${accRec.getString("name")}" requiere tercero obligatorio.`);
       }

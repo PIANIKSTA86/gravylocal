@@ -6379,16 +6379,18 @@ export function buildMatiasPayrollPayload(
   if ((emp.vacacionesMonto || 0) > 0 || (emp.vacacionesCompensadasMonto || 0) > 0) {
     accruedObj.vacations = {};
     if ((emp.vacacionesMonto || 0) > 0) {
+      const cantComunes = Math.max(1, Math.round(Number(emp.vacacionesDias) || 1));
       accruedObj.vacations.common = {
         start_date: settlementStart,
         final_date: settlementEnd,
-        amount: "1",
+        amount: String(cantComunes),
         payment: round2(emp.vacacionesMonto).toFixed(2)
       };
     }
     if ((emp.vacacionesCompensadasMonto || 0) > 0) {
+      const cantComp = Math.max(1, Math.round(Number(emp.vacacionesCompensadasDias) || 1));
       accruedObj.vacations.paid = {
-        amount: String(emp.vacacionesCompensadasDias || 1),
+        amount: String(cantComp),
         payment: round2(emp.vacacionesCompensadasMonto).toFixed(2)
       };
     }
@@ -6396,8 +6398,9 @@ export function buildMatiasPayrollPayload(
 
   // Primas de Servicios
   if ((emp.primaMonto || 0) > 0) {
+    const cantPrima = Math.max(1, Math.round(Number(emp.primaDias) || 180));
     accruedObj.bonus = {
-      amount: String(emp.primaDias || "1"),
+      amount: String(cantPrima),
       payment: round2(emp.primaMonto).toFixed(2),
       non_salary_payment: "0.00"
     };
@@ -6416,10 +6419,11 @@ export function buildMatiasPayrollPayload(
 
   // Incapacidades
   if ((emp.incapacidadesMonto || 0) > 0) {
+    const cantIncap = Math.max(1, Math.round(Number(emp.incapacidadesDias) || 1));
     accruedObj.incapacity = [{
       start_date: settlementStart,
       final_date: settlementEnd,
-      amount: "1",
+      amount: String(cantIncap),
       type_id: parseInt(String(emp.incapacidadTipo || "1"), 10) || 1,
       payment: round2(emp.incapacidadesMonto).toFixed(2)
     }];
@@ -6428,17 +6432,18 @@ export function buildMatiasPayrollPayload(
 
   // Licencias Maternidad / Paternidad
   if ((emp.licenciasMPMonto || 0) > 0) {
+    const cantMP = Math.max(1, Math.round(Number(emp.licenciasMPDias) || 1));
     if (!accruedObj.licenses) accruedObj.licenses = {};
     accruedObj.licenses.licenseMP = {
       start_date: settlementStart,
       final_date: settlementEnd,
-      amount: String(emp.licenciasMPDias || 1),
+      amount: String(cantMP),
       payment: round2(emp.licenciasMPMonto).toFixed(2)
     };
     accruedObj.maternities = [{
       start_date: settlementStart,
       final_date: settlementEnd,
-      amount: String(emp.licenciasMPDias || 1),
+      amount: String(cantMP),
       type: "1",
       payment: round2(emp.licenciasMPMonto).toFixed(2)
     }];
@@ -6446,33 +6451,35 @@ export function buildMatiasPayrollPayload(
 
   // Licencias Remuneradas
   if ((emp.licenciasMonto || 0) > 0) {
+    const cantLicR = Math.max(1, Math.round(Number(emp.licenciasDias) || 1));
     if (!accruedObj.licenses) accruedObj.licenses = {};
     accruedObj.licenses.licenseR = {
       start_date: settlementStart,
       final_date: settlementEnd,
-      amount: "1",
+      amount: String(cantLicR),
       payment: round2(emp.licenciasMonto).toFixed(2)
     };
     accruedObj.paid_leaves = [{
       start_date: settlementStart,
       final_date: settlementEnd,
-      amount: "1",
+      amount: String(cantLicR),
       payment: round2(emp.licenciasMonto).toFixed(2)
     }];
   }
 
   // Licencias No Remuneradas
   if ((emp.licenciasNRDias || 0) > 0) {
+    const cantLicNR = Math.max(1, Math.round(Number(emp.licenciasNRDias) || 1));
     if (!accruedObj.licenses) accruedObj.licenses = {};
     accruedObj.licenses.licenseNR = {
       start_date: emp.licenciasNRInicio || settlementStart,
       final_date: emp.licenciasNRFin || settlementEnd,
-      amount: String(emp.licenciasNRDias)
+      amount: String(cantLicNR)
     };
     accruedObj.non_paid_leaves = [{
       start_date: emp.licenciasNRInicio || settlementStart,
       final_date: emp.licenciasNRFin || settlementEnd,
-      amount: String(emp.licenciasNRDias)
+      amount: String(cantLicNR)
     }];
   }
 
@@ -6486,8 +6493,15 @@ export function buildMatiasPayrollPayload(
     }];
   }
 
-  // Auxilios (rodamiento, dotación, no salariales, alimentación)
-  const totalAux = round2((emp.rodamientoMonto || 0) + (emp.dotacionMonto || 0) + (emp.auxNoSalarialesMonto || 0) + (emp.alimentacionMonto || 0));
+  // Dotación (endowment en estándar MATIAS API / DIAN Código 140)
+  if ((emp.dotacionMonto || 0) > 0) {
+    const dotStr = round2(emp.dotacionMonto).toFixed(2);
+    accruedObj.endowment = dotStr;
+    accruedObj.endowments = [{ endowment: dotStr }];
+  }
+
+  // Auxilios (rodamiento, no salariales, alimentación)
+  const totalAux = round2((emp.rodamientoMonto || 0) + (emp.auxNoSalarialesMonto || 0) + (emp.alimentacionMonto || 0));
   if (totalAux > 0) {
     accruedObj.assistances = [{
       assistanceS: "0.00",
@@ -6592,29 +6606,36 @@ export function buildMatiasPayrollPayload(
   }
 
   // 2. DEDUCCIONES (deductions)
-  const healthDedStr = round2(emp.saludDeduccion || 0).toFixed(2);
-  const pensionDedStr = round2(emp.pensionDeduccion || 0).toFixed(2);
+  const healthDedVal = round2(emp.saludDeduccion || 0);
+  const healthDedStr = healthDedVal.toFixed(2);
+  const healthPct = healthDedVal > 0 ? "4.00" : "0.00";
+
+  const pensionDedVal = round2(emp.pensionDeduccion || 0);
+  const pensionDedStr = pensionDedVal.toFixed(2);
+  const pensionPct = pensionDedVal > 0 ? "4.00" : "0.00";
+
+  const spDedVal = round2(emp.solidaridadDeduccion || 0);
+  const spDedStr = spDedVal.toFixed(2);
+  const spSubDedVal = round2(emp.subsolidaridadDeduccion || 0);
+  const spSubDedStr = spSubDedVal.toFixed(2);
+
   const deductionsObj: any = {
     health: {
-      percentage: "4.00",
+      percentage: healthPct,
       deduction: healthDedStr
     },
     pension_fund: {
-      percentage: "4.00",
+      percentage: pensionPct,
       deduction: pensionDedStr
+    },
+    // En estándar canónico MATIAS API UBL 2.1, fundSP es un nodo obligatorio en deductions
+    fundSP: {
+      percentage: spDedVal > 0 ? "1.00" : "0.00",
+      deduction: spDedStr,
+      percentageSub: spSubDedVal > 0 ? "1.00" : "0.00",
+      deductionSub: spSubDedStr
     }
   };
-
-  // Fondo Solidaridad Pensional
-  if ((emp.solidaridadDeduccion || 0) > 0) {
-    const spVal = round2(emp.solidaridadDeduccion).toFixed(2);
-    deductionsObj.fundSP = {
-      percentage: "1.00",
-      deduction: spVal,
-      percentageSub: "0.00",
-      deductionSub: "0.00"
-    };
-  }
 
   // Sindicatos (trade_union en estándar MATIAS API)
   if ((emp.sindicatoDeduccion || 0) > 0) {
@@ -6886,15 +6907,18 @@ function buildNominaIndividualDeAjusteXml(
   if ((emp.vacacionesMonto || 0) > 0 || (emp.vacacionesCompensadasMonto || 0) > 0) {
     let vacContent = '';
     if ((emp.vacacionesMonto || 0) > 0) {
-      vacContent += `<VacacionesComunes Cantidad="${emp.vacacionesDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" />`;
+      const cantComunes = Math.max(1, Math.round(Number(emp.vacacionesDias) || 1));
+      vacContent += `<VacacionesComunes Cantidad="${cantComunes}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" />`;
     }
     if ((emp.vacacionesCompensadasMonto || 0) > 0) {
-      vacContent += `<VacacionesCompensadas Cantidad="${emp.vacacionesCompensadasDias || 1}" Pago="${round2(emp.vacacionesCompensadasMonto).toFixed(2)}" />`;
+      const cantComp = Math.max(1, Math.round(Number(emp.vacacionesCompensadasDias) || 1));
+      vacContent += `<VacacionesCompensadas Cantidad="${cantComp}" Pago="${round2(emp.vacacionesCompensadasMonto).toFixed(2)}" />`;
     }
     devengadosXml += `  <Vacaciones>${vacContent}</Vacaciones>\n`;
   }
   if ((emp.primaMonto || 0) > 0) {
-    devengadosXml += `  <Primas Cantidad="${emp.primaDias || 180}" Pago="${round2(emp.primaMonto).toFixed(2)}" />\n`;
+    const cantPrima = Math.max(1, Math.round(Number(emp.primaDias) || 180));
+    devengadosXml += `  <Primas Cantidad="${cantPrima}" Pago="${round2(emp.primaMonto).toFixed(2)}" />\n`;
   }
   if ((emp.cesantiasMonto || 0) > 0) {
     const intCes = round2(emp.interesesCesantiasMonto || 0);
@@ -6902,22 +6926,25 @@ function buildNominaIndividualDeAjusteXml(
     devengadosXml += `  <Cesantias Pago="${round2(emp.cesantiasMonto).toFixed(2)}" Porcentaje="${pctInt}" PagoIntereses="${intCes.toFixed(2)}" />\n`;
   }
   if ((emp.incapacidadesMonto || 0) > 0) {
-    devengadosXml += `  <Incapacidades><Incapacidad Tipo="${emp.incapacidadTipo || 1}" Cantidad="${emp.incapacidadesDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
+    const cantIncap = Math.max(1, Math.round(Number(emp.incapacidadesDias) || 1));
+    devengadosXml += `  <Incapacidades><Incapacidad Tipo="${emp.incapacidadTipo || 1}" Cantidad="${cantIncap}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
   }
   if ((emp.licenciasMonto || 0) > 0 || (emp.licenciasNRDias || 0) > 0 || (emp.licenciasMPMonto || 0) > 0 || (emp.licenciasMPDias || 0) > 0) {
     let licContent = '';
     if ((emp.licenciasMPMonto || 0) > 0 || (emp.licenciasMPDias || 0) > 0) {
-      licContent += `<LicenciaMP Cantidad="${emp.licenciasMPDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.licenciasMPMonto || 0).toFixed(2)}" />`;
+      const cantMP = Math.max(1, Math.round(Number(emp.licenciasMPDias) || 1));
+      licContent += `<LicenciaMP Cantidad="${cantMP}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.licenciasMPMonto || 0).toFixed(2)}" />`;
     }
     const remMonto = round2((emp.licenciasMonto || 0) - (emp.licenciasMPMonto || 0));
     if (remMonto > 0) {
-      const remDias = Math.max(1, (emp.licenciasDias || 1) - (emp.licenciasMPDias || 0));
+      const remDias = Math.max(1, Math.round(Number((emp.licenciasDias || 1) - (emp.licenciasMPDias || 0))));
       licContent += `<LicenciaR Cantidad="${remDias}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${remMonto.toFixed(2)}" />`;
     }
     if ((emp.licenciasNRDias || 0) > 0) {
+      const cantNR = Math.max(1, Math.round(Number(emp.licenciasNRDias) || 1));
       const fIni = emp.licenciasNRInicio || `${ymPrefix}-01`;
       const fFin = emp.licenciasNRFin || fIni;
-      licContent += `<LicenciaNR Cantidad="${emp.licenciasNRDias}" FechaInicio="${fIni}" FechaFin="${fFin}" />`;
+      licContent += `<LicenciaNR Cantidad="${cantNR}" FechaInicio="${fIni}" FechaFin="${fFin}" />`;
     }
     devengadosXml += `  <Licencias>${licContent}</Licencias>\n`;
   }
@@ -6929,7 +6956,8 @@ function buildNominaIndividualDeAjusteXml(
     devengadosXml += `  <Auxilios><Auxilio AuxilioS="0.00" AuxilioNS="${auxNS.toFixed(2)}" /></Auxilios>\n`;
   }
   if ((emp.huelgaLegalDias || 0) > 0) {
-    devengadosXml += `  <HuelgasLegales><HuelgaLegal Cantidad="${emp.huelgaLegalDias}" FechaInicio="${emp.huelgaLegalIni || fechaLiqInicio}" FechaFin="${emp.huelgaLegalFin || fechaLiqFin}" /></HuelgasLegales>\n`;
+    const cantHuelga = Math.max(1, Math.round(Number(emp.huelgaLegalDias) || 1));
+    devengadosXml += `  <HuelgasLegales><HuelgaLegal Cantidad="${cantHuelga}" FechaInicio="${emp.huelgaLegalIni || fechaLiqInicio}" FechaFin="${emp.huelgaLegalFin || fechaLiqFin}" /></HuelgasLegales>\n`;
   }
   let otrosConceptosInner = '';
   if ((emp.otrosIngresosMonto || 0) > 0) {
@@ -7130,7 +7158,7 @@ function buildSingleWorkerUblXml(
   }
 
   // Construcción de Devengados siguiendo estrictamente la secuencia jerárquica XSD de la DIAN
-  let devengadosXml = `  <Basico DiasTrabajados="${emp.diasLaborados || 30}" SueldoTrabajado="${sueldoBasico}" />\n`;
+  let devengadosXml = `  <Basico DiasTrabajados="${Math.max(1, Math.round(Number(emp.diasLaborados) || 30))}" SueldoTrabajado="${sueldoBasico}" />\n`;
   if ((emp.auxilioTransporte || 0) > 0 || (emp.viaticoSalMonto || 0) > 0 || (emp.viaticoNoSalMonto || 0) > 0) {
     devengadosXml += `  <Transporte AuxilioTransporte="${round2(emp.auxilioTransporte || 0).toFixed(2)}" ViaticoManuAlojS="${round2(emp.viaticoSalMonto || 0).toFixed(2)}" ViaticoManuAlojNS="${round2(emp.viaticoNoSalMonto || 0).toFixed(2)}" />\n`;
   }
@@ -7141,15 +7169,18 @@ function buildSingleWorkerUblXml(
   if ((emp.vacacionesMonto || 0) > 0 || (emp.vacacionesCompensadasMonto || 0) > 0) {
     let vacNodes = '';
     if ((emp.vacacionesMonto || 0) > 0) {
-      vacNodes += `<VacacionesComunes Cantidad="${emp.vacacionesDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" />`;
+      const cantComunes = Math.max(1, Math.round(Number(emp.vacacionesDias) || 1));
+      vacNodes += `<VacacionesComunes Cantidad="${cantComunes}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" />`;
     }
     if ((emp.vacacionesCompensadasMonto || 0) > 0) {
-      vacNodes += `<VacacionesCompensadas Cantidad="${emp.vacacionesCompensadasDias || 1}" Pago="${round2(emp.vacacionesCompensadasMonto).toFixed(2)}" />`;
+      const cantComp = Math.max(1, Math.round(Number(emp.vacacionesCompensadasDias) || 1));
+      vacNodes += `<VacacionesCompensadas Cantidad="${cantComp}" Pago="${round2(emp.vacacionesCompensadasMonto).toFixed(2)}" />`;
     }
     devengadosXml += `  <Vacaciones>${vacNodes}</Vacaciones>\n`;
   }
   if ((emp.primaMonto || 0) > 0) {
-    devengadosXml += `  <Primas Cantidad="${emp.primaDias || 180}" Pago="${round2(emp.primaMonto).toFixed(2)}" />\n`;
+    const cantPrima = Math.max(1, Math.round(Number(emp.primaDias) || 180));
+    devengadosXml += `  <Primas Cantidad="${cantPrima}" Pago="${round2(emp.primaMonto).toFixed(2)}" />\n`;
   }
   if ((emp.cesantiasMonto || 0) > 0) {
     const intCes = round2(emp.interesesCesantiasMonto || 0);
@@ -7157,22 +7188,25 @@ function buildSingleWorkerUblXml(
     devengadosXml += `  <Cesantias Pago="${round2(emp.cesantiasMonto).toFixed(2)}" Porcentaje="${pctInt}" PagoIntereses="${intCes.toFixed(2)}" />\n`;
   }
   if ((emp.incapacidadesMonto || 0) > 0) {
-    devengadosXml += `  <Incapacidades><Incapacidad Tipo="${emp.incapacidadTipo || 1}" Cantidad="${emp.incapacidadesDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
+    const cantIncap = Math.max(1, Math.round(Number(emp.incapacidadesDias) || 1));
+    devengadosXml += `  <Incapacidades><Incapacidad Tipo="${emp.incapacidadTipo || 1}" Cantidad="${cantIncap}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
   }
   if ((emp.licenciasMonto || 0) > 0 || (emp.licenciasNRDias || 0) > 0 || (emp.licenciasMPMonto || 0) > 0 || (emp.licenciasMPDias || 0) > 0) {
     let licContent = '';
     if ((emp.licenciasMPMonto || 0) > 0 || (emp.licenciasMPDias || 0) > 0) {
-      licContent += `<LicenciaMP Cantidad="${emp.licenciasMPDias || 1}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.licenciasMPMonto || 0).toFixed(2)}" />`;
+      const cantMP = Math.max(1, Math.round(Number(emp.licenciasMPDias) || 1));
+      licContent += `<LicenciaMP Cantidad="${cantMP}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${round2(emp.licenciasMPMonto || 0).toFixed(2)}" />`;
     }
     const remMonto = round2((emp.licenciasMonto || 0) - (emp.licenciasMPMonto || 0));
     if (remMonto > 0) {
-      const remDias = Math.max(1, (emp.licenciasDias || 1) - (emp.licenciasMPDias || 0));
+      const remDias = Math.max(1, Math.round(Number((emp.licenciasDias || 1) - (emp.licenciasMPDias || 0))));
       licContent += `<LicenciaR Cantidad="${remDias}" FechaInicio="${fechaLiqInicio}" FechaFin="${fechaLiqFin}" Pago="${remMonto.toFixed(2)}" />`;
     }
     if ((emp.licenciasNRDias || 0) > 0) {
+      const cantNR = Math.max(1, Math.round(Number(emp.licenciasNRDias) || 1));
       const fIni = emp.licenciasNRInicio || `${ymPrefix}-01`;
       const fFin = emp.licenciasNRFin || fIni;
-      licContent += `<LicenciaNR Cantidad="${emp.licenciasNRDias}" FechaInicio="${fIni}" FechaFin="${fFin}" />`;
+      licContent += `<LicenciaNR Cantidad="${cantNR}" FechaInicio="${fIni}" FechaFin="${fFin}" />`;
     }
     devengadosXml += `  <Licencias>${licContent}</Licencias>\n`;
   }
@@ -7184,7 +7218,8 @@ function buildSingleWorkerUblXml(
     devengadosXml += `  <Auxilios><Auxilio AuxilioS="0.00" AuxilioNS="${auxNS.toFixed(2)}" /></Auxilios>\n`;
   }
   if ((emp.huelgaLegalDias || 0) > 0) {
-    devengadosXml += `  <HuelgasLegales><HuelgaLegal Cantidad="${emp.huelgaLegalDias}" FechaInicio="${emp.huelgaLegalIni || fechaLiqInicio}" FechaFin="${emp.huelgaLegalFin || fechaLiqFin}" /></HuelgasLegales>\n`;
+    const cantHuelga = Math.max(1, Math.round(Number(emp.huelgaLegalDias) || 1));
+    devengadosXml += `  <HuelgasLegales><HuelgaLegal Cantidad="${cantHuelga}" FechaInicio="${emp.huelgaLegalIni || fechaLiqInicio}" FechaFin="${emp.huelgaLegalFin || fechaLiqFin}" /></HuelgasLegales>\n`;
   }
   let otrosConceptosInner = '';
   if ((emp.otrosIngresosMonto || 0) > 0) {
@@ -8848,10 +8883,64 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
                 <span class="font-mono font-bold text-indigo-700">${fmt(accumEmp.vacacionesCompensadasMonto)}</span>
               </div>
               ` : ''}
-              ${((accumEmp.rodamientoMonto || 0) + (accumEmp.dotacionMonto || 0) + (accumEmp.auxNoSalarialesMonto || 0) + (accumEmp.alimentacionMonto || 0) > 0) ? `
+              ${((accumEmp.dotacionMonto || 0) > 0) ? `
               <div class="flex justify-between py-0.5 border-b border-gray-100">
-                <span class="text-gray-600 font-medium text-emerald-800">Auxilios No Salariales (Rodamiento):</span>
-                <span class="font-mono font-bold text-emerald-700">${fmt((accumEmp.rodamientoMonto || 0) + (accumEmp.dotacionMonto || 0) + (accumEmp.auxNoSalarialesMonto || 0) + (accumEmp.alimentacionMonto || 0))}</span>
+                <span class="text-gray-600 font-medium text-emerald-800"><i class="fas fa-tshirt mr-1 text-xs"></i>Dotación (Suministro en Especie):</span>
+                <span class="font-mono font-bold text-emerald-700">${fmt(accumEmp.dotacionMonto)}</span>
+              </div>
+              ` : ''}
+              ${((accumEmp.rodamientoMonto || 0) + (accumEmp.auxNoSalarialesMonto || 0) + (accumEmp.alimentacionMonto || 0) > 0) ? `
+              <div class="flex justify-between py-0.5 border-b border-gray-100">
+                <span class="text-gray-600 font-medium text-emerald-800">Auxilios No Salariales (Rodamiento/Otros):</span>
+                <span class="font-mono font-bold text-emerald-700">${fmt((accumEmp.rodamientoMonto || 0) + (accumEmp.auxNoSalarialesMonto || 0) + (accumEmp.alimentacionMonto || 0))}</span>
+              </div>
+              ` : ''}
+              ${((accumEmp.indemnizacionMonto || 0) > 0) ? `
+              <div class="flex justify-between py-0.5 border-b border-gray-100">
+                <span class="text-gray-600 font-medium text-purple-800">Indemnización (Liquidación Definitiva):</span>
+                <span class="font-mono font-bold text-purple-700">${fmt(accumEmp.indemnizacionMonto)}</span>
+              </div>
+              ` : ''}
+              ${((accumEmp.teletrabajoMonto || 0) > 0) ? `
+              <div class="flex justify-between py-0.5 border-b border-gray-100">
+                <span class="text-gray-600 font-medium text-emerald-800">Auxilio Conectividad / Teletrabajo:</span>
+                <span class="font-mono font-bold text-emerald-700">${fmt(accumEmp.teletrabajoMonto)}</span>
+              </div>
+              ` : ''}
+              ${((accumEmp.bonoAlimentacionMonto || 0) > 0) ? `
+              <div class="flex justify-between py-0.5 border-b border-gray-100">
+                <span class="text-gray-600 font-medium text-emerald-800">Bono Alimentación (Canasta EPCTV):</span>
+                <span class="font-mono font-bold text-emerald-700">${fmt(accumEmp.bonoAlimentacionMonto)}</span>
+              </div>
+              ` : ''}
+              ${((accumEmp.bonifRetiroMonto || 0) > 0) ? `
+              <div class="flex justify-between py-0.5 border-b border-gray-100">
+                <span class="text-gray-600 font-medium text-emerald-800">Bonificación de Retiro:</span>
+                <span class="font-mono font-bold text-emerald-700">${fmt(accumEmp.bonifRetiroMonto)}</span>
+              </div>
+              ` : ''}
+              ${((accumEmp.apoyoSostenimientoMonto || 0) > 0) ? `
+              <div class="flex justify-between py-0.5 border-b border-gray-100">
+                <span class="text-gray-600 font-medium text-emerald-800">Apoyo de Sostenimiento (SENA):</span>
+                <span class="font-mono font-bold text-emerald-700">${fmt(accumEmp.apoyoSostenimientoMonto)}</span>
+              </div>
+              ` : ''}
+              ${((accumEmp.reintegroDevMonto || 0) > 0) ? `
+              <div class="flex justify-between py-0.5 border-b border-gray-100">
+                <span class="text-gray-600 font-medium text-emerald-800">Reintegro de Devengos:</span>
+                <span class="font-mono font-bold text-emerald-700">${fmt(accumEmp.reintegroDevMonto)}</span>
+              </div>
+              ` : ''}
+              ${((accumEmp.compOrdMonto || 0) + (accumEmp.compExtraMonto || 0) + (accumEmp.compensatoriosMonto || 0) > 0) ? `
+              <div class="flex justify-between py-0.5 border-b border-gray-100">
+                <span class="text-gray-600 font-medium text-emerald-800">Compensaciones Ordinarias / Extra:</span>
+                <span class="font-mono font-bold text-emerald-700">${fmt((accumEmp.compOrdMonto || 0) + (accumEmp.compExtraMonto || 0) + (accumEmp.compensatoriosMonto || 0))}</span>
+              </div>
+              ` : ''}
+              ${((accumEmp.pagoTerceroDevMonto || 0) > 0) ? `
+              <div class="flex justify-between py-0.5 border-b border-gray-100">
+                <span class="text-gray-600 font-medium text-emerald-800">Pagos a Terceros (Devengo):</span>
+                <span class="font-mono font-bold text-emerald-700">${fmt(accumEmp.pagoTerceroDevMonto)}</span>
               </div>
               ` : ''}
               <div class="flex justify-between py-0.5 border-b border-gray-100">
@@ -9483,10 +9572,8 @@ function parseNominaXmlConcepts(xmlStr: string) {
       }
 
       // Dotación
-      if (earn.endowment) {
-        const val = parseFloat(earn.endowment);
-        if (val > 0) devengos.push({ code: '140', name: 'Dotación', qty: '—', value: val });
-      }
+      const dotVal = parseFloat(earn.endowment || earn.dotacion || '0');
+      if (dotVal > 0) devengos.push({ code: '140', name: 'Dotación', qty: '—', value: dotVal });
 
       // Otros conceptos
       if (Array.isArray(earn.other_concepts)) {

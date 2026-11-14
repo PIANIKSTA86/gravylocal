@@ -3429,10 +3429,8 @@ function generateNominaPdf(xmlContent, filename, payrollData) {
             }
 
             // Dotación
-            if (earn.endowment) {
-              const val = parseFloat(earn.endowment);
-              if (val > 0) devengos.push({ code: '140', name: 'Dotación', qty: '—', value: val });
-            }
+            const dotVal = parseFloat(earn.endowment || earn.dotacion || 0);
+            if (dotVal > 0) devengos.push({ code: '140', name: 'Dotación', qty: '—', value: dotVal });
 
             // Otros conceptos
             if (Array.isArray(earn.other_concepts)) {
@@ -3461,6 +3459,49 @@ function generateNominaPdf(xmlContent, filename, payrollData) {
               bondList.forEach(b => {
                 const val = parseFloat(b.paymentNS || b.paymentS || b.payment || 0);
                 if (val > 0) devengos.push({ code: '165', name: 'Bono de Alimentación / Canasta', qty: '—', value: val });
+              });
+            }
+
+            // Teletrabajo
+            const teleVal = parseFloat(earn.teleworking || earn.telecommuting || 0);
+            if (teleVal > 0) devengos.push({ code: '170', name: 'Auxilio Teletrabajo', qty: '—', value: teleVal });
+
+            // Apoyo de Sostenimiento
+            const sustVal = parseFloat(earn.sustaining_support || earn.support_sustainability || 0);
+            if (sustVal > 0) devengos.push({ code: '180', name: 'Apoyo Sostenimiento (SENA)', qty: '—', value: sustVal });
+
+            // Bonificación por Retiro
+            const retBonVal = parseFloat(earn.withdrawal_bonus || earn.end_work_bonus || 0);
+            if (retBonVal > 0) devengos.push({ code: '185', name: 'Bonificación de Retiro', qty: '—', value: retBonVal });
+
+            // Indemnización
+            const indScalar = parseFloat(earn.indemnification || 0);
+            if (indScalar > 0) {
+              devengos.push({ code: '175', name: 'Indemnización', qty: '—', value: indScalar });
+            } else if (Array.isArray(earn.indemnities)) {
+              earn.indemnities.forEach(ind => {
+                const val = parseFloat(ind.indemnity || 0);
+                if (val > 0) devengos.push({ code: '175', name: 'Indemnización', qty: '—', value: val });
+              });
+            }
+
+            // Reintegros devengos
+            const refScalar = parseFloat(earn.refund || 0);
+            if (refScalar > 0) {
+              devengos.push({ code: '195', name: 'Reintegro Devengos', qty: '—', value: refScalar });
+            } else if (Array.isArray(earn.refunds)) {
+              earn.refunds.forEach(rf => {
+                const val = parseFloat(rf.refund || 0);
+                if (val > 0) devengos.push({ code: '195', name: 'Reintegro Devengos', qty: '—', value: val });
+              });
+            }
+
+            // Pagos a Terceros
+            const p3List = earn.payments_third_party || earn.third_party_payments;
+            if (Array.isArray(p3List)) {
+              p3List.forEach(p3 => {
+                const val = parseFloat(p3.payment_third_party || p3.third_party_payment || 0);
+                if (val > 0) devengos.push({ code: '196', name: 'Pago a Terceros (Devengo)', qty: '—', value: val });
               });
             }
 
@@ -3610,6 +3651,82 @@ function generateNominaPdf(xmlContent, filename, payrollData) {
           const vInt = parseFloat(getAttr(mCes[1], 'PagoIntereses') || '0');
           const pctInt = getAttr(mCes[1], 'Porcentaje') || '12.00';
           if (vInt > 0) devengos.push({ code: '091', name: 'Intereses a las Cesantías Pagados', qty: `${pctInt}%`, value: vInt });
+        }
+
+        // Dotación
+        const mDot = xmlStr.match(/<Dotacion\s*([^>]*)>([^<]*)<\/Dotacion>/i) || xmlStr.match(/<Dotacion\s+([^>]+)\/>/i);
+        if (mDot) {
+          const v = parseFloat(mDot[2] || getAttr(mDot[1], 'Pago') || '0');
+          if (v > 0) devengos.push({ code: '140', name: 'Dotación', qty: '—', value: v });
+        }
+
+        // Incapacidades
+        const incRegex = /<Incapacidad\s+([^>]+)\/>/gi;
+        let incMatch;
+        while ((incMatch = incRegex.exec(xmlStr)) !== null) {
+          const attrs = incMatch[1];
+          const cant = getAttr(attrs, 'Cantidad') || '1';
+          const pago = parseFloat(getAttr(attrs, 'Pago') || '0');
+          const tipo = getAttr(attrs, 'Tipo') || '1';
+          const tipoLbl = tipo === '1' ? 'Común' : (tipo === '2' ? 'Profesional' : 'Laboral');
+          if (pago > 0) devengos.push({ code: '120', name: `Incapacidad (${tipoLbl})`, qty: `${cant} días`, value: pago });
+        }
+
+        // Licencias
+        const licRegex = /<(LicenciaMP|LicenciaR|LicenciaNR)\s+([^>]+)\/>/gi;
+        let licMatch;
+        while ((licMatch = licRegex.exec(xmlStr)) !== null) {
+          const tag = licMatch[1];
+          const attrs = licMatch[2];
+          const cant = getAttr(attrs, 'Cantidad') || '1';
+          const pago = parseFloat(getAttr(attrs, 'Pago') || '0');
+          if (tag === 'LicenciaMP' && pago > 0) devengos.push({ code: '131', name: 'Licencia Maternidad / Paternidad', qty: `${cant} días`, value: pago });
+          else if (tag === 'LicenciaR' && pago > 0) devengos.push({ code: '130', name: 'Licencia Remunerada', qty: `${cant} días`, value: pago });
+          else if (tag === 'LicenciaNR') devengos.push({ code: '132', name: 'Licencia No Remunerada', qty: `${cant} días`, value: 0 });
+        }
+
+        // Bonificaciones
+        const bonRegex = /<Bonificacion\s+([^>]+)\/>/gi;
+        let bonMatch;
+        while ((bonMatch = bonRegex.exec(xmlStr)) !== null) {
+          const attrs = bonMatch[1];
+          const bonS = parseFloat(getAttr(attrs, 'BonificacionS') || '0');
+          const bonNS = parseFloat(getAttr(attrs, 'BonificacionNS') || '0');
+          if (bonS > 0) devengos.push({ code: '060', name: 'Bonificación Salarial', qty: '—', value: bonS });
+          if (bonNS > 0) devengos.push({ code: '061', name: 'Bonificación No Salarial', qty: '—', value: bonNS });
+        }
+
+        // Auxilios
+        const auxRegex = /<Auxilio\s+([^>]+)\/>/gi;
+        let auxMatch;
+        while ((auxMatch = auxRegex.exec(xmlStr)) !== null) {
+          const attrs = auxMatch[1];
+          const auxS = parseFloat(getAttr(attrs, 'AuxilioS') || '0');
+          const auxNS = parseFloat(getAttr(attrs, 'AuxilioNS') || '0');
+          if (auxS > 0) devengos.push({ code: '070', name: 'Auxilio Salarial', qty: '—', value: auxS });
+          if (auxNS > 0) devengos.push({ code: '071', name: 'Auxilio No Salarial', qty: '—', value: auxNS });
+        }
+
+        // Teletrabajo / ApoyoSost / BonifRetiro / Indemnizacion
+        const mTele = xmlStr.match(/<Teletrabajo\s*([^>]*)>([^<]*)<\/Teletrabajo>/i);
+        if (mTele) {
+          const v = parseFloat(mTele[2] || getAttr(mTele[1], 'Pago') || '0');
+          if (v > 0) devengos.push({ code: '170', name: 'Auxilio Teletrabajo', qty: '—', value: v });
+        }
+        const mSost = xmlStr.match(/<ApoyoSost\s*([^>]*)>([^<]*)<\/ApoyoSost>/i);
+        if (mSost) {
+          const v = parseFloat(mSost[2] || getAttr(mSost[1], 'Pago') || '0');
+          if (v > 0) devengos.push({ code: '180', name: 'Apoyo Sostenimiento (SENA)', qty: '—', value: v });
+        }
+        const mBRet = xmlStr.match(/<BonifRetiro\s*([^>]*)>([^<]*)<\/BonifRetiro>/i);
+        if (mBRet) {
+          const v = parseFloat(mBRet[2] || getAttr(mBRet[1], 'Pago') || '0');
+          if (v > 0) devengos.push({ code: '185', name: 'Bonificación Retiro', qty: '—', value: v });
+        }
+        const mInd = xmlStr.match(/<Indemnizacion\s*([^>]*)>([^<]*)<\/Indemnizacion>/i);
+        if (mInd) {
+          const v = parseFloat(mInd[2] || getAttr(mInd[1], 'Pago') || '0');
+          if (v > 0) devengos.push({ code: '175', name: 'Indemnización', qty: '—', value: v });
         }
 
         // Deducciones: Salud

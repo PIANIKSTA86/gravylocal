@@ -1275,6 +1275,7 @@ async function openDocHomologationModal(id: string) {
       const cleanCode = it.code ? String(it.code).trim() : '';
       if (cleanCode) {
         const skuKey = `SKU_${NitLimpio}_${cleanCode}`;
+        const ruleKey = `${NitLimpio}_${cleanCode}`;
         const oldRuleKey = `${d.supplier_nit}_${cleanCode}`;
         const ruleMatch = rules.find((r: any) => r.rule_type === 'keyword' && (r.key_value === skuKey || r.key_value === ruleKey || r.key_value === oldRuleKey));
         if (ruleMatch && ruleMatch.account_code) {
@@ -2636,11 +2637,25 @@ async function openDocHomologationModal(id: string) {
       try {
         // Agrupar movimientos contables por cuenta PUC (account_id) para resumir el asiento contable
         const aggregateAccountingLines = (rawLines: any[]) => {
-          const accMap = new Map<string, { account_id: string; debit: number; credit: number; descriptions: string[]; count: number; cross_doc_ref?: string; cross_doc_date?: string; due_date?: string; doc_cruce?: string; fecha_doc_cruce?: string; fecha_vencimiento?: string }>();
+          const accMap = new Map<string, {
+            account_id: string;
+            third_party_id?: string;
+            debit: number;
+            credit: number;
+            descriptions: string[];
+            count: number;
+            cross_doc_ref?: string;
+            cross_doc_date?: string;
+            due_date?: string;
+            doc_cruce?: string;
+            fecha_doc_cruce?: string;
+            fecha_vencimiento?: string;
+          }>();
 
           for (const line of rawLines) {
             if (!line.account_id) continue;
-            const key = line.account_id;
+            const lineThirdId = line.third_party_id || thirdParty?.id || '';
+            const key = `${line.account_id}_${lineThirdId}`;
             const docRef = line.cross_doc_ref || line.doc_cruce || '';
             const docDate = line.cross_doc_date || line.fecha_doc_cruce || '';
             const dueDate = line.due_date || line.fecha_vencimiento || '';
@@ -2665,9 +2680,13 @@ async function openDocHomologationModal(id: string) {
                 item.due_date = dueDate;
                 item.fecha_vencimiento = dueDate;
               }
+              if (!item.third_party_id && lineThirdId) {
+                item.third_party_id = lineThirdId;
+              }
             } else {
               accMap.set(key, {
                 account_id: line.account_id,
+                third_party_id: lineThirdId,
                 debit: line.debit || 0,
                 credit: line.credit || 0,
                 descriptions: line.description ? [line.description] : [],
@@ -2690,6 +2709,7 @@ async function openDocHomologationModal(id: string) {
             }
             return {
               account_id: item.account_id,
+              third_party_id: item.third_party_id || thirdParty?.id || '',
               debit: Math.round(item.debit),
               credit: Math.round(item.credit),
               description: desc,

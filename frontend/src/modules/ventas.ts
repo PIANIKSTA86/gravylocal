@@ -4521,7 +4521,8 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
               headers: { 'Content-Type': 'application/json' }
             });
             if (res && res.success) {
-              (window as any).showToast(`Factura ${number} firmada en DIAN, aprobada y contabilizada correctamente`, 'success');
+              const emailMsg = res.emailSent ? ' y correo enviado al cliente' : (res.emailError ? `. Aviso correo: ${res.emailError}` : '');
+              (window as any).showToast(`Factura ${number} firmada en DIAN, aprobada${emailMsg}`, res.emailError ? 'warning' : 'success', 6000);
             } else {
               // Revertir contabilización y movimiento de inventario si falla la firma DIAN bajo el parámetro dian_dependent_posting
               await (window as any).API.rollbackInvoicePosting(effectiveInvoiceId, 'revertir_borrador', `Rechazo DIAN: ${res?.dianResponse || 'Error de emisión'}`).catch(() => {});
@@ -6083,7 +6084,8 @@ window.emitInvoiceToDian = async function(txId: string, docNumber: string) {
         });
         
         if (res && res.success) {
-          (window as any).showToast(`Factura ${docNumber} emitida correctamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
+          const emailMsg = res.emailSent ? ' y enviada por correo al cliente' : (res.emailError ? `. Aviso correo: ${res.emailError}` : '');
+          (window as any).showToast(`Factura ${docNumber} emitida correctamente. Estado: ${res.status}${emailMsg}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, res.emailError ? 'warning' : 'success', 6000);
           (window as any).closeModal();
           if (typeof (window as any).reloadTab === 'function') {
             (window as any).reloadTab('ventas');
@@ -6337,7 +6339,8 @@ window.contabilizarVenta = function(id: string, number: string, isElectronic: bo
               headers: { 'Content-Type': 'application/json' }
             });
             if (res && res.success) {
-              (window as any).showToast(`Factura ${number} firmada en DIAN, aprobada y contabilizada correctamente`, 'success');
+              const emailMsg = res.emailSent ? ' y correo enviado al cliente' : (res.emailError ? `. Aviso correo: ${res.emailError}` : '');
+              (window as any).showToast(`Factura ${number} firmada en DIAN, aprobada${emailMsg}`, res.emailError ? 'warning' : 'success', 6000);
             } else {
               if (isDianDep) {
                 await (window as any).API.rollbackInvoicePosting(id, 'revertir_borrador', `Emisión rechazada: ${res?.dianResponse || 'Error'}`).catch(() => {});

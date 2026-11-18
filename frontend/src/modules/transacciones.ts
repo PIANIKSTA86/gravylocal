@@ -3453,7 +3453,8 @@ window.emitTxToDianFromDetail = async function(txId: string, txNumber: string) {
         });
         
         if (res && res.success) {
-          (window as any).showToast(`Documento ${txNumber} emitido correctamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
+          const emailMsg = res.emailSent ? ' y enviado por correo al destinatario' : (res.emailError ? `. Aviso correo: ${res.emailError}` : '');
+          (window as any).showToast(`Documento ${txNumber} emitido correctamente. Estado: ${res.status}${emailMsg}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, res.emailError ? 'warning' : 'success', 6000);
           (window as any).closeModal();
           if (typeof (window as any).reloadTab === 'function') {
             (window as any).reloadTab('consulta-tx');

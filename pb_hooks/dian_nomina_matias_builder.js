@@ -240,6 +240,59 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
           let empType = parseInt(parsed.employee.worker_type_id || parsed.employee.type_worker_id || 1, 10);
           if (!empType || empType === 0) empType = 1;
           parsed.employee.worker_type_id = empType;
+
+          // Garantizar nombres completos reales del colaborador (evitar "EMPLEADO" o vacíos)
+          const curFirstSurname = String(parsed.employee.first_surname || '').trim().toUpperCase();
+          const curFirstName = String(parsed.employee.first_name || '').trim().toUpperCase();
+          const needsNameRepair = !curFirstSurname || !curFirstName || curFirstSurname === 'EMPLEADO' || curFirstName === 'COLABORADOR' || curFirstName === 'EMPLEADO';
+
+          if (needsNameRepair) {
+            let empRecord = null;
+            const targetEmpId = rec.getString ? rec.getString("employee_id") : (parsed.employee.worker_code || parsed.employee.document_number);
+            if (targetEmpId) {
+              try { empRecord = $app.findRecordById("third_parties", targetEmpId); } catch (_) {}
+              if (!empRecord) {
+                try { empRecord = $app.findFirstRecordByFilter("third_parties", "doc_number = '" + targetEmpId + "'"); } catch (_) {}
+              }
+            }
+            if (empRecord) {
+              const dbFName = (empRecord.getString("first_name") || "").trim();
+              const dbLName = (empRecord.getString("last_name") || "").trim();
+              const dbName = (empRecord.getString("name") || empRecord.getString("commercial_name") || "").trim();
+
+              if (dbFName && dbLName) {
+                const fp = dbFName.split(/\s+/).filter(Boolean);
+                parsed.employee.first_name = fp[0] || "COLABORADOR";
+                parsed.employee.other_names = fp.slice(1).join(" ");
+                const lp = dbLName.split(/\s+/).filter(Boolean);
+                parsed.employee.first_surname = lp[0] || "EMPLEADO";
+                parsed.employee.second_surname = lp.slice(1).join(" ");
+              } else if (dbName) {
+                const parts = dbName.split(/\s+/).filter(Boolean);
+                if (parts.length >= 4) {
+                  parsed.employee.first_name = parts[0];
+                  parsed.employee.other_names = parts.slice(1, parts.length - 2).join(" ");
+                  parsed.employee.first_surname = parts[parts.length - 2];
+                  parsed.employee.second_surname = parts[parts.length - 1];
+                } else if (parts.length === 3) {
+                  parsed.employee.first_name = parts[0];
+                  parsed.employee.other_names = "";
+                  parsed.employee.first_surname = parts[1];
+                  parsed.employee.second_surname = parts[2];
+                } else if (parts.length === 2) {
+                  parsed.employee.first_name = parts[0];
+                  parsed.employee.other_names = "";
+                  parsed.employee.first_surname = parts[1];
+                  parsed.employee.second_surname = "";
+                } else {
+                  parsed.employee.first_name = parts[0] || "COLABORADOR";
+                  parsed.employee.other_names = "";
+                  parsed.employee.first_surname = parts[0] || "EMPLEADO";
+                  parsed.employee.second_surname = "";
+                }
+              }
+            }
+          }
         }
 
         if (parsed.worker) {
@@ -706,10 +759,59 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
 
   // Trabajador / Empleado
   const docNumber = getAttrFromXml(xml, "Trabajador", "NumeroDocumento") || rec.getString("employee_id") || "";
-  const firstSurname = getAttrFromXml(xml, "Trabajador", "PrimerApellido") || "EMPLEADO";
-  const secondSurname = getAttrFromXml(xml, "Trabajador", "SegundoApellido") || "";
-  const firstName = getAttrFromXml(xml, "Trabajador", "PrimerNombre") || "EMPLEADO";
-  const otherNames = getAttrFromXml(xml, "Trabajador", "OtrosNombres") || "";
+  let firstSurname = getAttrFromXml(xml, "Trabajador", "PrimerApellido") || "";
+  let secondSurname = getAttrFromXml(xml, "Trabajador", "SegundoApellido") || "";
+  let firstName = getAttrFromXml(xml, "Trabajador", "PrimerNombre") || "";
+  let otherNames = getAttrFromXml(xml, "Trabajador", "OtrosNombres") || "";
+
+  if (!firstSurname || firstSurname === "EMPLEADO" || !firstName || firstName === "EMPLEADO") {
+    let empFallback = null;
+    const targetEmpId = rec.getString("employee_id") || docNumber;
+    if (targetEmpId) {
+      try { empFallback = $app.findRecordById("third_parties", targetEmpId); } catch (_) {}
+      if (!empFallback) {
+        try { empFallback = $app.findFirstRecordByFilter("third_parties", "doc_number = '" + targetEmpId + "'"); } catch (_) {}
+      }
+    }
+    if (empFallback) {
+      const dbFName = (empFallback.getString("first_name") || "").trim();
+      const dbLName = (empFallback.getString("last_name") || "").trim();
+      const dbName = (empFallback.getString("name") || empFallback.getString("commercial_name") || "").trim();
+      if (dbFName && dbLName) {
+        const fp = dbFName.split(/\s+/).filter(Boolean);
+        firstName = fp[0] || firstName;
+        otherNames = fp.slice(1).join(" ") || otherNames;
+        const lp = dbLName.split(/\s+/).filter(Boolean);
+        firstSurname = lp[0] || firstSurname;
+        secondSurname = lp.slice(1).join(" ") || secondSurname;
+      } else if (dbName) {
+        const parts = dbName.split(/\s+/).filter(Boolean);
+        if (parts.length >= 4) {
+          firstName = parts[0];
+          otherNames = parts.slice(1, parts.length - 2).join(" ");
+          firstSurname = parts[parts.length - 2];
+          secondSurname = parts[parts.length - 1];
+        } else if (parts.length === 3) {
+          firstName = parts[0];
+          otherNames = "";
+          firstSurname = parts[1];
+          secondSurname = parts[2];
+        } else if (parts.length === 2) {
+          firstName = parts[0];
+          otherNames = "";
+          firstSurname = parts[1];
+          secondSurname = "";
+        } else {
+          firstName = parts[0] || firstName;
+          otherNames = "";
+          firstSurname = parts[0] || firstSurname;
+          secondSurname = "";
+        }
+      }
+    }
+  }
+  if (!firstSurname) firstSurname = "EMPLEADO";
+  if (!firstName) firstName = "COLABORADOR";
   let typeWorker = parseInt(getAttrFromXml(xml, "Trabajador", "TipoTrabajador") || "1", 10) || 1;
   const rawSubTag = String(getAttrFromXml(xml, "Trabajador", "SubTipoTrabajador") || "").trim();
   let subTypeWorker = 1;

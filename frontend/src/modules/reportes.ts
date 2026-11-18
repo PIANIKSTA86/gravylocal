@@ -245,16 +245,33 @@ async function renderReportes(c) {
         <i class="fas fa-boxes-stacked"></i> Inventarios y Almacén
       </h4>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="report-cards-inventory">
-        ${reportCard('inv-general', 'Reporte General de Inventarios', 'Consolidado valorizado con costos promedio o último, filtros por bodega, categoría y línea.')}
+        ${reportCard('inv-general', 'Reporte General de Inventarios y Ficha Maestra', 'Consolidado valorizado con costos CPP/último, desglose por bodega, condiciones especiales y exportación integral.')}
         ${reportCard('inv-comparativo', 'Comparativo de Existencias', 'Matriz de existencias cruzadas por producto entre todas las bodegas creadas.')}
         ${reportCard('inv-conteo', 'Listado para Conteo Físico', 'Planilla de auditoría para toma física de inventario en campo (modalidad ciega o con saldo).')}
         ${reportCard('inv-precios', 'Lista de Precios Vigentes', 'Consulta y exportación de precios de venta (Precio base, Lista 2 y Lista 3).')}
         ${reportCard('inv-alertas', 'Alertas de Stock Mínimo y Máximo', 'Control de puntos de reorden, reposición requerida y sobreabastecimiento.')}
         ${reportCard('inv-rotacion', 'Análisis de Rotación de Inventarios', 'Indicadores de rotación y días promedio de permanencia por referencia.')}
       </div>
+    </div>
+
+    <!-- Categoría 6: Nómina y Talento Humano -->
+    <div class="mb-6">
+      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#7C3AED; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
+        <i class="fas fa-users-line"></i> Nómina y Talento Humano
+      </h4>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" id="report-cards-payroll">
+        ${reportCard('nom-sabana', 'Sábana de Nómina', 'Detalle periódico y acumulado de devengados, deducciones y neto a pagar por colaborador.')}
+        ${reportCard('nom-provisiones', 'Provisiones y Aportes Patronales', 'Cálculo de prestaciones sociales (Cesantías, Primas, Vacaciones) y aportes de seguridad social/parafiscales.')}
+        ${reportCard('nom-novedades', 'Historial de Novedades y Horas Extras', 'Registro detallado de horas extras, recargos nocturnos, incapacidades y licencias tramitadas.')}
+        ${reportCard('nom-dian', 'Auditoría Nómina Electrónica DIAN', 'Consolidado de volantes emitidos, consecutivos, estados DIAN, CUNEs y respuestas de validación.')}
+      </div>
     </div>`;
 
   const REPORT_LAUNCHERS: Record<string, () => void> = {
+    'nom-sabana': () => launchReportModal('Sábana de Nómina (Devengados y Deducciones)', () => renderPayrollSabanaReport()),
+    'nom-provisiones': () => launchReportModal('Consolidado de Provisiones y Aportes Patronales', () => renderPayrollProvisionsReport()),
+    'nom-novedades': () => launchReportModal('Historial de Novedades y Horas Extras', () => renderPayrollNoveltiesReport()),
+    'nom-dian': () => launchReportModal('Auditoría de Nómina Electrónica ante la DIAN', () => renderPayrollDianAuditReport()),
     'trial': () => launchReportModal('Balance de Prueba', () => renderTrialBalance()),
     'income': () => launchReportModal('Estado de Resultados', () => renderIncomeStatement()),
     'position': () => launchReportModal('Estado de Situación Financiera', () => renderFinancialPosition()),
@@ -333,22 +350,29 @@ async function renderInventoryGeneralReport() {
   host.innerHTML = `
     <div class="space-y-4 text-left">
       <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <!-- Fila 1: Filtros de Selección Principal -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
           <div>
-            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Fecha de Corte</label>
-            <input type="date" id="rep-gen-date" class="form-input text-xs w-full" value="${todayStr()}">
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
+              <i class="fas fa-calendar-day mr-1 text-blue-600"></i>Fecha de Corte
+            </label>
+            <input type="date" id="rep-gen-date" class="form-input text-xs w-full font-medium" value="${todayStr()}">
           </div>
           <div>
-            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega</label>
-            <select id="rep-gen-wh" class="form-input text-xs w-full">
-              <option value="">— Todas las bodegas (Consolidado) —</option>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
+              <i class="fas fa-warehouse mr-1 text-amber-600"></i>Bodega
+            </label>
+            <select id="rep-gen-wh" class="form-input text-xs w-full font-medium">
+              <option value="">— Todas las bodegas (Columnas dinámicas) —</option>
             </select>
           </div>
           <div>
-            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Tipo de Costo</label>
-            <select id="rep-gen-cost" class="form-input text-xs w-full">
-              <option value="promedio">Costo Promedio Kardex (CPP)</option>
-              <option value="ultimo">Último Costo de Compra</option>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
+              <i class="fas fa-coins mr-1 text-emerald-600"></i>Tipo de Costeo (NIC 2)
+            </label>
+            <select id="rep-gen-cost" class="form-input text-xs w-full font-medium">
+              <option value="promedio">Costo Promedio Ponderado (CPP - NIIF)</option>
+              <option value="ultimo">Último Costo de Compra / Lista</option>
             </select>
           </div>
           <div>
@@ -365,21 +389,37 @@ async function renderInventoryGeneralReport() {
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-gray-200">
-          <div class="flex items-center gap-2 flex-1 max-w-xs">
-            <i class="fas fa-search text-gray-400 text-xs"></i>
-            <input type="text" id="rep-gen-filter" class="form-input text-xs w-full" placeholder="Buscar por código, nombre...">
+        <!-- Fila 2: Conmutadores de Modo y Condiciones Especiales -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mt-3 pt-3 border-t border-gray-200">
+          <div class="flex flex-wrap items-center gap-4 text-xs text-gray-700">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" id="rep-gen-include-zero" class="w-4 h-4 text-blue-600 rounded border-gray-300" checked>
+              <span class="font-medium text-gray-800">Incluir referencias con saldo en cero</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer select-none bg-blue-50/70 border border-blue-200 px-2.5 py-1 rounded-lg text-blue-900">
+              <input type="checkbox" id="rep-gen-detailed-view" class="w-4 h-4 text-blue-600 rounded border-blue-300">
+              <span class="font-semibold"><i class="fas fa-sliders mr-1 text-blue-700"></i>Vista Detallada (Condiciones Especiales y Normativa)</span>
+            </label>
           </div>
+
           <div class="flex items-center gap-2">
-            <button type="button" id="btn-gen-inv" class="btn btn-primary text-xs px-4 py-2 flex items-center gap-1.5">
+            <button type="button" id="btn-gen-inv" class="btn btn-primary text-xs px-4 py-2 flex items-center gap-1.5 shadow-sm">
               <i class="fas fa-arrows-rotate"></i> Generar Reporte
             </button>
-            <button type="button" id="btn-exp-inv" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
-              <i class="fas fa-file-excel text-emerald-600"></i> Exportar Excel
+            <button type="button" id="btn-exp-inv" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5 shadow-sm hover:border-emerald-600 hover:text-emerald-700" disabled title="Exporta todas las columnas del maestro de referencias, condiciones especiales y bodegas a Excel">
+              <i class="fas fa-file-excel text-emerald-600"></i> Exportar Excel Integral
             </button>
-            <button type="button" id="btn-print-inv" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+            <button type="button" id="btn-print-inv" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5 shadow-sm" disabled>
               <i class="fas fa-print text-blue-600"></i> Imprimir
             </button>
+          </div>
+        </div>
+
+        <!-- Fila 3: Buscador en tiempo real -->
+        <div class="mt-3 pt-2">
+          <div class="flex items-center gap-2 max-w-md">
+            <i class="fas fa-search text-gray-400 text-xs"></i>
+            <input type="text" id="rep-gen-filter" class="form-input text-xs w-full" placeholder="Filtrar por código, nombre, EAN, marca o proveedor...">
           </div>
         </div>
       </div>
@@ -393,20 +433,27 @@ async function renderInventoryGeneralReport() {
     </div>
   `;
 
+  let cachedActiveWarehouses: any[] = [];
+  let cachedReportRows: any[] = [];
+  let filteredRows: any[] = [];
+
   try {
     const [products, warehouses] = await Promise.all([
       API.getProducts({ activeOnly: false }),
       API.getWarehouses(false)
     ]);
+    cachedActiveWarehouses = (warehouses || []).filter((w: any) => w.active !== false);
+
     const whSelect = $('#rep-gen-wh') as HTMLSelectElement;
     if (whSelect) {
-      warehouses.forEach((w: any) => {
+      cachedActiveWarehouses.forEach((w: any) => {
         const opt = document.createElement('option');
         opt.value = w.id;
-        opt.textContent = w.name;
+        opt.textContent = `${w.name} (${w.code || 'BOD'})`;
         whSelect.appendChild(opt);
       });
     }
+
     const categorias = [...new Set(products.map((p: any) => p.categoria).filter(Boolean))].sort() as string[];
     const catSelect = $('#rep-gen-cat') as HTMLSelectElement;
     if (catSelect) {
@@ -417,6 +464,7 @@ async function renderInventoryGeneralReport() {
         catSelect.appendChild(opt);
       });
     }
+
     const lineas = [...new Set(products.map((p: any) => p.linea).filter(Boolean))].sort() as string[];
     const lineSelect = $('#rep-gen-line') as HTMLSelectElement;
     if (lineSelect) {
@@ -430,9 +478,6 @@ async function renderInventoryGeneralReport() {
   } catch (err: any) {
     console.warn("Error cargando filtros de inventario:", err);
   }
-
-  let cachedReportRows: any[] = [];
-  let filteredRows: any[] = [];
 
   const executeGeneralReport = async () => {
     const resultsContainer = $('#rep-gen-results');
@@ -449,73 +494,202 @@ async function renderInventoryGeneralReport() {
     resultsContainer.innerHTML = `
       <div class="p-12 text-center text-gray-500">
         <i class="fas fa-spinner fa-spin text-3xl text-blue-600 mb-3"></i>
-        <p class="text-xs">Calculando existencias y valorización contable...</p>
+        <p class="text-xs font-semibold text-gray-700">Calculando existencias por bodega y resolviendo condiciones especiales...</p>
+        <p class="text-[11px] text-gray-400 mt-1">Auditando cuentas PUC, terceros de consignación y valorización NIIF</p>
       </div>
     `;
 
     try {
       const asOfDateVal = (getInputVal('rep-gen-date') || todayStr()).slice(0, 10);
       const isToday = (asOfDateVal === todayStr());
-      const whId = getSelectVal('rep-gen-wh');
+      const selectedWhId = getSelectVal('rep-gen-wh');
       const costType = getSelectVal('rep-gen-cost');
       const catVal = getSelectVal('rep-gen-cat');
       const lineVal = getSelectVal('rep-gen-line');
+      const includeZero = ($('#rep-gen-include-zero') as HTMLInputElement)?.checked ?? true;
 
-      const [products, warehouses, stock] = await Promise.all([
-        pb.listAll('products', { filter: 'active=true', sort: 'code' }),
+      // Carga en paralelo del catálogo, bodegas, movimientos/stock a corte, cuentas PUC y terceros
+      const [products, warehouses, stock, accounts, thirdParties] = await Promise.all([
+        pb.listAll('products', { filter: 'type="BIEN"', sort: 'code' }),
         API.getWarehouses(false),
-        isToday ? API.getInventoryStock() : API.getInventoryStockAsOf({ asOfDate: asOfDateVal })
+        isToday ? API.getInventoryStock() : API.getInventoryStockAsOf({ asOfDate: asOfDateVal }),
+        pb.listAll('accounts', { fields: 'id,code,name' }).catch(() => []),
+        pb.listAll('third_parties', { fields: 'id,doc_number,name,commercial_name' }).catch(() => [])
       ]);
 
-      const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
-      const stockByProd = new Map();
-      for (const s of filteredStock) {
+      cachedActiveWarehouses = (warehouses || []).filter((w: any) => w.active !== false);
+
+      // Diccionarios de resolución rápida O(1)
+      const accMap = new Map<string, string>();
+      (accounts || []).forEach((a: any) => accMap.set(a.id, `${a.code || ''} - ${a.name || ''}`.trim()));
+
+      const tpMap = new Map<string, string>();
+      (thirdParties || []).forEach((t: any) => {
+        const nit = t.doc_number ? `[${t.doc_number}] ` : '';
+        tpMap.set(t.id, `${nit}${t.name || t.commercial_name || ''}`.trim());
+      });
+
+      const resolveAccount = (rel: any): string => {
+        if (!rel) return '—';
+        const id = Array.isArray(rel) ? rel[0] : rel;
+        return accMap.get(id) || '—';
+      };
+
+      const resolveThirdParty = (rel: any): string => {
+        if (!rel) return '—';
+        const id = Array.isArray(rel) ? rel[0] : rel;
+        return tpMap.get(id) || '—';
+      };
+
+      // Matriz de stock: (product_id + "_" + warehouse_id) -> cantidad
+      // y promedio ponderado acumulado
+      const whStockMap = new Map<string, number>();
+      const prodCostAggMap = new Map<string, { costSum: number; costCount: number; avgCost: number }>();
+
+      for (const s of (stock || [])) {
         const pid = s.product_id;
-        if (!stockByProd.has(pid)) {
-          stockByProd.set(pid, { qty: 0, costSum: 0, costCount: 0 });
+        const wid = s.warehouse_id;
+        const qty = Number(s.qty_on_hand || 0);
+        const cost = Number(s.avg_cost || 0);
+
+        if (pid && wid) {
+          whStockMap.set(`${pid}_${wid}`, qty);
         }
-        const entry = stockByProd.get(pid);
-        entry.qty += Number(s.qty_on_hand || 0);
-        if (Number(s.avg_cost || 0) > 0) {
-          entry.costSum += Number(s.avg_cost);
-          entry.costCount++;
+
+        if (pid) {
+          if (!prodCostAggMap.has(pid)) {
+            prodCostAggMap.set(pid, { costSum: 0, costCount: 0, avgCost: 0 });
+          }
+          const cEntry = prodCostAggMap.get(pid)!;
+          if (cost > 0) {
+            cEntry.costSum += (qty > 0 ? cost * qty : cost);
+            cEntry.costCount += (qty > 0 ? qty : 1);
+            cEntry.avgCost = cost;
+          }
         }
       }
 
+      // Filtrado por categoría y línea
       let filteredProducts = products;
       if (catVal) filteredProducts = filteredProducts.filter((p: any) => p.categoria === catVal);
       if (lineVal) filteredProducts = filteredProducts.filter((p: any) => p.linea === lineVal);
 
-      cachedReportRows = filteredProducts.map((p: any) => {
-        const st = stockByProd.get(p.id) || { qty: 0, costSum: 0, costCount: 0 };
+      // Armar dataset enriquecido con atributos completos y condiciones especiales
+      const rows = filteredProducts.map((p: any) => {
+        const cEntry = prodCostAggMap.get(p.id) || { costSum: 0, costCount: 0, avgCost: 0 };
+
+        // Costo unitario según el criterio seleccionado
         let unitCost = 0;
         if (costType === 'promedio') {
-          unitCost = st.costCount > 0 ? (st.costSum / st.costCount) : Number(p.cost_price || 0);
+          unitCost = cEntry.costCount > 0
+            ? (cEntry.costSum / cEntry.costCount)
+            : (cEntry.avgCost > 0 ? cEntry.avgCost : Number(p.cost_price || 0));
         } else {
           unitCost = Number(p.cost_price || 0);
         }
         unitCost = Math.round(unitCost * 100) / 100;
-        const totalVal = Math.round((st.qty * unitCost) * 100) / 100;
+
+        // Cantidad por bodega individual
+        const whQty: Record<string, number> = {};
+        let sumWhQty = 0;
+        cachedActiveWarehouses.forEach((w: any) => {
+          const q = whStockMap.get(`${p.id}_${w.id}`) || 0;
+          whQty[w.id] = q;
+          sumWhQty += q;
+        });
+
+        // Si se seleccionó una bodega específica, la existencia total evaluada es la de esa bodega
+        const totalQty = selectedWhId ? (whQty[selectedWhId] || 0) : sumWhQty;
+        const totalVal = Math.round((totalQty * unitCost) * 100) / 100;
+
+        // Visto bueno entidad string format
+        const vbEntidad = Array.isArray(p.visto_bueno_entidad)
+          ? p.visto_bueno_entidad.join(', ')
+          : (p.visto_bueno_entidad || '');
+
+        // Dimensiones
+        const dims = (p.largo_cm || p.ancho_cm || p.alto_cm)
+          ? `${p.largo_cm || 0} x ${p.ancho_cm || 0} x ${p.alto_cm || 0} cm`
+          : '—';
 
         return {
           id: p.id,
           code: p.code || '',
           name: p.name || '',
+          description: p.description || '',
+          ean_code: p.ean_code || '',
+          unspsc_code: p.unspsc_code || '',
+          unit: p.unit || 'UND',
           categoria: p.categoria || '—',
           linea: p.linea || '—',
-          unit: p.unit || '—',
-          qty: st.qty,
+          marca: p.marca || '—',
+          modelo: p.modelo || '—',
+
+          // Cantidades por bodega y consolidada
+          whQty,
+          totalQty,
           unitCost,
-          totalVal
+          totalVal,
+
+          // Precios comerciales
+          base_price: Number(p.base_price || 0),
+          precio_venta_2: Number(p.precio_venta_2 || 0),
+          precio_venta_3: Number(p.precio_venta_3 || 0),
+
+          // Condiciones Especiales (Operativas / Logísticas / Regulatorias)
+          is_consigned: Boolean(p.is_consigned),
+          consignment_cost: Number(p.consignment_cost || 0),
+          consignment_supplier: resolveThirdParty(p.consignment_supplier_id),
+
+          track_lots: Boolean(p.track_lots),
+          track_pallets: Boolean(p.track_pallets),
+          is_combo: Boolean(p.is_combo),
+
+          posicion_arancelaria: p.posicion_arancelaria || '',
+          arancel_rate: Number(p.arancel_rate_default || 0),
+          pais_origen: p.pais_origen || '',
+
+          visto_bueno_required: Boolean(p.visto_bueno_required),
+          visto_bueno_entidad: vbEntidad,
+          registro_sanitario: p.registro_sanitario || '',
+
+          // Contabilidad NIIF y PUC Colombiano
+          iva_rate: p.iva_rate !== null && p.iva_rate !== undefined ? Number(p.iva_rate) : 0,
+          inventory_account: resolveAccount(p.inventory_account_id),
+          cost_account: resolveAccount(p.cost_account_id),
+          income_account: resolveAccount(p.income_account_id),
+
+          // Logística y empaque
+          presentacion: p.presentacion || '',
+          und_empaque: Number(p.und_empaque || 0),
+          peso: Number(p.peso || 0),
+          peso_neto: Number(p.peso_neto || 0),
+          peso_bruto: Number(p.peso_bruto || 0),
+          cajas_en_pallet: Number(p.cajas_en_pallet || 0),
+          dimensiones: dims,
+
+          // Control de stock
+          stock_min: p.stock_min !== null && p.stock_min !== undefined ? Number(p.stock_min) : null,
+          stock_max: p.stock_max !== null && p.stock_max !== undefined ? Number(p.stock_max) : null,
+          active: p.active !== false
         };
       });
+
+      // Filtro de saldos en cero si no fue solicitado incluirlos
+      cachedReportRows = includeZero ? rows : rows.filter(r => r.totalQty !== 0);
 
       renderReportTable();
       if (expBtn) expBtn.disabled = !cachedReportRows.length;
       if (printBtn) printBtn.disabled = !cachedReportRows.length;
 
     } catch (err: any) {
-      resultsContainer.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>Error: ${esc(err.message)}</div>`;
+      resultsContainer.innerHTML = `
+        <div class="p-8 text-center text-red-500">
+          <i class="fas fa-circle-exclamation mr-2 text-xl"></i>
+          <p class="font-semibold mt-1">Error al compilar el reporte maestro:</p>
+          <p class="text-xs text-gray-600 mt-1">${esc(err.message)}</p>
+        </div>
+      `;
     } finally {
       if (genBtn) {
         genBtn.disabled = false;
@@ -529,65 +703,219 @@ async function renderInventoryGeneralReport() {
     if (!resultsContainer) return;
 
     const term = (getInputVal('rep-gen-filter') || '').toLowerCase().trim();
+    const isDetailed = ($('#rep-gen-detailed-view') as HTMLInputElement)?.checked ?? false;
+    const selectedWhId = getSelectVal('rep-gen-wh');
+
+    // Determinar qué bodegas se mostrarán en columnas
+    const displayWarehouses = selectedWhId
+      ? cachedActiveWarehouses.filter(w => w.id === selectedWhId)
+      : cachedActiveWarehouses;
+
     filteredRows = term
-      ? cachedReportRows.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term))
+      ? cachedReportRows.filter(r =>
+          r.code.toLowerCase().includes(term) ||
+          r.name.toLowerCase().includes(term) ||
+          r.ean_code.toLowerCase().includes(term) ||
+          r.marca.toLowerCase().includes(term) ||
+          r.consignment_supplier.toLowerCase().includes(term)
+        )
       : cachedReportRows;
 
-    const totalQty = filteredRows.reduce((sum, r) => sum + r.qty, 0);
-    const totalVal = filteredRows.reduce((sum, r) => sum + r.totalVal, 0);
+    // Totales calculados
+    const totalQty = filteredRows.reduce((sum, r) => sum + r.totalQty, 0);
+
+    // Separación contable NIIF (NIC 2):
+    // El inventario en consignación NO es activo de la empresa, no suma al patrimonio
+    const totalValPropio = filteredRows
+      .filter(r => !r.is_consigned)
+      .reduce((sum, r) => sum + r.totalVal, 0);
+
+    const consignedRows = filteredRows.filter(r => r.is_consigned);
+    const totalValConsignacion = consignedRows.reduce((sum, r) => sum + r.totalVal, 0);
+
+    const lotsCount = filteredRows.filter(r => r.track_lots).length;
 
     resultsContainer.innerHTML = `
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left">
-          <div class="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Total Referencias</div>
-          <div class="text-xl font-extrabold text-blue-950 mt-0.5">${fmtN(filteredRows.length)}</div>
+      <!-- Tarjetas KPI Resumen Ejecutivo / Contable -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div class="bg-blue-50/70 border border-blue-200 rounded-xl p-3 text-left shadow-sm">
+          <div class="text-[11px] font-bold text-blue-700 uppercase tracking-wider flex items-center justify-between">
+            <span>Total Referencias</span>
+            <i class="fas fa-barcode text-blue-400"></i>
+          </div>
+          <div class="text-xl font-extrabold text-blue-950 mt-1">${fmtN(filteredRows.length)}</div>
+          <div class="text-[10px] text-blue-600 mt-0.5">${lotsCount} manejan lotes / vencimiento</div>
         </div>
-        <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-left">
-          <div class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Unidades en Stock</div>
-          <div class="text-xl font-extrabold text-emerald-950 mt-0.5">${fmtN(totalQty)}</div>
+
+        <div class="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 text-left shadow-sm">
+          <div class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider flex items-center justify-between">
+            <span>Unidades en Existencia</span>
+            <i class="fas fa-boxes-stacked text-emerald-400"></i>
+          </div>
+          <div class="text-xl font-extrabold text-emerald-950 mt-1">${fmtN(totalQty)}</div>
+          <div class="text-[10px] text-emerald-600 mt-0.5">En ${displayWarehouses.length} bodega(s) auditada(s)</div>
         </div>
-        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-left">
-          <div class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Valor Total Inventario</div>
-          <div class="text-xl font-extrabold text-indigo-950 mt-0.5">${fmt(totalVal)}</div>
+
+        <div class="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3 text-left shadow-sm">
+          <div class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider flex items-center justify-between">
+            <span>Valor Stock Propio (NIC 2)</span>
+            <i class="fas fa-sack-dollar text-indigo-400"></i>
+          </div>
+          <div class="text-xl font-extrabold text-indigo-950 mt-1">${fmt(totalValPropio)}</div>
+          <div class="text-[10px] text-indigo-600 mt-0.5">Base balance de prueba NIIF</div>
+        </div>
+
+        <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-left shadow-sm">
+          <div class="text-[11px] font-bold text-amber-700 uppercase tracking-wider flex items-center justify-between">
+            <span>En Consignación (Terceros)</span>
+            <i class="fas fa-handshake text-amber-500"></i>
+          </div>
+          <div class="text-xl font-extrabold text-amber-950 mt-1">${fmtN(consignedRows.length)} ref.</div>
+          <div class="text-[10px] text-amber-700 mt-0.5 font-medium">Valor: ${fmt(totalValConsignacion)} (Fuera de Balance)</div>
         </div>
       </div>
 
-      <div class="border border-gray-200 rounded-xl overflow-x-auto shadow-sm max-h-[500px] overflow-y-auto">
-        <table class="w-full text-xs data-table">
+      <!-- Tabla de Datos con Columnas Dinámicas de Bodega y Condiciones Especiales -->
+      <div class="border border-gray-200 rounded-xl overflow-x-auto shadow-sm max-h-[550px] overflow-y-auto bg-white">
+        <table class="w-full text-xs data-table border-collapse">
           <thead class="bg-gray-100 sticky top-0 z-10 border-b border-gray-200 text-gray-700">
             <tr>
-              <th class="p-2.5 text-left">Código</th>
-              <th class="p-2.5 text-left">Producto</th>
-              <th class="p-2.5 text-left">Categoría</th>
-              <th class="p-2.5 text-left">Línea</th>
-              <th class="p-2.5 text-left">Unidad</th>
-              <th class="p-2.5 text-right">Existencia</th>
-              <th class="p-2.5 text-right">Costo Unitario</th>
-              <th class="p-2.5 text-right">Valor Estimado</th>
+              <th class="p-2.5 text-left whitespace-nowrap">Código</th>
+              <th class="p-2.5 text-left min-w-[200px]">Referencia / Producto</th>
+              <th class="p-2.5 text-left whitespace-nowrap">Categoría</th>
+              <th class="p-2.5 text-left whitespace-nowrap">Línea</th>
+              <th class="p-2.5 text-center whitespace-nowrap">Unidad</th>
+
+              <!-- Columnas dinámicas de cantidad por bodega -->
+              ${displayWarehouses.map(w => `
+                <th class="p-2.5 text-right whitespace-nowrap bg-blue-50/60 text-blue-900 border-l border-r border-blue-100 font-bold" title="${esc(w.name)}">
+                  ${esc(w.code || w.name)}
+                </th>
+              `).join('')}
+
+              <th class="p-2.5 text-right whitespace-nowrap bg-emerald-50 text-emerald-900 font-extrabold border-r border-emerald-200">
+                ${selectedWhId ? 'Existencia Bodega' : 'Total Consolidado'}
+              </th>
+              <th class="p-2.5 text-right whitespace-nowrap">Costo Unit.</th>
+              <th class="p-2.5 text-right whitespace-nowrap">Valor Total</th>
+
+              ${isDetailed ? `
+                <th class="p-2.5 text-left whitespace-nowrap bg-amber-50 text-amber-900">Condiciones Especiales</th>
+                <th class="p-2.5 text-right whitespace-nowrap">IVA</th>
+                <th class="p-2.5 text-right whitespace-nowrap">Precio Base</th>
+                <th class="p-2.5 text-left whitespace-nowrap">Cuenta PUC Inventario</th>
+              ` : ''}
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-100">
-            ${filteredRows.length ? filteredRows.map(r => `
-              <tr class="hover:bg-gray-50">
-                <td class="p-2.5 font-mono text-blue-800 font-semibold">${esc(r.code)}</td>
-                <td class="p-2.5 font-medium text-gray-800">${esc(r.name)}</td>
-                <td class="p-2.5 text-gray-500">${esc(r.categoria)}</td>
-                <td class="p-2.5 text-gray-500">${esc(r.linea)}</td>
-                <td class="p-2.5 text-gray-500">${esc(r.unit)}</td>
-                <td class="p-2.5 text-right font-semibold ${r.qty <= 0 ? 'text-red-500' : 'text-gray-800'}">${fmtN(r.qty)}</td>
-                <td class="p-2.5 text-right text-gray-700">${fmt(r.unitCost)}</td>
-                <td class="p-2.5 text-right font-bold text-gray-900">${fmt(r.totalVal)}</td>
+          <tbody class="divide-y divide-gray-100 text-gray-800">
+            ${filteredRows.length ? filteredRows.map(r => {
+              // Badges de condiciones especiales
+              const badges: string[] = [];
+              if (r.is_consigned) {
+                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800" title="Consignación - Proveedor: ${esc(r.consignment_supplier)}"><i class="fas fa-handshake"></i> Consig.</span>`);
+              }
+              if (r.track_lots) {
+                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800" title="Control de Lotes / Vencimiento"><i class="fas fa-barcode"></i> Lotes</span>`);
+              }
+              if (r.track_pallets) {
+                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-800" title="Control de Pallets"><i class="fas fa-pallet"></i> Pallets</span>`);
+              }
+              if (r.is_combo) {
+                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800" title="Kit / Combo"><i class="fas fa-layer-group"></i> Combo</span>`);
+              }
+              if (r.visto_bueno_required || r.registro_sanitario) {
+                const regTitle = [r.visto_bueno_entidad, r.registro_sanitario].filter(Boolean).join(' - ');
+                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-100 text-teal-800" title="Regulador: ${esc(regTitle)}"><i class="fas fa-shield-halved"></i> ${esc(r.visto_bueno_entidad || 'INVIMA')}</span>`);
+              }
+
+              const rowClass = r.is_consigned
+                ? 'hover:bg-amber-50/50 bg-amber-50/20'
+                : (r.totalQty < 0 ? 'bg-red-50/30 hover:bg-red-50' : 'hover:bg-gray-50');
+
+              return `
+                <tr class="${rowClass} transition-colors">
+                  <td class="p-2.5 font-mono text-blue-800 font-semibold whitespace-nowrap">${esc(r.code)}</td>
+                  <td class="p-2.5 font-medium text-gray-900">
+                    <div>${esc(r.name)}</div>
+                    ${r.ean_code ? `<span class="text-[10px] text-gray-400 font-mono"><i class="fas fa-barcode mr-1"></i>${esc(r.ean_code)}</span>` : ''}
+                    ${r.is_consigned ? `<div class="text-[10px] text-amber-700 font-medium"><i class="fas fa-handshake mr-1"></i>${esc(r.consignment_supplier)}</div>` : ''}
+                  </td>
+                  <td class="p-2.5 text-gray-600 whitespace-nowrap">${esc(r.categoria)}</td>
+                  <td class="p-2.5 text-gray-600 whitespace-nowrap">${esc(r.linea)}</td>
+                  <td class="p-2.5 text-center text-gray-500 whitespace-nowrap">${esc(r.unit)}</td>
+
+                  <!-- Celdas dinámicas de cantidad por bodega -->
+                  ${displayWarehouses.map(w => {
+                    const qWh = r.whQty[w.id] || 0;
+                    return `
+                      <td class="p-2.5 text-right font-mono border-l border-r border-blue-50 ${qWh < 0 ? 'text-red-600 font-bold' : (qWh === 0 ? 'text-gray-300' : 'text-gray-800 font-medium')}">
+                        ${qWh === 0 ? '—' : fmtN(qWh)}
+                      </td>
+                    `;
+                  }).join('')}
+
+                  <td class="p-2.5 text-right font-semibold font-mono bg-emerald-50/40 border-r border-emerald-100 ${r.totalQty < 0 ? 'text-red-600' : (r.totalQty === 0 ? 'text-gray-400' : 'text-emerald-900')}">
+                    ${fmtN(r.totalQty)}
+                  </td>
+                  <td class="p-2.5 text-right text-gray-700 whitespace-nowrap">${fmt(r.unitCost)}</td>
+                  <td class="p-2.5 text-right font-bold whitespace-nowrap ${r.is_consigned ? 'text-amber-800' : 'text-gray-900'}">
+                    ${fmt(r.totalVal)}
+                    ${r.is_consigned ? `<span class="block text-[9px] text-amber-600 font-normal">NIC 2 Consig.</span>` : ''}
+                  </td>
+
+                  ${isDetailed ? `
+                    <td class="p-2.5 whitespace-nowrap">
+                      <div class="flex flex-wrap gap-1 items-center">
+                        ${badges.length ? badges.join('') : '<span class="text-gray-400 text-[11px]">—</span>'}
+                      </div>
+                    </td>
+                    <td class="p-2.5 text-right text-gray-700 font-mono whitespace-nowrap">${r.iva_rate}%</td>
+                    <td class="p-2.5 text-right text-gray-800 font-medium whitespace-nowrap">${fmt(r.base_price)}</td>
+                    <td class="p-2.5 text-gray-600 text-[11px] max-w-[200px] truncate" title="${esc(r.inventory_account)}">
+                      ${esc(r.inventory_account)}
+                    </td>
+                  ` : ''}
+                </tr>
+              `;
+            }).join('') : `
+              <tr>
+                <td colspan="${5 + displayWarehouses.length + 3 + (isDetailed ? 4 : 0)}" class="p-10 text-center text-gray-400">
+                  <i class="fas fa-boxes-stacked text-2xl mb-1 text-gray-300 block"></i>
+                  No se encontraron referencias bajo los filtros seleccionados.
+                </td>
               </tr>
-            `).join('') : `
-              <tr><td colspan="8" class="p-8 text-center text-gray-400">No se encontraron productos bajo estos criterios.</td></tr>
             `}
           </tbody>
-          <tfoot class="bg-gray-100 font-bold sticky bottom-0 border-t border-gray-300">
+          <tfoot class="bg-gray-100 font-bold sticky bottom-0 border-t-2 border-gray-300 text-gray-900">
             <tr>
-              <td colspan="5" class="p-2.5 text-gray-900">TOTALES CONSOLIDADOS (${filteredRows.length} ítems)</td>
-              <td class="p-2.5 text-right text-emerald-800">${fmtN(totalQty)}</td>
+              <td colspan="5" class="p-2.5 text-gray-900">
+                TOTALES AUDITADOS (${filteredRows.length} ítems)
+              </td>
+
+              <!-- Totales por bodega -->
+              ${displayWarehouses.map(w => {
+                const subTotalWh = filteredRows.reduce((sum, r) => sum + (r.whQty[w.id] || 0), 0);
+                return `
+                  <td class="p-2.5 text-right text-blue-950 font-mono border-l border-r border-blue-200 bg-blue-100/60">
+                    ${fmtN(subTotalWh)}
+                  </td>
+                `;
+              }).join('')}
+
+              <td class="p-2.5 text-right text-emerald-950 font-extrabold font-mono bg-emerald-100 border-r border-emerald-300">
+                ${fmtN(totalQty)}
+              </td>
               <td class="p-2.5 text-right"></td>
-              <td class="p-2.5 text-right text-indigo-900 font-extrabold text-sm">${fmt(totalVal)}</td>
+              <td class="p-2.5 text-right text-indigo-950 font-extrabold text-sm whitespace-nowrap">
+                ${fmt(totalValPropio)}
+                ${consignedRows.length ? `<span class="block text-[10px] text-amber-700 font-normal">+ ${fmt(totalValConsignacion)} consig.</span>` : ''}
+              </td>
+
+              ${isDetailed ? `
+                <td colspan="4" class="p-2.5 text-[11px] text-gray-500 font-normal">
+                  Cifras de stock sujetas a normativa contable colombiana (NIC 2 / DIAN)
+                </td>
+              ` : ''}
             </tr>
           </tfoot>
         </table>
@@ -597,29 +925,154 @@ async function renderInventoryGeneralReport() {
 
   $('#btn-gen-inv')?.addEventListener('click', executeGeneralReport);
   $('#rep-gen-filter')?.addEventListener('input', () => renderReportTable());
+  $('#rep-gen-detailed-view')?.addEventListener('change', () => renderReportTable());
+  $('#rep-gen-include-zero')?.addEventListener('change', () => executeGeneralReport());
 
+  // Exportación Integral a Excel (.xlsx compatible con Microsoft Excel, LibreOffice y Google Sheets)
   $('#btn-exp-inv')?.addEventListener('click', () => {
     if (!cachedReportRows.length) return;
-    const exportData = (filteredRows.length ? filteredRows : cachedReportRows).map(r => ({
-      codigo: r.code,
-      producto: r.name,
-      categoria: r.categoria,
-      linea: r.linea,
-      unidad: r.unit,
-      existencia: r.qty,
-      costo_unitario: r.unitCost,
-      valor_total: r.totalVal
-    }));
-    exportToExcel(exportData, [
+
+    const asOfDateVal = (getInputVal('rep-gen-date') || todayStr()).slice(0, 10);
+    const selectedWhId = getSelectVal('rep-gen-wh');
+    const costType = getSelectVal('rep-gen-cost');
+    const rowsToExport = filteredRows.length ? filteredRows : cachedReportRows;
+
+    // Determinar qué bodegas se incluyen en las columnas dinámicas de Excel
+    const exportWarehouses = selectedWhId
+      ? cachedActiveWarehouses.filter(w => w.id === selectedWhId)
+      : cachedActiveWarehouses;
+
+    // Mapear dataset aplanado con todos los atributos maestros y condiciones especiales
+    const exportData = rowsToExport.map(r => {
+      const item: Record<string, any> = {
+        codigo: r.code,
+        producto: r.name,
+        descripcion: r.description || '—',
+        ean: r.ean_code || '—',
+        unspsc: r.unspsc_code || '—',
+        unidad: r.unit,
+        categoria: r.categoria,
+        linea: r.linea,
+        marca: r.marca,
+        modelo: r.modelo
+      };
+
+      // Inyección de cantidades dinámicas por cada bodega
+      exportWarehouses.forEach(w => {
+        item[`cant_bodega_${w.id}`] = r.whQty[w.id] || 0;
+      });
+
+      // Saldos totales y valorización
+      item.total_existencia = r.totalQty;
+      item.costo_unitario = r.unitCost;
+      item.valor_total = r.totalVal;
+
+      // Precios de venta
+      item.precio_base = r.base_price;
+      item.precio_venta_2 = r.precio_venta_2;
+      item.precio_venta_3 = r.precio_venta_3;
+
+      // Condiciones Especiales (Operativas / Logística)
+      item.es_consignacion = r.is_consigned ? 'SÍ (Propiedad Tercero)' : 'NO (Propio)';
+      item.costo_consignacion = r.consignment_cost;
+      item.proveedor_consignacion = r.consignment_supplier;
+
+      item.maneja_lotes = r.track_lots ? 'SÍ' : 'NO';
+      item.maneja_pallets = r.track_pallets ? 'SÍ' : 'NO';
+      item.es_combo = r.is_combo ? 'SÍ' : 'NO';
+
+      // Condiciones Aduaneras y Sanitarias
+      item.posicion_arancelaria = r.posicion_arancelaria || '—';
+      item.arancel_rate = r.arancel_rate ? `${r.arancel_rate}%` : '0%';
+      item.pais_origen = r.pais_origen || '—';
+      item.visto_bueno = r.visto_bueno_required ? 'SÍ' : 'NO';
+      item.entidad_visto_bueno = r.visto_bueno_entidad || '—';
+      item.registro_sanitario = r.registro_sanitario || '—';
+
+      // Contabilidad NIIF y PUC Colombiano
+      item.tarifa_iva = `${r.iva_rate}%`;
+      item.cuenta_inventario = r.inventory_account;
+      item.cuenta_costo = r.cost_account;
+      item.cuenta_ingreso = r.income_account;
+
+      // Empaque y Logística física
+      item.presentacion = r.presentacion || '—';
+      item.und_empaque = r.und_empaque;
+      item.peso_neto = r.peso_neto;
+      item.peso_bruto = r.peso_bruto;
+      item.cajas_pallet = r.cajas_en_pallet;
+      item.dimensiones = r.dimensiones;
+
+      // Control de stock
+      item.stock_min = r.stock_min !== null ? r.stock_min : '—';
+      item.stock_max = r.stock_max !== null ? r.stock_max : '—';
+      item.estado = r.active ? 'ACTIVO' : 'INACTIVO';
+
+      return item;
+    });
+
+    // Definición de encabezados ordenados y descriptivos para Excel
+    const headers: { key: string; label: string }[] = [
       { key: 'codigo', label: 'Código' },
-      { key: 'producto', label: 'Producto' },
+      { key: 'producto', label: 'Referencia / Producto' },
+      { key: 'descripcion', label: 'Descripción Detallada' },
+      { key: 'ean', label: 'Código EAN / Barras' },
+      { key: 'unspsc', label: 'Código UNSPSC' },
+      { key: 'unidad', label: 'Unidad de Medida' },
       { key: 'categoria', label: 'Categoría' },
       { key: 'linea', label: 'Línea' },
-      { key: 'unidad', label: 'Unidad' },
-      { key: 'existencia', label: 'Existencia' },
-      { key: 'costo_unitario', label: 'Costo Unitario' },
-      { key: 'valor_total', label: 'Valor Estimado' },
-    ], `Reporte_General_Inventarios_${todayStr()}`);
+      { key: 'marca', label: 'Marca' },
+      { key: 'modelo', label: 'Modelo' }
+    ];
+
+    // Encabezados dinámicos por cada bodega
+    exportWarehouses.forEach(w => {
+      headers.push({
+        key: `cant_bodega_${w.id}`,
+        label: `Cant. Bodega: ${w.name} (${w.code || 'BOD'})`
+      });
+    });
+
+    // Encabezados financieros y contables
+    headers.push(
+      { key: 'total_existencia', label: selectedWhId ? 'Existencia Bodega' : 'Total Existencia Consolidada' },
+      { key: 'costo_unitario', label: `Costo Unitario (${costType === 'promedio' ? 'CPP NIIF' : 'Último'})` },
+      { key: 'valor_total', label: 'Valor Total Stock' },
+      { key: 'precio_base', label: 'Precio Venta Base' },
+      { key: 'precio_venta_2', label: 'Precio Venta Lista 2' },
+      { key: 'precio_venta_3', label: 'Precio Venta Lista 3' },
+      { key: 'es_consignacion', label: '¿En Consignación? (NIC 2)' },
+      { key: 'costo_consignacion', label: 'Costo Consignación' },
+      { key: 'proveedor_consignacion', label: 'Proveedor Consignación (NIT/Nombre)' },
+      { key: 'maneja_lotes', label: '¿Maneja Lotes/Vencimientos?' },
+      { key: 'maneja_pallets', label: '¿Maneja Pallets?' },
+      { key: 'es_combo', label: '¿Es Combo / Kit?' },
+      { key: 'posicion_arancelaria', label: 'Posición Arancelaria' },
+      { key: 'arancel_rate', label: '% Arancel' },
+      { key: 'pais_origen', label: 'País de Origen' },
+      { key: 'visto_bueno', label: '¿Requiere Visto Bueno?' },
+      { key: 'entidad_visto_bueno', label: 'Entidad Visto Bueno (ICA/INVIMA/etc.)' },
+      { key: 'registro_sanitario', label: 'Registro Sanitario' },
+      { key: 'tarifa_iva', label: 'Tarifa IVA (%)' },
+      { key: 'cuenta_inventario', label: 'Cuenta PUC Inventarios (14)' },
+      { key: 'cuenta_costo', label: 'Cuenta PUC Costos (61)' },
+      { key: 'cuenta_ingreso', label: 'Cuenta PUC Ingresos (41)' },
+      { key: 'presentacion', label: 'Presentación Comercial' },
+      { key: 'und_empaque', label: 'Unidades por Empaque' },
+      { key: 'peso_neto', label: 'Peso Neto (kg)' },
+      { key: 'peso_bruto', label: 'Peso Bruto (kg)' },
+      { key: 'cajas_pallet', label: 'Cajas por Pallet' },
+      { key: 'dimensiones', label: 'Dimensiones (cm)' },
+      { key: 'stock_min', label: 'Stock Mínimo' },
+      { key: 'stock_max', label: 'Stock Máximo' },
+      { key: 'estado', label: 'Estado Catálogo' }
+    );
+
+    const filename = `Reporte_Maestro_Inventarios_${asOfDateVal}_${selectedWhId ? 'Bodega' : 'Consolidado'}`;
+
+    exportToExcel(exportData, headers, filename, {
+      title: `Reporte Maestro de Referencias y Saldos de Inventario al ${asOfDateVal}`
+    });
   });
 
   $('#btn-print-inv')?.addEventListener('click', () => {
@@ -17483,4 +17936,979 @@ async function renderSalesBySellerReport() {
 }
 
 (window as any).renderSalesBySellerReport = renderSalesBySellerReport;
+
+// ============================================================================
+// ── MÓDULO DE REPORTES: NÓMINA Y TALENTO HUMANO (COLOMBIA) ─────────────────
+// ============================================================================
+
+/** Helper universal para exportar tablas a Excel (.xls) compatible con tildes y caracteres especiales */
+function exportHtmlTableToExcel(tableHtml: string, filename: string) {
+  const fullHtml = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <style>
+          body { font-family: Calibri, sans-serif; font-size: 11pt; color: #1E293B; }
+          table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+          th { background-color: #1E293B; color: #FFFFFF; font-weight: bold; padding: 6px 10px; border: 1px solid #CBD5E1; text-align: center; }
+          td { padding: 5px 8px; border: 1px solid #E2E8F0; }
+          .num { text-align: right; mso-number-format: "\\#\\,\\#\\#0"; }
+          .bold { font-weight: bold; }
+          .total { background-color: #F1F5F9; font-weight: bold; border-top: 2px solid #0F172A; }
+          .title { font-size: 14pt; font-weight: bold; color: #0F172A; margin-bottom: 4px; }
+          .subtitle { font-size: 10pt; color: #64748B; margin-bottom: 12px; }
+        </style>
+      </head>
+      <body>
+        ${tableHtml}
+      </body>
+    </html>
+  `;
+  const blob = new Blob([fullHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.setAttribute('download', `${filename}.xls`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/** 1. SÁBANA DE NÓMINA (Devengados, Deducciones y Neto a Pagar) */
+async function renderPayrollSabanaReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  host.innerHTML = `<div class="p-8 text-center text-slate-500 font-sans"><i class="fas fa-spinner fa-spin mr-2"></i>Preparando filtros de nómina...</div>`;
+
+  const [periods, employees] = await Promise.all([
+    pb.listAll('payroll_periods', { sort: '-date_from' }).catch(() => []),
+    pb.listAll('third_parties', { filter: 'type="EMPLEADO"', sort: 'name' }).catch(() => [])
+  ]);
+
+  const empMap = new Map<string, any>();
+  employees.forEach((e: any) => empMap.set(e.id, e));
+
+  host.innerHTML = `
+    <div class="space-y-4 text-xs font-sans">
+      <!-- Filtros Superiores con Botón de Consulta -->
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-xs">
+        <div class="form-group mb-0 flex-1 min-w-[200px]">
+          <label class="form-label font-bold text-slate-700 text-xs">Período de Liquidación</label>
+          <select id="rps-period-sel" class="form-input text-xs bg-white text-slate-900 border-slate-300">
+            <option value="ALL">Todos los Períodos Registrados</option>
+            ${periods.map((p: any) => `<option value="${p.id}">${(window as any).esc(p.name)} (${p.date_from} al ${p.date_to})</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group mb-0 flex-1 min-w-[200px]">
+          <label class="form-label font-bold text-slate-700 text-xs">Colaborador / Empleado</label>
+          <select id="rps-emp-sel" class="form-input text-xs bg-white text-slate-900 border-slate-300">
+            <option value="ALL">Todos los Colaboradores</option>
+            ${employees.map((e: any) => `<option value="${e.id}">${(window as any).esc(e.doc_number || '')} - ${(window as any).esc((e.first_name && e.last_name) ? `${e.first_name} ${e.last_name}` : (e.name || 'Colaborador'))}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" id="rps-btn-query" class="btn btn-primary px-4 py-2 text-xs font-bold shadow-xs hover:shadow flex items-center gap-1.5">
+          <i class="fas fa-search"></i> Consultar Reporte
+        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="rps-btn-excel" class="btn btn-outline text-emerald-700 border-emerald-300 hover:bg-emerald-50 px-3 py-2 text-xs font-bold" title="Descargar en Excel">
+            <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Excel
+          </button>
+          <button type="button" id="rps-btn-print" class="btn btn-outline text-slate-700 border-slate-300 hover:bg-slate-100 px-3 py-2 text-xs font-bold" title="Imprimir Sábana">
+            <i class="fas fa-print mr-1 text-slate-600"></i> Imprimir
+          </button>
+        </div>
+      </div>
+
+      <!-- Estado Inicial (Sin ejecutar consulta) -->
+      <div id="rps-empty-state" class="p-12 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
+        <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-lg">
+          <i class="fas fa-table-list"></i>
+        </div>
+        <h4 class="font-bold text-slate-800 text-sm">Parámetros de Consulta Listos</h4>
+        <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Seleccione el período deseado y presione <strong>"Consultar Reporte"</strong> para procesar la información en tiempo real.</p>
+      </div>
+
+      <!-- Contenedor de Resultados (Oculto inicialmente) -->
+      <div id="rps-results-wrap" class="hidden space-y-4">
+        <!-- Tarjetas KPI Resumen -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Colaboradores</div>
+            <div class="text-xl font-extrabold text-slate-900 mt-0.5" id="kpi-rps-count">0</div>
+          </div>
+          <div class="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Total Devengado</div>
+            <div class="text-xl font-extrabold text-emerald-950 mt-0.5" id="kpi-rps-dev">$0</div>
+          </div>
+          <div class="bg-rose-50/70 border border-rose-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Total Deducciones</div>
+            <div class="text-xl font-extrabold text-rose-950 mt-0.5" id="kpi-rps-ded">$0</div>
+          </div>
+          <div class="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Neto a Pagar</div>
+            <div class="text-xl font-extrabold text-indigo-950 mt-0.5" id="kpi-rps-net">$0</div>
+          </div>
+        </div>
+
+        <!-- Contenedor de la Tabla -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+          <div class="overflow-x-auto max-h-[560px]">
+            <table class="w-full text-left text-xs data-table border-collapse" id="tbl-payroll-sabana">
+              <thead class="bg-slate-800 text-white sticky top-0 z-10 text-[11px]">
+                <tr>
+                  <th class="p-2.5 font-bold">Colaborador / Identificación</th>
+                  <th class="p-2.5 font-bold">Período</th>
+                  <th class="p-2.5 text-center font-bold">Días</th>
+                  <th class="p-2.5 text-right font-bold">Sueldo Básico</th>
+                  <th class="p-2.5 text-right font-bold">Aux. Transp.</th>
+                  <th class="p-2.5 text-right font-bold">H. Extras / Rec.</th>
+                  <th class="p-2.5 text-right font-bold">Otros Dev.</th>
+                  <th class="p-2.5 text-right font-extrabold bg-slate-900 text-emerald-300">Total Devengado</th>
+                  <th class="p-2.5 text-right font-bold">Salud (4%)</th>
+                  <th class="p-2.5 text-right font-bold">Pensión (4%)</th>
+                  <th class="p-2.5 text-right font-bold">FSP</th>
+                  <th class="p-2.5 text-right font-bold">Otras Deds.</th>
+                  <th class="p-2.5 text-right font-extrabold bg-slate-900 text-rose-300">Total Deducido</th>
+                  <th class="p-2.5 text-right font-black bg-indigo-950 text-indigo-200">Neto Pagado</th>
+                </tr>
+              </thead>
+              <tbody id="rps-tbody" class="divide-y divide-slate-100"></tbody>
+              <tfoot id="rps-tfoot" class="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const periodSel = document.getElementById('rps-period-sel') as HTMLSelectElement;
+  const empSel = document.getElementById('rps-emp-sel') as HTMLSelectElement;
+  const btnQuery = document.getElementById('rps-btn-query') as HTMLButtonElement;
+  const emptyState = document.getElementById('rps-empty-state') as HTMLElement;
+  const resultsWrap = document.getElementById('rps-results-wrap') as HTMLElement;
+  const tbody = document.getElementById('rps-tbody') as HTMLElement;
+  const tfoot = document.getElementById('rps-tfoot') as HTMLElement;
+
+  const runQuery = async () => {
+    btnQuery.disabled = true;
+    btnQuery.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Consultando...`;
+    emptyState.classList.add('hidden');
+    resultsWrap.classList.remove('hidden');
+    tbody.innerHTML = `<tr><td colspan="14" class="p-8 text-center text-slate-400 font-sans"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando liquidaciones en base de datos...</td></tr>`;
+    tfoot.innerHTML = '';
+
+    try {
+      const selectedPeriod = periodSel?.value || 'ALL';
+      const selectedEmp = empSel?.value || 'ALL';
+
+      const filterParts: string[] = [];
+      if (selectedPeriod !== 'ALL') {
+        filterParts.push(`period_id="${pb.escapeFilterValue(selectedPeriod)}"`);
+      }
+      if (selectedEmp !== 'ALL') {
+        filterParts.push(`employee_id="${pb.escapeFilterValue(selectedEmp)}"`);
+      }
+      const filter = filterParts.join(' && ');
+
+      const payrollLines = await pb.listAll('payroll_lines', {
+        filter,
+        expand: 'period_id,employee_id'
+      }).catch(() => []);
+
+      if (!payrollLines.length) {
+        tbody.innerHTML = `<tr><td colspan="14" class="p-8 text-center text-slate-400 font-sans">No se encontraron liquidaciones de nómina con los criterios seleccionados.</td></tr>`;
+        tfoot.innerHTML = '';
+        (document.getElementById('kpi-rps-count') as HTMLElement).innerText = '0';
+        (document.getElementById('kpi-rps-dev') as HTMLElement).innerText = '$0';
+        (document.getElementById('kpi-rps-ded') as HTMLElement).innerText = '$0';
+        (document.getElementById('kpi-rps-net') as HTMLElement).innerText = '$0';
+        return;
+      }
+
+      let totBasic = 0, totTrans = 0, totOt = 0, totOtherDev = 0, totDev = 0;
+      let totSalud = 0, totPension = 0, totFsp = 0, totOtherDed = 0, totDed = 0, totNet = 0;
+
+      tbody.innerHTML = payrollLines.map((l: any) => {
+        const emp = l.expand?.employee_id || empMap.get(l.employee_id) || {};
+        const fn = (emp.first_name || '').trim();
+        const ln = (emp.last_name || '').trim();
+        const empName = (fn && ln) ? `${fn} ${ln}` : (emp.name || emp.commercial_name || 'Colaborador');
+        const docNum = emp.doc_number || '—';
+        const periodName = l.expand?.period_id?.name || 'Período';
+        const days = Number(l.days_worked || 30);
+        const basic = Number(l.salary_base || 0);
+        const trans = Number(l.transport_allowance || 0);
+        const ot = Number(l.overtime || 0);
+
+        let otherDev = 0;
+        let otherDedNotes = 0;
+        try {
+          if (l.notes) {
+            const meta = JSON.parse(l.notes);
+            const ca = meta?.payroll_meta?.concept_amounts;
+            if (ca) {
+              otherDev = Number(ca.bonificacion || 0) + Number(ca.comisiones || 0) + Number(ca.aux_no_salariales || 0) + Number(ca.otros_ingresos || 0) + Number(ca.rodamiento || 0);
+              otherDedNotes = Number(ca.embargo || 0) + Number(ca.cxc || 0) + Number(ca.libranza || 0) + Number(ca.prestamos || 0);
+            }
+          }
+        } catch (_) {}
+
+        const salud = Number(l.deduction_health || 0);
+        const pension = Number(l.deduction_pension || 0);
+        const fsp = Number(l.solidarity_fund || 0);
+        const wTax = Number(l.withholding_tax || 0);
+        const otherDed = Number(l.deduction_other || 0) + otherDedNotes + wTax;
+        const ded = salud + pension + fsp + otherDed;
+        const net = Number(l.net_pay || 0);
+        const dev = net > 0 ? (net + ded) : (basic + trans + ot + otherDev);
+
+        totBasic += basic; totTrans += trans; totOt += ot; totOtherDev += otherDev; totDev += dev;
+        totSalud += salud; totPension += pension; totFsp += fsp; totOtherDed += otherDed; totDed += ded; totNet += net;
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition-colors">
+            <td class="p-2.5">
+              <div class="font-bold text-slate-900">${(window as any).esc(empName)}</div>
+              <div class="text-[10px] text-slate-500 font-mono">${(window as any).esc(docNum)}</div>
+            </td>
+            <td class="p-2.5 text-slate-600 font-medium">${(window as any).esc(periodName)}</td>
+            <td class="p-2.5 text-center font-bold text-slate-700">${days}</td>
+            <td class="p-2.5 text-right font-mono">${fmt(basic)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(trans)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(ot)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(otherDev)}</td>
+            <td class="p-2.5 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30">${fmt(dev)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(salud)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(pension)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(fsp)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(otherDed)}</td>
+            <td class="p-2.5 text-right font-mono font-bold text-rose-700 bg-rose-50/30">${fmt(ded)}</td>
+            <td class="p-2.5 text-right font-mono font-black text-indigo-950 bg-indigo-50/40">${fmt(net)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      tfoot.innerHTML = `
+        <tr>
+          <td class="p-2.5" colspan="2">TOTALES CONSOLIDADOS (${payrollLines.length} Registros)</td>
+          <td class="p-2.5 text-center">—</td>
+          <td class="p-2.5 text-right font-mono">${fmt(totBasic)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(totTrans)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(totOt)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(totOtherDev)}</td>
+          <td class="p-2.5 text-right font-mono font-black text-emerald-800 bg-emerald-100/40">${fmt(totDev)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(totSalud)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(totPension)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(totFsp)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(totOtherDed)}</td>
+          <td class="p-2.5 text-right font-mono font-black text-rose-800 bg-rose-100/40">${fmt(totDed)}</td>
+          <td class="p-2.5 text-right font-mono font-black text-indigo-950 bg-indigo-100/50 text-sm">${fmt(totNet)}</td>
+        </tr>
+      `;
+
+      (document.getElementById('kpi-rps-count') as HTMLElement).innerText = String(payrollLines.length);
+      (document.getElementById('kpi-rps-dev') as HTMLElement).innerText = fmt(totDev);
+      (document.getElementById('kpi-rps-ded') as HTMLElement).innerText = fmt(totDed);
+      (document.getElementById('kpi-rps-net') as HTMLElement).innerText = fmt(totNet);
+    } finally {
+      btnQuery.disabled = false;
+      btnQuery.innerHTML = `<i class="fas fa-search"></i> Consultar Reporte`;
+    }
+  };
+
+  btnQuery?.addEventListener('click', runQuery);
+
+  // Exportar Excel
+  document.getElementById('rps-btn-excel')?.addEventListener('click', () => {
+    const tableEl = document.getElementById('tbl-payroll-sabana');
+    if (!tableEl) return;
+    const periodLabel = periodSel.selectedOptions[0]?.text || 'Periodo';
+    const cleanLabel = periodLabel.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+    exportHtmlTableToExcel(tableEl.outerHTML, `Sabana_Nomina_${cleanLabel}_${todayStr()}`);
+  });
+
+  // Imprimir
+  document.getElementById('rps-btn-print')?.addEventListener('click', () => {
+    window.print();
+  });
+}
+
+/** 2. CONSOLIDADO DE PROVISIONES Y APORTES PATRONALES (Prestaciones + Parafiscales + SS) */
+async function renderPayrollProvisionsReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  host.innerHTML = `<div class="p-8 text-center text-slate-500 font-sans"><i class="fas fa-spinner fa-spin mr-2"></i>Preparando filtros de provisiones...</div>`;
+
+  const [periods, employees] = await Promise.all([
+    pb.listAll('payroll_periods', { sort: '-date_from' }).catch(() => []),
+    pb.listAll('third_parties', { filter: 'type="EMPLEADO"', sort: 'name' }).catch(() => [])
+  ]);
+
+  const empMap = new Map<string, any>();
+  employees.forEach((e: any) => empMap.set(e.id, e));
+
+  host.innerHTML = `
+    <div class="space-y-4 text-xs font-sans">
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-xs">
+        <div class="form-group mb-0 flex-1 min-w-[220px]">
+          <label class="form-label font-bold text-slate-700 text-xs">Período de Nómina</label>
+          <select id="rpp-period-sel" class="form-input text-xs bg-white text-slate-900 border-slate-300">
+            <option value="ALL">Consolidado Todos los Períodos</option>
+            ${periods.map((p: any) => `<option value="${p.id}">${(window as any).esc(p.name)} (${p.date_from} al ${p.date_to})</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" id="rpp-btn-query" class="btn btn-primary px-4 py-2 text-xs font-bold shadow-xs hover:shadow flex items-center gap-1.5">
+          <i class="fas fa-calculator"></i> Consultar Provisiones
+        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="rpp-btn-excel" class="btn btn-outline text-emerald-700 border-emerald-300 hover:bg-emerald-50 px-3 py-2 text-xs font-bold">
+            <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Excel
+          </button>
+          <button type="button" id="rpp-btn-print" class="btn btn-outline text-slate-700 border-slate-300 hover:bg-slate-100 px-3 py-2 text-xs font-bold">
+            <i class="fas fa-print mr-1 text-slate-600"></i> Imprimir
+          </button>
+        </div>
+      </div>
+
+      <!-- Estado Inicial (Sin ejecutar consulta) -->
+      <div id="rpp-empty-state" class="p-12 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
+        <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-lg">
+          <i class="fas fa-coins"></i>
+        </div>
+        <h4 class="font-bold text-slate-800 text-sm">Cálculo de Carga Prestacional y Parafiscal</h4>
+        <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Seleccione el período deseado y presione <strong>"Consultar Provisiones"</strong> para consolidar aportes patronales y prestaciones causadas.</p>
+      </div>
+
+      <!-- Contenedor de Resultados (Oculto inicialmente) -->
+      <div id="rpp-results-wrap" class="hidden space-y-4">
+        <!-- KPIs de Carga Prestacional -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Base Salarial IBC</div>
+            <div class="text-xl font-extrabold text-slate-900 mt-0.5" id="kpi-rpp-ibc">$0</div>
+          </div>
+          <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Total Provisiones (21.83%)</div>
+            <div class="text-xl font-extrabold text-amber-950 mt-0.5" id="kpi-rpp-prov">$0</div>
+          </div>
+          <div class="bg-blue-50/70 border border-blue-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Aportes SS y Parafiscales</div>
+            <div class="text-xl font-extrabold text-blue-950 mt-0.5" id="kpi-rpp-ss">$0</div>
+          </div>
+          <div class="bg-purple-50/70 border border-purple-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-purple-800 uppercase tracking-wider">Costo Total Empresa</div>
+            <div class="text-xl font-extrabold text-purple-950 mt-0.5" id="kpi-rpp-total">$0</div>
+          </div>
+        </div>
+
+        <!-- Tabla de Provisiones -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+          <div class="overflow-x-auto max-h-[560px]">
+            <table class="w-full text-left text-xs data-table border-collapse" id="tbl-payroll-provisions">
+              <thead class="bg-slate-800 text-white sticky top-0 z-10 text-[11px]">
+                <tr>
+                  <th class="p-2.5 font-bold" rowspan="2">Colaborador / Identificación</th>
+                  <th class="p-2.5 text-right font-bold" rowspan="2">Base IBC</th>
+                  <th class="p-2 text-center font-bold bg-amber-900/60 border-b border-amber-700/50" colspan="5">Provisiones Prestaciones Sociales</th>
+                  <th class="p-2 text-center font-bold bg-blue-900/60 border-b border-blue-700/50" colspan="4">Aportes Patronales SS & Parafiscales</th>
+                  <th class="p-2.5 text-right font-black bg-purple-950 text-purple-200" rowspan="2">Costo Total</th>
+                </tr>
+                <tr class="bg-slate-900 text-[10px]">
+                  <th class="p-1.5 text-right">Cesantías (8.33%)</th>
+                  <th class="p-1.5 text-right">Int. Ces. (1%)</th>
+                  <th class="p-1.5 text-right">Prima (8.33%)</th>
+                  <th class="p-1.5 text-right">Vacaciones (4.17%)</th>
+                  <th class="p-1.5 text-right font-bold text-amber-300">Subt. Prov.</th>
+                  <th class="p-1.5 text-right">Pensión (12%)</th>
+                  <th class="p-1.5 text-right">ARL (Riesgo)</th>
+                  <th class="p-1.5 text-right">Caja (4%)</th>
+                  <th class="p-1.5 text-right font-bold text-blue-300">Subt. SS/Paraf.</th>
+                </tr>
+              </thead>
+              <tbody id="rpp-tbody" class="divide-y divide-slate-100"></tbody>
+              <tfoot id="rpp-tfoot" class="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const periodSel = document.getElementById('rpp-period-sel') as HTMLSelectElement;
+  const btnQuery = document.getElementById('rpp-btn-query') as HTMLButtonElement;
+  const emptyState = document.getElementById('rpp-empty-state') as HTMLElement;
+  const resultsWrap = document.getElementById('rpp-results-wrap') as HTMLElement;
+  const tbody = document.getElementById('rpp-tbody') as HTMLElement;
+  const tfoot = document.getElementById('rpp-tfoot') as HTMLElement;
+
+  const runQuery = async () => {
+    btnQuery.disabled = true;
+    btnQuery.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Calculando...`;
+    emptyState.classList.add('hidden');
+    resultsWrap.classList.remove('hidden');
+    tbody.innerHTML = `<tr><td colspan="12" class="p-8 text-center text-slate-400 font-sans"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando liquidaciones en base de datos...</td></tr>`;
+    tfoot.innerHTML = '';
+
+    try {
+      const selectedPeriod = periodSel?.value || 'ALL';
+      const filter = selectedPeriod !== 'ALL' ? `period_id="${pb.escapeFilterValue(selectedPeriod)}"` : '';
+
+      const payrollLines = await pb.listAll('payroll_lines', {
+        filter,
+        expand: 'period_id,employee_id'
+      }).catch(() => []);
+
+      if (!payrollLines.length) {
+        tbody.innerHTML = `<tr><td colspan="12" class="p-8 text-center text-slate-400">No hay liquidaciones registradas para calcular provisiones con los filtros seleccionados.</td></tr>`;
+        tfoot.innerHTML = '';
+        (document.getElementById('kpi-rpp-ibc') as HTMLElement).innerText = '$0';
+        (document.getElementById('kpi-rpp-prov') as HTMLElement).innerText = '$0';
+        (document.getElementById('kpi-rpp-ss') as HTMLElement).innerText = '$0';
+        (document.getElementById('kpi-rpp-total') as HTMLElement).innerText = '$0';
+        return;
+      }
+
+      let sumIbc = 0, sumCes = 0, sumIntCes = 0, sumPrima = 0, sumVac = 0, sumProv = 0;
+      let sumPensionPat = 0, sumArl = 0, sumCaja = 0, sumSsParaf = 0, sumCostoTotal = 0;
+
+      tbody.innerHTML = payrollLines.map((l: any) => {
+        const emp = l.expand?.employee_id || empMap.get(l.employee_id) || {};
+        const fn = (emp.first_name || '').trim();
+        const ln = (emp.last_name || '').trim();
+        const empName = (fn && ln) ? `${fn} ${ln}` : (emp.name || emp.commercial_name || 'Colaborador');
+        const docNum = emp.doc_number || '—';
+
+        let metaIbc = 0;
+        try {
+          if (l.notes) {
+            const meta = JSON.parse(l.notes);
+            metaIbc = Number(meta?.payroll_meta?.ibc_ss || meta?.payroll_meta?.ibc || 0);
+          }
+        } catch (_) {}
+
+        const baseIbc = metaIbc > 0 ? metaIbc : Number(l.salary_base || 0);
+        const ces = Number(l.cesantias || 0);
+        const intCes = Number(l.intereses_ces || 0);
+        const prima = Number(l.prima || 0);
+        const vac = Number(l.vacaciones || 0);
+        const subProv = ces + intCes + prima + vac;
+
+        const pensPat = Number(l.employer_pension || 0);
+        const arl = Number(l.employer_arl || 0);
+        const caja = Number(l.caja_comp || 0);
+        const saludPat = Number(l.employer_health || 0);
+        const sena = Number(l.sena || 0);
+        const icbf = Number(l.icbf || 0);
+        const subSsParaf = pensPat + arl + caja + saludPat + sena + icbf;
+
+        const devengadoTotal = Number(l.net_pay || 0) + Number(l.deduction_health || 0) + Number(l.deduction_pension || 0) + Number(l.solidarity_fund || 0) + Number(l.withholding_tax || 0);
+        const costoTotal = (devengadoTotal > 0 ? devengadoTotal : baseIbc) + subProv + subSsParaf;
+
+        sumIbc += baseIbc; sumCes += ces; sumIntCes += intCes; sumPrima += prima; sumVac += vac; sumProv += subProv;
+        sumPensionPat += pensPat; sumArl += arl; sumCaja += caja; sumSsParaf += subSsParaf; sumCostoTotal += costoTotal;
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition-colors">
+            <td class="p-2.5">
+              <div class="font-bold text-slate-900">${(window as any).esc(empName)}</div>
+              <div class="text-[10px] text-slate-500 font-mono">${(window as any).esc(docNum)}</div>
+            </td>
+            <td class="p-2.5 text-right font-mono font-semibold">${fmt(baseIbc)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(ces)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(intCes)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(prima)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(vac)}</td>
+            <td class="p-2.5 text-right font-mono font-bold text-amber-700 bg-amber-50/30">${fmt(subProv)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(pensPat)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(arl)}</td>
+            <td class="p-2.5 text-right font-mono text-slate-600">${fmt(caja)}</td>
+            <td class="p-2.5 text-right font-mono font-bold text-blue-700 bg-blue-50/30">${fmt(subSsParaf)}</td>
+            <td class="p-2.5 text-right font-mono font-black text-purple-950 bg-purple-50/40">${fmt(costoTotal)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      tfoot.innerHTML = `
+        <tr>
+          <td class="p-2.5">TOTALES CONSOLIDADOS (${payrollLines.length} Liquidaciones)</td>
+          <td class="p-2.5 text-right font-mono font-black">${fmt(sumIbc)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(sumCes)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(sumIntCes)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(sumPrima)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(sumVac)}</td>
+          <td class="p-2.5 text-right font-mono font-black text-amber-900 bg-amber-100/50">${fmt(sumProv)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(sumPensionPat)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(sumArl)}</td>
+          <td class="p-2.5 text-right font-mono">${fmt(sumCaja)}</td>
+          <td class="p-2.5 text-right font-mono font-black text-blue-900 bg-blue-100/50">${fmt(sumSsParaf)}</td>
+          <td class="p-2.5 text-right font-mono font-black text-purple-950 bg-purple-100/60 text-sm">${fmt(sumCostoTotal)}</td>
+        </tr>
+      `;
+
+      (document.getElementById('kpi-rpp-ibc') as HTMLElement).innerText = fmt(sumIbc);
+      (document.getElementById('kpi-rpp-prov') as HTMLElement).innerText = fmt(sumProv);
+      (document.getElementById('kpi-rpp-ss') as HTMLElement).innerText = fmt(sumSsParaf);
+      (document.getElementById('kpi-rpp-total') as HTMLElement).innerText = fmt(sumCostoTotal);
+    } finally {
+      btnQuery.disabled = false;
+      btnQuery.innerHTML = `<i class="fas fa-calculator"></i> Consultar Provisiones`;
+    }
+  };
+
+  btnQuery?.addEventListener('click', runQuery);
+
+  document.getElementById('rpp-btn-excel')?.addEventListener('click', () => {
+    const tableEl = document.getElementById('tbl-payroll-provisions');
+    if (!tableEl) return;
+    const periodLabel = periodSel.selectedOptions[0]?.text || 'Periodo';
+    const cleanLabel = periodLabel.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+    exportHtmlTableToExcel(tableEl.outerHTML, `Provisiones_Nomina_${cleanLabel}_${todayStr()}`);
+  });
+
+  document.getElementById('rpp-btn-print')?.addEventListener('click', () => window.print());
+}
+
+/** 3. HISTORIAL DE NOVEDADES Y HORAS EXTRAS */
+async function renderPayrollNoveltiesReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  host.innerHTML = `<div class="p-8 text-center text-slate-500 font-sans"><i class="fas fa-spinner fa-spin mr-2"></i>Preparando filtros de novedades...</div>`;
+
+  const [periods, employees] = await Promise.all([
+    pb.listAll('payroll_periods', { sort: '-date_from' }).catch(() => []),
+    pb.listAll('third_parties', { filter: 'type="EMPLEADO"', sort: 'name' }).catch(() => [])
+  ]);
+
+  const empMap = new Map<string, any>();
+  employees.forEach((e: any) => empMap.set(e.id, e));
+
+  const noveltyTypes = [
+    { code: 'ALL', label: 'Todas las Novedades' },
+    { code: 'HED', label: 'Hora Extra Diurna (25%)' },
+    { code: 'HEN', label: 'Hora Extra Nocturna (75%)' },
+    { code: 'HRN', label: 'Recargo Nocturno Ordinario (35%)' },
+    { code: 'HEDDF', label: 'Extra Diurna Dominical/Festiva (100%)' },
+    { code: 'HENDF', label: 'Extra Nocturna Dominical/Festiva (150%)' },
+    { code: 'HRDDF', label: 'Recargo Dominical/Festivo Ordinario (75%)' },
+    { code: 'INCAPACIDAD_GENERAL', label: 'Incapacidad Médica General' },
+    { code: 'INCAPACIDAD_LABORAL', label: 'Incapacidad Accidente Laboral (ARL)' },
+    { code: 'LICENCIA_REMUNERADA', label: 'Licencia Remunerada' },
+    { code: 'LICENCIA_NO_REMUNERADA', label: 'Licencia No Remunerada / Suspensión' },
+    { code: 'VACACIONES', label: 'Vacaciones Disfrutadas' },
+    { code: 'BONIFICACION', label: 'Bonificación Salarial / No Salarial' },
+    { code: 'COMISION', label: 'Comisiones de Ventas' },
+    { code: 'OTRO', label: 'Otras Novedades y Ajustes' },
+  ];
+
+  host.innerHTML = `
+    <div class="space-y-4 text-xs font-sans">
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-xs">
+        <div class="form-group mb-0 flex-1 min-w-[180px]">
+          <label class="form-label font-bold text-slate-700 text-xs">Tipo de Novedad</label>
+          <select id="rpn-type-sel" class="form-input text-xs bg-white text-slate-900 border-slate-300">
+            ${noveltyTypes.map(t => `<option value="${t.code}">${t.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group mb-0 flex-1 min-w-[180px]">
+          <label class="form-label font-bold text-slate-700 text-xs">Período</label>
+          <select id="rpn-period-sel" class="form-input text-xs bg-white text-slate-900 border-slate-300">
+            <option value="ALL">Todos los Períodos</option>
+            ${periods.map((p: any) => `<option value="${p.id}">${(window as any).esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" id="rpn-btn-query" class="btn btn-primary px-4 py-2 text-xs font-bold shadow-xs hover:shadow flex items-center gap-1.5">
+          <i class="fas fa-search"></i> Consultar Novedades
+        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="rpn-btn-excel" class="btn btn-outline text-emerald-700 border-emerald-300 hover:bg-emerald-50 px-3 py-2 text-xs font-bold">
+            <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Excel
+          </button>
+          <button type="button" id="rpn-btn-print" class="btn btn-outline text-slate-700 border-slate-300 hover:bg-slate-100 px-3 py-2 text-xs font-bold">
+            <i class="fas fa-print mr-1 text-slate-600"></i> Imprimir
+          </button>
+        </div>
+      </div>
+
+      <!-- Estado Inicial -->
+      <div id="rpn-empty-state" class="p-12 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
+        <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-lg">
+          <i class="fas fa-business-time"></i>
+        </div>
+        <h4 class="font-bold text-slate-800 text-sm">Filtros de Novedades y Horas Extras</h4>
+        <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Seleccione el tipo de novedad o período y haga clic en <strong>"Consultar Novedades"</strong> para ver el desglose.</p>
+      </div>
+
+      <!-- Contenedor de Resultados -->
+      <div id="rpn-results-wrap" class="hidden space-y-4">
+        <!-- Resumen Novedades -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Novedades Registradas</div>
+            <div class="text-xl font-extrabold text-slate-900 mt-0.5" id="kpi-rpn-count">0</div>
+          </div>
+          <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Total Horas Extras / Rec.</div>
+            <div class="text-xl font-extrabold text-indigo-950 mt-0.5" id="kpi-rpn-hours">0 h</div>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Días Incapacidades / Lic.</div>
+            <div class="text-xl font-extrabold text-amber-950 mt-0.5" id="kpi-rpn-days">0 d</div>
+          </div>
+          <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Valor Total Liquidado</div>
+            <div class="text-xl font-extrabold text-emerald-950 mt-0.5" id="kpi-rpn-val">$0</div>
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+          <div class="overflow-x-auto max-h-[560px]">
+            <table class="w-full text-left text-xs data-table border-collapse" id="tbl-payroll-novelties">
+              <thead class="bg-slate-800 text-white sticky top-0 z-10 text-[11px]">
+                <tr>
+                  <th class="p-2.5 font-bold">Fecha / Registro</th>
+                  <th class="p-2.5 font-bold">Colaborador</th>
+                  <th class="p-2.5 font-bold">Período</th>
+                  <th class="p-2.5 font-bold">Tipo de Novedad</th>
+                  <th class="p-2.5 text-center font-bold">Cant. (Hrs/Días)</th>
+                  <th class="p-2.5 text-right font-black bg-emerald-950 text-emerald-200">Monto Total</th>
+                  <th class="p-2.5 font-bold">Observaciones / Soporte</th>
+                </tr>
+              </thead>
+              <tbody id="rpn-tbody" class="divide-y divide-slate-100"></tbody>
+              <tfoot id="rpn-tfoot" class="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const typeSel = document.getElementById('rpn-type-sel') as HTMLSelectElement;
+  const periodSel = document.getElementById('rpn-period-sel') as HTMLSelectElement;
+  const btnQuery = document.getElementById('rpn-btn-query') as HTMLButtonElement;
+  const emptyState = document.getElementById('rpn-empty-state') as HTMLElement;
+  const resultsWrap = document.getElementById('rpn-results-wrap') as HTMLElement;
+  const tbody = document.getElementById('rpn-tbody') as HTMLElement;
+  const tfoot = document.getElementById('rpn-tfoot') as HTMLElement;
+
+  const runQuery = async () => {
+    btnQuery.disabled = true;
+    btnQuery.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Consultando...`;
+    emptyState.classList.add('hidden');
+    resultsWrap.classList.remove('hidden');
+    tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400 font-sans"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando novedades en base de datos...</td></tr>`;
+    tfoot.innerHTML = '';
+
+    try {
+      const selectedType = typeSel?.value || 'ALL';
+      const selectedPeriod = periodSel?.value || 'ALL';
+
+      const filterParts: string[] = [];
+      if (selectedPeriod !== 'ALL') {
+        filterParts.push(`period_id="${pb.escapeFilterValue(selectedPeriod)}"`);
+      }
+      if (selectedType !== 'ALL') {
+        filterParts.push(`type="${pb.escapeFilterValue(selectedType)}"`);
+      }
+      const filter = filterParts.join(' && ');
+
+      const novelties = await pb.listAll('payroll_novelties', {
+        filter,
+        expand: 'period_id,employee_id',
+        sort: '-created'
+      }).catch(() => []);
+
+      if (!novelties.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">No se encontraron novedades registradas con estos filtros.</td></tr>`;
+        tfoot.innerHTML = '';
+        (document.getElementById('kpi-rpn-count') as HTMLElement).innerText = '0';
+        (document.getElementById('kpi-rpn-hours') as HTMLElement).innerText = '0 h';
+        (document.getElementById('kpi-rpn-days') as HTMLElement).innerText = '0 d';
+        (document.getElementById('kpi-rpn-val') as HTMLElement).innerText = '$0';
+        return;
+      }
+
+      let totHours = 0, totDays = 0, totVal = 0;
+
+      tbody.innerHTML = novelties.map((n: any) => {
+        const emp = n.expand?.employee_id || empMap.get(n.employee_id) || {};
+        const fn = (emp.first_name || '').trim();
+        const ln = (emp.last_name || '').trim();
+        const empName = (fn && ln) ? `${fn} ${ln}` : (emp.name || emp.commercial_name || 'Colaborador');
+        const periodName = n.expand?.period_id?.name || 'Período';
+        const qty = Number(n.qty !== undefined ? n.qty : (n.quantity || 0));
+        const val = Number(n.amount || 0);
+        const novCode = n.type || n.novelty_type || '';
+        const typeLabel = noveltyTypes.find(t => t.code === novCode)?.label || novCode || 'Novedad';
+
+        if (novCode.startsWith('H') || novCode.includes('EXTRA') || novCode.includes('RECARGO')) {
+          totHours += qty;
+        } else if (novCode.includes('INCAPACIDAD') || novCode.includes('LICENCIA') || novCode.includes('VACACIONES')) {
+          totDays += qty;
+        }
+        totVal += val;
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition-colors">
+            <td class="p-2.5 font-mono text-slate-600">${(n.date_from || n.created || '—').slice(0, 10)}</td>
+            <td class="p-2.5 font-bold text-slate-900">${(window as any).esc(empName)}</td>
+            <td class="p-2.5 text-slate-600 font-medium">${(window as any).esc(periodName)}</td>
+            <td class="p-2.5">
+              <span class="inline-block px-2 py-0.5 rounded-md font-semibold text-[11px] bg-slate-100 text-slate-800 border border-slate-200">
+                ${(window as any).esc(typeLabel)}
+              </span>
+            </td>
+            <td class="p-2.5 text-center font-bold font-mono text-slate-800">${qty}</td>
+            <td class="p-2.5 text-right font-mono font-bold text-emerald-800 bg-emerald-50/30">${fmt(val)}</td>
+            <td class="p-2.5 text-slate-500 text-[11px] max-w-[200px] truncate" title="${(window as any).esc(n.description || n.support_number || '')}">
+              ${(window as any).esc(n.description || n.support_number || '—')}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      tfoot.innerHTML = `
+        <tr>
+          <td class="p-2.5" colspan="4">TOTALES (${novelties.length} Novedades Registradas)</td>
+          <td class="p-2.5 text-center font-mono font-black">${totHours > 0 ? `${totHours} h` : ''} ${totDays > 0 ? `${totDays} d` : ''}</td>
+          <td class="p-2.5 text-right font-mono font-black text-emerald-950 bg-emerald-100/40 text-sm">${fmt(totVal)}</td>
+          <td class="p-2.5">—</td>
+        </tr>
+      `;
+
+      (document.getElementById('kpi-rpn-count') as HTMLElement).innerText = String(novelties.length);
+      (document.getElementById('kpi-rpn-hours') as HTMLElement).innerText = `${totHours} h`;
+      (document.getElementById('kpi-rpn-days') as HTMLElement).innerText = `${totDays} d`;
+      (document.getElementById('kpi-rpn-val') as HTMLElement).innerText = fmt(totVal);
+    } finally {
+      btnQuery.disabled = false;
+      btnQuery.innerHTML = `<i class="fas fa-search"></i> Consultar Novedades`;
+    }
+  };
+
+  btnQuery?.addEventListener('click', runQuery);
+
+  document.getElementById('rpn-btn-excel')?.addEventListener('click', () => {
+    const tableEl = document.getElementById('tbl-payroll-novelties');
+    if (!tableEl) return;
+    exportHtmlTableToExcel(tableEl.outerHTML, `Historial_Novedades_Nomina_${todayStr()}`);
+  });
+
+  document.getElementById('rpn-btn-print')?.addEventListener('click', () => window.print());
+}
+
+/** 4. AUDITORÍA DE NÓMINA ELECTRÓNICA ANTE LA DIAN */
+async function renderPayrollDianAuditReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  host.innerHTML = `<div class="p-8 text-center text-slate-500 font-sans"><i class="fas fa-spinner fa-spin mr-2"></i>Preparando filtros de nómina electrónica DIAN...</div>`;
+
+  const employees = await pb.listAll('third_parties', { filter: 'type="EMPLEADO"', sort: 'name' }).catch(() => []);
+
+  const empMap = new Map<string, any>();
+  employees.forEach((e: any) => empMap.set(e.id, e));
+
+  host.innerHTML = `
+    <div class="space-y-4 text-xs font-sans">
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap items-end gap-3 shadow-xs">
+        <div class="form-group mb-0 flex-1 min-w-[180px]">
+          <label class="form-label font-bold text-slate-700 text-xs">Estado DIAN</label>
+          <select id="rpd-status-sel" class="form-input text-xs bg-white text-slate-900 border-slate-300">
+            <option value="ALL">Todos los Estados</option>
+            <option value="APROBADO">Aprobados por DIAN</option>
+            <option value="PENDIENTE">Pendientes de Firma / Envío</option>
+            <option value="RECHAZADO">Rechazados por DIAN</option>
+          </select>
+        </div>
+        <button type="button" id="rpd-btn-query" class="btn btn-primary px-4 py-2 text-xs font-bold shadow-xs hover:shadow flex items-center gap-1.5">
+          <i class="fas fa-search"></i> Consultar Auditoría DIAN
+        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="rpd-btn-excel" class="btn btn-outline text-emerald-700 border-emerald-300 hover:bg-emerald-50 px-3 py-2 text-xs font-bold">
+            <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Excel
+          </button>
+          <button type="button" id="rpd-btn-print" class="btn btn-outline text-slate-700 border-slate-300 hover:bg-slate-100 px-3 py-2 text-xs font-bold">
+            <i class="fas fa-print mr-1 text-slate-600"></i> Imprimir
+          </button>
+        </div>
+      </div>
+
+      <!-- Estado Inicial -->
+      <div id="rpd-empty-state" class="p-12 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
+        <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 text-lg">
+          <i class="fas fa-stamp"></i>
+        </div>
+        <h4 class="font-bold text-slate-800 text-sm">Auditoría DIAN Nómina Electrónica</h4>
+        <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Haga clic en <strong>"Consultar Auditoría DIAN"</strong> para verificar CUNEs, fechas de respuesta y estados de validación ante la DIAN.</p>
+      </div>
+
+      <!-- Contenedor de Resultados -->
+      <div id="rpd-results-wrap" class="hidden space-y-4">
+        <!-- Resumen DIAN -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Volantes Tramitados</div>
+            <div class="text-xl font-extrabold text-slate-900 mt-0.5" id="kpi-rpd-total">0</div>
+          </div>
+          <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Aprobados DIAN</div>
+            <div class="text-xl font-extrabold text-emerald-950 mt-0.5" id="kpi-rpd-ok">0</div>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Pendientes / Rechazos</div>
+            <div class="text-xl font-extrabold text-amber-950 mt-0.5" id="kpi-rpd-pend">0</div>
+          </div>
+          <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3 shadow-xs">
+            <div class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Monto Total Aprobado</div>
+            <div class="text-xl font-extrabold text-indigo-950 mt-0.5" id="kpi-rpd-val">$0</div>
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+          <div class="overflow-x-auto max-h-[560px]">
+            <table class="w-full text-left text-xs data-table border-collapse" id="tbl-payroll-dian-audit">
+              <thead class="bg-slate-800 text-white sticky top-0 z-10 text-[11px]">
+                <tr>
+                  <th class="p-2.5 font-bold">Documento / Consecutivo</th>
+                  <th class="p-2.5 font-bold">Colaborador / Identificación</th>
+                  <th class="p-2.5 text-center font-bold">Año/Mes</th>
+                  <th class="p-2.5 text-right font-bold">Devengos</th>
+                  <th class="p-2.5 text-right font-bold">Deducciones</th>
+                  <th class="p-2.5 text-right font-black bg-indigo-950 text-indigo-200">Neto Volante</th>
+                  <th class="p-2.5 text-center font-bold">Estado DIAN</th>
+                  <th class="p-2.5 font-bold">CUNE / Identificador Único</th>
+                  <th class="p-2.5 font-bold">Fecha / Respuesta DIAN</th>
+                </tr>
+              </thead>
+              <tbody id="rpd-tbody" class="divide-y divide-slate-100"></tbody>
+              <tfoot id="rpd-tfoot" class="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const statusSel = document.getElementById('rpd-status-sel') as HTMLSelectElement;
+  const btnQuery = document.getElementById('rpd-btn-query') as HTMLButtonElement;
+  const emptyState = document.getElementById('rpd-empty-state') as HTMLElement;
+  const resultsWrap = document.getElementById('rpd-results-wrap') as HTMLElement;
+  const tbody = document.getElementById('rpd-tbody') as HTMLElement;
+  const tfoot = document.getElementById('rpd-tfoot') as HTMLElement;
+
+  const runQuery = async () => {
+    btnQuery.disabled = true;
+    btnQuery.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Consultando DIAN...`;
+    emptyState.classList.add('hidden');
+    resultsWrap.classList.remove('hidden');
+    tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400 font-sans"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando documentos DIAN en base de datos...</td></tr>`;
+    tfoot.innerHTML = '';
+
+    try {
+      const selectedStatus = statusSel?.value || 'ALL';
+      const filter = selectedStatus !== 'ALL' ? `estado_dian="${pb.escapeFilterValue(selectedStatus)}"` : '';
+
+      const dianRecords = await pb.listAll('electronic_payrolls', {
+        filter,
+        expand: 'employee_id,periodo_id',
+        sort: '-created'
+      }).catch(() => []);
+
+      if (!dianRecords.length) {
+        tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">No hay registros de nómina electrónica DIAN con este estado.</td></tr>`;
+        tfoot.innerHTML = '';
+        (document.getElementById('kpi-rpd-total') as HTMLElement).innerText = '0';
+        (document.getElementById('kpi-rpd-ok') as HTMLElement).innerText = '0';
+        (document.getElementById('kpi-rpd-pend') as HTMLElement).innerText = '0';
+        (document.getElementById('kpi-rpd-val') as HTMLElement).innerText = '$0';
+        return;
+      }
+
+      let totApprovedVal = 0, countOk = 0, countPend = 0;
+      let sumDev = 0, sumDed = 0, sumNet = 0;
+
+      tbody.innerHTML = dianRecords.map((r: any) => {
+        const emp = r.expand?.employee_id || empMap.get(r.employee_id) || {};
+        const fn = (emp.first_name || '').trim();
+        const ln = (emp.last_name || '').trim();
+        const empName = (fn && ln) ? `${fn} ${ln}` : (emp.name || emp.commercial_name || 'Colaborador');
+        const docNum = emp.doc_number || '—';
+        const consec = `${r.prefijo || 'NOM'}-${String(r.consecutivo || 1).padStart(4, '0')}`;
+        const isOk = r.estado_dian === 'APROBADO';
+        const isRej = r.estado_dian === 'RECHAZADO';
+
+        if (isOk) { countOk++; totApprovedVal += Number(r.total_neto || 0); } else { countPend++; }
+        sumDev += Number(r.total_devengos || 0);
+        sumDed += Number(r.total_deducciones || 0);
+        sumNet += Number(r.total_neto || 0);
+
+        const statusBadge = isOk
+          ? '<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300"><i class="fas fa-check-circle mr-1"></i>APROBADO</span>'
+          : (isRej
+            ? '<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300"><i class="fas fa-times-circle mr-1"></i>RECHAZADO</span>'
+            : '<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300"><i class="fas fa-clock mr-1"></i>PENDIENTE</span>');
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition-colors">
+            <td class="p-2.5 font-mono font-bold text-slate-900">${(window as any).esc(consec)}</td>
+            <td class="p-2.5">
+              <div class="font-bold text-slate-900">${(window as any).esc(empName)}</div>
+              <div class="text-[10px] text-slate-500 font-mono">${(window as any).esc(docNum)}</div>
+            </td>
+            <td class="p-2.5 text-center font-mono font-semibold text-slate-700">${r.ano}-${String(r.mes).padStart(2, '0')}</td>
+            <td class="p-2.5 text-right font-mono text-emerald-700">${fmt(r.total_devengos)}</td>
+            <td class="p-2.5 text-right font-mono text-rose-700">${fmt(r.total_deducciones)}</td>
+            <td class="p-2.5 text-right font-mono font-bold text-indigo-950 bg-indigo-50/40">${fmt(r.total_neto)}</td>
+            <td class="p-2.5 text-center">${statusBadge}</td>
+            <td class="p-2.5 font-mono text-[10px] text-slate-600 max-w-[180px] truncate" title="${(window as any).esc(r.cufe || '')}">
+              ${r.cufe ? (window as any).esc(r.cufe.slice(0, 16) + '...') : '<span class="text-slate-400">Sin emitir</span>'}
+            </td>
+            <td class="p-2.5 text-slate-500 text-[10px]">
+              <div>${(r.fecha_envio || r.created || '').slice(0, 16)}</div>
+              <div class="truncate max-w-[200px] text-slate-400" title="${(window as any).esc(r.dian_response || '')}">${(window as any).esc(r.dian_response || 'En proceso')}</div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      tfoot.innerHTML = `
+        <tr>
+          <td class="p-2.5" colspan="3">TOTALES (${dianRecords.length} Volantes)</td>
+          <td class="p-2.5 text-right font-mono text-emerald-800">${fmt(sumDev)}</td>
+          <td class="p-2.5 text-right font-mono text-rose-800">${fmt(sumDed)}</td>
+          <td class="p-2.5 text-right font-mono font-black text-indigo-950 bg-indigo-100/50 text-sm">${fmt(sumNet)}</td>
+          <td class="p-2.5 text-center" colspan="3">Aprobados: ${countOk} | Pendientes/Rechazados: ${countPend}</td>
+        </tr>
+      `;
+
+      (document.getElementById('kpi-rpd-total') as HTMLElement).innerText = String(dianRecords.length);
+      (document.getElementById('kpi-rpd-ok') as HTMLElement).innerText = String(countOk);
+      (document.getElementById('kpi-rpd-pend') as HTMLElement).innerText = String(countPend);
+      (document.getElementById('kpi-rpd-val') as HTMLElement).innerText = fmt(totApprovedVal);
+    } finally {
+      btnQuery.disabled = false;
+      btnQuery.innerHTML = `<i class="fas fa-search"></i> Consultar Auditoría DIAN`;
+    }
+  };
+
+  btnQuery?.addEventListener('click', runQuery);
+
+  document.getElementById('rpd-btn-excel')?.addEventListener('click', () => {
+    const tableEl = document.getElementById('tbl-payroll-dian-audit');
+    if (!tableEl) return;
+    exportHtmlTableToExcel(tableEl.outerHTML, `Auditoria_Nomina_DIAN_${todayStr()}`);
+  });
+
+  document.getElementById('rpd-btn-print')?.addEventListener('click', () => window.print());
+}
+
+(window as any).renderPayrollSabanaReport = renderPayrollSabanaReport;
+(window as any).renderPayrollProvisionsReport = renderPayrollProvisionsReport;
+(window as any).renderPayrollNoveltiesReport = renderPayrollNoveltiesReport;
+(window as any).renderPayrollDianAuditReport = renderPayrollDianAuditReport;
+
+
 

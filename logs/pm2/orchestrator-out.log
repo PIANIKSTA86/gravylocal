@@ -189,3 +189,20 @@
 2026-11-04T09:25:31: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
 2026-11-04T09:25:31: [GRAVY ORCHESTRATOR] Auto-arrancando empresa en puerto 8094 (bind: 0.0.0.0)...
 2026-11-04T09:25:31: GRAVY Orchestrator running on port 8088
+2026-11-18T15:35:57: [BACKUP SCHEDULER] Programado el próximo respaldo automático diario para: 19/11/2026, 2:00:00 a. m. (en 624 minutos).
+2026-11-18T15:35:58: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8091.
+2026-11-18T15:35:58: [GRAVY ORCHESTRATOR] Auto-arrancando empresa en puerto 8091 (bind: 0.0.0.0)...
+2026-11-18T15:35:58: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8092.
+2026-11-18T15:35:58: [GRAVY ORCHESTRATOR] Auto-arrancando empresa en puerto 8092 (bind: 0.0.0.0)...
+2026-11-18T15:35:58: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8093.
+2026-11-18T15:35:58: [GRAVY ORCHESTRATOR] Auto-arrancando empresa en puerto 8093 (bind: 0.0.0.0)...
+2026-11-18T15:35:59: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
+2026-11-18T15:35:59: [GRAVY ORCHESTRATOR] Auto-arrancando empresa en puerto 8094 (bind: 0.0.0.0)...
+2026-11-18T15:35:59: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8095.
+2026-11-18T15:35:59: [GRAVY ORCHESTRATOR] Auto-arrancando empresa en puerto 8095 (bind: 0.0.0.0)...
+2026-11-18T15:35:59: GRAVY Orchestrator running on port 8088
+2026-11-18T15:36:50: [GRAVY ORCHESTRATOR] PDF generado para ZIP de correo: 577166 bytes para FE-00002915
+2026-11-18T15:36:50: [GRAVY ORCHESTRATOR] ZIP temporal de correo guardado en: C:\Users\JULIAN\Desktop\GravyLocalTABS\temp_zips\FE-00002915.zip
+2026-11-18T15:37:09: [GRAVY ORCHESTRATOR] PDF generado para ZIP de correo: 578250 bytes para NC-00000049
+2026-11-18T15:37:09: [GRAVY ORCHESTRATOR] ZIP temporal de correo guardado en: C:\Users\JULIAN\Desktop\GravyLocalTABS\temp_zips\NC-00000049.zip
+2026-11-18T15:37:24: [GRAVY ORCHESTRATOR] PDF de copropiedad guardado en: C:\Users\JULIAN\Desktop\GravyLocalTABS\temp_pdfs\EstadoCuenta_SI-202605-0001.pdf

@@ -128,6 +128,7 @@ function applyModuleVisibility(): void {
     'nomina-distribucion-dotacion': 'nomina',
     'nomina-liquidacion': 'nomina',
     'nomina-liquidacion-definitiva': 'nomina',
+    'nomina-vacaciones': 'nomina',
     'nomina-electronica-p': 'nomina',
     'copro-facturacion': 'copropiedades',
     'copro-cartera': 'copropiedades',

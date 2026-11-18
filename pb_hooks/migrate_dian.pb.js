@@ -60,9 +60,43 @@ onBootstrap((e) => {
       }));
       modified = true;
     }
+    if (!docFields.has("email_sent")) {
+      docsCol.fields.add(new BoolField({
+        name: "email_sent"
+      }));
+      modified = true;
+    }
+    if (!docFields.has("email_sent_to")) {
+      docsCol.fields.add(new TextField({
+        name: "email_sent_to",
+        required: false
+      }));
+      modified = true;
+    }
+    if (!docFields.has("email_sent_at")) {
+      docsCol.fields.add(new TextField({
+        name: "email_sent_at",
+        required: false
+      }));
+      modified = true;
+    }
+    if (!docFields.has("email_status")) {
+      docsCol.fields.add(new TextField({
+        name: "email_status",
+        required: false
+      }));
+      modified = true;
+    }
+    if (!docFields.has("email_last_error")) {
+      docsCol.fields.add(new TextField({
+        name: "email_last_error",
+        required: false
+      }));
+      modified = true;
+    }
     if (modified) {
       $app.save(docsCol);
-      console.log("[GRAVY] Migración DIAN — Colección einvoice_docs actualizada (campos agregados, incluyendo document_number).");
+      console.log("[GRAVY] Migración DIAN — Colección einvoice_docs actualizada (campos agregados, incluyendo email tracking).");
     }
 
     // Backfill retroactivo: asignar document_number a los registros existentes que no lo tengan
@@ -80,7 +114,7 @@ onBootstrap((e) => {
               $app.save(docRec);
               backfilledCount++;
             }
-          } catch (_) {}
+          } catch (_) { }
         }
       }
       if (backfilledCount > 0) {

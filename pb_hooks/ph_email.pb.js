@@ -2111,14 +2111,28 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
       customNoticeHtml: noticeBlockHtml
     });
 
+    // Validar configuración SMTP antes de intentar el envío
+    const pbSettings = $app.settings();
+    if (!pbSettings.smtp.enabled || !pbSettings.smtp.host || !pbSettings.smtp.username) {
+      throw new Error("El servicio SMTP de correo no está habilitado o configurado en esta empresa (Configuración > Correo / SMTP).");
+    }
+
+    const toAddresses = String(targetEmail || '').split(/[,;|\s]+/)
+      .map(s => s.trim())
+      .filter(s => s && s.includes('@') && s.includes('.'));
+
+    if (!toAddresses.length) {
+      throw new Error("La dirección de correo destino '" + targetEmail + "' no es válida.");
+    }
+
     // Intentar enviar el correo electrónico con adjunto PDF
     try {
       const message = new MailerMessage({
         from: {
-          address: $app.settings().meta.senderAddress,
-          name:    $app.settings().meta.senderName,
+          address: pbSettings.meta.senderAddress || pbSettings.smtp.username,
+          name:    pbSettings.meta.senderName || companyName,
         },
-        to: [{ address: targetEmail }],
+        to: toAddresses.map(addr => ({ address: addr })),
         subject: emailSubject,
         html: htmlContent,
       });
@@ -3150,6 +3164,14 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
       return e.json(404, { message: "No se encontraron facturas activas para procesar en el período " + period });
     }
 
+    // Validar servicio SMTP antes de iniciar el procesamiento del lote masivo
+    const pbSettings = $app.settings();
+    if (!pbSettings.smtp.enabled || !pbSettings.smtp.host || !pbSettings.smtp.username) {
+      return e.json(400, {
+        message: "No se puede iniciar la dispersión masiva: el servidor de correo SMTP no está configurado o está deshabilitado en esta empresa (Configuración > Correo / SMTP)."
+      });
+    }
+
     // Configuración de la empresa
     const companyName = getSetting("company_name", "GRAVY S.A.S");
     const companyNit = getSetting("company_nit", "");
@@ -3366,13 +3388,28 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           prevMonthName
         });
 
+        const toAddresses = String(email || '').split(/[,;|\s]+/)
+          .map(s => s.trim())
+          .filter(s => s && s.includes('@') && s.includes('.'));
+
+        if (!toAddresses.length) {
+          skipped++;
+          details.push({
+            number: inv.getString("number"),
+            unit: prop.getString("name"),
+            status: "skipped",
+            reason: "Correo registrado no válido ('" + email + "')"
+          });
+          continue;
+        }
+
         // Enviar usando el cliente mailer de PocketBase
         const message = new MailerMessage({
           from: {
-            address: $app.settings().meta.senderAddress,
-            name:    $app.settings().meta.senderName,
+            address: $app.settings().meta.senderAddress || $app.settings().smtp.username,
+            name:    $app.settings().meta.senderName || companyName,
           },
-          to: [{ address: email }],
+          to: toAddresses.map(addr => ({ address: addr })),
           subject: emailSubject,
           html: htmlContent,
         });

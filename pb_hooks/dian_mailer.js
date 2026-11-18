@@ -47,31 +47,113 @@ function syncSmtpSettings() {
 }
 
 function sendInvoiceEmailHelper(txId, customEmail) {
+  let docRecord = null;
+  let tx = null;
+  let resolvedTxId = String(txId || '').trim();
+
   try {
-    const docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
+    // 1. Intentar buscar la transacción directamente por ID
+    try {
+      tx = $app.findRecordById("transactions", resolvedTxId);
+    } catch (_) {}
+
+    // 2. Si no es transacción, verificar si es ID de factura de venta (invoices)
+    if (!tx) {
+      try {
+        const inv = $app.findRecordById("invoices", resolvedTxId);
+        if (inv && inv.getString("tx_id")) {
+          resolvedTxId = inv.getString("tx_id");
+          tx = $app.findRecordById("transactions", resolvedTxId);
+        }
+      } catch (_) {}
+    }
+
+    // 3. Verificar si es ID de factura de compra / documento soporte (purchase_invoices)
+    if (!tx) {
+      try {
+        const pur = $app.findRecordById("purchase_invoices", resolvedTxId);
+        if (pur && pur.getString("tx_id")) {
+          resolvedTxId = pur.getString("tx_id");
+          tx = $app.findRecordById("transactions", resolvedTxId);
+        }
+      } catch (_) {}
+    }
+
+    // 4. Verificar si es ID de einvoice_docs
+    if (!tx) {
+      try {
+        const ed = $app.findRecordById("einvoice_docs", resolvedTxId);
+        if (ed) {
+          docRecord = ed;
+          if (ed.getString("tx_id")) {
+            resolvedTxId = ed.getString("tx_id");
+            tx = $app.findRecordById("transactions", resolvedTxId);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 5. Buscar einvoice_docs por tx_id resuelto
+    if (!docRecord && resolvedTxId) {
+      try {
+        docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + resolvedTxId + "'");
+      } catch (_) {}
+    }
+
+    // 6. Fallback final para einvoice_docs por txId original
     if (!docRecord) {
-      throw new Error("Documento de facturación no encontrado para esta transacción.");
+      try {
+        docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "' || id = '" + txId + "'");
+      } catch (_) {}
     }
 
-    const xmlContent = docRecord.getString("xml_content");
-    if (!xmlContent) {
-      throw new Error("El documento no posee contenido XML firmado para reenviar.");
+    if (!docRecord) {
+      throw new Error("Documento de facturación electrónica no encontrado para el identificador (" + txId + ").");
     }
 
-    const tx = $app.findRecordById("transactions", txId);
+    if (!tx && docRecord.getString("tx_id")) {
+      try {
+        tx = $app.findRecordById("transactions", docRecord.getString("tx_id"));
+      } catch (_) {}
+    }
+
+    if (!tx) {
+      throw new Error("No se encontró la transacción contable asociada a este documento electrónico.");
+    }
+
+    let xmlContent = docRecord.getString("xml_content");
+    if (!xmlContent || !xmlContent.trim()) {
+      const respStr = docRecord.getString("dian_response") || "";
+      if (respStr.includes("<") && respStr.includes("</")) {
+        xmlContent = respStr;
+      }
+    }
+    if (!xmlContent || !xmlContent.trim()) {
+      throw new Error("El documento no posee contenido XML firmado para adjuntar.");
+    }
+
     $app.expandRecord(tx, ["third_party_id", "tx_type_id"], null);
     const customer = tx.expandedOne("third_party_id");
     let custEmail = customEmail;
     if (!custEmail) {
-      custEmail = customer ? customer.getString("email") : "";
+      custEmail = customer ? (customer.getString("email") || customer.getString("email2") || "") : "";
     }
-    if (!custEmail) {
-      throw new Error("Debe configurar un correo en la ficha del tercero.");
+    if (!custEmail || !String(custEmail).trim()) {
+      throw new Error("El tercero (" + (customer ? (customer.getString("name") || customer.getString("doc_number")) : "Cliente") + ") no tiene un correo electrónico configurado.");
+    }
+
+    // Separar posibles múltiples correos (por coma, punto y coma o espacio) y sanitizar
+    const emailList = String(custEmail).split(/[,;|\s]+/)
+      .map(s => s.trim())
+      .filter(s => s && s.includes("@") && s.includes("."));
+
+    if (emailList.length === 0) {
+      throw new Error("El correo electrónico registrado ('" + custEmail + "') no tiene un formato válido.");
     }
 
     const companyName = getSetting("company_name", "GRAVY S.A.S");
     const companyEmail = getSetting("company_email", "noreply@gravy.com");
-    const docNumber = tx.getString("number") || "Documento";
+    const docNumber = tx.getString("number") || docRecord.getString("document_number") || "Documento";
 
     const txType = tx.expandedOne("tx_type_id");
     const txTypeCode = txType ? (txType.getString("code") || "").toUpperCase() : "";
@@ -97,11 +179,11 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       docTitle = "Nota de Ajuste a Documento Soporte";
       recipientLabel = "proveedor / contratista";
     } else if (txTypeCode === "ND" || docNumber.startsWith("ND")) {
-      docTypeCode = "02";
+      docTypeCode = "92"; // Anexo 1.9 DIAN: 92 para Nota Débito Electrónica
       docTitle = "Nota Débito Electrónica";
       recipientLabel = "cliente";
     } else if (txTypeCode === "NC" || docNumber.startsWith("NC")) {
-      docTypeCode = "03";
+      docTypeCode = "91"; // Anexo 1.9 DIAN: 91 para Nota Crédito Electrónica
       docTitle = "Nota Crédito Electrónica";
       recipientLabel = "cliente";
     } else if (txTypeCode === "FC") {
@@ -349,7 +431,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         address: fromAddr,
         name: fromName
       },
-      to: [{ address: custEmail }],
+      to: emailList.map(addr => ({ address: addr })),
       subject: emailSubject,
       html: `
         <div style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8FAFC; padding: 40px 20px; color: #1E293B; max-width: 600px; margin: 0 auto; border-radius: 16px;">
@@ -475,10 +557,42 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     }
 
     $app.newMailClient().send(message);
-    console.log("[GRAVY HOOK] Correo enviado exitosamente a:", custEmail);
-    return true;
+    const sentToStr = emailList.join(", ");
+    console.log("[GRAVY HOOK] Correo enviado exitosamente a:", sentToStr);
+
+    if (docRecord) {
+      try {
+        const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+        $app.db().newQuery(
+          "UPDATE einvoice_docs SET email_sent = 1, email_sent_to = {:to}, email_sent_at = {:now}, email_status = 'sent', email_last_error = '' WHERE id = {:id}"
+        ).bind({
+          to: sentToStr,
+          now: nowStr,
+          id: docRecord.id
+        }).execute();
+      } catch (saveErr) {
+        console.warn("[GRAVY HOOK] Advertencia al persistir email_sent en einvoice_docs:", saveErr);
+      }
+    }
+
+    return {
+      success: true,
+      recipients: sentToStr,
+      docNumber: docNumber
+    };
   } catch (err) {
-    console.error("[GRAVY HOOK] Falló al enviar correo en helper:", err);
+    const errMsg = String(err && err.message ? err.message : err || "Error desconocido al enviar correo");
+    console.error("[GRAVY HOOK] Falló al enviar correo en helper:", errMsg);
+    if (docRecord) {
+      try {
+        $app.db().newQuery(
+          "UPDATE einvoice_docs SET email_status = 'failed', email_last_error = {:err} WHERE id = {:id}"
+        ).bind({
+          err: errMsg.slice(0, 250),
+          id: docRecord.id
+        }).execute();
+      } catch (_) {}
+    }
     throw err;
   }
 }

@@ -488,7 +488,8 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
       });
       
       if (res && res.success) {
-        showToast(`Documento emitido correctamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
+        const emailMsg = res.emailSent ? ' y enviado por correo al destinatario' : (res.emailError ? `. Aviso correo: ${res.emailError}` : '');
+        showToast(`Documento emitido correctamente. Estado: ${res.status}${emailMsg}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, res.emailError ? 'warning' : 'success', 6000);
         const container = $('#page-content');
         if (container) renderFacturacionDIAN(container);
       } else {

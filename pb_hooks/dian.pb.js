@@ -316,6 +316,10 @@ globalThis.mapDocType = mapDocType;
 
 function sendInvoiceEmailHelper(txId, customEmail) {
   try {
+    try {
+      const p = `${__hooks}/dian_mailer.js`;
+      if (typeof require.resolve === 'function') delete require.cache[require.resolve(p)];
+    } catch (_) {}
     const { sendInvoiceEmailHelper: mailerHelper } = require(`${__hooks}/dian_mailer.js`);
     return mailerHelper(txId, customEmail);
   } catch (err) {
@@ -2838,11 +2842,15 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       }
 
       // Auto-send email if accepted
+      let emailSent = false;
+      let emailError = null;
       if (docRecord.getString("status") === "aceptada") {
         try {
-          sendInvoiceEmailHelper(txId);
+          sendInvoiceEmailHelper(realTxId || txId);
+          emailSent = true;
         } catch (emailErr) {
-          console.error("[GRAVY HOOK] Error al enviar correo automático:", emailErr);
+          emailError = String(emailErr.message || emailErr);
+          console.error("[GRAVY HOOK] Error al enviar correo automático Facturatech:", emailErr);
         }
       }
       
@@ -2851,6 +2859,8 @@ routerAdd('POST', '/api/dian/emit', (e) => {
         status: docRecord.get("status"),
         cufe: docRecord.get("cufe"),
         dianResponse: docRecord.get("dian_response"),
+        emailSent: emailSent,
+        emailError: emailError,
         simulated: !!responseData.simulated
       });
       return;
@@ -3779,11 +3789,15 @@ routerAdd('POST', '/api/dian/emit', (e) => {
         }
       }
 
-      // Envío automático de correo por SMTP de GRAVY (solo para facturación de venta, no para documento soporte que lo envía MATIAS API)
-      if (docRecord.getString("status") === "aceptada" && !isDS && !isNDS) {
+      // Envío automático de correo por SMTP de GRAVY (para facturación, notas y documento soporte)
+      let emailSent = false;
+      let emailError = null;
+      if (docRecord.getString("status") === "aceptada") {
         try {
-          sendInvoiceEmailHelper(txId);
+          sendInvoiceEmailHelper(realTxId || txId);
+          emailSent = true;
         } catch (emailErr) {
+          emailError = String(emailErr.message || emailErr);
           console.error("[GRAVY HOOK] Error al enviar correo automático MATIAS:", emailErr);
         }
       }
@@ -3803,6 +3817,8 @@ routerAdd('POST', '/api/dian/emit', (e) => {
         status: docRecord.get("status"),
         cufe: docRecord.get("cufe"),
         dianResponse: docRecord.get("dian_response"),
+        emailSent: emailSent,
+        emailError: emailError,
         matiasData: matiasData
       });
       return;
@@ -3876,10 +3892,14 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     $app.save(docRecord);
 
     // Auto-send email if accepted
+    let emailSent = false;
+    let emailError = null;
     if (docRecord.getString("status") === "aceptada") {
       try {
-        sendInvoiceEmailHelper(txId);
+        sendInvoiceEmailHelper(realTxId || txId);
+        emailSent = true;
       } catch (emailErr) {
+        emailError = String(emailErr.message || emailErr);
         console.error("[GRAVY HOOK] Error al enviar correo automático:", emailErr);
       }
     }
@@ -3889,6 +3909,8 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       status: docRecord.get("status"),
       cufe: docRecord.get("cufe"),
       dianResponse: docRecord.get("dian_response"),
+      emailSent: emailSent,
+      emailError: emailError,
       simulated: !!responseData.simulated
     });
     
@@ -4338,11 +4360,16 @@ routerAdd('POST', '/api/dian/check-status', (e) => {
         } catch (_) {}
       }
 
-      // 8. Auto-enviar correo si es factura de venta y fue aceptada
-      if (currentStatus === "aceptada" && !isDS && !isNDS && txId) {
+      // 8. Auto-enviar correo si fue aceptada y no se ha despachado
+      let emailSent = false;
+      let emailError = null;
+      const alreadySent = docRecord.getBool ? docRecord.getBool("email_sent") : (docRecord.getString("email_status") === "sent");
+      if (currentStatus === "aceptada" && !alreadySent && txId) {
         try {
           sendInvoiceEmailHelper(txId);
+          emailSent = true;
         } catch (emailErr) {
+          emailError = String(emailErr.message || emailErr);
           console.error("[GRAVY HOOK] Error al enviar correo automático desde check-status MATIAS:", emailErr);
         }
       }
@@ -4353,6 +4380,8 @@ routerAdd('POST', '/api/dian/check-status', (e) => {
         status: currentStatus,
         cufe: cufeKey,
         dianResponse: respMsg,
+        emailSent: emailSent,
+        emailError: emailError,
         hasXml: !!(savedXml && savedXml.length > 200)
       });
       return;
@@ -4426,10 +4455,15 @@ routerAdd('POST', '/api/dian/check-status', (e) => {
     $app.save(docRecord);
 
     // Auto-send email if accepted
-    if (docRecord.getString("status") === "aceptada") {
+    let emailSent = false;
+    let emailError = null;
+    const alreadySentFtech = docRecord.getBool ? docRecord.getBool("email_sent") : (docRecord.getString("email_status") === "sent");
+    if (docRecord.getString("status") === "aceptada" && !alreadySentFtech) {
       try {
         sendInvoiceEmailHelper(txId);
+        emailSent = true;
       } catch (emailErr) {
+        emailError = String(emailErr.message || emailErr);
         console.error("[GRAVY HOOK] Error al enviar correo automático desde check-status:", emailErr);
       }
     }
@@ -4439,6 +4473,8 @@ routerAdd('POST', '/api/dian/check-status', (e) => {
       status: docRecord.get("status"),
       cufe: docRecord.get("cufe"),
       dianResponse: docRecord.get("dian_response"),
+      emailSent: emailSent,
+      emailError: emailError,
       simulated: !!responseData.simulated
     });
     
@@ -4493,6 +4529,8 @@ routerAdd('POST', '/api/dian/resend-email', (e) => {
   try {
     let fnSend = null;
     try {
+      const p = `${__hooks}/dian_mailer.js`;
+      if (typeof require.resolve === 'function') delete require.cache[require.resolve(p)];
       const { sendInvoiceEmailHelper: mailerHelper } = require(`${__hooks}/dian_mailer.js`);
       fnSend = mailerHelper;
     } catch (_) {}
@@ -4526,6 +4564,13 @@ function buildNominaPayrollPayload(rec) {
   const docNumber = `${prefijo}-${consecutivo}`;
   const cune = rec.getString("cufe") || "—";
   const xmlGenerado = rec.getString("xml_generado") || "";
+  let parsedPayload = null;
+  if (xmlGenerado && xmlGenerado.trim().startsWith('{')) {
+    try {
+      parsedPayload = JSON.parse(xmlGenerado);
+    } catch (_) {}
+  }
+
   const totalDevengos = rec.getFloat("total_devengos") || 0;
   const totalDeducciones = rec.getFloat("total_deducciones") || 0;
   const totalNeto = rec.getFloat("total_neto") || (totalDevengos - totalDeducciones);
@@ -4536,6 +4581,13 @@ function buildNominaPayrollPayload(rec) {
     try { emp = $app.findRecordById("third_parties", empId); } catch (_) {}
     if (!emp) {
       try { emp = $app.findRecordById("employees", empId); } catch (_) {}
+    }
+  }
+
+  if (!emp && parsedPayload) {
+    const docNum = parsedPayload.employee?.document_number || parsedPayload.worker?.document_number || parsedPayload.worker_code;
+    if (docNum) {
+      try { emp = $app.findFirstRecordByFilter("third_parties", "doc_number = '" + String(docNum).replace(/'/g, "''") + "'"); } catch (_) {}
     }
   }
 
@@ -4600,7 +4652,14 @@ function buildNominaPayrollPayload(rec) {
   if (emp) {
     const fName = (emp.getString("first_name") || "").trim();
     const lName = (emp.getString("last_name") || "").trim();
-    empName = (fName && lName) ? `${fName} ${lName}` : (emp.getString("name") || emp.getString("commercial_name") || "Colaborador");
+    const gName = (emp.getString("name") || emp.getString("commercial_name") || "").trim();
+    if (fName && lName) {
+      empName = `${fName} ${lName}`;
+    } else if (fName || lName) {
+      empName = fName || lName;
+    } else if (gName && gName.toUpperCase() !== "EMPLEADO") {
+      empName = gName;
+    }
     empDoc = emp.getString("doc_number") || "";
     empAddress = emp.getString("address") || "";
     const city = emp.getString("city") || "";
@@ -4610,24 +4669,59 @@ function buildNominaPayrollPayload(rec) {
     empEmail = emp.getString("email") || emp.getString("email2") || "";
   }
 
-  if (!empName) {
+  if ((!empName || empName.toUpperCase() === "EMPLEADO" || empName === "Colaborador") && parsedPayload) {
+    const pEmp = parsedPayload.employee || parsedPayload.worker || {};
+    const fullJsonName = [pEmp.first_name, pEmp.other_names, pEmp.first_surname, pEmp.second_surname].filter(Boolean).map(s => String(s).trim()).join(" ");
+    if (fullJsonName && fullJsonName.toUpperCase() !== "EMPLEADO") {
+      empName = fullJsonName;
+    } else if (pEmp.name && String(pEmp.name).toUpperCase() !== "EMPLEADO") {
+      empName = String(pEmp.name).trim();
+    }
+  }
+
+  if (!empName || empName.toUpperCase() === "EMPLEADO" || empName === "Colaborador") {
     const mPName = (xmlGenerado.match(/PrimerNombre="([^"]*)"/i) || [])[1] || "";
     const mSName = (xmlGenerado.match(/SegundoNombre="([^"]*)"/i) || [])[1] || "";
     const mPApellido = (xmlGenerado.match(/PrimerApellido="([^"]*)"/i) || [])[1] || "";
     const mSApellido = (xmlGenerado.match(/SegundoApellido="([^"]*)"/i) || [])[1] || "";
-    const full = [mPName, mSName, mPApellido, mSApellido].filter(Boolean).join(" ");
-    empName = full || "Colaborador";
+    const full = [mPName, mSName, mPApellido, mSApellido].filter(Boolean).map(s => s.trim()).join(" ");
+    if (full && full.toUpperCase() !== "EMPLEADO") {
+      empName = full;
+    }
+  }
+  if (!empName) empName = "Colaborador";
+
+  if (!empDoc && parsedPayload) {
+    const pEmp = parsedPayload.employee || parsedPayload.worker || {};
+    empDoc = String(pEmp.document_number || pEmp.worker_code || "").trim();
   }
   if (!empDoc) {
     empDoc = (xmlGenerado.match(/NumeroDocumento="([^"]*)"/i) || [])[1] || "";
+  }
+
+  if (!empAddress && parsedPayload) {
+    const pEmp = parsedPayload.employee || parsedPayload.worker || {};
+    empAddress = String(pEmp.work_address || pEmp.address || "").trim();
   }
   if (!empAddress) {
     empAddress = (xmlGenerado.match(/LugarTrabajoDireccion="([^"]*)"/i) || [])[1] || "";
   }
 
-  const fIngreso = empRule.start_date || (xmlGenerado.match(/FechaIngreso="([^"]*)"/i) || [])[1] || (emp ? (emp.getString("date_hired") || emp.getString("hire_date")) : "") || "";
+  let fIngreso = empRule.start_date || "";
+  if (!fIngreso && parsedPayload) {
+    fIngreso = parsedPayload.period?.date_entry || parsedPayload.period?.admission_date || parsedPayload.period?.start_date || "";
+  }
+  if (!fIngreso) {
+    fIngreso = (xmlGenerado.match(/FechaIngreso="([^"]*)"/i) || [])[1] || (emp ? (emp.getString("date_hired") || emp.getString("hire_date")) : "") || "";
+  }
 
-  let fRetiro = empRule.end_date || empRule.retirement_date || (xmlGenerado.match(/FechaRetiro="([^"]*)"/i) || [])[1] || "";
+  let fRetiro = empRule.end_date || empRule.retirement_date || "";
+  if (!fRetiro && parsedPayload) {
+    fRetiro = parsedPayload.period?.departure_date || parsedPayload.period?.retirement_date || "";
+  }
+  if (!fRetiro) {
+    fRetiro = (xmlGenerado.match(/FechaRetiro="([^"]*)"/i) || [])[1] || "";
+  }
   if (!fRetiro && emp) {
     try {
       const sett = $app.findFirstRecordByFilter("payroll_settlements", "employee_id = '" + emp.id + "'");
@@ -4771,30 +4865,50 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
 
     let empName = "Colaborador";
     try {
+      let empRec = null;
       const empId = rec.getString("employee_id");
       if (empId) {
-        try {
-          const empRec = $app.findRecordById("third_parties", empId);
-          if (empRec) empName = empRec.getString("name") || empRec.getString("first_name") || "Colaborador";
-        } catch (_) {
-          try {
-            const empRec = $app.findRecordById("employees", empId);
-            if (empRec) empName = empRec.getString("name") || empRec.getString("first_name") || "Colaborador";
-          } catch (_2) {}
+        try { empRec = $app.findRecordById("third_parties", empId); } catch (_) {}
+        if (!empRec) {
+          try { empRec = $app.findRecordById("employees", empId); } catch (_) {}
         }
       }
-      if ((empName === "Colaborador" || !empName) && xmlGenerado) {
-        const mPrimer = xmlGenerado.match(/PrimerNombre\s*=\s*"([^"]+)"/i);
-        const mOtros = xmlGenerado.match(/OtrosNombres\s*=\s*"([^"]+)"/i);
-        const mPrimerAp = xmlGenerado.match(/PrimerApellido\s*=\s*"([^"]+)"/i);
-        const mSegundoAp = xmlGenerado.match(/SegundoApellido\s*=\s*"([^"]+)"/i);
-        const xmlName = [
-          mPrimer ? mPrimer[1] : '',
-          mOtros ? mOtros[1] : '',
-          mPrimerAp ? mPrimerAp[1] : '',
-          mSegundoAp ? mSegundoAp[1] : ''
-        ].filter(Boolean).join(' ').trim();
-        if (xmlName) empName = xmlName;
+      if (empRec) {
+        const fn = (empRec.getString("first_name") || "").trim();
+        const ln = (empRec.getString("last_name") || "").trim();
+        const nm = (empRec.getString("name") || empRec.getString("commercial_name") || "").trim();
+        if (fn && ln) empName = `${fn} ${ln}`;
+        else if (fn || ln) empName = fn || ln;
+        else if (nm && nm.toUpperCase() !== "EMPLEADO") empName = nm;
+      }
+
+      if ((empName === "Colaborador" || !empName || empName.toUpperCase() === "EMPLEADO") && xmlGenerado) {
+        if (xmlGenerado.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(xmlGenerado);
+            const pEmp = parsed.employee || parsed.worker || {};
+            const pFull = [pEmp.first_name, pEmp.other_names, pEmp.first_surname, pEmp.second_surname].filter(Boolean).map(s => String(s).trim()).join(' ');
+            if (pFull && pFull.toUpperCase() !== "EMPLEADO") {
+              empName = pFull;
+            } else if (pEmp.name && String(pEmp.name).toUpperCase() !== "EMPLEADO") {
+              empName = String(pEmp.name).trim();
+            }
+          } catch (_) {}
+        }
+
+        if (empName === "Colaborador" || !empName || empName.toUpperCase() === "EMPLEADO") {
+          const mPrimer = xmlGenerado.match(/PrimerNombre\s*=\s*"([^"]+)"/i);
+          const mOtros = xmlGenerado.match(/OtrosNombres\s*=\s*"([^"]+)"/i);
+          const mPrimerAp = xmlGenerado.match(/PrimerApellido\s*=\s*"([^"]+)"/i);
+          const mSegundoAp = xmlGenerado.match(/SegundoApellido\s*=\s*"([^"]+)"/i);
+          const xmlName = [
+            mPrimer ? mPrimer[1] : '',
+            mOtros ? mOtros[1] : '',
+            mPrimerAp ? mPrimerAp[1] : '',
+            mSegundoAp ? mSegundoAp[1] : ''
+          ].filter(Boolean).map(s => s.trim()).join(' ');
+          if (xmlName && xmlName.toUpperCase() !== "EMPLEADO") empName = xmlName;
+        }
       }
     } catch (_) {}
 

@@ -6322,6 +6322,42 @@ export function buildMatiasPayrollPayload(
     workerSubtypeId = 1;
   }
 
+  // Resolver nombres completos reales del trabajador (evitar "EMPLEADO" / "COLABORADOR")
+  let empFirstSurname = String(emp.primerApellido || '').trim();
+  let empSecondSurname = String(emp.segundoApellido || '').trim();
+  let empFirstName = String(emp.primerNombre || '').trim();
+  let empOtherNames = String(emp.otrosNombres || '').trim();
+
+  if (!empFirstSurname || empFirstSurname.toUpperCase() === 'EMPLEADO' || !empFirstName || empFirstName.toUpperCase() === 'COLABORADOR') {
+    const rawEmpName = String(emp.nombreCompleto || emp.nombre || emp.name || '').trim();
+    if (rawEmpName && rawEmpName.toUpperCase() !== 'EMPLEADO') {
+      const parts = rawEmpName.split(/\s+/).filter(Boolean);
+      if (parts.length >= 4) {
+        empFirstName = parts[0];
+        empOtherNames = parts.slice(1, parts.length - 2).join(' ');
+        empFirstSurname = parts[parts.length - 2];
+        empSecondSurname = parts[parts.length - 1];
+      } else if (parts.length === 3) {
+        empFirstName = parts[0];
+        empOtherNames = '';
+        empFirstSurname = parts[1];
+        empSecondSurname = parts[2];
+      } else if (parts.length === 2) {
+        empFirstName = parts[0];
+        empOtherNames = '';
+        empFirstSurname = parts[1];
+        empSecondSurname = '';
+      } else if (parts.length === 1) {
+        empFirstName = parts[0];
+        empOtherNames = '';
+        empFirstSurname = parts[0];
+        empSecondSurname = '';
+      }
+    }
+  }
+  if (!empFirstSurname) empFirstSurname = "EMPLEADO";
+  if (!empFirstName) empFirstName = "COLABORADOR";
+
   // Trabajador (Estándar canónico MATIAS API UBL 2.1)
   const employeeObj = {
     worker_type_id: workerTypeId,
@@ -6329,10 +6365,10 @@ export function buildMatiasPayrollPayload(
     contract_type_id: typeContractId,
     identity_document_id: String(typeDocId),
     document_number: String(emp.numeroDocumento || "00000000"),
-    first_surname: String(emp.primerApellido || "EMPLEADO"),
-    second_surname: String(emp.segundoApellido || ""),
-    first_name: String(emp.primerNombre || "COLABORADOR"),
-    other_names: String(emp.otrosNombres || ""),
+    first_surname: empFirstSurname,
+    second_surname: empSecondSurname,
+    first_name: empFirstName,
+    other_names: empOtherNames,
     working_country_id: 45,
     work_city_id: employeeCityId,
     work_address: String(emp.direccion || company.companyDir || "CL 29 5 50"),
@@ -7582,14 +7618,25 @@ async function mergeSettlementsIntoAccumulators(
         } else {
           const nameParts = rawName.trim().split(/\s+/).filter(Boolean);
           if (nameParts.length >= 4) {
-            primerNombre = nameParts[0]; otrosNombres = nameParts[1];
-            primerApellido = nameParts[2]; segundoApellido = nameParts.slice(3).join(' ');
+            primerNombre = nameParts[0];
+            otrosNombres = nameParts.slice(1, nameParts.length - 2).join(' ');
+            primerApellido = nameParts[nameParts.length - 2];
+            segundoApellido = nameParts[nameParts.length - 1];
           } else if (nameParts.length === 3) {
-            primerNombre = nameParts[0]; primerApellido = nameParts[1]; segundoApellido = nameParts[2];
+            primerNombre = nameParts[0];
+            otrosNombres = '';
+            primerApellido = nameParts[1];
+            segundoApellido = nameParts[2];
           } else if (nameParts.length === 2) {
-            primerNombre = nameParts[0]; primerApellido = nameParts[1];
+            primerNombre = nameParts[0];
+            otrosNombres = '';
+            primerApellido = nameParts[1];
+            segundoApellido = '';
           } else {
-            primerNombre = nameParts[0] || 'Empleado'; primerApellido = 'SinApellido';
+            primerNombre = nameParts[0] || 'Empleado';
+            otrosNombres = '';
+            primerApellido = nameParts[0] || 'SinApellido';
+            segundoApellido = '';
           }
         }
 
@@ -8009,19 +8056,24 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           const nameParts = rawName.trim().split(/\s+/).filter(Boolean);
           if (nameParts.length >= 4) {
             primerNombre = nameParts[0];
-            otrosNombres = nameParts[1];
-            primerApellido = nameParts[2];
-            segundoApellido = nameParts.slice(3).join(' ');
+            otrosNombres = nameParts.slice(1, nameParts.length - 2).join(' ');
+            primerApellido = nameParts[nameParts.length - 2];
+            segundoApellido = nameParts[nameParts.length - 1];
           } else if (nameParts.length === 3) {
             primerNombre = nameParts[0];
+            otrosNombres = '';
             primerApellido = nameParts[1];
             segundoApellido = nameParts[2];
           } else if (nameParts.length === 2) {
             primerNombre = nameParts[0];
+            otrosNombres = '';
             primerApellido = nameParts[1];
+            segundoApellido = '';
           } else {
             primerNombre = nameParts[0] || 'Empleado';
-            primerApellido = 'SinApellido';
+            otrosNombres = '';
+            primerApellido = nameParts[0] || 'SinApellido';
+            segundoApellido = '';
           }
         }
 
@@ -10072,8 +10124,13 @@ function parseNominaXmlConcepts(xmlStr: string) {
 (window as any).previewNominaModal = async function (id: string) {
   try {
     const rec = await pb.get('electronic_payrolls', id, { expand: 'employee_id' });
-    const emp = rec.expand?.employee_id || {};
-    let name = emp.name || 'Empleado';
+    let emp = rec.expand?.employee_id || {};
+    if (!emp.id && rec.employee_id) {
+      emp = await pb.get('third_parties', rec.employee_id).catch(() => ({}));
+    }
+    const empFn = (emp.first_name || '').trim();
+    const empLn = (emp.last_name || '').trim();
+    let name = (empFn && empLn) ? `${empFn} ${empLn}` : (emp.name || emp.commercial_name || 'Empleado');
     let doc = emp.doc_number || '—';
     const cargo = emp.notes || emp.cargo || emp.position || 'Colaborador';
     const numSec = `${rec.prefijo || 'NOM'}-${String(rec.consecutivo || '1').padStart(4, '0')}`;
@@ -10105,8 +10162,9 @@ function parseNominaXmlConcepts(xmlStr: string) {
         try {
           pj = JSON.parse(xml);
           const empJson = pj.employee || pj.worker || {};
-          const fullName = [empJson.first_name, empJson.other_names, empJson.first_surname, empJson.second_surname].filter(Boolean).join(' ');
-          if (fullName) name = fullName;
+          const fullName = [empJson.first_name, empJson.other_names, empJson.first_surname, empJson.second_surname].filter(Boolean).map((s: string) => s.trim()).join(' ');
+          if (fullName && fullName.toUpperCase() !== 'EMPLEADO') name = fullName;
+          else if (empJson.name && String(empJson.name).toUpperCase() !== 'EMPLEADO') name = String(empJson.name).trim();
           if (empJson.document_number) doc = empJson.document_number;
           if (empJson.salary) sueldoContratoJson = parseFloat(empJson.salary);
           if (empJson.work_address || empJson.address) workAddressJson = empJson.work_address || empJson.address;
@@ -10140,6 +10198,17 @@ function parseNominaXmlConcepts(xmlStr: string) {
             companyNit = n ? (dv ? `${n}-${dv}` : n) : '';
             companyDir = empNode.getAttribute('Direccion') || '';
           }
+          const trabNode = docXml.querySelector('Trabajador');
+          if (trabNode) {
+            const pNombre = trabNode.getAttribute('PrimerNombre') || '';
+            const oNombres = trabNode.getAttribute('OtrosNombres') || '';
+            const pApellido = trabNode.getAttribute('PrimerApellido') || '';
+            const sApellido = trabNode.getAttribute('SegundoApellido') || '';
+            const xmlTrabName = [pNombre, oNombres, pApellido, sApellido].filter(Boolean).map(s => s.trim()).join(' ');
+            if (xmlTrabName && xmlTrabName.toUpperCase() !== 'EMPLEADO') name = xmlTrabName;
+            const xmlTrabDoc = trabNode.getAttribute('NumeroDocumento') || '';
+            if (xmlTrabDoc) doc = xmlTrabDoc;
+          }
           const perNode = docXml.querySelector('Periodo');
           if (perNode) {
             fechaIngresoXml = perNode.getAttribute('FechaIngreso') || '';
@@ -10155,6 +10224,18 @@ function parseNominaXmlConcepts(xmlStr: string) {
             metodoPagoXml = pagoNode.getAttribute('Metodo') || '';
           }
         } catch (_) { }
+      }
+    }
+
+    if ((!name || name.toUpperCase() === 'EMPLEADO' || name.toUpperCase() === 'COLABORADOR') && doc && doc !== '—') {
+      const tpList = await pb.listAll('third_parties', { filter: `doc_number="${pb.escapeFilterValue(doc)}"` }).catch(() => []);
+      if (tpList.length > 0) {
+        const tp = tpList[0];
+        const tFn = (tp.first_name || '').trim();
+        const tLn = (tp.last_name || '').trim();
+        if (tFn && tLn) name = `${tFn} ${tLn}`;
+        else if (tFn || tLn) name = tFn || tLn;
+        else if (tp.name && tp.name.toUpperCase() !== 'EMPLEADO') name = tp.name;
       }
     }
 
@@ -11069,9 +11150,15 @@ async function printPayrollSlip(id) {
       API.getSetting('company_address').catch(() => ''),
       getNominaConfigWithRow().catch(() => ({ config: null }))
     ]);
+    let empThird = l.expand?.employee_id;
+    if (!empThird && l.employee_id) {
+      empThird = await pb.get('third_parties', l.employee_id).catch(() => null);
+    }
+    empThird = empThird || {};
+
     const nomConfig = nomConfigRes?.config || null;
     const empRule = nomConfig && l.employee_id ? getEmployeePayrollRule(nomConfig, l.employee_id) : null;
-    const empContractStart = (empRule?.start_date || l.expand?.employee_id?.date_hired || l.expand?.employee_id?.hire_date || l.expand?.employee_id?.fecha_ingreso || '').trim();
+    const empContractStart = (empRule?.start_date || empThird.date_hired || empThird.hire_date || empThird.fecha_ingreso || '').trim();
     const empContractEnd = (empRule?.end_date || '').trim();
     const empContractType = empRule?.contract_type || 'INDEFINIDO';
     const contractTypeLabel = {
@@ -11081,12 +11168,16 @@ async function printPayrollSlip(id) {
       APRENDIZAJE: 'Aprendizaje',
       PRACTICA: 'Práctica'
     }[empContractType] || empContractType;
+
+    const empCargo = empThird.notes || empThird.cargo || empThird.position || '';
     const resolvedCargo = empRule?.position || empCargo || 'Colaborador';
 
-    const empName = l.expand?.employee_id?.name || '';
-    const empDoc = l.expand?.employee_id?.doc_number || '';
-    const empDocType = l.expand?.employee_id?.doc_type || 'CC';
-    const empCargo = l.expand?.employee_id?.notes || '';
+    const fn = (empThird.first_name || '').trim();
+    const ln = (empThird.last_name || '').trim();
+    const rawNm = (empThird.name || empThird.commercial_name || '').trim();
+    const empName = (fn && ln) ? `${fn} ${ln}` : (rawNm || fn || ln || 'Colaborador');
+    const empDoc = empThird.doc_number || '';
+    const empDocType = empThird.doc_type || 'CC';
     const periodRec = l.expand?.period_id || {};
     const period = periodRec?.name || '';
     const dateFrom = periodRec?.date_from || '';
@@ -11622,16 +11713,16 @@ async function printConsolidatedPayrollSummary(periodId: string) {
       totalIcbf += (l.icbf || 0);
       totalCaja += (l.caja_comp || 0);
 
-    totalCesantias += (l.cesantias || 0);
-    totalInteresesCes += (l.intereses_ces || 0);
-    totalPrima += (l.prima || 0);
-    totalVacaciones += (l.vacaciones || 0);
+      totalCesantias += (l.cesantias || 0);
+      totalInteresesCes += (l.intereses_ces || 0);
+      totalPrima += (l.prima || 0);
+      totalVacaciones += (l.vacaciones || 0);
 
-    const empName = l.expand?.employee_id?.name || 'Empleado sin nombre';
-    const empDocType = l.expand?.employee_id?.doc_type || 'CC';
-    const empDoc = l.expand?.employee_id?.doc_number || '—';
+      const empName = l.expand?.employee_id?.name || 'Empleado sin nombre';
+      const empDocType = l.expand?.employee_id?.doc_type || 'CC';
+      const empDoc = l.expand?.employee_id?.doc_number || '—';
 
-    return `
+      return `
         <tr>
           <td style="text-align:center;">${idx + 1}</td>
           <td style="font-weight:600;color:#0D2137;">${empName}</td>
@@ -11644,12 +11735,12 @@ async function printConsolidatedPayrollSummary(periodId: string) {
           <td style="border-bottom: 1px dashed #94A3B8;"></td>
         </tr>
       `;
-  }).join('');
+    }).join('');
 
-  const totalParafiscales = totalEmployerHealth + totalEmployerPension + totalEmployerArl + totalSena + totalIcbf + totalCaja;
-  const totalProvisiones = totalCesantias + totalInteresesCes + totalPrima + totalVacaciones;
+    const totalParafiscales = totalEmployerHealth + totalEmployerPension + totalEmployerArl + totalSena + totalIcbf + totalCaja;
+    const totalProvisiones = totalCesantias + totalInteresesCes + totalPrima + totalVacaciones;
 
-  const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -11806,16 +11897,16 @@ async function printConsolidatedPayrollSummary(periodId: string) {
 </body>
 </html>`;
 
-  const win = window.open('', '_blank', 'width=1100,height=800,scrollbars=yes');
-  if (!win) {
-    showToast('El navegador bloqueó la ventana emergente. Permite popups para esta página.', 'warning');
-    return;
+    const win = window.open('', '_blank', 'width=1100,height=800,scrollbars=yes');
+    if (!win) {
+      showToast('El navegador bloqueó la ventana emergente. Permite popups para esta página.', 'warning');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+  } catch (err: any) {
+    showToast(err.message || 'Error al generar la lista de pago consolidada', 'error');
   }
-  win.document.write(html);
-  win.document.close();
-} catch (err: any) {
-  showToast(err.message || 'Error al generar la lista de pago consolidada', 'error');
-}
 }
 
 function generarPeriodosColombia(ano, mes, tipo) {
@@ -13565,8 +13656,8 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
                 </thead>
                 <tbody id="dd-emp-list" class="divide-y divide-gray-100">
                   ${employees.map(e => {
-                    const cst = empCstMap[e.id] || { salary: 0, qualifies: true };
-                    return `
+      const cst = empCstMap[e.id] || { salary: 0, qualifies: true };
+      return `
                       <tr class="emp-row hover:bg-slate-50 transition-colors" data-name="${esc(e.name.toLowerCase())}" data-doc="${esc(e.doc_number || '')}" data-cst="${cst.qualifies ? '1' : '0'}">
                         <td class="text-center p-2">
                           <input type="checkbox" class="dd-emp-checkbox" value="${esc(e.id)}">
@@ -13575,15 +13666,15 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
                         <td class="p-2 font-semibold text-gray-800">${esc(e.name)}</td>
                         <td class="p-2">
                           ${cst.qualifies
-                            ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-check text-[9px]"></i>≤ 2 SMMLV (Aplica)</span>`
-                            : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">> 2 SMMLV (Opcional)</span>`}
+          ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-check text-[9px]"></i>≤ 2 SMMLV (Aplica)</span>`
+          : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">> 2 SMMLV (Opcional)</span>`}
                         </td>
                         <td class="p-2 text-right">
                           <input type="number" class="dd-emp-amount form-input form-input-sm text-right text-xs py-1 px-2 w-32 font-mono font-bold text-slate-700 inline-block" data-emp-id="${esc(e.id)}" value="0" min="0" step="100" disabled>
                         </td>
                       </tr>
                     `;
-                  }).join('')}
+    }).join('')}
                 </tbody>
               </table>
             </div>
@@ -16483,3 +16574,810 @@ async function loadSettlementHistory() {
 };
 
 (window as any).renderNominaLiquidacionDefinitivaPage = renderNominaLiquidacionDefinitivaPage;
+
+// ============================================================================
+// ── LIBRO DE VACACIONES (ARTÍCULOS 186 AL 190 DEL CÓDIGO SUSTANTIVO DEL TRABAJO)
+// ============================================================================
+
+export async function renderNominaVacacionesPage(c: HTMLElement) {
+  c.innerHTML = `<div class="p-8 text-center text-slate-500 font-sans"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Libro de Vacaciones y colaboradores...</div>`;
+
+  try {
+    const [employees, rawNovelties, rawSettlements, rawLines, rawPeriods, nomConfigRes] = await Promise.all([
+      pb.listAll('third_parties', { filter: 'type="EMPLEADO"', sort: 'name' }).catch(() => []),
+      pb.listAll('payroll_novelties', {
+        filter: 'type="VACACIONES" || type="VACACIONES_COMPENSADAS" || type="VACACIONES_RETIRO" || type="RETIRO"',
+        expand: 'period_id,employee_id',
+        sort: '-date_from'
+      }).catch(() => []),
+      pb.listAll('payroll_settlements').catch(() => []),
+      pb.listAll('payroll_lines').catch(() => []),
+      pb.listAll('payroll_periods', { sort: 'date_from' }).catch(() => []),
+      getNominaConfigWithRow().catch(() => ({ config: null }))
+    ]);
+
+    const nomConfig = nomConfigRes?.config || null;
+    const today = todayStr();
+
+    // Mapear historial de períodos por colaborador para determinar fechas reales si faltan en perfil
+    const periodMap = new Map((rawPeriods || []).map((p: any) => [p.id, p]));
+    const employeePeriods = new Map<string, { minDate: string; maxDate: string }>();
+    (rawLines || []).forEach((l: any) => {
+      const p = periodMap.get(l.period_id);
+      if (!p) return;
+      const current = employeePeriods.get(l.employee_id) || { minDate: p.date_from, maxDate: p.date_to };
+      if (p.date_from && p.date_from < current.minDate) current.minDate = p.date_from;
+      if (p.date_to && p.date_to > current.maxDate) current.maxDate = p.date_to;
+      employeePeriods.set(l.employee_id, current);
+    });
+
+    // Helper para formatear fechas
+    const fmtD = (dStr: string) => {
+      if (!dStr) return '—';
+      return dStr.slice(0, 10);
+    };
+
+    // Procesar colaboradores y calcular saldos de vacaciones con precisión CST
+    const processedEmployees = employees.map((emp: any) => {
+      const empRule = nomConfig && emp.id ? getEmployeePayrollRule(nomConfig, emp.id) : null;
+      const empPeriods = employeePeriods.get(emp.id) || null;
+
+      // 1. Detectar novedad explícita de retiro
+      const retiroNov = rawNovelties.find((n: any) => n.employee_id === emp.id && (n.type === 'RETIRO' || n.novelty_type === 'RETIRO'));
+      const retiroDate = retiroNov ? (retiroNov.date_from || retiroNov.date_to || '').slice(0, 10) : '';
+
+      // 2. Detectar liquidación laboral registrada (payroll_settlement)
+      const settlement = (rawSettlements || []).find((s: any) => s.employee_id === emp.id && s.status !== 'cancelled');
+      const settlementDate = (settlement?.settlement_date || '').slice(0, 10);
+
+      // 3. Regla contractual en nómina (end_date o active)
+      const ruleEndDate = empRule?.end_date ? empRule.end_date.slice(0, 10) : '';
+      const ruleInactive = empRule && empRule.active === false;
+
+      // 4. Inactividad en perfil de tercero
+      const isExplicitInactive = emp.active === 0 || emp.active === false;
+      const hasRetiro = Boolean(retiroDate);
+      const hasSettlement = Boolean(settlementDate);
+      const isRuleExpired = Boolean(ruleEndDate && ruleEndDate <= today);
+
+      const isTerminated = isExplicitInactive || ruleInactive || hasRetiro || hasSettlement || isRuleExpired;
+
+      // Fecha efectiva de finalización / corte (CST: no acumula más allá de la fecha de terminación)
+      let endDate = today;
+      if (isTerminated) {
+        endDate = retiroDate || settlementDate || ruleEndDate || empPeriods?.maxDate || today;
+      }
+      endDate = endDate.slice(0, 10);
+
+      // Fecha de inicio contractual
+      let startDate = (empRule?.start_date || emp.hire_date || emp.date_hired || emp.fecha_ingreso || empPeriods?.minDate || emp.created || today).slice(0, 10);
+      if (startDate > endDate) {
+        startDate = empPeriods?.minDate && empPeriods.minDate <= endDate ? empPeriods.minDate : endDate;
+      }
+
+      const d1 = new Date(startDate);
+      const d2 = new Date(endDate);
+      const diffTime = Math.max(0, d2.getTime() - d1.getTime());
+      const totalDaysWorked = Math.max(1, Math.round(diffTime / (1000 * 3600 * 24)));
+
+      // Antigüedad en Años y Meses
+      const years = Math.floor(totalDaysWorked / 365);
+      const months = Math.floor((totalDaysWorked % 365) / 30);
+      const seniorityLabel = years > 0 ? `${years}a ${months}m` : `${months} meses`;
+
+      // Días causados según ley colombiana: 15 días hábiles por cada 360 días laborados (1.25 días/mes)
+      const diasCausados = round2((totalDaysWorked * 15) / 360);
+
+      // Novedades vinculadas a este colaborador (filtrando solo vacaciones)
+      const empNovs = rawNovelties.filter((n: any) => n.employee_id === emp.id && n.type !== 'RETIRO' && n.novelty_type !== 'RETIRO');
+      let diasDisfrutados = 0;
+      let diasCompensados = 0;
+
+      empNovs.forEach((n: any) => {
+        const qty = Number(n.qty !== undefined ? n.qty : (n.quantity || 0));
+        const novType = n.type || n.novelty_type || '';
+        if (novType === 'VACACIONES_COMPENSADAS' || novType === 'VACACIONES_RETIRO') {
+          diasCompensados += qty;
+        } else {
+          diasDisfrutados += qty;
+        }
+      });
+
+      // Sumar vacaciones liquidadas en liquidación formal (payroll_settlement) si aplica
+      if (settlement && Number(settlement.vacation_days) > 0) {
+        diasCompensados += Number(settlement.vacation_days);
+      }
+
+      diasDisfrutados = round2(diasDisfrutados);
+      diasCompensados = round2(diasCompensados);
+      const totalTomados = round2(diasDisfrutados + diasCompensados);
+      const saldoPendiente = round2(diasCausados - totalTomados);
+
+      const pctDisfrutado = diasCausados > 0 ? Math.min(100, Math.round((totalTomados / diasCausados) * 100)) : 0;
+
+      return {
+        emp,
+        empRule,
+        startDate,
+        endDate,
+        isTerminated,
+        retiroDate,
+        settlementDate,
+        totalDaysWorked,
+        seniorityLabel,
+        diasCausados,
+        diasDisfrutados,
+        diasCompensados,
+        totalTomados,
+        saldoPendiente,
+        pctDisfrutado,
+        novelties: empNovs
+      };
+    });
+
+    // Totales de la empresa
+    const totalActivos = processedEmployees.filter(e => !e.isTerminated).length;
+    const totalRetirados = processedEmployees.filter(e => e.isTerminated).length;
+    const sumCausados = round2(processedEmployees.reduce((s, e) => s + e.diasCausados, 0));
+    const sumTomados = round2(processedEmployees.reduce((s, e) => s + e.totalTomados, 0));
+    const sumSaldos = round2(processedEmployees.reduce((s, e) => s + Math.max(0, e.saldoPendiente), 0));
+
+    c.innerHTML = `
+      <div class="space-y-5 font-sans text-slate-800">
+        <!-- Cabecera de Página -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-amber-100 text-amber-700">
+                <i class="fas fa-umbrella-beach"></i>
+              </span>
+              <h3 class="text-lg font-bold text-slate-900">Libro de Vacaciones</h3>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">Control normativo de causación, disfrute total o parcial y saldos de vacaciones acumuladas (Art. 186-190 CST).</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" class="btn btn-outline text-slate-700 border-slate-300 hover:bg-slate-50 text-xs font-bold" id="btn-vac-export">
+              <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Exportar Libro
+            </button>
+            ${can('canWrite') ? `
+              <button type="button" class="btn btn-primary text-xs font-bold" id="btn-vac-nuevo">
+                <i class="fas fa-plus mr-1"></i> Nuevo Registro
+              </button>
+            ` : ''}
+          </div>
+        </div>
+
+        <!-- Tarjetas Resumen Pasivo Vacacional -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Censo de Colaboradores</div>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span class="text-2xl font-extrabold text-slate-900">${totalActivos}</span>
+              <span class="text-xs font-bold text-emerald-700">activos</span>
+              <span class="text-slate-300">/</span>
+              <span class="text-sm font-semibold text-slate-500">${totalRetirados} ret.</span>
+            </div>
+            <div class="text-[11px] text-slate-400 mt-0.5">con control de corte legal</div>
+          </div>
+          <div class="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 shadow-xs">
+            <div class="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Días Causados Totales</div>
+            <div class="text-2xl font-extrabold text-blue-950 mt-1">${sumCausados} <span class="text-xs font-normal">días</span></div>
+            <div class="text-[11px] text-blue-600 mt-0.5">15 días / 360 días laborados</div>
+          </div>
+          <div class="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 shadow-xs">
+            <div class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Días Disfrutados / Comp.</div>
+            <div class="text-2xl font-extrabold text-emerald-950 mt-1">${sumTomados} <span class="text-xs font-normal">días</span></div>
+            <div class="text-[11px] text-emerald-600 mt-0.5">tiempo y dinero</div>
+          </div>
+          <div class="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 shadow-xs">
+            <div class="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Saldo Pendiente Global</div>
+            <div class="text-2xl font-extrabold text-amber-950 mt-1">${sumSaldos} <span class="text-xs font-normal">días</span></div>
+            <div class="text-[11px] text-amber-700 mt-0.5">pasivo vacacional real</div>
+          </div>
+        </div>
+
+        <!-- Barra de Búsqueda y Filtros -->
+        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          <div class="flex flex-wrap items-center gap-3 flex-1">
+            <div class="relative min-w-[260px] flex-1 max-w-md">
+              <i class="fas fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+              <input type="text" id="vac-search" class="form-input text-xs pl-8 pr-8 bg-white border-slate-300 w-full" placeholder="Buscar por colaborador o identificación..." autocomplete="off">
+              <button type="button" id="vac-search-clear" class="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs hidden" title="Limpiar búsqueda">
+                <i class="fas fa-times-circle"></i>
+              </button>
+            </div>
+            <div class="min-w-[200px]">
+              <select id="vac-filter-status" class="form-input text-xs bg-white border-slate-300">
+                <option value="ALL">Todos los Colaboradores (${processedEmployees.length})</option>
+                <option value="ACTIVE">Solo Activos (${totalActivos})</option>
+                <option value="TERMINATED">Solo Finalizados / Retirados (${totalRetirados})</option>
+                <option value="PENDING">Con Días Pendientes (&gt; 0)</option>
+                <option value="ALERT">Alerta Acumulados (&gt; 15 días)</option>
+                <option value="UP_TO_DATE">Al Día (Saldo 0)</option>
+              </select>
+            </div>
+          </div>
+          <div class="text-xs text-slate-500 font-medium" id="vac-count-indicator">
+            Mostrando ${processedEmployees.length} colaboradores
+          </div>
+        </div>
+
+        <!-- Tabla Principal del Libro de Vacaciones -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+          <div class="overflow-x-auto max-h-[600px]">
+            <table class="w-full text-left text-xs data-table border-collapse" id="tbl-libro-vacaciones">
+              <thead class="bg-slate-800 text-white sticky top-0 z-10 text-[11px]">
+                <tr>
+                  <th class="p-3 font-bold">Colaborador / Identificación</th>
+                  <th class="p-3 text-center font-bold">Estado Contrato</th>
+                  <th class="p-3 font-bold">Fecha Ingreso</th>
+                  <th class="p-3 font-bold">Fecha Corte / Retiro</th>
+                  <th class="p-3 text-center font-bold">Antigüedad</th>
+                  <th class="p-3 text-right font-bold">Días Laborados</th>
+                  <th class="p-3 text-right font-bold text-blue-200">Causados</th>
+                  <th class="p-3 text-right font-bold text-emerald-200">Disfrutados</th>
+                  <th class="p-3 text-right font-bold text-cyan-200">Compensados</th>
+                  <th class="p-3 text-right font-black bg-slate-900 text-amber-300">Saldo Pendiente</th>
+                  <th class="p-3 font-bold" style="width: 130px;">Progreso Disfrute</th>
+                  <th class="p-3 text-center font-bold" style="width: 130px;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="vac-tbody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const tbody = document.getElementById('vac-tbody') as HTMLElement;
+    const searchInput = document.getElementById('vac-search') as HTMLInputElement;
+    const searchClearBtn = document.getElementById('vac-search-clear') as HTMLButtonElement;
+    const filterStatus = document.getElementById('vac-filter-status') as HTMLSelectElement;
+    const countIndicator = document.getElementById('vac-count-indicator') as HTMLElement;
+
+    const renderRows = () => {
+      const q = (searchInput?.value || '').toLowerCase().trim();
+      const status = filterStatus?.value || 'ALL';
+
+      if (searchClearBtn) {
+        if (q) searchClearBtn.classList.remove('hidden');
+        else searchClearBtn.classList.add('hidden');
+      }
+
+      const filtered = processedEmployees.filter((item) => {
+        const empName = (item.emp.name || `${item.emp.first_name || ''} ${item.emp.last_name || ''}`).toLowerCase();
+        const doc = String(item.emp.doc_number || '').toLowerCase();
+        if (q && !empName.includes(q) && !doc.includes(q)) return false;
+
+        if (status === 'ACTIVE' && item.isTerminated) return false;
+        if (status === 'TERMINATED' && !item.isTerminated) return false;
+        if (status === 'PENDING' && item.saldoPendiente <= 0) return false;
+        if (status === 'ALERT' && item.saldoPendiente < 15) return false;
+        if (status === 'UP_TO_DATE' && item.saldoPendiente > 0) return false;
+
+        return true;
+      });
+
+      if (countIndicator) {
+        countIndicator.innerText = `Mostrando ${filtered.length} de ${processedEmployees.length} colaboradores`;
+      }
+
+      if (!filtered.length) {
+        tbody.innerHTML = `<tr><td colspan="12" class="p-8 text-center text-slate-400">No se encontraron colaboradores con los criterios seleccionados.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((item) => {
+        const empName = item.emp.name || [item.emp.first_name, item.emp.last_name].filter(Boolean).join(' ') || 'Colaborador';
+        const docNum = item.emp.doc_number || '—';
+        const cargo = item.empRule?.position || item.emp.notes || 'Colaborador';
+
+        // Estado del contrato
+        const statusBadge = item.isTerminated
+          ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300" title="Contrato finalizado el ${fmtD(item.endDate)}"><i class="fas fa-user-slash text-[9px] text-slate-500"></i>Finalizado</span>`
+          : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300"><i class="fas fa-circle-check text-[9px] text-emerald-600"></i>Activo</span>`;
+
+        // Fecha corte / retiro
+        const corteDisplay = item.isTerminated
+          ? `<span class="font-mono text-slate-800 font-bold" title="Fecha fin de contrato">${fmtD(item.endDate)}</span>`
+          : `<span class="font-mono text-slate-500">${fmtD(today)} <span class="text-[9px] text-emerald-600 font-semibold">(Hoy)</span></span>`;
+
+        // Badge de saldo
+        let saldoBadge = '';
+        if (item.saldoPendiente <= 0) {
+          saldoBadge = `<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">0.0 días</span>`;
+        } else if (item.saldoPendiente < 15) {
+          saldoBadge = `<span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">${item.saldoPendiente} días</span>`;
+        } else if (item.saldoPendiente <= 30) {
+          saldoBadge = `<span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300">${item.saldoPendiente} días</span>`;
+        } else {
+          saldoBadge = `<span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-900 border border-rose-300"><i class="fas fa-triangle-exclamation mr-1"></i>${item.saldoPendiente} días</span>`;
+        }
+
+        return `
+          <tr class="hover:bg-slate-50/80 transition-colors">
+            <td class="p-3">
+              <div class="font-bold text-slate-900">${(window as any).esc(empName)}</div>
+              <div class="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
+                <span class="font-mono">${(window as any).esc(docNum)}</span>
+                <span>•</span>
+                <span>${(window as any).esc(cargo)}</span>
+              </div>
+            </td>
+            <td class="p-3 text-center">${statusBadge}</td>
+            <td class="p-3 font-mono text-slate-600">${fmtD(item.startDate)}</td>
+            <td class="p-3">${corteDisplay}</td>
+            <td class="p-3 text-center">
+              <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700">
+                ${item.seniorityLabel}
+              </span>
+            </td>
+            <td class="p-3 text-right font-mono text-slate-600">${item.totalDaysWorked} d</td>
+            <td class="p-3 text-right font-mono font-bold text-blue-700 bg-blue-50/30">${item.diasCausados}</td>
+            <td class="p-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30">${item.diasDisfrutados}</td>
+            <td class="p-3 text-right font-mono text-cyan-700 bg-cyan-50/30">${item.diasCompensados}</td>
+            <td class="p-3 text-right font-mono font-black">${saldoBadge}</td>
+            <td class="p-3">
+              <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200">
+                <div class="bg-emerald-500 h-2 rounded-full transition-all" style="width: ${item.pctDisfrutado}%"></div>
+              </div>
+              <div class="text-[10px] text-slate-500 font-mono mt-0.5 text-right">${item.pctDisfrutado}% disfrutado</div>
+            </td>
+            <td class="p-3 text-center">
+              <div class="flex items-center justify-center gap-1.5">
+                <button type="button" class="btn btn-outline btn-xs px-2.5 py-1 text-[11px] font-semibold text-blue-700 border-blue-300 hover:bg-blue-50 btn-registrar-indiv" data-emp-id="${item.emp.id}" title="Nuevo Registro">
+                  <i class="fas fa-calendar-plus mr-1"></i>Nuevo Registro
+                </button>
+                <button type="button" class="btn btn-outline btn-xs px-2 py-1 text-[11px] font-semibold text-slate-700 border-slate-300 hover:bg-slate-100 btn-kardex-indiv" data-emp-id="${item.emp.id}" title="Ver Kárdex">
+                  <i class="fas fa-clock-rotate-left"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Escuchadores individuales
+      tbody.querySelectorAll('.btn-registrar-indiv').forEach((btn: any) => {
+        btn.addEventListener('click', () => {
+          const empId = btn.getAttribute('data-emp-id');
+          openVacationRegisterModal(empId, processedEmployees, () => renderNominaVacacionesPage(c));
+        });
+      });
+
+      tbody.querySelectorAll('.btn-kardex-indiv').forEach((btn: any) => {
+        btn.addEventListener('click', () => {
+          const empId = btn.getAttribute('data-emp-id');
+          const targetItem = processedEmployees.find(e => e.emp.id === empId);
+          if (targetItem) {
+            openVacationKardexModal(targetItem);
+          }
+        });
+      });
+    };
+
+    searchInput?.addEventListener('input', renderRows);
+    searchClearBtn?.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      renderRows();
+      searchInput?.focus();
+    });
+    filterStatus?.addEventListener('change', renderRows);
+    renderRows();
+
+    // Registrar nuevo registro general
+    document.getElementById('btn-vac-nuevo')?.addEventListener('click', () => {
+      openVacationRegisterModal(null, processedEmployees, () => renderNominaVacacionesPage(c));
+    });
+
+    // Exportar Libro a Excel
+    document.getElementById('btn-vac-export')?.addEventListener('click', () => {
+      const tableEl = document.getElementById('tbl-libro-vacaciones');
+      if (!tableEl) return;
+      exportHtmlTableToExcel(tableEl.outerHTML, `Libro_Vacaciones_GRAVY_${todayStr()}`);
+    });
+
+  } catch (err: any) {
+    c.innerHTML = `<div class="p-8 text-center text-rose-500 font-sans"><i class="fas fa-circle-exclamation mr-2"></i>Error al cargar Libro de Vacaciones: ${err.message}</div>`;
+  }
+}
+
+/** Modal para Registrar Salida o Compensación de Vacaciones con Buscador Dinámico de Terceros */
+function openVacationRegisterModal(preselectedEmpId: string | null, employeeList: any[], onDone: () => void) {
+  let selectedEmp = employeeList.find(e => e.emp.id === preselectedEmpId) || (preselectedEmpId ? null : employeeList[0]);
+  const today = todayStr();
+
+  const getEmpDisplayName = (emp: any) => {
+    if (!emp) return '';
+    const fn = (emp.first_name || '').trim();
+    const ln = (emp.last_name || '').trim();
+    return (fn && ln) ? `${fn} ${ln}` : (emp.name || emp.commercial_name || 'Colaborador');
+  };
+
+  const currentEmpName = selectedEmp ? getEmpDisplayName(selectedEmp.emp) : '';
+  const currentDocNum = selectedEmp?.emp?.doc_number || '—';
+
+  const bodyHtml = `
+    <form id="form-registrar-vacacion" class="space-y-4 text-xs font-sans" onsubmit="return false;">
+      <!-- Buscador Dinámico de Tercero / Colaborador -->
+      <div class="form-group mb-0 relative">
+        <label class="form-label font-bold text-slate-700 flex items-center justify-between">
+          <span>Colaborador / Tercero <span class="text-rose-500">*</span></span>
+          <span class="text-[10px] text-slate-400 font-normal">Búsqueda dinámica por nombre o documento</span>
+        </label>
+        <div class="relative flex items-center">
+          <i class="fas fa-search absolute left-3 top-2.5 text-slate-400 text-xs pointer-events-none"></i>
+          <input type="text" id="vac-reg-emp-search" class="form-input text-xs pl-8 pr-8 bg-white border-slate-300 w-full"
+            placeholder="Escribe el nombre o documento del colaborador..."
+            value="${(window as any).esc(currentEmpName)}"
+            autocomplete="off">
+          <button type="button" id="vac-reg-emp-clear" class="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs ${selectedEmp ? '' : 'hidden'}" title="Limpiar selección">
+            <i class="fas fa-times-circle"></i>
+          </button>
+        </div>
+        <input type="hidden" id="vac-reg-emp" value="${selectedEmp ? selectedEmp.emp.id : ''}">
+
+        <!-- Dropdown flotante con resultados en tiempo real -->
+        <div id="vac-reg-emp-results" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto z-50 divide-y divide-slate-100 text-xs"></div>
+      </div>
+
+      <!-- Tarjeta Informativa del Saldo del Colaborador -->
+      <div class="bg-blue-50/70 border border-blue-200 rounded-xl p-3 flex items-center justify-between text-xs" id="vac-emp-info-badge">
+        <div>
+          <div class="font-bold text-slate-800 text-xs" id="vac-badge-name">${(window as any).esc(currentEmpName || 'Ningún colaborador seleccionado')}</div>
+          <div class="text-[10px] text-slate-500 font-mono mt-0.5" id="vac-badge-doc">Doc: ${(window as any).esc(currentDocNum)}</div>
+        </div>
+        <div class="flex items-center gap-4 text-right">
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold uppercase">Causados</div>
+            <strong class="text-blue-900 font-mono" id="vac-badge-causados">${selectedEmp?.diasCausados ?? 0}</strong>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-400 font-bold uppercase">Tomados</div>
+            <strong class="text-slate-700 font-mono" id="vac-badge-tomados">${selectedEmp?.totalTomados ?? 0}</strong>
+          </div>
+          <div>
+            <div class="text-[10px] text-emerald-700 font-bold uppercase">Saldo Disponible</div>
+            <strong class="text-emerald-800 font-mono text-sm font-extrabold" id="vac-badge-saldo">${selectedEmp?.saldoPendiente ?? 0} días</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="form-group mb-0">
+          <label class="form-label font-bold text-slate-700">Modalidad de Vacaciones <span class="text-rose-500">*</span></label>
+          <select id="vac-reg-type" class="form-input text-xs bg-white text-slate-900 border-slate-300 w-full">
+            <option value="VACACIONES">Disfrute en Tiempo (Total o Parcial)</option>
+            <option value="VACACIONES_COMPENSADAS">Compensadas en Dinero (Hasta 50%)</option>
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label font-bold text-slate-700">Período Causado a Imputar</label>
+          <input type="text" id="vac-reg-periodo" class="form-input text-xs border-slate-300 w-full" placeholder="Ej: 2024 - 2025 (Automático)">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="vac-dates-row">
+        <div class="form-group mb-0">
+          <label class="form-label font-bold text-slate-700">Fecha Inicio <span class="text-rose-500">*</span></label>
+          <input type="date" id="vac-reg-start" class="form-input text-xs border-slate-300 w-full" value="${today}" required>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label font-bold text-slate-700">Días Hábiles a Tomar <span class="text-rose-500">*</span></label>
+          <input type="number" id="vac-reg-qty" class="form-input text-xs border-slate-300 w-full font-mono font-bold" min="1" max="60" step="1" value="${selectedEmp ? Math.min(15, Math.max(1, Math.round(selectedEmp.saldoPendiente || 15))) : 15}" required>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label font-bold text-slate-700">Fecha Reintegro a Labores</label>
+          <input type="date" id="vac-reg-return" class="form-input text-xs border-slate-300 w-full">
+        </div>
+      </div>
+
+      <div class="form-group mb-0">
+        <label class="form-label font-bold text-slate-700">Observaciones / Concepto Legal</label>
+        <textarea id="vac-reg-notes" class="form-input text-xs border-slate-300 w-full" rows="2" placeholder="Detalle de solicitud aprobada, disfrute fraccionado o liquidación acordada..."></textarea>
+      </div>
+    </form>
+  `;
+
+  const footerHtml = `
+    <button type="button" class="btn btn-outline text-xs" onclick="closeModal()">Cancelar</button>
+    <button type="button" class="btn btn-primary text-xs font-bold" id="btn-save-vacacion"><i class="fas fa-check mr-1"></i>Guardar Registro</button>
+  `;
+
+  openModal(
+    `<i class="fas fa-calendar-plus text-indigo-600 mr-2"></i>Nuevo Registro de Vacaciones`,
+    bodyHtml,
+    footerHtml,
+    true
+  );
+
+  const searchInp = document.getElementById('vac-reg-emp-search') as HTMLInputElement;
+  const hiddenEmp = document.getElementById('vac-reg-emp') as HTMLInputElement;
+  const clearBtn = document.getElementById('vac-reg-emp-clear') as HTMLButtonElement;
+  const resultsDiv = document.getElementById('vac-reg-emp-results') as HTMLElement;
+  const badgeName = document.getElementById('vac-badge-name') as HTMLElement;
+  const badgeDoc = document.getElementById('vac-badge-doc') as HTMLElement;
+  const badgeCausados = document.getElementById('vac-badge-causados') as HTMLElement;
+  const badgeTomados = document.getElementById('vac-badge-tomados') as HTMLElement;
+  const badgeSaldo = document.getElementById('vac-badge-saldo') as HTMLElement;
+  const qtyInp = document.getElementById('vac-reg-qty') as HTMLInputElement;
+
+  const updateEmpUI = (item: any | null) => {
+    selectedEmp = item;
+    if (item) {
+      const name = getEmpDisplayName(item.emp);
+      hiddenEmp.value = item.emp.id;
+      searchInp.value = name;
+      clearBtn.classList.remove('hidden');
+      badgeName.innerText = name;
+      badgeDoc.innerText = `Doc: ${item.emp.doc_number || '—'} • ${item.isTerminated ? `Retirado (${item.endDate})` : 'Contrato Activo'}`;
+      badgeCausados.innerText = String(item.diasCausados ?? 0);
+      badgeTomados.innerText = String(item.totalTomados ?? 0);
+      badgeSaldo.innerText = `${item.saldoPendiente ?? 0} días`;
+      if (qtyInp && item.saldoPendiente > 0) {
+        qtyInp.value = String(Math.min(15, Math.max(1, Math.round(item.saldoPendiente))));
+      }
+    } else {
+      hiddenEmp.value = '';
+      clearBtn.classList.add('hidden');
+      badgeName.innerText = 'Ningún colaborador seleccionado';
+      badgeDoc.innerText = 'Doc: —';
+      badgeCausados.innerText = '0';
+      badgeTomados.innerText = '0';
+      badgeSaldo.innerText = '0 días';
+    }
+  };
+
+  const renderDropdown = (query: string) => {
+    if (!resultsDiv) return;
+    const q = (query || '').toLowerCase().trim();
+    const matches = employeeList.filter((item: any) => {
+      if (!q) return true;
+      const n = (item.emp.name || `${item.emp.first_name || ''} ${item.emp.last_name || ''}`).toLowerCase();
+      const d = String(item.emp.doc_number || '').toLowerCase();
+      return n.includes(q) || d.includes(q);
+    });
+
+    if (!matches.length) {
+      resultsDiv.innerHTML = `<div class="p-3 text-center text-slate-400 text-xs italic">No se encontraron colaboradores con "${(window as any).esc(query)}"</div>`;
+    } else {
+      resultsDiv.innerHTML = matches.map((item: any) => {
+        const name = getEmpDisplayName(item.emp);
+        const doc = item.emp.doc_number || '—';
+        const isSel = item.emp.id === hiddenEmp.value;
+        return `
+          <div class="vac-emp-item p-2.5 hover:bg-indigo-50 cursor-pointer transition-colors flex items-center justify-between ${isSel ? 'bg-indigo-50/60 font-bold' : ''}" data-id="${item.emp.id}">
+            <div>
+              <div class="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                <span>${(window as any).esc(name)}</span>
+                ${item.isTerminated ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold">Retirado</span>' : '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">Activo</span>'}
+              </div>
+              <div class="text-[10px] text-slate-400 font-mono">C.C. / NIT: ${(window as any).esc(doc)}</div>
+            </div>
+            <div class="text-right">
+              <span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${item.saldoPendiente > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
+                Saldo: ${item.saldoPendiente} d
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    resultsDiv.classList.remove('hidden');
+  };
+
+  searchInp?.addEventListener('focus', () => renderDropdown(searchInp.value));
+  searchInp?.addEventListener('input', () => {
+    if (!searchInp.value.trim()) {
+      clearBtn.classList.add('hidden');
+    } else {
+      clearBtn.classList.remove('hidden');
+    }
+    renderDropdown(searchInp.value);
+  });
+
+  clearBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    searchInp.value = '';
+    updateEmpUI(null);
+    renderDropdown('');
+    searchInp.focus();
+  });
+
+  resultsDiv?.addEventListener('click', (e) => {
+    const itemEl = (e.target as HTMLElement).closest('.vac-emp-item') as HTMLElement;
+    if (!itemEl) return;
+    const empId = itemEl.dataset.id;
+    const match = employeeList.find(x => x.emp.id === empId);
+    if (match) {
+      updateEmpUI(match);
+    }
+    resultsDiv.classList.add('hidden');
+  });
+
+  const outsideClickListener = (e: MouseEvent) => {
+    if (!resultsDiv.contains(e.target as Node) && e.target !== searchInp) {
+      resultsDiv.classList.add('hidden');
+    }
+  };
+  document.addEventListener('click', outsideClickListener);
+
+  document.getElementById('btn-save-vacacion')?.addEventListener('click', async () => {
+    const empId = hiddenEmp?.value;
+    const type = (document.getElementById('vac-reg-type') as HTMLSelectElement)?.value || 'VACACIONES';
+    const startDate = (document.getElementById('vac-reg-start') as HTMLInputElement)?.value;
+    const qty = parseFloat((document.getElementById('vac-reg-qty') as HTMLInputElement)?.value || '0');
+    const returnDate = (document.getElementById('vac-reg-return') as HTMLInputElement)?.value;
+    const periodImputed = (document.getElementById('vac-reg-periodo') as HTMLInputElement)?.value || '';
+    const notes = (document.getElementById('vac-reg-notes') as HTMLTextAreaElement)?.value || '';
+
+    if (!empId || !startDate || qty <= 0) {
+      return showToast('Por favor selecciona el colaborador, la fecha de inicio y la cantidad de días.', 'warning');
+    }
+
+    try {
+      // Buscar período de nómina activo o próximo para asignar la novedad
+      const periods = await pb.listAll('payroll_periods', { sort: '-date_from' }).catch(() => []);
+      const draftPeriod = periods.find((p: any) => p.status === 'draft' || !p.status);
+      let periodId = draftPeriod?.id || periods[0]?.id;
+
+      // Si no existe ningún período creado, generar uno borrador para el mes actual
+      if (!periodId) {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+        const newPeriod = await pb.create('payroll_periods', {
+          name: `Nómina ${y}-${m}`,
+          date_from: `${y}-${m}-01`,
+          date_to: `${y}-${m}-${lastDay}`,
+          status: 'draft'
+        });
+        periodId = newPeriod.id;
+      }
+
+      const payload = {
+        employee_id: empId,
+        period_id: periodId,
+        type: type,
+        date_from: startDate,
+        date_to: returnDate || startDate,
+        qty: qty,
+        amount: 0,
+        support_number: periodImputed ? `PER:${periodImputed}` : '',
+        description: `[Libro de Vacaciones] ${qty} días de vacaciones (${periodImputed ? `Período: ${periodImputed}` : 'Disfrute ordinario'}). ${notes ? `Obs: ${notes}` : ''}`.trim(),
+        status: 'draft'
+      };
+
+      await pb.create('payroll_novelties', payload);
+      document.removeEventListener('click', outsideClickListener);
+      showToast(`Registro de vacaciones (${qty} días) guardado exitosamente.`, 'success');
+      closeModal();
+      onDone();
+    } catch (err: any) {
+      showToast(`Error al registrar vacaciones: ${err.message}`, 'error');
+    }
+  });
+}
+
+/** Modal de Kárdex Histórico Individual de Vacaciones */
+function openVacationKardexModal(item: any) {
+  const empName = item.emp.name || [item.emp.first_name, item.emp.last_name].filter(Boolean).join(' ') || 'Colaborador';
+  const docNum = item.emp.doc_number || '—';
+  const cargo = item.empRule?.position || item.emp.notes || 'Colaborador';
+
+  const bodyHtml = `
+    <div class="space-y-4 text-xs font-sans text-slate-800" id="print-vac-kardex">
+      <!-- Ficha del Trabajador -->
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <h4 class="text-base font-bold text-slate-900">${(window as any).esc(empName)}</h4>
+            ${item.isTerminated ? `
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-800 border border-slate-300">
+                <i class="fas fa-user-slash text-[9px] text-slate-500"></i>Contrato Finalizado (${item.endDate})
+              </span>
+            ` : `
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                <i class="fas fa-circle-check text-[9px] text-emerald-600"></i>Contrato Activo
+              </span>
+            `}
+          </div>
+          <div class="text-xs text-slate-500 font-medium mt-1">
+            <span>Doc: <strong class="font-mono">${(window as any).esc(docNum)}</strong></span>
+            <span class="mx-2">•</span>
+            <span>Cargo: <strong>${(window as any).esc(cargo)}</strong></span>
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-slate-500">Período Contractual Computado:</div>
+          <div class="text-sm font-bold text-slate-900 font-mono">${item.startDate} &rarr; ${item.isTerminated ? item.endDate : 'Vigente (Hoy)'}</div>
+          <div class="text-[11px] text-blue-700 font-semibold mt-0.5">${item.seniorityLabel} de antigüedad (${item.totalDaysWorked} días)</div>
+        </div>
+      </div>
+
+      ${item.isTerminated ? `
+        <!-- Aviso Normativo CST para Contratos Concluidos -->
+        <div class="bg-amber-50/90 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-start gap-2.5">
+          <i class="fas fa-triangle-exclamation text-amber-600 mt-0.5 text-sm"></i>
+          <div>
+            <strong class="font-bold text-amber-950">Corte de Liquidación Contractual (Art. 186-190 CST):</strong>
+            Este contrato de trabajo finalizó el <strong class="font-mono">${item.endDate}</strong>. El cómputo de días laborados y causación de vacaciones se encuentra legalmente congelado a dicha fecha de retiro, garantizando que el colaborador no continúe acumulando pasivo vacacional posterior al cese de actividades.
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Métricas del Kárdex -->
+      <div class="grid grid-cols-4 gap-2 text-center">
+        <div class="border border-slate-200 rounded-xl p-2.5 bg-white">
+          <div class="text-[10px] text-slate-400 font-bold uppercase">Días Laborados</div>
+          <div class="text-lg font-extrabold text-slate-800 font-mono mt-0.5">${item.totalDaysWorked} d</div>
+        </div>
+        <div class="border border-blue-200 rounded-xl p-2.5 bg-blue-50/50">
+          <div class="text-[10px] text-blue-700 font-bold uppercase">Días Causados</div>
+          <div class="text-lg font-extrabold text-blue-900 font-mono mt-0.5">${item.diasCausados}</div>
+        </div>
+        <div class="border border-emerald-200 rounded-xl p-2.5 bg-emerald-50/50">
+          <div class="text-[10px] text-emerald-700 font-bold uppercase">Días Disfrutados / Comp.</div>
+          <div class="text-lg font-extrabold text-emerald-900 font-mono mt-0.5">${item.totalTomados}</div>
+        </div>
+        <div class="border border-amber-200 rounded-xl p-2.5 bg-amber-50/50">
+          <div class="text-[10px] text-amber-800 font-bold uppercase">Saldo ${item.isTerminated ? 'al Retiro' : 'Actual'}</div>
+          <div class="text-lg font-black text-amber-950 font-mono mt-0.5">${item.saldoPendiente} días</div>
+        </div>
+      </div>
+
+      <!-- Tabla Cronológica de Movimientos -->
+      <div class="border border-slate-200 rounded-xl overflow-hidden">
+        <div class="bg-slate-800 text-white p-2.5 text-[11px] font-bold flex items-center justify-between">
+          <span><i class="fas fa-list-check mr-1.5 text-amber-300"></i>Historial Cronológico de Disfrute y Novedades</span>
+          <span class="text-slate-300">${item.novelties.length} registros</span>
+        </div>
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-100 text-slate-700 text-[10px] uppercase font-bold border-b border-slate-200">
+            <tr>
+              <th class="p-2">Fecha Inicio</th>
+              <th class="p-2">Fecha Fin / Reintegro</th>
+              <th class="p-2">Concepto</th>
+              <th class="p-2 text-right">Días Tomados</th>
+              <th class="p-2">Observaciones / Período</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${item.novelties.length ? item.novelties.map((n: any) => `
+              <tr class="hover:bg-slate-50">
+                <td class="p-2 font-mono text-slate-600">${(n.date_from || n.date_start || n.created || '').slice(0, 10)}</td>
+                <td class="p-2 font-mono text-slate-600">${(n.date_to || n.date_end || '—').slice(0, 10)}</td>
+                <td class="p-2 font-semibold">
+                  <span class="inline-block px-2 py-0.5 rounded text-[10px] ${n.type === 'VACACIONES_COMPENSADAS' || n.novelty_type === 'VACACIONES_COMPENSADAS' ? 'bg-cyan-100 text-cyan-800' : 'bg-emerald-100 text-emerald-800'}">
+                    ${n.type === 'VACACIONES_COMPENSADAS' || n.novelty_type === 'VACACIONES_COMPENSADAS' ? 'Compensadas Dinero' : 'Disfrutadas en Tiempo'}
+                  </span>
+                </td>
+                <td class="p-2 text-right font-mono font-bold text-slate-800">${n.qty !== undefined ? n.qty : (n.quantity || 0)} días</td>
+                <td class="p-2 text-slate-500 italic">${(window as any).esc(n.description || n.notes || '—')}</td>
+              </tr>
+            `).join('') : `
+              <tr><td colspan="5" class="p-6 text-center text-slate-400">No registra salidas ni compensaciones de vacaciones a la fecha.</td></tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  const footerHtml = `
+    <button type="button" class="btn btn-outline text-xs" onclick="closeModal()">Cerrar</button>
+    <button type="button" class="btn btn-primary text-xs font-bold" onclick="window.print()">
+      <i class="fas fa-print mr-1"></i> Imprimir Kárdex
+    </button>
+  `;
+
+  openModal(
+    `<i class="fas fa-id-card text-indigo-600 mr-2"></i>Kárdex de Vacaciones — ${(window as any).esc(empName)}`,
+    bodyHtml,
+    footerHtml,
+    true
+  );
+}
+
+(window as any).renderNominaVacacionesPage = renderNominaVacacionesPage;

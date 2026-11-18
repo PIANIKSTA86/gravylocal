@@ -3946,7 +3946,23 @@ const API = {
       const subtotal = rDec(line.subtotal || 0);
       const qty = rDec(line.qty || 0);
       const unitPrice = rDec(line.unit_price || 0);
-      const lineDiscount = rDec((qty * unitPrice) - subtotal);
+
+      // Distinguir entre descuento comercial real y diferencias residuales de redondeo de centavos:
+      // Solo reconocer descuento de línea si la línea explícitamente tiene porcentaje/valor de descuento,
+      // o si la diferencia entre precio base y subtotal es significativa (>= $1.00 COP) y no mero residuo de división de IVA.
+      const hasExplicitLineDiscount = Boolean(
+        Number(line.discount_pct || 0) > 0 || 
+        Number(line.discount_rate || 0) > 0 || 
+        Number(line.discount_amount || 0) > 0
+      );
+      const rawDiscount = (qty * unitPrice) - subtotal;
+      let lineDiscount = 0;
+      if (hasExplicitLineDiscount) {
+        lineDiscount = Math.max(0, rDec(rawDiscount));
+      } else if (rawDiscount >= 1.0) {
+        lineDiscount = rDec(rawDiscount);
+      }
+
       if (lineDiscount > 0) {
         totalLineDiscount += lineDiscount;
       }
@@ -3973,10 +3989,13 @@ const API = {
 
     // Unificación de Descuento (Header o Acumulado de Líneas)
     const headerDiscount = rDec(inv.discount_amount || 0);
-    const effectiveDiscount = headerDiscount > 0 ? headerDiscount : rDec(totalLineDiscount);
+    // Si la factura tiene descuento en cabecera se respeta; de lo contrario solo si las líneas acumulan descuento comercial real (>= $1.00 COP)
+    const effectiveDiscount = headerDiscount >= 0.50 
+      ? headerDiscount 
+      : (totalLineDiscount >= 1.0 ? rDec(totalLineDiscount) : 0);
 
-    // Débito de Descuento (UNICA LÍNEA si existe descuento para evitar duplicidad)
-    if (effectiveDiscount > 0) {
+    // Débito de Descuento (UNICA LÍNEA si existe descuento comercial real)
+    if (effectiveDiscount >= 0.50) {
       const discountAccId = await resolveDiscountAccount();
       txLines.push(await buildTxLine({
         accountId: discountAccId,
@@ -9610,7 +9629,54 @@ const API = {
       throw new Error('El valor total acumulado de la importación debe ser mayor a cero para capitalizar.');
     }
 
-    const thirdPartyCapitalize = imp.supplier_id || imp.forwarder_supplier_id || (lines.length ? lines[0].supplier_id : '') || pb.currentUser?.id || '';
+    // Resolución dinámica del tercero de la empresa que realiza la importación (ej. DOMESTIKO SAS)
+    let companyThirdPartyId = '';
+    try {
+      const companyNit = (await this.getSetting('company_nit').catch(() => '')) || '';
+      const cleanNit = String(companyNit || '').replace(/\D/g, '');
+      if (cleanNit) {
+        const foundThird = await pb.list('third_parties', {
+          filter: `doc_number ~ "${pb.escapeFilterValue(cleanNit)}" || doc_number = "${pb.escapeFilterValue(cleanNit)}"`,
+          perPage: 1
+        }).catch(() => ({ items: [] }));
+        if (foundThird.items && foundThird.items.length) {
+          companyThirdPartyId = foundThird.items[0].id;
+        }
+      }
+      if (!companyThirdPartyId) {
+        const rawComp = await this.getSetting('company').catch(() => '');
+        if (rawComp) {
+          const compObj = typeof rawComp === 'string' ? JSON.parse(rawComp) : rawComp;
+          const cNit = String(compObj?.nit || '').replace(/\D/g, '');
+          if (cNit) {
+            const foundByCNit = await pb.list('third_parties', {
+              filter: `doc_number ~ "${pb.escapeFilterValue(cNit)}" || doc_number = "${pb.escapeFilterValue(cNit)}"`,
+              perPage: 1
+            }).catch(() => ({ items: [] }));
+            if (foundByCNit.items && foundByCNit.items.length) {
+              companyThirdPartyId = foundByCNit.items[0].id;
+            }
+          }
+        }
+      }
+      if (!companyThirdPartyId) {
+        // Fallback por nombre comercial o razón social (ej. DOMESTIKO SAS)
+        const companyName = (await this.getSetting('company_name').catch(() => '')) || 'DOMESTIKO';
+        const searchWord = companyName.split(/\s+/)[0] || 'DOMESTIKO';
+        const foundByName = await pb.list('third_parties', {
+          filter: `name ~ "${pb.escapeFilterValue(searchWord)}" || commercial_name ~ "${pb.escapeFilterValue(searchWord)}"`,
+          perPage: 1
+        }).catch(() => ({ items: [] }));
+        if (foundByName.items && foundByName.items.length) {
+          companyThirdPartyId = foundByName.items[0].id;
+        }
+      }
+    } catch (e) {
+      console.warn('[capitalizeImport] Aviso al resolver tercero de la empresa importadora:', e);
+    }
+
+    // El cierre en contabilidad y movimiento de entrada a bodega debe pertenecer a la empresa importadora
+    const thirdPartyCapitalize = companyThirdPartyId || imp.supplier_id || imp.forwarder_supplier_id || (lines.length ? lines[0].supplier_id : '') || pb.currentUser?.id || '';
 
     const wh = await pb.get('warehouses', warehouseId).catch(() => null);
     const whBranchId = wh?.branch_id || null;

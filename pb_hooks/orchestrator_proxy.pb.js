@@ -134,3 +134,111 @@ routerAdd('POST', '/api/dian/generate-pdf', (c) => {
   }
 });
 
+
+
+// --- WHATSAPP BOT SERVICE PROXIES ---
+routerAdd('GET', '/api/whatsapp/status', (c) => {
+  try {
+    const res = $http.send({
+      url: 'http://127.0.0.1:8088/api/whatsapp/status',
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10
+    });
+    return c.json(res.statusCode || 200, JSON.parse(res.raw || '{}'));
+  } catch (err) {
+    return c.json(500, { connected: false, error: 'Proxy error WhatsApp status: ' + err.message });
+  }
+});
+
+routerAdd('GET', '/api/whatsapp/qr', (c) => {
+  try {
+    const res = $http.send({
+      url: 'http://127.0.0.1:8088/api/whatsapp/qr',
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10
+    });
+    return c.json(res.statusCode || 200, JSON.parse(res.raw || '{}'));
+  } catch (err) {
+    return c.json(500, { error: 'Proxy error WhatsApp QR: ' + err.message });
+  }
+});
+
+routerAdd('POST', '/api/whatsapp/init', (c) => {
+  try {
+    const rawBody = c.requestInfo()?.body || {};
+    const res = $http.send({
+      url: 'http://127.0.0.1:8088/api/whatsapp/init',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rawBody),
+      timeout: 30
+    });
+    return c.json(res.statusCode || 200, JSON.parse(res.raw || '{}'));
+  } catch (err) {
+    return c.json(500, { error: 'Proxy error WhatsApp init: ' + err.message });
+  }
+});
+
+routerAdd('POST', '/api/whatsapp/logout', (c) => {
+  try {
+    const res = $http.send({
+      url: 'http://127.0.0.1:8088/api/whatsapp/logout',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 20
+    });
+    return c.json(res.statusCode || 200, JSON.parse(res.raw || '{}'));
+  } catch (err) {
+    return c.json(500, { error: 'Proxy error WhatsApp logout: ' + err.message });
+  }
+});
+
+routerAdd('POST', '/api/whatsapp/send-pdf', (c) => {
+  try {
+    const rawBody = c.requestInfo()?.body || {};
+    const res = $http.send({
+      url: 'http://127.0.0.1:8088/api/whatsapp/send-pdf',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rawBody),
+      timeout: 60
+    });
+    return c.json(res.statusCode || 200, JSON.parse(res.raw || '{}'));
+  } catch (err) {
+    return c.json(500, { error: 'Proxy error WhatsApp send-pdf: ' + err.message });
+  }
+});
+
+// --- GENERACIÓN PDF PEDIDOS / COTIZACIONES ---
+routerAdd('POST', '/api/orders/generate-pdf', (c) => {
+  try {
+    const rawBody = c.requestInfo()?.body || {};
+    const res = $http.send({
+      url: 'http://127.0.0.1:8088/api/orders/generate-pdf',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rawBody),
+      timeout: 60
+    });
+
+    if (res.statusCode === 200) {
+      if (rawBody.format === 'base64') {
+        return c.json(200, JSON.parse(res.raw || '{}'));
+      }
+      const filename = rawBody.filename || 'pedido';
+      try {
+        if (c.response && c.response.Header) {
+          c.response.Header().Set('Content-Disposition', 'inline; filename="' + filename + '.pdf"');
+          c.response.Header().Set('Access-Control-Allow-Origin', '*');
+        }
+      } catch (_) {}
+      return c.blob(200, 'application/pdf', res.raw);
+    }
+
+    return c.json(res.statusCode || 500, JSON.parse(res.raw || '{}'));
+  } catch (err) {
+    return c.json(500, { error: 'Proxy error Order generate-pdf: ' + err.message });
+  }
+});

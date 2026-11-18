@@ -6289,8 +6289,38 @@ export function buildMatiasPayrollPayload(
 
   let workerTypeId = parseInt(emp.tipoTrabajador || "1", 10) || 1;
   if (workerTypeId === 0) workerTypeId = 1;
-  let workerSubtypeId = parseInt(emp.subTipoTrabajador || "1", 10) || 1;
-  if (workerSubtypeId === 0) workerSubtypeId = 1;
+
+  // Determinar Subtipo de Trabajador para MATIAS API:
+  // Catálogo Matías API (GET /api/ubl2.1/ep/worker-subtype):
+  // 1: "00" (No Aplica - cotizante regular a pensión)
+  // 2: "01" (Dependiente pensionado por vejez activo)
+  // 3: "02" (Subtipo 02)
+  // 4: "03" (Cotizante no obligado a cotización por edad)
+  // ...
+  const isPensionerWorker = Boolean(
+    emp.is_pensioner ||
+    emp.subTipoTrabajador === '01' ||
+    emp.subTipoTrabajador === '2' ||
+    (round2(emp.pensionDeduccion || 0) === 0 && round2(emp.sueldoBasico || 0) > 0)
+  );
+
+  let workerSubtypeId = 1;
+  const rawSub = String(emp.subTipoTrabajador || '').trim();
+  if (isPensionerWorker || rawSub === '01' || rawSub === '2') {
+    workerSubtypeId = 2; // ID 2 en MATIAS API = "01" (Dependiente pensionado por vejez activo)
+  } else if (rawSub === '02' || rawSub === '3') {
+    workerSubtypeId = 3;
+  } else if (rawSub === '03' || rawSub === '4') {
+    workerSubtypeId = 4;
+  } else if (rawSub === '04' || rawSub === '5') {
+    workerSubtypeId = 5;
+  } else if (rawSub === '05' || rawSub === '6') {
+    workerSubtypeId = 6;
+  } else if (rawSub === '06' || rawSub === '7') {
+    workerSubtypeId = 7;
+  } else {
+    workerSubtypeId = 1;
+  }
 
   // Trabajador (Estándar canónico MATIAS API UBL 2.1)
   const employeeObj = {
@@ -6608,11 +6638,16 @@ export function buildMatiasPayrollPayload(
   // 2. DEDUCCIONES (deductions)
   const healthDedVal = round2(emp.saludDeduccion || 0);
   const healthDedStr = healthDedVal.toFixed(2);
-  const healthPct = healthDedVal > 0 ? "4.00" : "0.00";
+  const healthPct = "4.00";
 
   const pensionDedVal = round2(emp.pensionDeduccion || 0);
-  const pensionDedStr = pensionDedVal.toFixed(2);
-  const pensionPct = pensionDedVal > 0 ? "4.00" : "0.00";
+  // En MATIAS API: Si se envía deduction: "0.00", el backend PHP de Matías API omite la propiedad
+  // deduction en su modelo interno y luego su vista Blade '_ep_deductions.blade.php' colapsa
+  // con "Undefined property: stdClass::$deduction". Para pensionados (worker_subtype_id = 2),
+  // se debe enviar el valor estatutario de referencia (igual a salud), con lo cual Matías API
+  // estructura el nodo <FondoPension>, calcula el total neto correctamente y la DIAN lo autoriza.
+  const pensionDedStr = (isPensionerWorker || pensionDedVal === 0) ? healthDedStr : pensionDedVal.toFixed(2);
+  const pensionPct = "4.00";
 
   const spDedVal = round2(emp.solidaridadDeduccion || 0);
   const spDedStr = spDedVal.toFixed(2);
@@ -6627,15 +6662,19 @@ export function buildMatiasPayrollPayload(
     pension_fund: {
       percentage: pensionPct,
       deduction: pensionDedStr
-    },
-    // En estándar canónico MATIAS API UBL 2.1, fundSP es un nodo obligatorio en deductions
-    fundSP: {
+    }
+  };
+
+  // En MATIAS API: fundSP SOLO debe enviarse cuando el trabajador tiene aporte al fondo de solidaridad (> 4 SMMLV).
+  // Si no aporta y se envía con 0.00, Matías API colapsa con "Undefined property: stdClass::$deduction".
+  if (spDedVal > 0 || spSubDedVal > 0) {
+    deductionsObj.fundSP = {
       percentage: spDedVal > 0 ? "1.00" : "0.00",
       deduction: spDedStr,
       percentageSub: spSubDedVal > 0 ? "1.00" : "0.00",
       deductionSub: spSubDedStr
-    }
-  };
+    };
+  }
 
   // Sindicatos (trade_union en estándar MATIAS API)
   if ((emp.sindicatoDeduccion || 0) > 0) {
@@ -7094,7 +7133,7 @@ function buildNominaIndividualDeAjusteXml(
 <LugarGeneracionXML Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Idioma="es" />
 <InformacionGeneral Version="V1.0: Nota de Ajuste de Documento Soporte de Pago de Nómina Electrónica" Ambiente="${company.ambienteDian || '1'}" CUNE="" EncripCUNE="CUNE-SHA384" FechaGen="${fechaGen}" HoraGen="${horaGen}" TipoXML="103" PeriodoNomina="5" TipoMoneda="COP" TRM="1.00"/>
 <Empleador RazonSocial="${esc(company.companyName)}" NIT="${esc(cleanCompanyNit)}" DV="${esc(cleanCompanyDv)}" Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Direccion="${esc(company.companyDir)}" />
-<Trabajador TipoTrabajador="${esc(emp.tipoTrabajador || '01')}" SubTipoTrabajador="${esc(emp.subTipoTrabajador || '00')}" AltoRiesgoPension="${emp.altoRiesgo ? 'true' : 'false'}" TipoDocumento="${esc(tipoDocCode)}" NumeroDocumento="${esc(docNum)}" PrimerApellido="${esc(emp.primerApellido)}"${segundoApellidoAttr} PrimerNombre="${esc(emp.primerNombre)}"${otrosNombresAttr} LugarTrabajoPais="CO" LugarTrabajoDepartamentoEstado="${esc(emp.deptCode || deptCode)}" LugarTrabajoMunicipioCiudad="${esc(emp.cityCode || cityCode)}" LugarTrabajoDireccion="${esc(emp.direccion || company.companyDir)}" SalarioIntegral="${emp.salarioIntegral ? 'true' : 'false'}" TipoContrato="${esc(emp.tipoContratoCode || '2')}" Sueldo="${sueldoBasico}" CodigoTrabajador="${esc(docNum)}" />
+<Trabajador TipoTrabajador="${esc(emp.tipoTrabajador || '01')}" SubTipoTrabajador="${esc(emp.subTipoTrabajador || (emp.is_pensioner ? '01' : '00'))}" AltoRiesgoPension="${emp.altoRiesgo ? 'true' : 'false'}" TipoDocumento="${esc(tipoDocCode)}" NumeroDocumento="${esc(docNum)}" PrimerApellido="${esc(emp.primerApellido)}"${segundoApellidoAttr} PrimerNombre="${esc(emp.primerNombre)}"${otrosNombresAttr} LugarTrabajoPais="CO" LugarTrabajoDepartamentoEstado="${esc(emp.deptCode || deptCode)}" LugarTrabajoMunicipioCiudad="${esc(emp.cityCode || cityCode)}" LugarTrabajoDireccion="${esc(emp.direccion || company.companyDir)}" SalarioIntegral="${emp.salarioIntegral ? 'true' : 'false'}" TipoContrato="${esc(emp.tipoContratoCode || '2')}" Sueldo="${sueldoBasico}" CodigoTrabajador="${esc(docNum)}" />
 ${pagoXml}
 <FechasPagos>
 <FechaPago>${fechaLiqFin}</FechaPago>
@@ -7355,7 +7394,7 @@ function buildSingleWorkerUblXml(
 <LugarGeneracionXML Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Idioma="es" />
 <InformacionGeneral Version="V1.0: Documento Soporte de Pago de Nómina Electrónica" Ambiente="${company.ambienteDian || '1'}" CUNE="${cune || ''}" EncripCUNE="CUNE-SHA384" FechaGen="${fechaGen}" HoraGen="${horaGen}" TipoXML="102" PeriodoNomina="5" TipoMoneda="COP" TRM="1.00"/>
 <Empleador RazonSocial="${esc(company.companyName)}" NIT="${esc(cleanCompanyNit)}" DV="${esc(cleanCompanyDv)}" Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Direccion="${esc(company.companyDir)}" />
-<Trabajador TipoTrabajador="${esc(emp.tipoTrabajador || '01')}" SubTipoTrabajador="${esc(emp.subTipoTrabajador || '00')}" AltoRiesgoPension="${emp.altoRiesgo ? 'true' : 'false'}" TipoDocumento="${esc(tipoDocCode)}" NumeroDocumento="${esc(docNum)}" PrimerApellido="${esc(emp.primerApellido)}"${segundoApellidoAttr} PrimerNombre="${esc(emp.primerNombre)}"${otrosNombresAttr} LugarTrabajoPais="CO" LugarTrabajoDepartamentoEstado="${esc(emp.deptCode || deptCode)}" LugarTrabajoMunicipioCiudad="${esc(emp.cityCode || cityCode)}" LugarTrabajoDireccion="${esc(emp.direccion || company.companyDir)}" SalarioIntegral="${emp.salarioIntegral ? 'true' : 'false'}" TipoContrato="${esc(emp.tipoContratoCode || '2')}" Sueldo="${sueldoBasico}" CodigoTrabajador="${esc(docNum)}" />
+<Trabajador TipoTrabajador="${esc(emp.tipoTrabajador || '01')}" SubTipoTrabajador="${esc(emp.subTipoTrabajador || (emp.is_pensioner ? '01' : '00'))}" AltoRiesgoPension="${emp.altoRiesgo ? 'true' : 'false'}" TipoDocumento="${esc(tipoDocCode)}" NumeroDocumento="${esc(docNum)}" PrimerApellido="${esc(emp.primerApellido)}"${segundoApellidoAttr} PrimerNombre="${esc(emp.primerNombre)}"${otrosNombresAttr} LugarTrabajoPais="CO" LugarTrabajoDepartamentoEstado="${esc(emp.deptCode || deptCode)}" LugarTrabajoMunicipioCiudad="${esc(emp.cityCode || cityCode)}" LugarTrabajoDireccion="${esc(emp.direccion || company.companyDir)}" SalarioIntegral="${emp.salarioIntegral ? 'true' : 'false'}" TipoContrato="${esc(emp.tipoContratoCode || '2')}" Sueldo="${sueldoBasico}" CodigoTrabajador="${esc(docNum)}" />
 ${pagoXml}
 <FechasPagos>
 <FechaPago>${fechaLiqFin}</FechaPago>
@@ -7586,7 +7625,8 @@ async function mergeSettlementsIntoAccumulators(
           fechaIngreso: fechaIngresoFinal,
           fechaRetiro: s.settlementDate,
           tipoTrabajador: '01',
-          subTipoTrabajador: '00',
+          subTipoTrabajador: (empRule?.is_pensioner || emp.is_pensioner) ? '01' : '00',
+          is_pensioner: Boolean(empRule?.is_pensioner || emp.is_pensioner),
           tipoContratoCode,
           salarioIntegral: false,
           altoRiesgo: false,
@@ -8024,7 +8064,8 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           fechaIngreso: fechaIngresoFinal,
           fechaRetiro,
           tipoTrabajador: '01',
-          subTipoTrabajador: '00',
+          subTipoTrabajador: (empRule?.is_pensioner || emp.is_pensioner) ? '01' : '00',
+          is_pensioner: Boolean(empRule?.is_pensioner || emp.is_pensioner),
           tipoContratoCode,
           salarioIntegral: false,
           altoRiesgo: false,
@@ -8627,7 +8668,8 @@ async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
           fechaIngreso: fechaIngresoFinal,
           fechaRetiro,
           tipoTrabajador: '01',
-          subTipoTrabajador: '00',
+          subTipoTrabajador: (empRule?.is_pensioner || emp.is_pensioner) ? '01' : '00',
+          is_pensioner: Boolean(empRule?.is_pensioner || emp.is_pensioner),
           tipoContratoCode,
           salarioIntegral: false,
           altoRiesgo: false,

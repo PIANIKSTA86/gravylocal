@@ -387,11 +387,15 @@ const getHubUrl = (): string => {
   if (port) {
     return `${protocol}//${hostname}:8089`;
   }
+  const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+  if (isIp) {
+    return `${protocol}//${hostname}:8089`;
+  }
   const parts = hostname.split('.');
   if (parts.length >= 3) {
     const sub = parts[0].toLowerCase();
     const rootDomain = parts.slice(1).join('.');
-    if (sub === 'domestiko' || sub === 'app' || sub === 'hub') {
+    if (sub === 'domestiko' || sub === 'app' || sub === 'hub' || sub === 'cloud' || sub === 'sistema' || sub === 'erp') {
       return `${protocol}//hub.${rootDomain}`;
     }
     if (sub.startsWith('hub-')) {
@@ -408,19 +412,44 @@ function resolveCompanyUrl(url: string): string {
   if (!url) return window.location.origin;
   const currentHost = window.location.hostname;
   const currentProto = window.location.protocol;
+  const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(currentHost);
+
   try {
     const urlObj = new URL(url);
     if (urlObj.hostname === "localhost" || urlObj.hostname === "127.0.0.1") {
       if (currentHost !== "localhost" && currentHost !== "127.0.0.1") {
-        if (window.location.port) {
-          return `${currentProto}//${currentHost}:${urlObj.port}`;
+        if (window.location.port || isIp) {
+          // Modo LAN / Local con puerto explícito o Servidor por IP
+          const tenantPort = urlObj.port || (window.location.port || '8090');
+          return `${currentProto}//${currentHost}:${tenantPort}`;
         } else {
-          return `${currentProto}//${currentHost}`;
+          // Modo Cloud / Cloudflare Tunnel (HTTPS puerto 443 sin puerto explícito)
+          const parts = currentHost.split('.');
+          const rootDomain = parts.length >= 2 ? parts.slice(-2).join('.') : currentHost;
+          const tenantPort = urlObj.port || '8090';
+
+          // Obtener el prefijo de la app principal si venimos desde hub- o hub
+          let appSub = parts[0];
+          if (appSub.startsWith('hub-')) {
+            appSub = appSub.replace(/^hub-/, '');
+          } else if (appSub === 'hub') {
+            appSub = 'cloud';
+          }
+
+          // Empresa 8090 es la principal/demo
+          if (tenantPort === '8090') {
+            return `${currentProto}//${appSub}.${rootDomain}`;
+          } else {
+            // Empresas adicionales en puertos 8091+ mapeadas como ePORT (ej: e8095.gravy-ms.com)
+            return `${currentProto}//e${tenantPort}.${rootDomain}`;
+          }
         }
       }
     }
-  } catch (_) { }
-  return url;
+    return url;
+  } catch (_) {
+    return url;
+  }
 }
 
 interface CompanyAccess {

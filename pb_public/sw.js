@@ -4,13 +4,15 @@
  * Los datos dinámicos (API) siempre van a la red.
  */
 
-const CACHE_NAME = 'gravy-v2-assets-v7';
+const CACHE_NAME = 'gravy-v2-assets-v8';
 
 // Activos estáticos a cachear al instalar
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/favicon.ico',
+  '/gravy-Icono.ico',
   '/assets/jspdf.min.js',
   '/assets/autotable.min.js',
   '/assets/xlsx.full.min.js',

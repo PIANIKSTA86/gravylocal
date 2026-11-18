@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GRAVY — Generador de Licencia y Contrato de Servicios</title>
+<title>GRAVY — Generador Oficial de Licencias, Contratos y Términos</title>
 <link rel="icon" href="assets/gravy-logo.png" type="image/png">
 <link rel="stylesheet" href="assets/fonts/fonts.css">
 <link rel="stylesheet" href="style.css">
@@ -12,306 +12,449 @@
 </head>
 <body>
 <header class="topbar">
-  <img src="assets/gravy-logo.png" alt="GRAVY" class="logo">
-  <div>
-    <h1>Generador de Licencia de Uso y Contrato de Servicios</h1>
-    <p>Módulo interno del licenciador — genera los documentos legales en PDF a partir de los datos del cliente.</p>
+  <div class="topbar-brand">
+    <img src="assets/gravy-logo.png" alt="GRAVY" class="logo">
+    <div>
+      <div class="badge-row">
+        <span class="badge badge-purple">GRAVY v2.0</span>
+        <span class="badge badge-teal">Normativa Colombia</span>
+        <span class="badge badge-blue">Ley 43/1990 · DIAN UBL 2.1 · Ley 1581/2012</span>
+      </div>
+      <h1>Módulo de Licenciamiento y Contratación Oficial</h1>
+      <p>Generación ejecutiva de Contratos de Licencia, Prestación de Servicios y Términos & Condiciones Legales-Contables.</p>
+    </div>
   </div>
 </header>
 
 <main class="layout">
   <form id="licForm" class="panel form-panel">
 
+    <!-- 0. IDENTIFICACIÓN Y TRAZABILIDAD -->
     <fieldset>
-      <legend>0. Identificación y numeración de control</legend>
-      <p class="hint">Números de control no consecutivos (aleatorios con checksum), para trazabilidad interna sin revelar volumen de contratos a terceros.</p>
-      <div class="grid-2">
-        <label>N.° de Licencia
+      <legend>0. Identificación y numeración de control criptográfico</legend>
+      <p class="hint">Identificadores únicos no consecutivos en base 32 con checksum (trazabilidad interna segura sin revelar volumen comercial a terceros).</p>
+      <div class="grid-3">
+        <label>N.° Licencia de Uso
           <span class="inline-field">
             <input name="num_licencia" id="numLicencia" readonly>
-            <button type="button" id="btnRegenLic" title="Generar nuevo número">⟳</button>
+            <button type="button" id="btnRegenLic" title="Regenerar número">⟳</button>
           </span>
         </label>
-        <label>N.° de Contrato de Servicios
+        <label>N.° Contrato de Servicios
           <span class="inline-field">
             <input name="num_contrato" id="numContrato" readonly>
-            <button type="button" id="btnRegenContrato" title="Generar nuevo número">⟳</button>
+            <button type="button" id="btnRegenContrato" title="Regenerar número">⟳</button>
+          </span>
+        </label>
+        <label>N.° Términos & Condiciones
+          <span class="inline-field">
+            <input name="num_terminos" id="numTerminos" readonly>
+            <button type="button" id="btnRegenTerminos" title="Regenerar número">⟳</button>
           </span>
         </label>
       </div>
     </fieldset>
 
+    <!-- 1. LICENCIANTE (TITULAR LEGAL) -->
     <fieldset>
-      <legend>1. Licenciante (Proveedor)</legend>
+      <legend>1. Licenciante (Titular de Derechos Morales y Patrimoniales)</legend>
       <div class="grid-2">
-        <label>Razón social
-          <input name="lic_razon" required value="GRAVY SOFTWARE S.A.S.">
+        <label>Nombre del Titular / Autor
+          <input name="lic_razon" required value="JULIÁN ESPINOSA ARRUBLA" readonly class="input-locked">
         </label>
-        <label>NIT
-          <input name="lic_nit" required value="900.000.000-1">
+        <label>Cédula de Ciudadanía (C.C.)
+          <input name="lic_nit" required value="1.130.636.393" readonly class="input-locked">
         </label>
-        <label>Domicilio
-          <input name="lic_domicilio" required value="Bogotá D.C., Colombia">
+        <label>Calidad Jurídica
+          <input name="lic_calidad" value="Persona Natural Titular Exclusiva de Derechos de Autor (Ley 23/1982 - DNDA)" readonly class="input-locked">
         </label>
-        <label>Representante legal
-          <input name="lic_representante" required>
+        <label>Régimen Tributario
+          <input name="lic_regimen" value="Persona Natural No Responsable de IVA (Art. 437 E.T.)" readonly class="input-locked">
         </label>
-        <label>Correo electrónico
+        <label>Domicilio Legal
+          <input name="lic_domicilio" required value="Bogotá D.C. / Cali, Colombia">
+        </label>
+        <label>Correo electrónico institucional
           <input name="lic_email" type="email" value="contacto@gravy.com.co">
         </label>
-        <label>Teléfono
-          <input name="lic_telefono">
+        <label>Teléfono / WhatsApp de soporte
+          <input name="lic_telefono" value="+57 (300) 000-0000">
+        </label>
+        <label>Marca Registrada / Software
+          <input name="lic_marca" value="GRAVY® — Plataforma Contable Inteligente" readonly class="input-locked">
         </label>
       </div>
     </fieldset>
 
+    <!-- 2. LICENCIATARIO (CLIENTE) -->
     <fieldset>
-      <legend>2. Licenciatario (Cliente)</legend>
+      <legend>2. Licenciatario (Cliente / Empresa Suscriptora)</legend>
       <div class="grid-2">
-        <label>Razón social / Nombre
-          <input name="cli_razon" required>
+        <label>Razón Social o Nombre Completo *
+          <input name="cli_razon" id="cliRazon" placeholder="Ej: Comercializadora Andina S.A.S." required>
         </label>
-        <label>NIT / C.C.
-          <input name="cli_nit" required>
+        <label>NIT / C.C. con Dígito de Verificación *
+          <input name="cli_nit" id="cliNit" placeholder="Ej: 901.234.567-8" required>
         </label>
-        <label>Domicilio
-          <input name="cli_domicilio" required>
+        <label>Domicilio Principal (Ciudad, País) *
+          <input name="cli_domicilio" id="cliDomicilio" placeholder="Ej: Bogotá D.C., Colombia" required>
         </label>
-        <label>Representante legal
-          <input name="cli_representante" required>
+        <label>Dirección física de operaciones
+          <input name="cli_direccion" id="cliDireccion" placeholder="Ej: Carrera 7 # 71-21 Torre A Of. 501">
         </label>
-        <label>Correo electrónico
-          <input name="cli_email" type="email">
+        <label>Representante Legal o Delegado Autorizado *
+          <input name="cli_representante" id="cliRepresentante" placeholder="Ej: Carlos Alberto Gómez Mendoza" required>
         </label>
-        <label>Teléfono
-          <input name="cli_telefono">
+        <label>Cédula del Representante Legal *
+          <input name="cli_cc_representante" id="cliCcRepresentante" placeholder="Ej: C.C. 79.123.456 de Bogotá" required>
+        </label>
+        <label>Correo Electrónico de Notificaciones / Facturación *
+          <input name="cli_email" id="cliEmail" type="email" placeholder="facturacion@cliente.com" required>
+        </label>
+        <label>Teléfono móvil / Contacto principal
+          <input name="cli_telefono" id="cliTelefono" placeholder="Ej: 310 987 6543">
         </label>
       </div>
     </fieldset>
 
+    <!-- 3. OBJETO Y MATRIZ DE MÓDULOS -->
     <fieldset>
-      <legend>3. Objeto y alcance del software</legend>
-      <div class="grid-2">
-        <label>Nombre del software
+      <legend>3. Objeto, Modalidad y Módulos Oficiales GRAVY (17 Módulos)</legend>
+      <div class="grid-3">
+        <label>Nombre de la Plataforma
           <input name="sw_nombre" required value="GRAVY — Plataforma Contable Inteligente">
         </label>
-        <label>Versión
+        <label>Versión del Sistema
           <input name="sw_version" value="2.0.0">
         </label>
-        <label>Tipo de licencia
-          <select name="sw_tipo_licencia">
+        <label>Tipo de Licencia *
+          <select name="sw_tipo_licencia" id="tipoLicencia">
             <option value="Suscripción mensual">Suscripción mensual</option>
-            <option value="Suscripción anual">Suscripción anual</option>
-            <option value="Perpetua">Perpetua (pago único)</option>
+            <option value="Suscripción anual" selected>Suscripción anual</option>
+            <option value="Perpetua">Perpetua (pago único de software)</option>
           </select>
         </label>
-        <label>Modalidad de despliegue
-          <select name="sw_modalidad">
-            <option value="Local (on-premise)">Local (on-premise)</option>
-            <option value="Nube">Nube (cloud)</option>
-            <option value="Híbrida">Híbrida</option>
+        <label>Modalidad de Despliegue *
+          <select name="sw_modalidad" id="modalidadDespliegue">
+            <option value="Local (on-premise / Local-First)" selected>Local (on-premise / Local-First)</option>
+            <option value="Nube (Cloud AWS)">Nube (Cloud AWS Multi-Tenant)</option>
+            <option value="Híbrida">Híbrida (Base local + Réplica Cloud)</option>
           </select>
         </label>
-        <label>N.° de empresas/NITs habilitados
+        <label>N.° de Empresas / NITs Habilitados
           <input name="sw_empresas" type="number" min="1" value="1">
         </label>
-        <label>N.° de usuarios concurrentes
+        <label>N.° de Usuarios Concurrentes
           <input name="sw_usuarios" type="number" min="1" value="3">
         </label>
       </div>
-      <label>Módulos contratados</label>
 
-      <div class="mod-group">
-        <h4>Contabilidad y Cierre</h4>
-        <div class="checks">
-          <label><input type="checkbox" name="mod" value="Contabilidad General y PUC" checked> Contabilidad General y PUC</label>
-          <label><input type="checkbox" name="mod" value="Centros de Costo"> Centros de Costo</label>
-          <label><input type="checkbox" name="mod" value="Documentos Soporte Electrónico"> Documentos Soporte Electrónico</label>
-          <label><input type="checkbox" name="mod" value="Cierre Contable"> Cierre Contable</label>
-          <label><input type="checkbox" name="mod" value="Conciliación Bancaria"> Conciliación Bancaria</label>
-          <label><input type="checkbox" name="mod" value="Auditoría"> Auditoría</label>
-          <label><input type="checkbox" name="mod" value="Gestión NIIF (IFRS)"> Gestión NIIF (IFRS)</label>
-        </div>
+      <!-- PRESETS DE PLANES RÁPIDOS -->
+      <div class="presets-bar">
+        <span class="presets-title">⚡ Planes Rápidos (Presets):</span>
+        <button type="button" class="btn-preset" data-preset="contable">Plan Contable</button>
+        <button type="button" class="btn-preset" data-preset="comercial">Plan Comercial POS</button>
+        <button type="button" class="btn-preset" data-preset="pyme">Plan Pyme Integral</button>
+        <button type="button" class="btn-preset" data-preset="ph">Plan Copropiedades & Inmobiliario</button>
+        <button type="button" class="btn-preset" data-preset="logistica">Plan Logística & Rutas</button>
+        <button type="button" class="btn-preset" data-preset="full">Plan Full Suite (17 Módulos)</button>
+        <button type="button" class="btn-preset btn-preset-clear" data-preset="clear">Limpiar selección</button>
       </div>
 
-      <div class="mod-group">
-        <h4>Tributario y Facturación Electrónica</h4>
-        <div class="checks">
-          <label><input type="checkbox" name="mod" value="Facturación Electrónica DIAN" checked> Facturación Electrónica DIAN</label>
-          <label><input type="checkbox" name="mod" value="Validación de Documentos DIAN"> Validación de Documentos DIAN</label>
-          <label><input type="checkbox" name="mod" value="Resoluciones y Consecutivos DIAN"> Resoluciones y Consecutivos DIAN</label>
-          <label><input type="checkbox" name="mod" value="Información Exógena DIAN"> Información Exógena DIAN</label>
+      <!-- CHECKBOXES HOMOLOGADOS DE LOS 17 MÓDULOS DE GRAVY -->
+      <div class="modules-container">
+        
+        <!-- GRUPO CORE Y CONTABILIDAD -->
+        <div class="mod-group">
+          <div class="mod-group-header">
+            <span class="badge-dot badge-dot-blue"></span>
+            <h4>Núcleo Contable & Financiero</h4>
+          </div>
+          <div class="checks">
+            <label class="check-item core-item">
+              <input type="checkbox" name="mod" value="Core (Base)" checked disabled>
+              <span><strong>Core (Base)</strong> <small>Dashboard, configuración, usuarios, PUC, terceros y auditoría (Siempre Activo)</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Contabilidad General y PUC" checked>
+              <span><strong>Contabilidad General y PUC</strong> <small>Transacciones, libros oficiales, balance, P&G y cierre contable</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Validación DIAN & Exógena" checked>
+              <span><strong>Tributario & Exógena DIAN</strong> <small>Formatos de información exógena distrital y nacional, retenciones</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Normas Internacionales NIIF">
+              <span><strong>Normas Internacionales NIIF (IFRS)</strong> <small>Políticas contables, estados comparativos y arrendamientos NIIF 16</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Activos Fijos NIIF">
+              <span><strong>Activos Fijos NIIF</strong> <small>Depreciación dual (contable/fiscal), inventario QR, bajas y mejoras</small></span>
+            </label>
+          </div>
         </div>
-      </div>
 
-      <div class="mod-group">
-        <h4>Nómina</h4>
-        <div class="checks">
-          <label><input type="checkbox" name="mod" value="Nómina Electrónica"> Nómina Electrónica</label>
-          <label><input type="checkbox" name="mod" value="Contratos y Novedades de Nómina"> Contratos y Novedades de Nómina</label>
-          <label><input type="checkbox" name="mod" value="Liquidación de Nómina"> Liquidación de Nómina</label>
+        <!-- GRUPO COMERCIAL, OPERACIONES Y TESORERÍA -->
+        <div class="mod-group">
+          <div class="mod-group-header">
+            <span class="badge-dot badge-dot-teal"></span>
+            <h4>Comercial, Inventarios & Tesorería</h4>
+          </div>
+          <div class="checks">
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Comercial & Facturación Electrónica" checked>
+              <span><strong>Comercial & Facturación DIAN</strong> <small>Facturación electrónica UBL 2.1, ventas, compras y notas</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Inventarios & Kardex Valorizado" checked>
+              <span><strong>Inventarios & Kardex Valorizado</strong> <small>Existencias multicompañía, bodegas, lotes y vencimientos</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Punto de Venta (POS)">
+              <span><strong>Punto de Venta (POS)</strong> <small>Cajas registradoras, arqueo, turnos y facturación rápida de mostrador</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Tesorería & Conciliación Bancaria" checked>
+              <span><strong>Tesorería & Bancos</strong> <small>Flujo de caja, agenda de pagos, recaudo y conciliación de extractos</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="CRM & Seguimiento de Ventas">
+              <span><strong>CRM Comercial</strong> <small>Pipeline comercial, cotizaciones, embudos y comisiones a vendedores</small></span>
+            </label>
+          </div>
         </div>
-      </div>
 
-      <div class="mod-group">
-        <h4>Tesorería</h4>
-        <div class="checks">
-          <label><input type="checkbox" name="mod" value="Tesorería y Cuentas Bancarias"> Tesorería y Cuentas Bancarias</label>
-          <label><input type="checkbox" name="mod" value="Agenda de Pagos"> Agenda de Pagos</label>
-          <label><input type="checkbox" name="mod" value="Recaudos y Egresos"> Recaudos y Egresos</label>
+        <!-- GRUPO NÓMINA Y TALENTO HUMANO -->
+        <div class="mod-group">
+          <div class="mod-group-header">
+            <span class="badge-dot badge-dot-purple"></span>
+            <h4>Nómina & Talento Humano</h4>
+          </div>
+          <div class="checks">
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Nómina & Seguridad Social" checked>
+              <span><strong>Nómina & Seguridad Social</strong> <small>Liquidación de contratos, novedades, horas extra, cesantías y PILA</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Nómina Electrónica DIAN" checked>
+              <span><strong>Nómina Electrónica DIAN</strong> <small>Transmisión mensual de documentos soporte de nómina electrónica UBL</small></span>
+            </label>
+          </div>
         </div>
-      </div>
 
-      <div class="mod-group">
-        <h4>Comercial y Ventas</h4>
-        <div class="checks">
-          <label><input type="checkbox" name="mod" value="Ventas y Facturación Comercial"> Ventas y Facturación Comercial</label>
-          <label><input type="checkbox" name="mod" value="Punto de Venta (POS)"> Punto de Venta (POS)</label>
-          <label><input type="checkbox" name="mod" value="Pedidos y Cotizaciones"> Pedidos y Cotizaciones</label>
-          <label><input type="checkbox" name="mod" value="Tienda Virtual"> Tienda Virtual</label>
-          <label><input type="checkbox" name="mod" value="CRM - Seguimiento de Ventas"> CRM - Seguimiento de Ventas</label>
-          <label><input type="checkbox" name="mod" value="Comisiones a Vendedores"> Comisiones a Vendedores</label>
+        <!-- GRUPO LOGÍSTICA, IMPORTACIONES Y E-COMMERCE -->
+        <div class="mod-group">
+          <div class="mod-group-header">
+            <span class="badge-dot badge-dot-amber"></span>
+            <h4>Logística, Comercio Exterior & Digital</h4>
+          </div>
+          <div class="checks">
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Logística & Rutas GPS">
+              <span><strong>Logística, Despachos & Rutas GPS</strong> <small>Embalaje, planificación de entregas masivas y monitoreo satelital</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Importaciones & Aduanas">
+              <span><strong>Importaciones & Comercio Exterior</strong> <small>Tracking de contenedores marítimos/aéreos, reservas y preliquidación</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Tienda Virtual Integrada">
+              <span><strong>Tienda Virtual B2B/B2C</strong> <small>Catálogo digital omnicanal con sincronización en tiempo real de inventarios</small></span>
+            </label>
+          </div>
         </div>
-      </div>
 
-      <div class="mod-group">
-        <h4>Compras e Importaciones</h4>
-        <div class="checks">
-          <label><input type="checkbox" name="mod" value="Compras de Bienes y Servicios"> Compras de Bienes y Servicios</label>
-          <label><input type="checkbox" name="mod" value="Órdenes de Compra"> Órdenes de Compra</label>
-          <label><input type="checkbox" name="mod" value="Compra Sugerida"> Compra Sugerida</label>
-          <label><input type="checkbox" name="mod" value="Gestión de Importaciones"> Gestión de Importaciones</label>
+        <!-- GRUPO VERTICALES ESPECIALIZADOS -->
+        <div class="mod-group">
+          <div class="mod-group-header">
+            <span class="badge-dot badge-dot-rose"></span>
+            <h4>Verticales Especializados de Industria</h4>
+          </div>
+          <div class="checks">
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Propiedad Horizontal (PH)">
+              <span><strong>Propiedad Horizontal (PH)</strong> <small>Cuotas de administración, coeficientes, propietarios y expensas comunes</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Gestión Inmobiliaria">
+              <span><strong>Gestión Inmobiliaria</strong> <small>Arrendamientos, inmuebles, corretaje, contratos y liquidación a dueños</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Spa Mascotas (Veterinaria)">
+              <span><strong>Spa Mascotas & Veterinaria</strong> <small>Agenda de citas, peluquería canina/felina y expediente clínico veterinario</small></span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" name="mod" value="Spa Belleza Humana">
+              <span><strong>Spa Belleza & Estética</strong> <small>Agenda cosmetológica, aparatología, consentimientos y ficha médica de estética</small></span>
+            </label>
+          </div>
         </div>
-      </div>
 
-      <div class="mod-group">
-        <h4>Inventario y Logística</h4>
-        <div class="checks">
-          <label><input type="checkbox" name="mod" value="Inventario y Kardex Valorizado"> Inventario y Kardex Valorizado</label>
-          <label><input type="checkbox" name="mod" value="Bodegas y Consignaciones"> Bodegas y Consignaciones</label>
-          <label><input type="checkbox" name="mod" value="Lotes y Vencimientos"> Lotes y Vencimientos</label>
-          <label><input type="checkbox" name="mod" value="Embalaje"> Embalaje</label>
-          <label><input type="checkbox" name="mod" value="Despachos y Entregas"> Despachos y Entregas</label>
-          <label><input type="checkbox" name="mod" value="Control y Planificación de Rutas"> Control y Planificación de Rutas</label>
-        </div>
-      </div>
-
-      <div class="mod-group">
-        <h4>Verticales Especializados</h4>
-        <div class="checks">
-          <label><input type="checkbox" name="mod" value="Propiedad Horizontal (PH)"> Propiedad Horizontal (PH)</label>
-          <label><input type="checkbox" name="mod" value="Gestión Inmobiliaria"> Gestión Inmobiliaria</label>
-          <label><input type="checkbox" name="mod" value="Spa de Mascotas"> Spa de Mascotas</label>
-          <label><input type="checkbox" name="mod" value="Spa de Belleza"> Spa de Belleza</label>
-        </div>
-      </div>
-
-      <div class="mod-group">
-        <h4>Plataforma y Administración</h4>
-        <div class="checks">
-          <label><input type="checkbox" name="mod" value="Multiempresa / Multi-NIT"> Multiempresa / Multi-NIT</label>
-          <label><input type="checkbox" name="mod" value="Usuarios y Roles"> Usuarios y Roles</label>
-          <label><input type="checkbox" name="mod" value="Panel SuperAdministrador"> Panel SuperAdministrador</label>
-          <label><input type="checkbox" name="mod" value="Respaldo Automático en la Nube"> Respaldo Automático en la Nube</label>
-        </div>
       </div>
     </fieldset>
 
+    <!-- 4. PERSONALIZACIONES DE SOFTWARE -->
     <fieldset>
-      <legend>4. Personalizaciones de software</legend>
+      <legend>4. Desarrollos y Personalizaciones a la Medida</legend>
       <div class="grid-2">
-        <label>¿El desarrollo incluye personalizaciones a la medida?
+        <label>¿Incluye personalizaciones o desarrollos a la medida?
           <select name="personalizacion" id="personalizacion">
-            <option value="No">No, corresponde al software estándar</option>
-            <option value="Sí">Sí, incluye desarrollos a la medida</option>
+            <option value="No">No, corresponde exclusivamente al software estándar</option>
+            <option value="Sí">Sí, incluye desarrollos o integraciones especiales</option>
+          </select>
+        </label>
+        <label>Régimen de Propiedad Intelectual del Desarrollo
+          <select name="personalizacion_propiedad" id="personalizacionPropiedad" disabled>
+            <option value="Licenciante">Propiedad exclusiva del Licenciante (Julián Espinosa Arrubla)</option>
+            <option value="Compartida">Licencia exclusiva de explotación para el cliente</option>
           </select>
         </label>
       </div>
-      <label>Descripción del alcance de la(s) personalización(es)
-        <textarea name="personalizacion_detalle" id="personalizacionDetalle" rows="3" placeholder="Ej: integración con báscula electrónica, reporte especial de comisiones, campo adicional en factura, etc." disabled></textarea>
+      <label style="margin-top:10px;">Alcance técnico y funcional de la personalización:
+        <textarea name="personalizacion_detalle" id="personalizacionDetalle" rows="3" placeholder="Detalle los módulos adaptados, endpoints de integración externa, básculas, reportes tributarios particulares, etc." disabled></textarea>
       </label>
     </fieldset>
 
+    <!-- 5. CONDICIONES ECONÓMICAS Y RÉGIMEN FISCAL COLOMBIANO -->
     <fieldset>
-      <legend>5. Condiciones económicas</legend>
-      <div class="grid-2">
-        <label>Valor total (COP)
-          <input name="valor" type="number" min="0" required>
+      <legend>5. Condiciones Económicas, Régimen Tributario y Retenciones</legend>
+      <div class="grid-3">
+        <label>Valor Licencia de Software (COP) *
+          <input name="valor_licencia" id="valorLicencia" type="number" min="0" value="1800000" required>
         </label>
-        <label>Forma de pago
+        <label>Canon Soporte & Mantenimiento (COP) *
+          <input name="valor_soporte" id="valorSoporte" type="number" min="0" value="0">
+        </label>
+        <label>Modalidad Soporte Económico
+          <select name="soporte_facturacion" id="soporteFacturacion">
+            <option value="Incluido en la cuota de suscripción" selected>Incluido 100% en la cuota periódica</option>
+            <option value="Facturado de forma independiente">Facturado de forma independiente</option>
+            <option value="Primer año incluido / Renovable">Primer año de soporte incluido</option>
+          </select>
+        </label>
+        <label>Régimen de IVA aplicable *
+          <select name="regimen_iva" id="regimenIva">
+            <option value="Excluido / No Sujeto (Persona Natural No Responsable - Art. 437 E.T.)" selected>Excluido (Persona Natural No Responsable - Art. 437 E.T.)</option>
+            <option value="Gravado con IVA 19%">Gravado con tarifa general de IVA 19%</option>
+          </select>
+        </label>
+        <label>Forma de Pago *
           <select name="forma_pago" id="formaPago">
-            <option>Pago único</option>
-            <option>Mensual</option>
-            <option>Trimestral</option>
-            <option>Anual</option>
+            <option value="Mensual anticipado">Mensual anticipado</option>
+            <option value="Anual anticipado" selected>Anual anticipado</option>
+            <option value="Pago único (Perpetua)">Pago único (Perpetua)</option>
+            <option value="50% firma y 50% entrega">50% a la firma y 50% a la entrega</option>
           </select>
         </label>
-        <label id="renovacionLabel">Periodicidad de renovación
-          <input name="renovacion" id="renovacion" value="Anual, automática salvo aviso con 30 días de anticipación">
+        <label id="renovacionLabel">Cláusula de Renovación
+          <input name="renovacion" id="renovacion" value="Automática por periodos iguales, salvo preaviso de 30 días">
         </label>
-        <label>Fecha de inicio
-          <input name="fecha_inicio" type="date" required>
+        <label>Fecha de Inicio del Contrato *
+          <input name="fecha_inicio" id="fechaInicio" type="date" required>
+        </label>
+        <label>Tratamiento de Retenciones Fiscales
+          <input name="retenciones_nota" value="Conforme al Estatuto Tributario; el cliente debe remitir certificado" readonly class="input-locked">
         </label>
       </div>
-      <p class="hint" id="perpetuaHint" style="display:none;">Licencia perpetua seleccionada: no aplica renovación periódica; la vigencia y las condiciones de pago se ajustan automáticamente en los documentos generados.</p>
+      <p class="hint" id="perpetuaHint" style="display:none; color:#059669; font-weight:600; margin-top:8px;">
+        ✓ Licencia Perpetua seleccionada: Otorga derecho de uso indefinido sobre la versión instalada. Los servicios de soporte y actualización posteriores al periodo inicial se regulan por el Contrato de Servicios independiente.
+      </p>
     </fieldset>
 
+    <!-- 6. SERVICIOS, SOPORTE Y MATRIZ DE SLA -->
     <fieldset>
-      <legend>6. Servicios y soporte</legend>
-      <div class="grid-2">
-        <label>Duración del contrato (meses)
-          <input name="duracion_meses" type="number" min="1" value="12">
+      <legend>6. Servicios de Soporte, Actualizaciones y Tiempos de Respuesta (SLA)</legend>
+      <div class="grid-3">
+        <label>Vigencia del Contrato de Servicios
+          <input name="duracion_meses" id="duracionMeses" type="number" min="1" value="12">
         </label>
-        <label>Horario de soporte
-          <input name="soporte_horario" value="Lunes a viernes, 8:00 a.m. – 6:00 p.m.">
+        <label>Horario de Mesa de Ayuda
+          <input name="soporte_horario" value="Lunes a viernes de 8:00 a.m. a 6:00 p.m.">
         </label>
-        <label>Canal de soporte
-          <input name="soporte_canal" value="Correo electrónico y mesa de ayuda en línea">
+        <label>Canales Oficiales
+          <input name="soporte_canal" value="Correo electrónico, WhatsApp corporativo y portal">
         </label>
-        <label>Tiempo máximo de respuesta
-          <input name="soporte_sla" value="24 horas hábiles">
+        <label>SLA Incidente Crítico (P1 - Caída total)
+          <input name="sla_critico" value="Máximo 4 horas hábiles">
         </label>
-        <label>Incluye actualizaciones
-          <select name="incluye_actualizaciones"><option value="Sí">Sí</option><option value="No">No</option></select>
+        <label>SLA Solicitud Estándar (P2 - Soporte general)
+          <input name="sla_estandar" value="Máximo 24 horas hábiles">
         </label>
-        <label>Incluye capacitación inicial
-          <select name="incluye_capacitacion"><option value="Sí">Sí</option><option value="No">No</option></select>
+        <label>Actualizaciones Normativas DIAN
+          <select name="incluye_actualizaciones">
+            <option value="Sí" selected>Sí, incluidas sin costo durante vigencia</option>
+            <option value="No">No incluidas (se cotizan por separado)</option>
+          </select>
+        </label>
+        <label>Capacitación Inicial Incluida
+          <select name="incluye_capacitacion">
+            <option value="Sí (6 horas virtuales guiadas)" selected>Sí (6 horas virtuales guiadas)</option>
+            <option value="Sí (12 horas presenciales/virtuales)">Sí (12 horas presenciales/virtuales)</option>
+            <option value="No incluida">No incluida (se contrata por demanda)</option>
+          </select>
         </label>
       </div>
     </fieldset>
 
+    <!-- 7. CIUDAD, FIRMA Y JURISDICCIÓN -->
     <fieldset>
-      <legend>7. Firma y jurisdicción</legend>
-      <div class="grid-2">
-        <label>Ciudad de firma
-          <input name="ciudad_firma" value="Bogotá D.C.">
+      <legend>7. Formalización, Jurisdicción y Fecha de Firma</legend>
+      <div class="grid-3">
+        <label>Ciudad de Suscripción *
+          <input name="ciudad_firma" id="ciudadFirma" value="Bogotá D.C." required>
         </label>
-        <label>Fecha de firma
-          <input name="fecha_firma" type="date" required>
+        <label>Fecha de Suscripción *
+          <input name="fecha_firma" id="fechaFirma" type="date" required>
+        </label>
+        <label>Mecanismo de Validez
+          <input value="Firma Electrónica / Autógrafa (Ley 527 de 1999)" readonly class="input-locked">
         </label>
       </div>
     </fieldset>
 
-    <div class="actions">
-      <button type="button" id="btnLicencia">📄 Generar Licencia (PDF)</button>
-      <button type="button" id="btnContrato">📄 Generar Contrato de Servicios (PDF)</button>
-      <button type="button" id="btnAmbos" class="primary">📑 Generar Ambos Documentos</button>
-      <button type="button" id="btnClear" title="Borra los datos guardados en este navegador">🗑️ Borrar datos guardados</button>
+    <!-- BOTONES DE ACCIÓN PARA GENERACIÓN INDEPENDIENTE -->
+    <div class="actions-panel">
+      <div class="actions-group-title">📄 Generación Individual de Documentos Oficiales (PDF):</div>
+      <div class="actions">
+        <button type="button" id="btnLicencia" class="btn-action">
+          <span class="icon">📜</span> Documento 1: Contrato de Licencia de Uso
+        </button>
+        <button type="button" id="btnServicios" class="btn-action">
+          <span class="icon">🛠️</span> Documento 2: Contrato de Servicios y SLA
+        </button>
+        <button type="button" id="btnTerminos" class="btn-action">
+          <span class="icon">⚖️</span> Documento 3: Términos & Deslinde Contable
+        </button>
+      </div>
+
+      <div class="actions-group-title" style="margin-top:16px;">📦 Paquete Completo y Respaldo de Datos:</div>
+      <div class="actions">
+        <button type="button" id="btnPaqueteCompleto" class="btn-action btn-primary-gradient">
+          <span class="icon">📑</span> Descargar Paquete Completo (3 PDFs + JSON)
+        </button>
+        <button type="button" id="btnExportarJson" class="btn-action">
+          <span class="icon">💾</span> Exportar Datos JSON
+        </button>
+        <label class="file-btn">
+          <span class="icon">📂</span> Cargar desde JSON
+          <input type="file" id="inputImportarJson" accept="application/json,.json" hidden>
+        </label>
+        <button type="button" id="btnClear" class="btn-action btn-danger" title="Restablecer valores predeterminados">
+          <span class="icon">🗑️</span> Limpiar Borrador
+        </button>
+      </div>
+      <p class="hint" id="saveStatus" style="margin-top:10px;"></p>
     </div>
-    <p class="hint">Al generar cualquier PDF también se descarga un archivo <strong>.json</strong> con los mismos datos, para poder cargarlo después y reutilizarlo en una nueva licencia.</p>
-    <div class="actions">
-      <button type="button" id="btnExportarJson">💾 Exportar solo JSON</button>
-      <label class="file-btn">
-        📂 Cargar datos desde JSON
-        <input type="file" id="inputImportarJson" accept="application/json,.json" hidden>
-      </label>
-    </div>
-    <p class="hint" id="saveStatus"></p>
+
   </form>
 
+  <!-- PANEL LATERAL DE VISTA PREVIA Y VALIDACIÓN EN VIVO -->
   <aside class="panel preview-panel">
-    <h2>Vista previa de datos</h2>
-    <div id="preview"></div>
+    <div class="preview-header">
+      <h2>Resumen Ejecutivo y Fiscal</h2>
+      <span class="badge badge-green" id="previewBadge">Listo para emisión</span>
+    </div>
+    <div id="previewContent"></div>
   </aside>
 </main>
 

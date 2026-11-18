@@ -662,6 +662,104 @@ async function renderConfiguracion(c) {
         </div>
       </div>
 
+      <!-- SECCIÓN WHATSAPP BOT GATEWAY (OPENWA) -->
+      <div class="bg-white rounded-2xl border p-5 mb-4 shadow-2xs" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h4 class="font-bold flex items-center gap-2" style="color:#0D2137">
+              <i class="fab fa-whatsapp text-emerald-600 text-lg"></i>
+              <span>Integración WhatsApp Bot (Envío Automático de PDF)</span>
+            </h4>
+            <p class="text-sm text-gray-500">Permite enviar cotizaciones, pedidos y facturas electrónicas en PDF directamente desde el servidor sin abrir WhatsApp Web.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="cfg-wa-status-badge" class="badge badge-gray text-xs font-bold px-2.5 py-1">
+              <i class="fas fa-spinner fa-spin mr-1"></i> Consultando estado...
+            </span>
+            <button type="button" class="btn btn-outline btn-sm text-xs" id="btn-cfg-wa-refresh" title="Refrescar estado">
+              <i class="fas fa-rotate"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-4 rounded-xl border bg-slate-50 flex flex-wrap items-center justify-between gap-4" style="border-color:#E2E8F0">
+          <div class="space-y-1">
+            <div class="text-xs font-bold text-slate-700">Estado del Microservicio WhatsApp:</div>
+            <div id="cfg-wa-status-desc" class="text-xs text-slate-500">Verificando conexión con el servicio OpenWA...</div>
+            <div id="cfg-wa-account-info" class="text-xs font-mono text-emerald-700 font-bold hidden"></div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" id="btn-cfg-wa-link" class="btn btn-primary btn-sm flex items-center gap-1.5" style="background:#059669;border-color:#047857">
+              <i class="fas fa-qrcode"></i>
+              <span>Vincular con Código QR</span>
+            </button>
+            <button type="button" id="btn-cfg-wa-logout" class="btn btn-outline btn-sm text-rose-600 border-rose-300 hover:bg-rose-50 flex items-center gap-1.5 hidden">
+              <i class="fas fa-right-from-bracket"></i>
+              <span>Cerrar Sesión</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- INSTRUCCIONES Y GUÍA OPERATIVA WHATSAPP -->
+        <div class="mt-4 p-4 rounded-xl border border-emerald-100 bg-emerald-50/50 space-y-2">
+          <div class="font-bold text-xs text-emerald-950 flex items-center gap-1.5">
+            <i class="fas fa-circle-question text-emerald-600"></i>
+            <span>¿Cómo funciona el proceso de mensajería y configuración vía WhatsApp?</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-emerald-900">
+            <div class="p-2.5 bg-white/80 rounded-lg border border-emerald-100">
+              <strong class="block mb-1 text-emerald-950">1. Vinculación del Dispositivo:</strong>
+              Haz clic en <em>"Vincular con Código QR"</em>. Abre WhatsApp en el celular del negocio, entra a <em>Dispositivos vinculados</em> y escanea la pantalla. El bot mantendrá la sesión activa en el servidor local.
+            </div>
+            <div class="p-2.5 bg-white/80 rounded-lg border border-emerald-100">
+              <strong class="block mb-1 text-emerald-950">2. Revisión y Envío Humano:</strong>
+              Al pulsar el botón <i class="fab fa-whatsapp text-emerald-600"></i> en Cotizaciones, Pedidos o Facturas, se abre una ventana donde podrás verificar o cambiar el teléfono destino, editar el texto, agregar notas y previsualizar el PDF antes de enviar.
+            </div>
+            <div class="p-2.5 bg-white/80 rounded-lg border border-emerald-100">
+              <strong class="block mb-1 text-emerald-950">3. Plantillas con Variables:</strong>
+              Personaliza abajo los mensajes predeterminados usando etiquetas automáticas: <code>{cliente}</code>, <code>{numero}</code>, <code>{total}</code> y <code>{empresa}</code>.
+            </div>
+          </div>
+        </div>
+
+        <!-- PLANTILLAS DE MENSAJES PREDETERMINADOS -->
+        <div class="mt-4 pt-4 border-t border-slate-200">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h5 class="font-bold text-xs text-slate-800">Plantillas de Mensajes Predeterminados</h5>
+              <p class="text-[11px] text-slate-500">Estos textos aparecerán pre-llenados en la ventana de envío para cada tipo de documento.</p>
+            </div>
+            ${canEdit ? '<button type="button" class="btn btn-primary btn-xs" id="btn-save-wa-templates" style="background:#059669;border-color:#047857"><i class="fas fa-floppy-disk mr-1"></i> Guardar Plantillas</button>' : ''}
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="form-group mb-0">
+              <label class="form-label text-xs font-semibold text-slate-700 flex items-center justify-between">
+                <span>Cotizaciones Comerciales</span>
+                <span class="badge badge-blue text-[9px]">COT</span>
+              </label>
+              <textarea id="cfg-wa-tpl-quote" class="form-input text-xs" rows="5" ${canEdit ? '' : 'readonly'}>${esc(byKey['whatsapp_template_quote']?.value || 'Hola *{cliente}*, te compartimos tu *Cotización Comercial {numero}* emitida por *{empresa}* por un valor total de *{total}*.\n\nQuedamos atentos a tus comentarios y a tu disposición para concretar tu pedido.')}</textarea>
+            </div>
+
+            <div class="form-group mb-0">
+              <label class="form-label text-xs font-semibold text-slate-700 flex items-center justify-between">
+                <span>Pedidos de Venta</span>
+                <span class="badge badge-purple text-[9px]">PED</span>
+              </label>
+              <textarea id="cfg-wa-tpl-order" class="form-input text-xs" rows="5" ${canEdit ? '' : 'readonly'}>${esc(byKey['whatsapp_template_order']?.value || 'Hola *{cliente}*, confirmamos la recepción y registro de tu *Pedido de Venta {numero}* en *{empresa}* por un valor total de *{total}*.\n\nAdjuntamos el documento detallado para tu control y seguimiento.')}</textarea>
+            </div>
+
+            <div class="form-group mb-0">
+              <label class="form-label text-xs font-semibold text-slate-700 flex items-center justify-between">
+                <span>Facturas de Venta</span>
+                <span class="badge badge-green text-[9px]">FE</span>
+              </label>
+              <textarea id="cfg-wa-tpl-invoice" class="form-input text-xs" rows="5" ${canEdit ? '' : 'readonly'}>${esc(byKey['whatsapp_template_invoice']?.value || 'Hola *{cliente}*, te adjuntamos tu *Factura Electrónica de Venta {numero}* emitida por *{empresa}* por un valor total de *{total}*.\n\n¡Agradecemos tu preferencia y confianza en nuestros servicios!')}</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- SECCIÓN MARCO LEGAL & CUMPLIMIENTO (HABEAS DATA / JURISDICCIÓN) -->
       <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -673,6 +771,21 @@ async function renderConfiguracion(c) {
             <button type="button" class="btn btn-outline btn-sm" onclick="if(window.navigate) window.navigate('centro-legal');">
               <i class="fas fa-book-open mr-1"></i> Ver Centro Legal
             </button>
+    $('#btn-save-wa-templates')?.addEventListener('click', async () => {
+      if (!canEdit) return showToast('Sin permisos para actualizar plantillas de WhatsApp', 'error');
+      try {
+        const payload = [
+          ['whatsapp_template_quote', getInputVal('cfg-wa-tpl-quote').trim()],
+          ['whatsapp_template_order', getInputVal('cfg-wa-tpl-order').trim()],
+          ['whatsapp_template_invoice', getInputVal('cfg-wa-tpl-invoice').trim()],
+        ];
+        await Promise.all(payload.map(([k, v]) => API.setSetting(k, v)));
+        showToast('Plantillas de mensajes de WhatsApp guardadas con éxito', 'success');
+      } catch (err: any) {
+        showToast(err.message || 'No se pudieron guardar las plantillas de WhatsApp', 'error');
+      }
+    });
+
             ${canEdit ? '<button class="btn btn-secondary btn-sm" id="btn-save-legal-cfg"><i class="fas fa-floppy-disk mr-1"></i> Guardar Ajustes Legales</button>' : ''}
           </div>
         </div>
@@ -1435,6 +1548,74 @@ async function renderConfiguracion(c) {
     });
 
     $('#btn-save-signatures')?.addEventListener('click', saveSignatureSettingsFromForm);
+
+    // ── GESTIÓN WHATSAPP BOT (OPENWA) ──
+    const checkWaStatus = async () => {
+      const badge = document.getElementById('cfg-wa-status-badge');
+      const desc = document.getElementById('cfg-wa-status-desc');
+      const accInfo = document.getElementById('cfg-wa-account-info');
+      const btnLink = document.getElementById('btn-cfg-wa-link') as HTMLButtonElement;
+      const btnLogout = document.getElementById('btn-cfg-wa-logout') as HTMLButtonElement;
+
+      if (!badge || !desc) return;
+      try {
+        const res = await (window as any).API.getWhatsAppStatus();
+        if (res && res.connected) {
+          badge.className = 'badge badge-green text-xs font-bold px-2.5 py-1';
+          badge.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-600"></i> Bot Conectado';
+          desc.textContent = 'El servicio está activo y listo para despachar documentos PDF en segundo plano.';
+          if (accInfo) {
+            accInfo.textContent = `Sesión vinculada: ${res.sessionInfo?.pushname || 'GRAVY'} (${res.sessionInfo?.hostNumber || 'Online'})`;
+            accInfo.classList.remove('hidden');
+          }
+          if (btnLink) btnLink.classList.add('hidden');
+          if (btnLogout) btnLogout.classList.remove('hidden');
+        } else if (res && res.status === 'SCAN_QR') {
+          badge.className = 'badge badge-orange text-xs font-bold px-2.5 py-1';
+          badge.innerHTML = '<i class="fas fa-qrcode mr-1 text-amber-600"></i> Esperando Escaneo QR';
+          desc.textContent = 'Código QR generado. Abre el modal para vincular la sesión desde tu WhatsApp móvil.';
+          if (btnLink) btnLink.classList.remove('hidden');
+          if (btnLogout) btnLogout.classList.add('hidden');
+        } else if (res && res.status === 'STARTING') {
+          badge.className = 'badge badge-blue text-xs font-bold px-2.5 py-1';
+          badge.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Iniciando sesión...';
+          desc.textContent = 'El navegador headless se está iniciando en el servidor...';
+          if (btnLink) btnLink.classList.remove('hidden');
+          if (btnLogout) btnLogout.classList.add('hidden');
+        } else {
+          badge.className = 'badge badge-red text-xs font-bold px-2.5 py-1';
+          badge.innerHTML = '<i class="fas fa-circle-xmark mr-1 text-rose-600"></i> Desconectado';
+          desc.textContent = res?.lastError ? `Desconectado: ${res.lastError}` : 'No hay sesión de WhatsApp activa. Presiona "Vincular con Código QR" para iniciar.';
+          if (accInfo) accInfo.classList.add('hidden');
+          if (btnLink) btnLink.classList.remove('hidden');
+          if (btnLogout) btnLogout.classList.add('hidden');
+        }
+      } catch (e: any) {
+        badge.className = 'badge badge-red text-xs font-bold px-2.5 py-1';
+        badge.innerHTML = '<i class="fas fa-triangle-exclamation mr-1"></i> Servicio Offline';
+        desc.textContent = 'El microservicio WhatsApp en el hub no está respondiendo.';
+      }
+    };
+
+    setTimeout(checkWaStatus, 300);
+    document.getElementById('btn-cfg-wa-refresh')?.addEventListener('click', checkWaStatus);
+
+    document.getElementById('btn-cfg-wa-link')?.addEventListener('click', () => {
+      if (typeof (window as any).openWhatsAppQrModal === 'function') {
+        (window as any).openWhatsAppQrModal(checkWaStatus);
+      }
+    });
+
+    document.getElementById('btn-cfg-wa-logout')?.addEventListener('click', async () => {
+      if (!confirm('¿Deseas cerrar la sesión del bot de WhatsApp en este servidor?')) return;
+      try {
+        await (window as any).API.logoutWhatsApp();
+        (window as any).showToast('Sesión de WhatsApp cerrada exitosamente', 'info');
+        checkWaStatus();
+      } catch (err: any) {
+        (window as any).showToast('Error al cerrar sesión: ' + err.message, 'error');
+      }
+    });
 
     $('#btn-save-legal-cfg')?.addEventListener('click', async () => {
       if (!canEdit) return showToast('Sin permisos para actualizar configuración legal', 'error');

@@ -76,6 +76,17 @@ echo    OK - Puertos liberados.
 echo.
 
 :: ─────────────────────────────────────────────
+:: ASIGNAR PERMISOS NTFS Y DESBLOQUEO SQLITE
+:: ─────────────────────────────────────────────
+echo  Configurando permisos de escritura NTFS y atributos de base de datos...
+attrib -r -s "%ROOT%*.*" /s /d >nul 2>&1
+icacls "%ROOT%." /grant *S-1-1-0:(OI)(CI)F /T /C /Q >nul 2>&1
+icacls "%ROOT%hub\pb_data" /grant *S-1-1-0:(OI)(CI)F /T /C /Q >nul 2>&1
+icacls "%ROOT%empresas" /grant *S-1-1-0:(OI)(CI)F /T /C /Q >nul 2>&1
+echo    OK - Permisos NTFS y SQLite desbloqueados.
+echo.
+
+:: ─────────────────────────────────────────────
 :: 3. CREAR REGLAS DE FIREWALL
 :: ─────────────────────────────────────────────
 echo  [3/5] Configurando firewall de Windows...

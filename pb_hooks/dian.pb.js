@@ -4886,7 +4886,7 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
         const caller = typeof globalThis.getMatiasCaller === "function" ? globalThis.getMatiasCaller() : null;
         if (caller) {
           const xmlRes = caller(`/documents/xml/${encodeURIComponent(cune)}`, "GET");
-          const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64;
+          const b64 = (xmlRes && xmlRes.data && xmlRes.data.content && xmlRes.data.content.XmlBytesBase64) || (xmlRes && xmlRes.data && xmlRes.data.XmlBytesBase64) || null;
           if (b64) {
             const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
             let input = String(b64).replace(/[^A-Za-z0-9\+\/\=]/g, "");
@@ -4903,7 +4903,12 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
               if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
               if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
             }
-            const decoded = decodeURIComponent(escape(utf8Xml));
+            let decoded = utf8Xml;
+            try {
+              if (typeof escape === "function") {
+                decoded = decodeURIComponent(escape(utf8Xml));
+              }
+            } catch (_) {}
             if (decoded && decoded.includes("<")) {
               xmlGenerado = decoded;
               rec.set("xml_generado", decoded);
@@ -5038,7 +5043,7 @@ routerAdd('POST', '/api/dian/nomina/download-xml', (e) => {
         const caller = typeof globalThis.getMatiasCaller === "function" ? globalThis.getMatiasCaller() : null;
         if (caller) {
           const xmlRes = caller(`/documents/xml/${encodeURIComponent(cune)}`, "GET");
-          const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64;
+          const b64 = (xmlRes && xmlRes.data && xmlRes.data.content && xmlRes.data.content.XmlBytesBase64) || (xmlRes && xmlRes.data && xmlRes.data.XmlBytesBase64) || null;
           if (b64) {
             const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
             let input = String(b64).replace(/[^A-Za-z0-9\+\/\=]/g, "");
@@ -5055,7 +5060,12 @@ routerAdd('POST', '/api/dian/nomina/download-xml', (e) => {
               if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
               if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
             }
-            const decoded = decodeURIComponent(escape(utf8Xml));
+            let decoded = utf8Xml;
+            try {
+              if (typeof escape === "function") {
+                decoded = decodeURIComponent(escape(utf8Xml));
+              }
+            } catch (_) {}
             if (decoded && decoded.includes("<")) {
               currentXml = decoded;
               rec.set("xml_generado", decoded);
@@ -5104,7 +5114,7 @@ routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
         const caller = typeof globalThis.getMatiasCaller === "function" ? globalThis.getMatiasCaller() : null;
         if (caller) {
           const xmlRes = caller(`/documents/xml/${encodeURIComponent(cune)}`, "GET");
-          const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64;
+          const b64 = (xmlRes && xmlRes.data && xmlRes.data.content && xmlRes.data.content.XmlBytesBase64) || (xmlRes && xmlRes.data && xmlRes.data.XmlBytesBase64) || null;
           if (b64) {
             const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
             let input = String(b64).replace(/[^A-Za-z0-9\+\/\=]/g, "");
@@ -5121,7 +5131,12 @@ routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
               if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
               if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
             }
-            const decoded = decodeURIComponent(escape(utf8Xml));
+            let decoded = utf8Xml;
+            try {
+              if (typeof escape === "function") {
+                decoded = decodeURIComponent(escape(utf8Xml));
+              }
+            } catch (_) {}
             if (decoded && decoded.includes("<")) {
               xmlContent = decoded;
               rec.set("xml_generado", decoded);

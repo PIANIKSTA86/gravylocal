@@ -849,6 +849,9 @@ function renderSoRow(inv: any) {
               <span class="text-xs font-semibold">Ver</span>
             </button>
           `}
+          <button type="button" class="btn btn-outline btn-sm px-2 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300 shadow-2xs transition-colors" title="Enviar PDF por WhatsApp" onclick="window.sendInvoicePdfViaWhatsApp('${(window as any).esc(inv.id)}')">
+            <i class="fab fa-whatsapp text-xs text-emerald-600"></i>
+          </button>
           <button type="button" class="btn btn-outline btn-sm px-2 text-gray-500 hover:text-gray-900 border-gray-200 hover:border-gray-300 shadow-2xs transition-colors" title="Más opciones" onclick="window.openSoActionMenu(event, { id: '${(window as any).esc(inv.id)}', number: '${(window as any).esc(inv.number)}', status: '${(window as any).esc(inv.status)}', tx_id: '${(window as any).esc(inv.tx_id || '')}', isNC: ${prefix === 'NCFE' || prefix === 'NC'} })">
             <i class="fas fa-ellipsis-vertical text-xs"></i>
           </button>
@@ -1798,7 +1801,9 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
           iva_rate: l.iva_rate,
           iva_amount: l.iva_amount,
           subtotal: l.subtotal,
-          total: l.total
+          total: l.total,
+          description: l.description || '',
+          item_notes: l.item_notes || (l.description?.includes(' — ') ? l.description.split(' — ').slice(1).join(' — ').trim() : '')
         }));
       } catch (err: any) {
         console.error("Error precargando pedido:", err);
@@ -3549,6 +3554,14 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     const currentHdrWh = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value || initialWhId;
     const lineWhId = preloadedLine?.warehouse_id || currentHdrWh || (warehouses[0]?.id || '');
 
+    let lineComment = String(preloadedLine?.item_notes || preloadedLine?.comment || '');
+    if (!lineComment && preloadedLine?.description) {
+      const parts = String(preloadedLine.description).split(' — ');
+      if (parts.length > 1) {
+        lineComment = parts.slice(1).join(' — ').replace(/\s*\[(Pedido|Facturado):[^\]]+\]/g, '').trim();
+      }
+    }
+
     const tr = document.createElement('tr');
     tr.id = `so-row-${idx}`;
     tr.dataset.baseUnit = baseUnit;
@@ -3563,10 +3576,23 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     tr.innerHTML = `
       <td>
         <div class="flex flex-col">
-          <div class="flex items-center gap-1.5">
-            <span class="text-[11px] font-extrabold flex-shrink-0" style="color:#7C3AED;background:#EDE9FE;border-radius:4px;padding:1px 6px">${(window as any).esc(productCode || 'S/C')}</span>
-            <span class="text-[11px] text-gray-600 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+          <div class="flex items-center justify-between gap-1.5">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="text-[11px] font-extrabold flex-shrink-0" style="color:#7C3AED;background:#EDE9FE;border-radius:4px;padding:1px 6px">${(window as any).esc(productCode || 'S/C')}</span>
+              <span class="text-[11px] text-gray-600 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+            </div>
+            <button type="button" 
+              id="sol-comment-btn-${idx}" 
+              class="p-1 rounded hover:bg-indigo-50 transition-colors ml-1 flex-shrink-0 ${lineComment ? 'text-indigo-600' : 'text-slate-300 hover:text-indigo-500'}" 
+              title="${lineComment ? 'Editar comentario o especificación' : 'Añadir comentario o especificación al ítem'}" 
+              onclick="window.soOpenLineCommentModal(${idx})">
+              <i class="${lineComment ? 'fa-solid' : 'fa-regular'} fa-comment-dots text-xs"></i>
+            </button>
           </div>
+          <div id="sol-comment-preview-${idx}" class="text-[11px] text-indigo-700 italic truncate max-w-[260px] mt-0.5 ${lineComment ? '' : 'hidden'}" title="${(window as any).esc(lineComment)}">
+            <i class="fa-solid fa-quote-left text-[9px] mr-1 text-indigo-400"></i>${(window as any).esc(lineComment)}
+          </div>
+          <input type="hidden" id="sol-comment-${idx}" value="${(window as any).esc(lineComment)}">
           <input type="hidden" id="sol-prod-id-${idx}" value="${(window as any).esc(productId)}">
           <div class="flex items-center gap-2 mt-1.5 text-[10px] hidden" id="sol-stock-container-${idx}">
             <span class="cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform px-1.5 py-0.5 rounded flex items-center shadow-xs" id="sol-stock-wh-lbl-${idx}">
@@ -4219,10 +4245,15 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       const palletId = (document.getElementById(`sol-pallet-id-${idx}`) as HTMLInputElement)?.value || '';
       const palletCode = (document.getElementById(`sol-pallet-code-${idx}`) as HTMLInputElement)?.value || '';
       const boxesQty = parseFloat((document.getElementById(`sol-boxes-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+      const lineComment = (document.getElementById(`sol-comment-${idx}`) as HTMLInputElement)?.value.trim() || '';
+      const prodName = prodObj?.name || 'Producto';
+      const finalLineDesc = lineComment ? `${prodName} — ${lineComment}` : prodName;
 
       lines.push({
         product_id: prodId,
         warehouse_id: lineWhId,
+        description: finalLineDesc,
+        item_notes: lineComment,
         qty: roundDec(qty),
         unit_price: storedPrice,
         iva_rate: ivaRate,
@@ -5244,9 +5275,12 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
                 return `
                   <tr>
                     <td style="font-weight:600">
-                      ${(window as any).esc((l.expand?.product_id?.name || l.description || 'Línea de Venta') + (l.expand?.product_id?.name && l.description ? ' ' + l.description : ''))}
-                      ${discountPct > 0 ? `<span style="font-size: 11px; color: #dc2626; font-weight: normal; margin-left: 8px;">(Dto. ${discountPct}%)</span>` : ''}
-                      ${lotBadge}${palletBadge}
+                      <div>
+                        ${(window as any).esc(String(l.description || l.expand?.product_id?.name || 'Línea de Venta').split(' — ')[0])}
+                        ${discountPct > 0 ? `<span style="font-size: 11px; color: #dc2626; font-weight: normal; margin-left: 8px;">(Dto. ${discountPct}%)</span>` : ''}
+                        ${lotBadge}${palletBadge}
+                      </div>
+                      ${(l.item_notes || (l.description && l.description.includes(' — ') ? l.description.split(' — ').slice(1).join(' — ') : '')) ? `<div style="font-size: 10px; color: #475569; font-style: italic; margin-top: 2px; line-height: 1.3;">${(window as any).esc(l.item_notes || l.description.split(' — ').slice(1).join(' — '))}</div>` : ''}
                     </td>
                     <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
                     <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
@@ -5844,19 +5878,27 @@ window.viewSalesInvoiceDetail = async function(id: string) {
               </tr>
             </thead>
             <tbody>
-              ${lines.map((l: any) => `
+              ${lines.map((l: any) => {
+                const parts = String(l.description || l.expand?.product_id?.name || 'Línea de Venta').split(' — ');
+                const mainName = parts[0] || 'Línea de Venta';
+                const comment = l.item_notes || (parts.length > 1 ? parts.slice(1).join(' — ') : '');
+                return `
                 <tr>
                   <td>
-                    <span class="font-mono text-xs text-blue-500 mr-1">[${(window as any).esc(l.expand?.product_id?.code || 'S/C')}]</span> ${(window as any).esc((l.expand?.product_id?.name || l.description || 'Línea de Venta') + (l.expand?.product_id?.name && l.description ? ' ' + l.description : ''))}
-                    ${l.lot_number ? `<span class="badge text-[10px] px-1.5 py-0.5 ml-1.5" style="background:#F3E8FF;color:#7E22CE"><i class="fas fa-barcode mr-1"></i>Lote: ${(window as any).esc(l.lot_number)}</span>` : ''}
-                    ${l.pallet_code ? `<span class="badge text-[10px] px-1.5 py-0.5 ml-1" style="background:#E0F2FE;color:#0369A1"><i class="fas fa-pallet mr-1"></i>Estiba: ${(window as any).esc(l.pallet_code)}</span>` : ''}
+                    <div>
+                      <span class="font-mono text-xs text-blue-500 mr-1">[${(window as any).esc(l.expand?.product_id?.code || 'S/C')}]</span> 
+                      <span class="font-semibold text-gray-800">${(window as any).esc(mainName)}</span>
+                      ${l.lot_number ? `<span class="badge text-[10px] px-1.5 py-0.5 ml-1.5" style="background:#F3E8FF;color:#7E22CE"><i class="fas fa-barcode mr-1"></i>Lote: ${(window as any).esc(l.lot_number)}</span>` : ''}
+                      ${l.pallet_code ? `<span class="badge text-[10px] px-1.5 py-0.5 ml-1" style="background:#E0F2FE;color:#0369A1"><i class="fas fa-pallet mr-1"></i>Estiba: ${(window as any).esc(l.pallet_code)}</span>` : ''}
+                    </div>
+                    ${comment ? `<div class="text-xs text-indigo-700/80 italic mt-0.5"><i class="fa-solid fa-quote-left text-[9px] mr-1 text-indigo-400"></i>${(window as any).esc(comment)}</div>` : ''}
                   </td>
                   <td class="text-right">${(window as any).fmtN(l.qty)}</td>
                   <td class="text-right">${(window as any).fmt(l.unit_price)}</td>
                   <td class="text-right">${l.iva_rate}%</td>
                   <td class="text-right font-bold text-gray-800">${(window as any).fmt(l.total)}</td>
                 </tr>
-              `).join('')}
+              `;}).join('')}
             </tbody>
           </table>
         </div>
@@ -5919,6 +5961,10 @@ window.viewSalesInvoiceDetail = async function(id: string) {
             <span>Seguimiento</span>
           </button>
           <!-- Grupo de Impresión Rápida -->
+          <button type="button" class="btn btn-outline btn-sm px-3 flex items-center gap-1.5" style="border-color:#10B981;color:#059669;background:#ECFDF5" onclick="window.sendInvoicePdfViaWhatsApp('${inv.id}')" title="Enviar PDF oficial de la Factura por WhatsApp">
+            <i class="fab fa-whatsapp text-emerald-600"></i>
+            <span>Enviar WhatsApp</span>
+          </button>
           <div class="inline-flex rounded-xl shadow-2xs border border-purple-200 overflow-hidden bg-white">
             <button type="button" class="btn btn-primary btn-sm px-3 rounded-none border-0 flex items-center gap-1.5" onclick="window.printInvoiceCarta('${inv.id}')" title="Imprimir Formato Carta / PDF">
               <i class="fas fa-print"></i>
@@ -6452,6 +6498,10 @@ window.openSoActionMenu = function(e: MouseEvent, invData: any) {
     <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.viewSalesInvoiceDetail('${invData.id}')">
       <i class="fas fa-eye text-gray-500 w-4"></i>
       <span>Ver detalle completo</span>
+    </button>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.sendInvoicePdfViaWhatsApp('${invData.id}')">
+      <i class="fab fa-whatsapp text-emerald-600 w-4"></i>
+      <span>Enviar PDF por WhatsApp</span>
     </button>
     <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('so-row-action-floating-menu')?.remove(); window.printInvoiceCarta('${invData.id}')">
       <i class="fas fa-print text-gray-500 w-4"></i>
@@ -7134,3 +7184,119 @@ function salesKpi(label: string, value: any, icon: string, color: string, bg: st
 (window as any).saveSalesConfig = saveSalesConfig;
 (window as any).openSalesForm = openSalesForm;
 (window as any).soMixedCalc = (window as any).soMixedCalc || window.soMixedCalc;
+
+
+// ── MODAL DE COMENTARIO EXTENSO POR ÍTEM (FACTURACIÓN) ──────────────
+(window as any).soOpenLineCommentModal = function(idx: number) {
+  const row = document.getElementById(`so-row-${idx}`);
+  const prodId = (document.getElementById(`sol-prod-id-${idx}`) as HTMLInputElement)?.value;
+  const prodsCache = (window as any).__soProductsCache || [];
+  const prodObj = prodsCache.find((p: any) => p.id === prodId);
+  const prodName = prodObj?.name || 'Ítem de Venta';
+  const commentInput = document.getElementById(`sol-comment-${idx}`) as HTMLInputElement;
+  const currentComment = commentInput?.value || '';
+
+  const modalHtml = `
+    <div class="space-y-3 p-1">
+      <div class="flex items-center gap-2.5 p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-xs text-indigo-950">
+        <i class="fa-solid fa-circle-info text-indigo-600 text-base"></i>
+        <div>
+          <span class="font-bold">Ítem de Factura:</span> ${(window as any).esc(prodName)}<br>
+          <span class="text-indigo-800/80">Este comentario se anexará a la factura electrónica, se transmitirá a la DIAN en el XML UBL 2.1 (&lt;cac:Item/&gt;&lt;cbc:Description/&gt;) y en la representación gráfica PDF oficial.</span>
+        </div>
+      </div>
+      <div>
+        <label class="form-label font-bold text-xs text-slate-700 flex items-center justify-between mb-1">
+          <span>Comentario / Especificación Técnica Extensa</span>
+          <span id="so-comment-char-cnt" class="text-[10px] text-slate-400 font-mono">${currentComment.length} / 5000</span>
+        </label>
+        <textarea id="modal-so-comment-txt" rows="5" class="form-input text-xs w-full leading-relaxed p-2.5" 
+          placeholder="Ej: Número de serie, dimensiones exactas, condiciones de garantía (12 meses), lote de fabricación, notas de instalación o entrega..." 
+          style="resize:vertical">${(window as any).esc(currentComment)}</textarea>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">Cancelar</button>
+    ${currentComment ? `<button type="button" class="btn btn-danger btn-sm" onclick="window.soClearLineComment(${idx})"><i class="fas fa-trash-can mr-1"></i> Borrar Nota</button>` : ''}
+    <button type="button" class="btn btn-primary btn-sm" style="background:#4F46E5;border-color:#4338CA" onclick="window.soSaveLineComment(${idx})"><i class="fas fa-check mr-1"></i> Guardar Comentario</button>
+  `;
+
+  (window as any).openModal('Comentario de Línea de Factura', modalHtml, footer, false);
+
+  const txt = document.getElementById('modal-so-comment-txt') as HTMLTextAreaElement;
+  const cnt = document.getElementById('so-comment-char-cnt');
+  if (txt && cnt) {
+    txt.focus();
+    txt.addEventListener('input', () => {
+      cnt.textContent = `${txt.value.length} / 5000`;
+    });
+  }
+};
+
+(window as any).soSaveLineComment = function(idx: number) {
+  const txt = (document.getElementById('modal-so-comment-txt') as HTMLTextAreaElement)?.value.trim() || '';
+  const commentInput = document.getElementById(`sol-comment-${idx}`) as HTMLInputElement;
+  const preview = document.getElementById(`sol-comment-preview-${idx}`);
+  const btn = document.getElementById(`sol-comment-btn-${idx}`);
+
+  if (commentInput) commentInput.value = txt;
+  if (preview) {
+    if (txt) {
+      preview.innerHTML = `<i class="fa-solid fa-quote-left text-[9px] mr-1 text-indigo-400"></i>${(window as any).esc(txt)}`;
+      preview.classList.remove('hidden');
+    } else {
+      preview.innerHTML = '';
+      preview.classList.add('hidden');
+    }
+  }
+  if (btn) {
+    btn.className = `p-1 rounded hover:bg-indigo-50 transition-colors ml-1 flex-shrink-0 ${txt ? 'text-indigo-600' : 'text-slate-300 hover:text-indigo-500'}`;
+    btn.title = txt ? 'Editar comentario o especificación' : 'Añadir comentario o especificación al ítem';
+    btn.innerHTML = `<i class="${txt ? 'fa-solid' : 'fa-regular'} fa-comment-dots text-xs"></i>`;
+  }
+  (window as any).closeModal();
+};
+
+(window as any).soClearLineComment = function(idx: number) {
+  const commentInput = document.getElementById(`sol-comment-${idx}`) as HTMLInputElement;
+  const preview = document.getElementById(`sol-comment-preview-${idx}`);
+  const btn = document.getElementById(`sol-comment-btn-${idx}`);
+  if (commentInput) commentInput.value = '';
+  if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
+  if (btn) {
+    btn.className = 'p-1 rounded hover:bg-indigo-50 transition-colors ml-1 flex-shrink-0 text-slate-300 hover:text-indigo-500';
+    btn.title = 'Añadir comentario o especificación al ítem';
+    btn.innerHTML = '<i class="fa-regular fa-comment-dots text-xs"></i>';
+  }
+  (window as any).closeModal();
+};
+
+// ── ENVÍO INTERACTIVO DE FACTURA EN PDF POR WHATSAPP (OPENWA) ─────────
+(window as any).sendInvoicePdfViaWhatsApp = async function(invoiceId: string) {
+  try {
+    (window as any).showToast('Preparando factura para envío por WhatsApp...', 'info');
+    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id' });
+    const lines = await (window as any).API.getInvoiceLines(invoiceId);
+    const client = inv.expand?.customer_id;
+
+    if (typeof (window as any).openWhatsAppSendModal === 'function') {
+      (window as any).openWhatsAppSendModal({
+        docType: 'FACTURA',
+        docId: invoiceId,
+        docNumber: inv.number,
+        customerName: client?.name || 'Cliente',
+        customerPhone: client?.phone || '',
+        total: inv.payable_total ?? inv.total ?? 0,
+        lines,
+        docData: inv
+      });
+    } else {
+      (window as any).showToast('Módulo de envío por WhatsApp no disponible.', 'error');
+    }
+  } catch (err: any) {
+    console.error('Error enviando factura por WhatsApp:', err);
+    (window as any).showToast(`Error al preparar WhatsApp: ${err.message}`, 'error');
+  }
+};

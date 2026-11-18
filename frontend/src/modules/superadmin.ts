@@ -13,11 +13,15 @@ const getHubUrl = (): string => {
   if (port) {
     return `${protocol}//${hostname}:8089`;
   }
+  const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+  if (isIp) {
+    return `${protocol}//${hostname}:8089`;
+  }
   const parts = hostname.split('.');
   if (parts.length >= 3) {
     const sub = parts[0].toLowerCase();
     const rootDomain = parts.slice(1).join('.');
-    if (sub === 'domestiko' || sub === 'app' || sub === 'hub') {
+    if (sub === 'domestiko' || sub === 'app' || sub === 'hub' || sub === 'cloud' || sub === 'sistema' || sub === 'erp') {
       return `${protocol}//hub.${rootDomain}`;
     }
     if (sub.startsWith('hub-')) {

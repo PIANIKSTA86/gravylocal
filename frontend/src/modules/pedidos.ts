@@ -218,8 +218,8 @@ async function _loadPedidosPage(c: HTMLElement) {
     <!-- KPIs -->
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
-        <h3 class="text-lg font-bold" style="color:#0D2137">Pedidos y Cotizaciones de Venta</h3>
-        <p class="text-sm" style="color:#6B7280">Registra preventas y cotizaciones de clientes para facturarlas posteriormente desde Ventas o POS.</p>
+        <h3 class="text-lg font-bold" style="color:#0D2137">Pedidos de Venta</h3>
+        <p class="text-sm" style="color:#6B7280">Registra preventas y órdenes comerciales para facturarlas posteriormente desde Ventas o POS.</p>
       </div>
       <div class="flex gap-2">
         <button class="btn btn-primary" id="btn-new-order"><i class="fas fa-plus"></i> Nuevo Pedido (PED)</button>
@@ -311,10 +311,16 @@ function renderOrderRow(ord: any) {
   const fulfillmentStatus = ord.fulfillment_status;
   const isEnDespacho = fulfillmentStatus === 'EN_DESPACHO';
   const isEntregado = fulfillmentStatus === 'ENTREGADO';
+  const isCotiz = String(ord.number || '').startsWith('COT-') || String(ord.notes || '').toLowerCase().includes('cotiz') || ord.order_type === 'COTIZACION';
 
   return `
     <tr data-ordid="${(window as any).esc(ord.id)}" data-ordstatus="${(window as any).esc(ord.status)}" data-orddate="${(window as any).esc(ord.date)}">
-      <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(ord.number)}</span></td>
+      <td>
+        <div class="flex items-center gap-1.5">
+          <span class="font-mono font-bold text-sm" style="color:${isCotiz ? '#2563EB' : '#7C3AED'}">${(window as any).esc(ord.number)}</span>
+          <span class="badge ${isCotiz ? 'badge-blue' : 'badge-purple'} text-[9px] font-bold px-1.5 py-0">${isCotiz ? 'COT' : 'PED'}</span>
+        </div>
+      </td>
       <td>${(window as any).esc(ord.date)}</td>
       <td class="font-medium">${client ? (window as any).esc(client.name) : '—'}</td>
       <td class="text-sm">${wh ? (window as any).esc(wh.name) : '—'}</td>
@@ -330,6 +336,9 @@ function renderOrderRow(ord: any) {
       </td>
       <td class="text-right">
         <div class="inline-flex items-center gap-1.5 justify-end">
+          <button type="button" class="btn btn-outline btn-sm px-2 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300 shadow-2xs transition-colors" title="Enviar PDF por WhatsApp" onclick="window.sendOrderPdfViaWhatsApp('${(window as any).esc(ord.id)}')">
+            <i class="fab fa-whatsapp text-xs text-emerald-600"></i>
+          </button>
           <button type="button" class="btn btn-outline btn-sm px-2.5 text-gray-700 hover:text-purple-700 hover:border-purple-300 transition-all inline-flex items-center gap-1.5 shadow-2xs" title="Ver detalle de pedido" onclick="window.viewSalesOrderDetail('${(window as any).esc(ord.id)}')">
             <i class="fas fa-eye text-xs text-purple-600"></i>
             <span class="text-xs font-semibold">Ver</span>
@@ -371,6 +380,10 @@ function renderOrderRow(ord: any) {
       <span>Ver detalle completo</span>
     </button>
     <div class="my-1 border-t border-gray-100"></div>
+    <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center gap-2.5 transition-colors font-semibold" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.sendOrderPdfViaWhatsApp('${ordData.id}')">
+      <i class="fab fa-whatsapp text-emerald-600 w-4"></i>
+      <span>Enviar PDF por WhatsApp</span>
+    </button>
     <button type="button" class="w-full text-left px-3.5 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-900 flex items-center gap-2.5 transition-colors" onclick="document.getElementById('ord-row-action-floating-menu')?.remove(); window.printOrderCarta('${ordData.id}')">
       <i class="fas fa-print text-gray-500 w-4"></i>
       <span>Imprimir Formato Carta</span>
@@ -480,7 +493,7 @@ function filterOrderTable() {
 }
 
 // --- Formulario de Pedidos (Crear / Editar) ---
-async function openOrderForm(orderId: string | null = null, onDone: any = null, preloadedDealId: string | null = null) {
+async function openOrderForm(orderId: string | null = null, onDone: any = null, preloadedDealId: string | null = null, forcedDocType: 'COTIZACION' | 'PEDIDO' | null = null) {
   let ord: any = null, existingLines: any[] = [];
 
   const [customers, warehouses, products, salesConfig] = await Promise.all([
@@ -520,6 +533,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     }
   }
 
+  const isCotiz = forcedDocType === 'COTIZACION' || (ord ? (String(ord.number || '').startsWith('COT-') || String(ord.notes || '').toLowerCase().includes('cotiz') || ord.order_type === 'COTIZACION') : false);
   const defaultWhId = salesConfig.operational.default_warehouse_id || '';
   const initialWhId = ord?.warehouse_id || (warehouses.some((w: any) => w.id === defaultWhId) ? defaultWhId : (!ord && warehouses.length === 1 ? warehouses[0].id : ''));
   let currentWhStock: any[] = [];
@@ -631,6 +645,24 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 
       <!-- Encabezado -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl" style="background:#F9FAFB;border:1px solid #E5E7EB">
+        <!-- Selector Tipo de Registro Comercial -->
+        <div class="p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 col-span-1 md:col-span-4" style="background:#F8FAFC;border-color:#E2E8F0">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-700"><i class="fas fa-layer-group text-indigo-600 mr-1"></i> Tipo de Documento:</span>
+            <span id="ord-type-badge" class="badge ${isCotiz ? 'badge-blue' : 'badge-purple'} text-xs font-bold px-2 py-0.5">
+              ${isCotiz ? 'Cotización Comercial' : 'Pedido de Venta'}
+            </span>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" id="btn-toggle-cotiz" class="btn btn-sm text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${isCotiz ? 'btn-primary' : 'btn-outline'}" style="${isCotiz ? 'background:#2563EB;border-color:#1D4ED8;color:#fff' : 'border-color:#CBD5E1;color:#475569'}">
+              <i class="fas fa-file-invoice-dollar mr-1"></i> Cotización (COT)
+            </button>
+            <button type="button" id="btn-toggle-pedido" class="btn btn-sm text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${!isCotiz ? 'btn-primary' : 'btn-outline'}" style="${!isCotiz ? 'background:#7C3AED;border-color:#6D28D9;color:#fff' : 'border-color:#CBD5E1;color:#475569'}">
+              <i class="fas fa-cart-shopping mr-1"></i> Pedido (PED)
+            </button>
+          </div>
+          <input type="hidden" id="ord-doc-type" value="${isCotiz ? 'COTIZACION' : 'PEDIDO'}">
+        </div>
         <div class="form-group relative col-span-1 md:col-span-2">
           <label class="form-label font-bold">Cliente <span style="color:#EF4444">*</span></label>
           <div id="ord-customer-search-wrap" class="relative flex gap-1 items-center">
@@ -729,6 +761,57 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
   `;
 
   (window as any).openModal(orderId ? 'Editar Pedido de Venta' : 'Nuevo Pedido de Venta', formHtml, footer, true);
+
+  // Handlers para selector de tipo de documento
+  setTimeout(() => {
+    document.getElementById('btn-toggle-cotiz')?.addEventListener('click', () => {
+      const typeInput = document.getElementById('ord-doc-type') as HTMLInputElement;
+      const badge = document.getElementById('ord-type-badge');
+      const numInput = document.getElementById('ord-number') as HTMLInputElement;
+      const btnCot = document.getElementById('btn-toggle-cotiz');
+      const btnPed = document.getElementById('btn-toggle-pedido');
+      if (typeInput) typeInput.value = 'COTIZACION';
+      if (badge) {
+        badge.textContent = 'Cotización Comercial';
+        badge.className = 'badge badge-blue text-xs font-bold px-2 py-0.5';
+      }
+      if (btnCot) {
+        btnCot.className = 'btn btn-sm btn-primary text-xs font-bold px-3 py-1.5 rounded-lg transition-all';
+        btnCot.style.cssText = 'background:#2563EB;border-color:#1D4ED8;color:#fff';
+      }
+      if (btnPed) {
+        btnPed.className = 'btn btn-sm btn-outline text-xs font-bold px-3 py-1.5 rounded-lg transition-all';
+        btnPed.style.cssText = 'border-color:#CBD5E1;color:#475569';
+      }
+      if (numInput && (!numInput.value || numInput.value === 'AUTO' || numInput.value === 'PED-AUTO')) {
+        numInput.value = 'COT-AUTO';
+      }
+    });
+
+    document.getElementById('btn-toggle-pedido')?.addEventListener('click', () => {
+      const typeInput = document.getElementById('ord-doc-type') as HTMLInputElement;
+      const badge = document.getElementById('ord-type-badge');
+      const numInput = document.getElementById('ord-number') as HTMLInputElement;
+      const btnCot = document.getElementById('btn-toggle-cotiz');
+      const btnPed = document.getElementById('btn-toggle-pedido');
+      if (typeInput) typeInput.value = 'PEDIDO';
+      if (badge) {
+        badge.textContent = 'Pedido de Venta';
+        badge.className = 'badge badge-purple text-xs font-bold px-2 py-0.5';
+      }
+      if (btnPed) {
+        btnPed.className = 'btn btn-sm btn-primary text-xs font-bold px-3 py-1.5 rounded-lg transition-all';
+        btnPed.style.cssText = 'background:#7C3AED;border-color:#6D28D9;color:#fff';
+      }
+      if (btnCot) {
+        btnCot.className = 'btn btn-sm btn-outline text-xs font-bold px-3 py-1.5 rounded-lg transition-all';
+        btnCot.style.cssText = 'border-color:#CBD5E1;color:#475569';
+      }
+      if (numInput && (!numInput.value || numInput.value === 'AUTO' || numInput.value === 'COT-AUTO')) {
+        numInput.value = 'PED-AUTO';
+      }
+    });
+  }, 50);
 
   // Autocomplete de clientes
   function initOrdCustomerSearch() {
@@ -878,6 +961,14 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       }
     }
 
+    let lineComment = String(preloadedLine?.item_notes || preloadedLine?.comment || '');
+    if (!lineComment && preloadedLine?.description) {
+      const parts = String(preloadedLine.description).split(' — ');
+      if (parts.length > 1) {
+        lineComment = parts.slice(1).join(' — ').replace(/\s*\[(Pedido|Facturado):[^\]]+\]/g, '').trim();
+      }
+    }
+
     const tr = document.createElement('tr');
     tr.id = `ord-row-${idx}`;
     tr.dataset.baseUnit = baseUnit;
@@ -890,10 +981,23 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     tr.innerHTML = `
       <td>
         <div class="flex flex-col">
-          <div class="flex items-center gap-1.5">
-            <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
-            <span class="text-xs font-semibold text-gray-800 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+          <div class="flex items-center justify-between gap-1.5">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
+              <span class="text-xs font-semibold text-gray-800 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+            </div>
+            <button type="button" 
+              id="ordl-comment-btn-${idx}" 
+              class="p-1 rounded hover:bg-indigo-50 transition-colors ml-1 flex-shrink-0 ${lineComment ? 'text-indigo-600' : 'text-slate-300 hover:text-indigo-500'}" 
+              title="${lineComment ? 'Editar comentario/especificación del ítem' : 'Añadir comentario o especificación al ítem'}" 
+              onclick="window.openOrderLineCommentModal(${idx})">
+              <i class="${lineComment ? 'fa-solid' : 'fa-regular'} fa-comment-dots text-xs"></i>
+            </button>
           </div>
+          <div id="ordl-comment-preview-${idx}" class="text-[11px] text-indigo-700 italic truncate max-w-[260px] mt-0.5 ${lineComment ? '' : 'hidden'}" title="${(window as any).esc(lineComment)}">
+            <i class="fa-solid fa-quote-left text-[9px] mr-1 text-indigo-400"></i>${(window as any).esc(lineComment)}
+          </div>
+          <input type="hidden" id="ordl-comment-${idx}" value="${(window as any).esc(lineComment)}">
           <input type="hidden" id="ordl-prod-id-${idx}" value="${(window as any).esc(productId)}">
           <input type="hidden" id="ordl-prod-search-${idx}" value="${(window as any).esc(productCode ? `${productCode} - ${productName}` : productName)}">
           <div class="flex items-center gap-2 mt-1.5 text-[10px] hidden" id="ordl-stock-container-${idx}">
@@ -1360,9 +1464,19 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
         totalOrderIva = roundDec(totalOrderIva + lineIva);
         totalOrderFinal = roundDec(totalOrderFinal + lineTot);
 
+        const lineComment = (document.getElementById(`ordl-comment-${curIdx}`) as HTMLInputElement)?.value.trim() || '';
+        let lineDescription = prodLabel;
+        if (lineComment) {
+          lineDescription = `${prodLabel} — ${lineComment}`;
+        }
+        if (descriptionExtra) {
+          lineDescription += descriptionExtra;
+        }
+
         lines.push({
           product_id: productId,
-          description: descriptionExtra ? `${prodLabel}${descriptionExtra}` : prodLabel,
+          description: lineDescription,
+          item_notes: lineComment,
           qty: finalQty,
           unit_price: finalPrice,
           iva_rate: ivaRate,
@@ -1374,14 +1488,16 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
         });
       });
 
+      const docType = (document.getElementById('ord-doc-type') as HTMLInputElement)?.value || 'PEDIDO';
       const header = {
         number,
+        order_type: docType,
         customer_id: customerId,
         warehouse_id: warehouseId,
         seller_id: sellerId,
         date,
         due_date: dueDate,
-        notes,
+        notes: (docType === 'COTIZACION' && !notes.toLowerCase().includes('cotiz')) ? (notes ? `[Cotización] ${notes}` : 'Cotización comercial') : notes,
         subtotal: roundDec(totalOrderFinal - totalOrderIva),
         iva_total: totalOrderIva,
         discount_amount: totalOrderDiscount,
@@ -1469,15 +1585,22 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
               </tr>
             </thead>
             <tbody>
-              ${lines.map((l: any) => `
+              ${lines.map((l: any) => {
+                const parts = String(l.description || l.expand?.product_id?.name || 'Artículo').split(' — ');
+                const mainName = parts[0] || 'Artículo';
+                const comment = l.item_notes || (parts.length > 1 ? parts.slice(1).join(' — ') : '');
+                return `
                 <tr>
-                  <td class="font-semibold text-gray-800">${(window as any).esc(l.description || l.expand?.product_id?.name || 'Articulo')}</td>
+                  <td>
+                    <div class="font-semibold text-gray-800">${(window as any).esc(mainName)}</div>
+                    ${comment ? `<div class="text-xs text-indigo-700/80 italic mt-0.5"><i class="fa-solid fa-quote-left text-[9px] mr-1 text-indigo-400"></i>${(window as any).esc(comment)}</div>` : ''}
+                  </td>
                   <td class="text-right font-mono">${(window as any).fmt(l.qty)}</td>
                   <td class="text-right font-mono">${(window as any).fmt(l.unit_price)}</td>
                   <td class="text-right font-mono">${l.iva_rate}%</td>
                   <td class="text-right font-extrabold text-blue-700 font-mono">${(window as any).fmt(l.total)}</td>
                 </tr>
-              `).join('')}
+              `;}).join('')}
             </tbody>
           </table>
         </div>
@@ -1498,6 +1621,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     const footer = `
       <div class="flex justify-between items-center w-full">
         <div class="flex gap-2 flex-wrap">
+          <button class="btn btn-outline" style="border-color:#10b981;color:#059669;background:#ECFDF5" onclick="window.sendOrderPdfViaWhatsApp('${ord.id}')"><i class="fab fa-whatsapp mr-1"></i> Enviar WhatsApp</button>
           <button class="btn btn-outline" style="border-color:#2563eb;color:#2563eb" onclick="window.openDocumentTrackingModal('order', '${ord.id}')"><i class="fas fa-route mr-1"></i> Expediente de Seguimiento</button>
           <button class="btn btn-outline" style="border-color:#3b82f6;color:#3b82f6" onclick="window.printOrderCarta('${ord.id}')"><i class="fas fa-print mr-1"></i> Imprimir Carta</button>
           <button class="btn btn-outline" style="border-color:#4f46e5;color:#4f46e5" onclick="window.printOrderPicking('${ord.id}')"><i class="fas fa-boxes-packing mr-1"></i> Alistamiento / Despacho</button>
@@ -1774,15 +1898,22 @@ window.printOrderCarta = async function (orderId: string) {
             </tr>
           </thead>
           <tbody>
-            ${lines.map((l: any) => `
+            ${lines.map((l: any) => {
+              const parts = String(l.description || l.expand?.product_id?.name || 'Línea de Pedido').split(' — ');
+              const mainName = parts[0] || 'Línea de Pedido';
+              const comment = l.item_notes || (parts.length > 1 ? parts.slice(1).join(' — ') : '');
+              return `
               <tr>
-                <td style="font-weight:600">${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Pedido')}</td>
+                <td>
+                  <div style="font-weight:600;color:#0f172a">${(window as any).esc(mainName)}</div>
+                  ${comment ? `<div style="font-size:11px;color:#475569;font-style:italic;margin-top:3px;line-height:1.4">${(window as any).esc(comment)}</div>` : ''}
+                </td>
                 <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
                 <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
                 <td style="text-align:right">${l.iva_rate}%</td>
                 <td style="text-align:right;font-weight:bold;color:#1e3a8a">${(window as any).fmt(l.total)}</td>
               </tr>
-            `).join('')}
+            `;}).join('')}
           </tbody>
         </table>
 
@@ -2923,3 +3054,116 @@ export async function openECommerceOrderModal(opts: {
 // Exponer globalmente
 (window as any).openECommerceOrderModal = openECommerceOrderModal;
 (window as any).renderPedidos = renderPedidos;
+
+
+// ── MODAL DE COMENTARIO EXTENSO POR ÍTEM (COTIZACIONES / PEDIDOS) ──
+(window as any).openOrderLineCommentModal = function(idx: number) {
+  const prodSearch = document.getElementById(`ordl-prod-search-${idx}`) as HTMLInputElement;
+  const prodName = prodSearch?.value || 'Ítem de Cotización';
+  const commentInput = document.getElementById(`ordl-comment-${idx}`) as HTMLInputElement;
+  const currentComment = commentInput?.value || '';
+
+  const modalHtml = `
+    <div class="space-y-3 p-1">
+      <div class="flex items-center gap-2.5 p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-xs text-indigo-950">
+        <i class="fa-solid fa-circle-info text-indigo-600 text-base"></i>
+        <div>
+          <span class="font-bold">Ítem:</span> ${(window as any).esc(prodName)}<br>
+          <span class="text-indigo-800/80">Este comentario se anexará a la cotización, se trasladará automáticamente a la factura y se transmitirá a la DIAN en el XML UBL 2.1 y la representación gráfica (PDF).</span>
+        </div>
+      </div>
+      <div>
+        <label class="form-label font-bold text-xs text-slate-700 flex items-center justify-between mb-1">
+          <span>Comentario / Especificación Técnica Extensa</span>
+          <span id="ord-comment-char-cnt" class="text-[10px] text-slate-400 font-mono">${currentComment.length} / 5000</span>
+        </label>
+        <textarea id="modal-ord-comment-txt" rows="5" class="form-input text-xs w-full leading-relaxed p-2.5" 
+          placeholder="Ej: Número de serie, dimensiones exactas, condiciones de garantía (12 meses), lote de fabricación, notas de instalación o entrega..." 
+          style="resize:vertical">${(window as any).esc(currentComment)}</textarea>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">Cancelar</button>
+    ${currentComment ? `<button type="button" class="btn btn-danger btn-sm" onclick="window.clearOrderLineComment(${idx})"><i class="fas fa-trash-can mr-1"></i> Borrar Nota</button>` : ''}
+    <button type="button" class="btn btn-primary btn-sm" style="background:#4F46E5;border-color:#4338CA" onclick="window.saveOrderLineComment(${idx})"><i class="fas fa-check mr-1"></i> Guardar Comentario</button>
+  `;
+
+  (window as any).openModal('Comentario de Línea', modalHtml, footer, false);
+
+  const txt = document.getElementById('modal-ord-comment-txt') as HTMLTextAreaElement;
+  const cnt = document.getElementById('ord-comment-char-cnt');
+  if (txt && cnt) {
+    txt.focus();
+    txt.addEventListener('input', () => {
+      cnt.textContent = `${txt.value.length} / 5000`;
+    });
+  }
+};
+
+(window as any).saveOrderLineComment = function(idx: number) {
+  const txt = (document.getElementById('modal-ord-comment-txt') as HTMLTextAreaElement)?.value.trim() || '';
+  const commentInput = document.getElementById(`ordl-comment-${idx}`) as HTMLInputElement;
+  const preview = document.getElementById(`ordl-comment-preview-${idx}`);
+  const btn = document.getElementById(`ordl-comment-btn-${idx}`);
+
+  if (commentInput) commentInput.value = txt;
+  if (preview) {
+    if (txt) {
+      preview.innerHTML = `<i class="fa-solid fa-quote-left text-[9px] mr-1 text-indigo-400"></i>${(window as any).esc(txt)}`;
+      preview.classList.remove('hidden');
+    } else {
+      preview.innerHTML = '';
+      preview.classList.add('hidden');
+    }
+  }
+  if (btn) {
+    btn.className = `p-1 rounded hover:bg-indigo-50 transition-colors ml-1 flex-shrink-0 ${txt ? 'text-indigo-600' : 'text-slate-300 hover:text-indigo-500'}`;
+    btn.title = txt ? 'Editar comentario/especificación del ítem' : 'Añadir comentario o especificación al ítem';
+    btn.innerHTML = `<i class="${txt ? 'fa-solid' : 'fa-regular'} fa-comment-dots text-xs"></i>`;
+  }
+  (window as any).closeModal();
+};
+
+(window as any).clearOrderLineComment = function(idx: number) {
+  const commentInput = document.getElementById(`ordl-comment-${idx}`) as HTMLInputElement;
+  const preview = document.getElementById(`ordl-comment-preview-${idx}`);
+  const btn = document.getElementById(`ordl-comment-btn-${idx}`);
+  if (commentInput) commentInput.value = '';
+  if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
+  if (btn) {
+    btn.className = 'p-1 rounded hover:bg-indigo-50 transition-colors ml-1 flex-shrink-0 text-slate-300 hover:text-indigo-500';
+    btn.title = 'Añadir comentario o especificación al ítem';
+    btn.innerHTML = '<i class="fa-regular fa-comment-dots text-xs"></i>';
+  }
+  (window as any).closeModal();
+};
+
+// ── ENVÍO INTERACTIVO DE PDF DE PEDIDO POR WHATSAPP (OPENWA) ──
+(window as any).sendOrderPdfViaWhatsApp = async function(orderId: string) {
+  try {
+    (window as any).showToast('Preparando pedido para envío por WhatsApp...', 'info');
+    const ord = await (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id' });
+    const lines = await (window as any).API.getSalesOrderLines(orderId);
+    const client = ord.expand?.customer_id;
+
+    if (typeof (window as any).openWhatsAppSendModal === 'function') {
+      (window as any).openWhatsAppSendModal({
+        docType: 'PEDIDO',
+        docId: orderId,
+        docNumber: ord.number,
+        customerName: client?.name || 'Cliente',
+        customerPhone: client?.phone || '',
+        total: ord.total || 0,
+        lines,
+        docData: ord
+      });
+    } else {
+      (window as any).showToast('Módulo de envío por WhatsApp no disponible.', 'error');
+    }
+  } catch (err: any) {
+    console.error('Error al preparar WhatsApp de pedido:', err);
+    (window as any).showToast(`Error al preparar WhatsApp: ${err.message}`, 'error');
+  }
+};

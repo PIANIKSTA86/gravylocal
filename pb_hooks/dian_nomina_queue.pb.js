@@ -108,10 +108,38 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
           if (finalStatus === "APROBADO" && xmlDocKey) {
             try {
               const xmlRes = matiasCaller(`/documents/xml/${encodeURIComponent(xmlDocKey.trim())}`, "GET");
-              const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64 || matiasData.XmlBase64Bytes;
-              if (b64 && typeof decodeBase64Utf8Queue === "function") {
-                const decodedXml = decodeBase64Utf8Queue(b64);
-                if (decodedXml && decodedXml.includes("<")) rec.set("xml_generado", decodedXml);
+              const b64 = (xmlRes && xmlRes.data && xmlRes.data.content && xmlRes.data.content.XmlBytesBase64) ||
+                          (xmlRes && xmlRes.data && xmlRes.data.XmlBytesBase64) ||
+                          (matiasData && matiasData.XmlBase64Bytes) || null;
+              if (b64) {
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+                let input = String(b64).replace(/[^A-Za-z0-9\+\/\=]/g, '');
+                let i = 0, utf8Xml = '';
+                while (i < input.length) {
+                  let enc1 = chars.indexOf(input.charAt(i++));
+                  let enc2 = chars.indexOf(input.charAt(i++));
+                  let enc3 = chars.indexOf(input.charAt(i++));
+                  let enc4 = chars.indexOf(input.charAt(i++));
+                  let chr1 = (enc1 << 2) | (enc2 >> 4);
+                  let chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+                  let chr3 = ((enc3 & 3) << 6) | enc4;
+                  utf8Xml += String.fromCharCode(chr1);
+                  if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
+                  if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
+                }
+                let decodedXml = utf8Xml;
+                try {
+                  if (typeof escape === 'function') decodedXml = decodeURIComponent(escape(utf8Xml));
+                } catch (_) {}
+                if (decodedXml && decodedXml.includes('<')) {
+                  try {
+                    $app.db().newQuery("UPDATE electronic_payrolls SET xml_generado = {:xml} WHERE id = {:id}").bind({ id: rec.id, xml: decodedXml }).execute();
+                    console.log('[CHECK STATUS NOMINA] XML firmado guardado exitosamente vía DB, longitud:', decodedXml.length);
+                  } catch (eDb) {
+                    console.warn('[CHECK STATUS NOMINA] Error guardando XML en DB:', eDb);
+                    rec.set('xml_generado', decodedXml);
+                  }
+                }
               }
             } catch (eXml) {
               console.warn("[GRAVY NOMINA MATIAS] No se pudo obtener XML firmado de MATIAS:", eXml);
@@ -174,6 +202,52 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
               errList.push(Array.isArray(v) ? v.join(", ") : String(v));
             });
             if (errList.length > 0) errDetail = errList.join(" | ");
+          }
+
+          const isAlreadyValidated = String(errDetail).toLowerCase().includes("ya se encuentra validado") ||
+                                     String(errDetail).toLowerCase().includes("ya fue validado") ||
+                                     String(errDetail).toLowerCase().includes("ya ha sido autorizada");
+
+          if (isAlreadyValidated) {
+            console.log(`[GRAVY NOMINA MATIAS] Documento ${prefijo}-${consecutivo} ya validado en MATIAS. Recuperando estado...`);
+            try {
+              const searchRes = matiasCaller(`/documents?query=${encodeURIComponent(consecutivo)}`, "GET");
+              const items = searchRes.data?.dataRecords?.data || searchRes.data?.data || (Array.isArray(searchRes.data) ? searchRes.data : []);
+              const docNumStr = String(consecutivo);
+              const targetNorm = (prefijo + docNumStr).toUpperCase().replace(/[^A-Z0-9]/g, '');
+              const matched = items.find(function(it) {
+                const itNum = String(it.document_number || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                return itNum === targetNorm || itNum === docNumStr ||
+                       itNum === (prefijo + String(consecutivo).padStart(5, '0')).toUpperCase() ||
+                       itNum === (prefijo + String(consecutivo).padStart(8, '0')).toUpperCase();
+              });
+
+              const resolvedCufe = matched?.XmlDocumentKey || matched?.cufe || matched?.cune || "";
+              if (resolvedCufe) {
+                rec.set("cufe", resolvedCufe);
+                rec.set("estado_dian", "APROBADO");
+                rec.set("dian_response", "Documento validado y autorizado previamente ante la DIAN.");
+                rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
+                try {
+                  const xmlRes = matiasCaller(`/documents/xml/${encodeURIComponent(resolvedCufe)}`, "GET");
+                  const b64 = (xmlRes && xmlRes.data && xmlRes.data.content && xmlRes.data.content.XmlBytesBase64) ||
+                              (xmlRes && xmlRes.data && xmlRes.data.XmlBytesBase64) || null;
+                  if (b64 && typeof decodeBase64Utf8Queue === "function") {
+                    const decodedXml = decodeBase64Utf8Queue(b64);
+                    if (decodedXml && decodedXml.includes("<")) rec.set("xml_generado", decodedXml);
+                  }
+                } catch (_) {}
+                $app.save(rec);
+                return e.json(200, {
+                  success: true,
+                  status: "APROBADO",
+                  cufe: resolvedCufe,
+                  message: "Documento validado y autorizado previamente ante la DIAN."
+                });
+              }
+            } catch (eRecov) {
+              console.warn("[GRAVY NOMINA MATIAS] Error al recuperar documento ya validado:", eRecov);
+            }
           }
 
           rec.set("estado_dian", "RECHAZADO");
@@ -313,9 +387,23 @@ routerAdd('POST', '/api/dian/nomina/check-status', (e) => {
   try {
     const body = e.requestInfo().body || {};
     const recordId = body.id || body.electronicPayrollId;
-    if (!recordId) return e.json(400, { success: false, message: "ID es obligatorio." });
+    if (!recordId && !body.consecutivo && !body.documentNumber) {
+      return e.json(400, { success: false, message: "ID o consecutivo es obligatorio." });
+    }
 
-    const rec = $app.findRecordById("electronic_payrolls", recordId);
+    let rec = null;
+    if (recordId) {
+      try { rec = $app.findRecordById("electronic_payrolls", recordId); } catch (_) {}
+    }
+    if (!rec && body.consecutivo) {
+      try { rec = $app.findFirstRecordByFilter("electronic_payrolls", "consecutivo = " + parseInt(body.consecutivo, 10)); } catch (_) {}
+    }
+    if (!rec && body.documentNumber) {
+      try {
+        const numClean = String(body.documentNumber).replace(/[^0-9]/g, '');
+        rec = $app.findFirstRecordByFilter("electronic_payrolls", "consecutivo = " + parseInt(numClean, 10));
+      } catch (_) {}
+    }
     if (!rec) return e.json(404, { success: false, message: "Registro no encontrado." });
 
     const transId = rec.getString("ftech_transaction_id");
@@ -334,9 +422,197 @@ routerAdd('POST', '/api/dian/nomina/check-status', (e) => {
       }
     }
 
+    const einvoiceMethod = getSettingCheck("einvoice_method", "facturatech");
     const ftechUsername = getSettingCheck("ftech_username", "");
     const ftechPassword = getSettingCheck("ftech_password", "");
     const ftechEnvironment = getSettingCheck("ftech_environment", "demo");
+
+    if (einvoiceMethod === "matias") {
+      try {
+        let cufeKey = (rec.getString("cufe") || "").trim();
+
+        // 1. Extraer CUFE/CUNE del XML si aún no está en el campo cufe
+        if (!cufeKey || cufeKey.length < 20 || cufeKey === "404") {
+          const cuneMatch = xmlContent.match(/\bCUNE="([a-f0-9]{40,})"/i) ||
+                            xmlContent.match(/<cbc:UUID[^>]*>([a-f0-9]{40,})<\/cbc:UUID>/i) ||
+                            xmlContent.match(/documentkey=([a-f0-9]{40,})/i);
+          if (cuneMatch) {
+            cufeKey = cuneMatch[1].trim();
+          }
+        }
+
+        // 2. Extraer CUFE/CUNE de la respuesta previa si existe
+        if (!cufeKey || cufeKey.length < 20 || cufeKey === "404") {
+          const prevResp = rec.getString("dian_response") || "";
+          const mKey = prevResp.match(/\b([a-f0-9]{64,})\b/i);
+          if (mKey) {
+            cufeKey = mKey[1].trim();
+          }
+        }
+
+        // Helper para llamar a MATIAS API
+        const rTok = $app.findFirstRecordByFilter("settings", "key = 'matias_api_token'");
+        const token = rTok ? rTok.get("value") : "";
+        const rEnv = $app.findFirstRecordByFilter("settings", "key = 'matias_environment'");
+        const env = (rEnv ? rEnv.get("value") : "") || "production";
+        const baseUrl = env === "production" ? "https://api-v2.matias-api.com/api/ubl2.1" : "https://sandbox-api.matias-api.com/api/ubl2.1";
+
+        const matiasCall = function(ep, method, pl) {
+          let cleanEp = ep;
+          if (cleanEp.startsWith("/api/ubl2.1")) cleanEp = cleanEp.slice("/api/ubl2.1".length);
+          const fullUrl = baseUrl + (cleanEp.startsWith("/") ? "" : "/") + cleanEp;
+          const res = $http.send({
+            url: fullUrl,
+            method: method || "GET",
+            headers: {
+              "Authorization": "Bearer " + token,
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: pl ? JSON.stringify(pl) : "",
+            timeout: 60
+          });
+          let parsed = {};
+          try { parsed = JSON.parse(res.raw); } catch (_) {}
+          return { statusCode: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, data: parsed, raw: res.raw };
+        };
+
+        // 3. Si aún no tenemos CUFE, buscar el documento en MATIAS API por consecutivo y query
+        if (!cufeKey || cufeKey.length < 20 || cufeKey === "404") {
+          try {
+            const searchQueries = [
+              `/documents?query=${encodeURIComponent(consecutivo)}`,
+              `/documents?document_number=${encodeURIComponent(prefijo + consecutivo)}`,
+              `/documents?per_page=50`
+            ];
+
+            for (const qUrl of searchQueries) {
+              const searchRes = matiasCall(qUrl, "GET");
+              if (searchRes && searchRes.ok && searchRes.data) {
+                const items = searchRes.data.dataRecords?.data || searchRes.data.data || (Array.isArray(searchRes.data) ? searchRes.data : []);
+                const docNumStr = String(consecutivo);
+                const targetNorm = (prefijo + docNumStr).toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+                const matched = items.find(function(it) {
+                  const itNum = String(it.document_number || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                  return itNum === targetNorm || itNum === docNumStr ||
+                         itNum === (prefijo + String(consecutivo).padStart(5, '0')).toUpperCase() ||
+                         itNum === (prefijo + String(consecutivo).padStart(8, '0')).toUpperCase();
+                });
+
+                if (matched) {
+                  cufeKey = matched.XmlDocumentKey || matched.cufe || matched.cune || matched.jsonData?.cufe || "";
+                  if (!cufeKey && matched.identification) cufeKey = matched.identification;
+                  if (cufeKey) break;
+                }
+              }
+            }
+          } catch (eFind) {
+            console.warn("[CHECK STATUS NOMINA] Error buscando en /documents de MATIAS:", eFind);
+          }
+        }
+
+        // Si después de todas las búsquedas no hay CUFE
+        if (!cufeKey || cufeKey.length < 20 || cufeKey === "404") {
+          return e.json(200, {
+            success: true,
+            status: rec.getString("estado_dian"),
+            message: "Sin CUFE/CUNE registrado ni documento encontrado en el proveedor tecnológico."
+          });
+        }
+
+        // 4. Consultar estado oficial en DIAN vía MATIAS API: POST /status/document/{cufe}
+        const statusRes = matiasCall(`/status/document/${encodeURIComponent(cufeKey)}`, "POST", {
+          sendmail: false,
+          sendmailtome: false
+        });
+
+        if (statusRes.ok && statusRes.data) {
+          const resp = statusRes.data.response || statusRes.data.ResponseDian || statusRes.data;
+          const isDianValid = (resp.IsValid === "true" || resp.IsValid === true || resp.StatusCode === "00" || statusRes.data.is_valid === 1);
+          const isDianReject = (resp.IsValid === "false" || resp.IsValid === false || resp.StatusCode === "04" || resp.StatusCode === "99");
+
+          let statusMsg = resp.StatusDescription || resp.StatusMessage || statusRes.data.message || (isDianValid ? "Documento autorizado por la DIAN" : "Consultado en DIAN");
+
+          if (!isDianValid && resp.ErrorMessage) {
+            let em = resp.ErrorMessage.string || resp.ErrorMessage;
+            if (Array.isArray(em)) em = em.join(" | ");
+            statusMsg = String(em);
+          }
+
+          let finalStatus = rec.getString("estado_dian");
+          if (isDianValid) {
+            finalStatus = "APROBADO";
+          } else if (isDianReject) {
+            finalStatus = "RECHAZADO";
+          }
+
+          rec.set("estado_dian", finalStatus);
+          rec.set("cufe", cufeKey);
+          rec.set("dian_response", statusMsg);
+          $app.save(rec);
+
+          // Si está aprobado y el XML generado localmente no contiene la firma DIAN (<ds:Signature>), descargar el XML oficial firmado
+          const currentXml = rec.getString("xml_generado") || "";
+          if (finalStatus === "APROBADO" && (!currentXml || !currentXml.includes("<ds:Signature"))) {
+            try {
+              const xmlRes = matiasCall(`/documents/xml/${encodeURIComponent(cufeKey)}`, "GET");
+              const b64 = (xmlRes && xmlRes.data && xmlRes.data.content && xmlRes.data.content.XmlBytesBase64) ||
+                          (xmlRes && xmlRes.data && xmlRes.data.XmlBytesBase64) ||
+                          (resp && resp.XmlBase64Bytes) ||
+                          (statusRes && statusRes.data && statusRes.data.XmlBase64Bytes) || null;
+              if (b64) {
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+                let input = String(b64).replace(/[^A-Za-z0-9\+\/\=]/g, '');
+                let i = 0, utf8Xml = '';
+                while (i < input.length) {
+                  let enc1 = chars.indexOf(input.charAt(i++));
+                  let enc2 = chars.indexOf(input.charAt(i++));
+                  let enc3 = chars.indexOf(input.charAt(i++));
+                  let enc4 = chars.indexOf(input.charAt(i++));
+                  let chr1 = (enc1 << 2) | (enc2 >> 4);
+                  let chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+                  let chr3 = ((enc3 & 3) << 6) | enc4;
+                  utf8Xml += String.fromCharCode(chr1);
+                  if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
+                  if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
+                }
+                let decodedXml = utf8Xml;
+                try {
+                  if (typeof escape === 'function') decodedXml = decodeURIComponent(escape(utf8Xml));
+                } catch (_) {}
+                if (decodedXml && decodedXml.includes('<')) {
+                  try {
+                    const targetId = rec.getString("id") || recordId;
+                    $app.db().newQuery("UPDATE electronic_payrolls SET xml_generado = {:xml} WHERE id = {:id}").bind({ id: targetId, xml: decodedXml }).execute();
+                    console.log('[CHECK STATUS NOMINA] XML firmado guardado exitosamente vía DB, longitud:', decodedXml.length);
+                  } catch (eDb) {
+                    console.warn('[CHECK STATUS NOMINA] Error guardando XML en DB:', eDb);
+                  }
+                }
+              }
+            } catch (eXml) {
+              console.warn("[CHECK STATUS NOMINA] Error obteniendo XML firmado de MATIAS:", eXml);
+            }
+          }
+
+          return e.json(200, {
+            success: true,
+            status: finalStatus,
+            cufe: cufeKey,
+            message: statusMsg
+          });
+        }
+
+        return e.json(200, {
+          success: true,
+          status: rec.getString("estado_dian"),
+          message: statusRes.data?.message || ("Error al consultar proveedor (HTTP " + statusRes.statusCode + ")")
+        });
+      } catch (errMatias) {
+        return e.json(500, { success: false, message: "Error al consultar estado en DIAN API: " + errMatias.message });
+      }
+    }
 
     if (!transId) {
       return e.json(200, { success: true, status: rec.getString("estado_dian"), message: "Sin transacción externa registrada." });
@@ -522,7 +798,11 @@ function decodeBase64Utf8Queue(b64) {
       if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
       if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
     }
-    return decodeURIComponent(escape(utf8Xml));
+    try {
+      return decodeURIComponent(escape(utf8Xml));
+    } catch (_) {
+      return utf8Xml;
+    }
   } catch (_) {
     return b64;
   }
@@ -615,7 +895,9 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
             if (finalStatus === "APROBADO" && xmlDocKey) {
               try {
                 const xmlRes = matiasCaller(`/documents/xml/${encodeURIComponent(xmlDocKey.trim())}`, "GET");
-                const b64 = xmlRes?.data?.content?.XmlBytesBase64 || xmlRes?.data?.XmlBytesBase64 || matiasData.XmlBase64Bytes;
+                const b64 = (xmlRes && xmlRes.data && xmlRes.data.content && xmlRes.data.content.XmlBytesBase64) ||
+                          (xmlRes && xmlRes.data && xmlRes.data.XmlBytesBase64) ||
+                          (matiasData && matiasData.XmlBase64Bytes) || null;
                 if (b64 && typeof decodeBase64Utf8Queue === "function") {
                   const decodedXml = decodeBase64Utf8Queue(b64);
                   if (decodedXml && decodedXml.includes("<")) rec.set("xml_generado", decodedXml);
@@ -640,9 +922,54 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
               if (errList.length > 0) errDetail = errList.join(" | ");
             }
 
-            rec.set("estado_dian", "RECHAZADO");
-            rec.set("dian_response", errDetail);
-            rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
+            const isAlreadyValidated = String(errDetail).toLowerCase().includes("ya se encuentra validado") ||
+                                       String(errDetail).toLowerCase().includes("ya fue validado") ||
+                                       String(errDetail).toLowerCase().includes("ya ha sido autorizada");
+
+            if (isAlreadyValidated) {
+              console.log(`[GRAVY NOMINA MATIAS BATCH] Documento ${prefijo}-${consecutivo} ya validado en MATIAS. Recuperando estado...`);
+              try {
+                const searchRes = matiasCaller(`/documents?query=${encodeURIComponent(consecutivo)}`, "GET");
+                const items = searchRes.data?.dataRecords?.data || searchRes.data?.data || (Array.isArray(searchRes.data) ? searchRes.data : []);
+                const docNumStr = String(consecutivo);
+                const targetNorm = (prefijo + docNumStr).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                const matched = items.find(function(it) {
+                  const itNum = String(it.document_number || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                  return itNum === targetNorm || itNum === docNumStr ||
+                         itNum === (prefijo + String(consecutivo).padStart(5, '0')).toUpperCase() ||
+                         itNum === (prefijo + String(consecutivo).padStart(8, '0')).toUpperCase();
+                });
+
+                const resolvedCufe = matched?.XmlDocumentKey || matched?.cufe || matched?.cune || "";
+                if (resolvedCufe) {
+                  rec.set("cufe", resolvedCufe);
+                  rec.set("estado_dian", "APROBADO");
+                  rec.set("dian_response", "Documento validado y autorizado previamente ante la DIAN.");
+                  rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
+                  try {
+                    const xmlRes = matiasCaller(`/documents/xml/${encodeURIComponent(resolvedCufe)}`, "GET");
+                    const b64 = (xmlRes && xmlRes.data && xmlRes.data.content && xmlRes.data.content.XmlBytesBase64) ||
+                              (xmlRes && xmlRes.data && xmlRes.data.XmlBytesBase64) || null;
+                    if (b64 && typeof decodeBase64Utf8Queue === "function") {
+                      const decodedXml = decodeBase64Utf8Queue(b64);
+                      if (decodedXml && decodedXml.includes("<")) rec.set("xml_generado", decodedXml);
+                    }
+                  } catch (_) {}
+                } else {
+                  rec.set("estado_dian", "RECHAZADO");
+                  rec.set("dian_response", errDetail);
+                  rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
+                }
+              } catch (_) {
+                rec.set("estado_dian", "RECHAZADO");
+                rec.set("dian_response", errDetail);
+                rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
+              }
+            } else {
+              rec.set("estado_dian", "RECHAZADO");
+              rec.set("dian_response", errDetail);
+              rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
+            }
           }
         } catch (errMatias) {
           rec.set("estado_dian", "RECHAZADO");

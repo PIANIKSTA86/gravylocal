@@ -62,6 +62,15 @@ function generatePbId() {
   return id;
 }
 
+function generateTokenKey() {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let k = '';
+  for (let i = 0; i < 50; i++) {
+    k += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return k;
+}
+
 // 2. Descubrir todos los tenants
 const detectedTenants = [];
 
@@ -74,7 +83,8 @@ if (fs.existsSync(mainDbPath)) {
       port: mainPort,
       name: settings.name || `EMPRESA PUERTO ${mainPort}`,
       nit: settings.nit || '000000000',
-      type: 'Principal'
+      type: 'Principal',
+      dbPath: mainDbPath
     });
   }
 }
@@ -95,7 +105,8 @@ if (fs.existsSync(empresasDir)) {
             port: portNum,
             name: settings.name || `EMPRESA ${portNum}`,
             nit: settings.nit || '000000000',
-            type: `Sub-empresa (${ent.name})`
+            type: `Sub-empresa (${ent.name})`,
+            dbPath: subDbPath
           });
         }
       }
@@ -116,6 +127,11 @@ if (detectedTenants.length === 0) {
 // 3. Sincronizar con el HUB
 console.log('\n[2/3] Sincronizando catálogo en HUB (hub/pb_data/data.db)...');
 const hubDb = new DatabaseSync(hubDbPath);
+
+// Asegurar que todos los superadministradores registrados tengan privilegios activos y verificados
+try {
+  hubDb.prepare("UPDATE hub_users SET verified = 1 WHERE is_superadmin = 1").run();
+} catch (_) {}
 
 // Obtener superadmins
 let superadmins = [];
@@ -166,6 +182,72 @@ for (const t of detectedTenants) {
             company_pass = CASE WHEN company_pass IS NULL OR company_pass = '' THEN 'Admin1234!' ELSE company_pass END
         WHERE id = ?
       `).run(acc.id);
+    }
+  }
+
+  // Sincronizar usuarios locales de este tenant con el catálogo del HUB
+  if (t.dbPath && fs.existsSync(t.dbPath)) {
+    try {
+      const tDb = new DatabaseSync(t.dbPath);
+      let tUsers = [];
+      try {
+        tUsers = tDb.prepare("SELECT id, email, full_name, role, password, tokenKey, active FROM users WHERE email != ''").all();
+      } catch (_) {
+        try {
+          tUsers = tDb.prepare("SELECT id, email, name as full_name, role, password, tokenKey, active FROM users WHERE email != ''").all();
+        } catch (_) {}
+      }
+      tDb.close();
+
+      for (const u of tUsers) {
+        const uEmail = String(u.email || '').trim().toLowerCase();
+        if (!uEmail) continue;
+        const uName = String(u.full_name || uEmail.split('@')[0]).trim();
+        const uRole = String(u.role || 'viewer').trim().toLowerCase();
+        const uActive = u.active !== 0 ? 1 : 0;
+        const uPassHash = u.password || '';
+        const uTokenKey = u.tokenKey || generateTokenKey();
+
+        // 1. Asegurar registro en hub_users sin corromper credenciales centrales
+        let hubUser = hubDb.prepare("SELECT id, password, full_name, is_superadmin FROM hub_users WHERE email = ?").get(uEmail);
+        let hubUserId = '';
+
+        if (!hubUser) {
+          hubUserId = generatePbId();
+          hubDb.prepare(`
+            INSERT INTO hub_users (id, email, full_name, is_superadmin, password, tokenKey, verified, emailVisibility)
+            VALUES (?, ?, ?, 0, ?, ?, 1, 1)
+          `).run(hubUserId, uEmail, uName, uPassHash, uTokenKey);
+          console.log(`    + Creado usuario en HUB: ${uEmail} (${uName})`);
+        } else {
+          hubUserId = hubUser.id;
+          // Si el usuario ya existe en el HUB, el HUB es la autoridad central de identidad (IdP).
+          // NUNCA sobreescribir la contraseña desde un tenant satélite (evita romper contraseñas con salts distintos o generadas por SSO).
+          // Solo actualizar nombre si en el HUB no estaba establecido.
+          if ((!hubUser.full_name || hubUser.full_name === uEmail.split('@')[0]) && uName) {
+            hubDb.prepare("UPDATE hub_users SET full_name = ? WHERE id = ?").run(uName, hubUserId);
+          }
+        }
+
+        // 2. Asegurar acceso en user_company_access
+        const uca = hubDb.prepare("SELECT id FROM user_company_access WHERE hub_user_id = ? AND company_id = ?").get(hubUserId, companyId);
+        if (!uca) {
+          const ucaId = generatePbId();
+          hubDb.prepare(`
+            INSERT INTO user_company_access (id, hub_user_id, company_id, role, company_email, company_pass, active)
+            VALUES (?, ?, ?, ?, ?, 'SSO_ACTIVE', ?)
+          `).run(ucaId, hubUserId, companyId, uRole, uEmail, uActive);
+          console.log(`    ✓ Acceso asignado: ${uEmail} -> [${t.port}] como '${uRole}'`);
+        } else {
+          hubDb.prepare(`
+            UPDATE user_company_access 
+            SET role = ?, active = ?
+            WHERE id = ?
+          `).run(uRole, uActive, uca.id);
+        }
+      }
+    } catch (uErr) {
+      console.warn(`    [!] Advertencia al sincronizar usuarios de empresa ${t.port}: ${uErr.message}`);
     }
   }
 }

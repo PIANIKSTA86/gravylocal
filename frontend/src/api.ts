@@ -1053,6 +1053,11 @@ const API = {
     return { blocks, warnings };
   },
 
+  // -- Terceros ---------------------------------------------
+  async getThirdParties(opts: any = {}) {
+    return await pb.listAll('third_parties', { filter: 'active=true', sort: 'name', ...opts });
+  },
+
   // -- Productos ---------------------------------------------
   async getProducts(opts = {}) {
     const { activeOnly = true, query = '', type = '' } = opts;
@@ -7520,10 +7525,11 @@ const API = {
     const discountAmt = Number(header.discount_amount || 0);
     const total = subtotal - discountAmt + ivaTot;
 
-    // Obtener consecutivo
+    // Obtener consecutivo según tipo
     let orderNum = header.number;
-    if (!orderNum || orderNum === 'AUTO') {
-      orderNum = await this.nextOrderConsecutive();
+    const isQuotation = header.order_type === 'COTIZACION' || (orderNum && String(orderNum).startsWith('COT-'));
+    if (!orderNum || orderNum === 'AUTO' || orderNum === 'COT-AUTO' || orderNum === 'PED-AUTO') {
+      orderNum = isQuotation ? await this.nextQuotationConsecutive() : await this.nextOrderConsecutive();
     }
 
     const order = await pb.create('sales_orders', {
@@ -7631,6 +7637,239 @@ const API = {
     }
 
     return `PED-${String(next).padStart(8, '0')}`;
+  },
+
+  /** Obtiene y avanza el siguiente consecutivo de cotización */
+  async nextQuotationConsecutive() {
+    let currentConsecutive = 0;
+    let recordId = "";
+    try {
+      const res = await pb.list('settings', { filter: 'key="quotation_consecutive"', perPage: 1 });
+      if (res.items && res.items.length) {
+        currentConsecutive = parseInt(res.items[0].value || '0', 10);
+        recordId = res.items[0].id;
+      }
+    } catch (_) {}
+
+    // Fallback: calcular a partir del mayor número de cotizaciones
+    if (currentConsecutive === 0) {
+      try {
+        const lastQuotes = await pb.list('sales_orders', { filter: 'number ~ "COT-"', sort: '-created', perPage: 1 });
+        if (lastQuotes.items && lastQuotes.items.length) {
+          const lastNumStr = String(lastQuotes.items[0].number || '').replace(/\D/g, '');
+          currentConsecutive = parseInt(lastNumStr || '0', 10);
+        }
+      } catch (_) {}
+    }
+
+    const next = currentConsecutive + 1;
+    const nextStr = String(next);
+    
+    try {
+      if (recordId) {
+        await pb.update('settings', recordId, { value: nextStr });
+      } else {
+        await pb.create('settings', { key: 'quotation_consecutive', value: nextStr });
+      }
+    } catch (_) {}
+
+    return `COT-${String(next).padStart(8, '0')}`;
+  },
+
+  // ── GESTIÓN DE COTIZACIONES COMERCIALES (INDEPENDIENTE) ─────────────────
+  async getQuotations({ page = 1, perPage = 100, filter = '', sort = '-date,-created' }: any = {}) {
+    return await pb.list('quotations', {
+      page,
+      perPage,
+      filter,
+      sort,
+      expand: 'customer_id,seller_id,user_id,sales_order_id,invoice_id,deal_id'
+    });
+  },
+
+  async getQuotation(id: string) {
+    return await pb.get('quotations', id, {
+      expand: 'customer_id,seller_id,user_id,sales_order_id,invoice_id,deal_id'
+    });
+  },
+
+  async getQuotationLines(quotationId: string) {
+    return await pb.listAll('quotation_lines', {
+      filter: `quotation_id="${pb.escapeFilterValue(quotationId)}"`,
+      sort: 'line_order',
+      expand: 'product_id'
+    });
+  },
+
+  async createQuotation(header: any, lines: any[]) {
+    let subtotal = 0, ivaTot = 0;
+    for (const l of lines) {
+      subtotal += Number(l.subtotal || 0);
+      ivaTot += Number(l.iva_amount || 0);
+    }
+    const discountAmt = Number(header.discount_amount || 0);
+    const total = subtotal - discountAmt + ivaTot;
+
+    let quoteNum = header.number;
+    if (!quoteNum || quoteNum === 'AUTO' || quoteNum === 'COT-AUTO') {
+      quoteNum = await this.nextQuotationConsecutive();
+    }
+
+    const quotation = await pb.create('quotations', {
+      ...header,
+      number: quoteNum,
+      subtotal,
+      iva_total: ivaTot,
+      total,
+      status: header.status || 'draft',
+      user_id: pb.currentUser?.id
+    });
+
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('quotation_lines', {
+        quotation_id: quotation.id,
+        line_order: i + 1,
+        ...lines[i],
+      });
+    }
+
+    await this.logAudit('CREATE', 'Quotation', quotation.id, `Cotización creada ${quotation.number}`);
+    return quotation;
+  },
+
+  async updateQuotation(quotationId: string, header: any, lines: any[]) {
+    let subtotal = 0, ivaTot = 0;
+    for (const l of lines) {
+      subtotal += Number(l.subtotal || 0);
+      ivaTot += Number(l.iva_amount || 0);
+    }
+    const discountAmt = Number(header.discount_amount || 0);
+    const total = subtotal - discountAmt + ivaTot;
+
+    await pb.update('quotations', quotationId, {
+      ...header,
+      subtotal,
+      iva_total: ivaTot,
+      total,
+    });
+
+    const oldLines = await pb.listAll('quotation_lines', { filter: `quotation_id="${pb.escapeFilterValue(quotationId)}"` });
+    for (const l of oldLines) {
+      await pb.delete('quotation_lines', l.id);
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('quotation_lines', {
+        quotation_id: quotationId,
+        line_order: i + 1,
+        ...lines[i],
+      });
+    }
+
+    await this.logAudit('UPDATE', 'Quotation', quotationId, `Cotización actualizada ${header.number || quotationId}`);
+    return await this.getQuotation(quotationId);
+  },
+
+  async deleteQuotation(quotationId: string) {
+    const quote = await pb.get('quotations', quotationId).catch(() => null);
+    const oldLines = await pb.listAll('quotation_lines', { filter: `quotation_id="${pb.escapeFilterValue(quotationId)}"` });
+    for (const l of oldLines) {
+      await pb.delete('quotation_lines', l.id);
+    }
+    const res = await pb.delete('quotations', quotationId);
+    await this.logAudit('DELETE', 'Quotation', quotationId, `Cotización eliminada ${quote?.number || quotationId}`);
+    return res;
+  },
+
+  async convertQuotationToOrder(quotationId: string) {
+    const quote = await this.getQuotation(quotationId);
+    const quoteLines = await this.getQuotationLines(quotationId);
+
+    const orderLines = quoteLines.map((ql: any) => ({
+      product_id: ql.product_id,
+      description: ql.description,
+      item_notes: ql.item_notes || '',
+      qty: ql.qty,
+      unit_price: ql.unit_price,
+      iva_rate: ql.iva_rate,
+      iva_amount: ql.iva_amount,
+      discount_pct: ql.discount_pct || 0,
+      subtotal: ql.subtotal,
+      total: ql.total,
+    }));
+
+    const orderHeader = {
+      customer_id: quote.customer_id,
+      seller_id: quote.seller_id,
+      warehouse_id: quote.warehouse_id || '',
+      date: new Date().toISOString().slice(0, 10),
+      notes: `Generado desde Cotización ${quote.number}. ${quote.notes || ''}`.trim(),
+      order_type: 'PEDIDO',
+      discount_amount: quote.discount_amount || 0,
+    };
+
+    const newOrder = await this.createSalesOrder(orderHeader, orderLines);
+
+    await pb.update('quotations', quotationId, {
+      sales_order_id: newOrder.id,
+      status: 'converted_order',
+    });
+
+    await this.logAudit('CONVERT', 'Quotation', quotationId, `Cotización ${quote.number} convertida a Pedido ${newOrder.number}`);
+    return newOrder;
+  },
+
+  // ── MÉTODOS WHATSAPP AUTOMATIZADO (OPENWA) ──────────────────────────
+  async getWhatsAppStatus() {
+    try {
+      const res = await fetch(`${pb.baseUrl}/api/whatsapp/status`, {
+        headers: pb.headers()
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { connected: false, status: 'DISCONNECTED', error: err.message };
+    }
+  },
+
+  async getWhatsAppQr() {
+    try {
+      const res = await fetch(`${pb.baseUrl}/api/whatsapp/qr`, {
+        headers: pb.headers()
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { qr: null, error: err.message };
+    }
+  },
+
+  async initWhatsApp(force = false) {
+    const res = await fetch(`${pb.baseUrl}/api/whatsapp/init`, {
+      method: 'POST',
+      headers: { ...pb.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force })
+    });
+    return await res.json();
+  },
+
+  async logoutWhatsApp() {
+    const res = await fetch(`${pb.baseUrl}/api/whatsapp/logout`, {
+      method: 'POST',
+      headers: pb.headers()
+    });
+    return await res.json();
+  },
+
+  async sendPdfViaWhatsApp(phone: string, filename: string, caption: string, pdfBase64: string) {
+    const res = await fetch(`${pb.baseUrl}/api/whatsapp/send-pdf`, {
+      method: 'POST',
+      headers: { ...pb.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, filename, caption, pdfBase64 })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || errData.message || 'Error en el servidor al enviar documento por WhatsApp');
+    }
+    return await res.json();
   },
 
   /** Elimina borrador de factura de venta y restablece pedidos asociados */

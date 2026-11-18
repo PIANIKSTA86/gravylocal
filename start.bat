@@ -92,6 +92,8 @@ if /i "!MODE!" == "lan" (
 
 :: 3. Iniciar GRAVY HUB (Puerto !PORT_HUB!)
 echo  [2/5] Iniciando GRAVY HUB (!BIND_IP!:!PORT_HUB!)...
+attrib -r "%ROOT%\hub\pb_data\data.db" >nul 2>&1
+attrib -r "%ROOT%\pb_data\data.db" >nul 2>&1
 start "Gravy HUB" cmd /k "pocketbase.exe serve --http=!BIND_IP!:!PORT_HUB! --dir="%ROOT%\hub\pb_data" --hooksDir="%ROOT%\hub\pb_hooks""
 
 :: 4. Iniciar Orquestador (Puerto !PORT_ORCH!)

@@ -11,7 +11,7 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
   } catch (_) {
     try {
       body = $apis.requestInfo(e).body || {};
-    } catch (_) {}
+    } catch (_) { }
   }
 
   const hubToken = String(body.hub_token || "").trim();
@@ -29,7 +29,7 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
   } catch (err) {
     nameError = String(err);
   }
-  
+
   let companyNit = "";
   let nitError = "";
   try {
@@ -56,7 +56,7 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
     if (body.company_port) {
       companyPort = String(body.company_port).trim();
     }
-  } catch (_) {}
+  } catch (_) { }
 
   if (!companyPort) {
     try {
@@ -66,14 +66,14 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
       if (host.indexOf(":") !== -1) {
         companyPort = host.split(":").pop();
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // 2. Comunicarse con el HUB de manera segura back-to-back para verificar acceso
   try {
     // Usamos el host local del HUB (8089)
     const hubUrl = "http://127.0.0.1:8089/api/hub/verify-access?company_nit=" + encodeURIComponent(companyNit) + "&company_name=" + encodeURIComponent(companyName) + "&company_port=" + encodeURIComponent(companyPort);
-    
+
     const hubRes = $http.send({
       url: hubUrl,
       method: "GET",
@@ -86,7 +86,7 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
 
     if (hubRes.statusCode !== 200) {
       let errData = {};
-      try { errData = JSON.parse(hubRes.raw); } catch (_) {}
+      try { errData = JSON.parse(hubRes.raw); } catch (_) { }
       e.json(hubRes.statusCode, {
         message: errData.message || "Error al verificar el acceso en el HUB",
         debug: {
@@ -116,11 +116,13 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
 
     try {
       userRecord = $app.findFirstRecordByFilter("users", "email = '" + email.replace(/'/g, "''") + "'");
-      
+
       // Sincronizar datos del HUB con el registro local
       let needsSave = false;
-      if (fullName && userRecord.getString("name") !== fullName) {
-        userRecord.set("name", fullName);
+      const effectiveName = fullName || userRecord.getString("name") || userRecord.getString("full_name") || email.split('@')[0];
+      if (effectiveName) {
+        try { userRecord.set("name", effectiveName); } catch (_) { }
+        try { userRecord.set("full_name", effectiveName); } catch (_) { }
         needsSave = true;
       }
       if (role && userRecord.getString("role") !== role) {
@@ -138,7 +140,9 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
       // Registrar usuario por primera vez en este tenant
       userRecord = new Record(usersCol);
       userRecord.set("email", email);
-      userRecord.set("name", fullName || email.split('@')[0]);
+      const effectiveName = fullName || email.split('@')[0];
+      try { userRecord.set("name", effectiveName); } catch (_) { }
+      try { userRecord.set("full_name", effectiveName); } catch (_) { }
       userRecord.set("role", role);
       userRecord.set("active", true);
       userRecord.setPassword($security.randomString(35)); // Contraseña local aleatoria
@@ -152,7 +156,7 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
       remoteIp = (typeof e?.remoteIP === "function")
         ? String(e.remoteIP() || "")
         : (typeof e?.realIP === "function" ? String(e.realIP() || "") : "");
-    } catch (_) {}
+    } catch (_) { }
 
     const previousSessionId = userRecord.getString("active_session_id") || "";
     const previousIp = userRecord.getString("last_login_ip") || "";

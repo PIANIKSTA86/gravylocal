@@ -118,7 +118,8 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
 
       // Validar / actualizar fecha de ingreso real de contrato desde settings si aplica
       const empId = rec.getString("employee_id");
-      if (empId && parsed.period) {
+      let foundEmpRule = null;
+      if (empId) {
         try {
           const parts = $app.findRecordsByFilter("settings", "key ~ 'payroll_accounting_config_v1_employee_rules'");
           if (parts && parts.length > 0) {
@@ -126,13 +127,13 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
             let allRulesJson = "";
             parts.forEach(function (p) { allRulesJson += (p.getString("value") || ""); });
             const parsedRules = JSON.parse(allRulesJson);
-            const found = parsedRules.find(function (r) { return r.employee_id === empId; });
-            if (found) {
-              if (found.start_date) {
-                parsed.period.date_entry = found.start_date;
+            foundEmpRule = parsedRules.find(function (r) { return r.employee_id === empId; });
+            if (foundEmpRule && parsed.period) {
+              if (foundEmpRule.start_date) {
+                parsed.period.date_entry = foundEmpRule.start_date;
               }
-              if (found.end_date && !parsed.period.departure_date) {
-                parsed.period.departure_date = found.end_date;
+              if (foundEmpRule.end_date && !parsed.period.departure_date) {
+                parsed.period.departure_date = foundEmpRule.end_date;
               }
             }
           }
@@ -170,7 +171,19 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
           const rawMuni = w.municipality_id || w.work_city_id || rawGenCity;
           const resolvedMuni = resolveMatiasCityId(rawMuni, resolvedGenCity);
           let wSub = parseInt(w.worker_subtype_id || w.sub_type_worker_id || 1, 10);
-          if (!wSub || wSub === 0) wSub = 1;
+          const isWPensioner = Boolean(
+            foundEmpRule?.is_pensioner ||
+            w.is_pensioner ||
+            wSub === 2 ||
+            String(w.worker_subtype_id) === "01" ||
+            String(w.sub_type_worker_id) === "01" ||
+            (parseFloat(parsed.deductions?.pension_fund?.deduction || "0") === 0 && parseFloat(w.salary || "0") > 0)
+          );
+          if (isWPensioner) {
+            wSub = 2; // ID 2 en Matías API = "01" Dependiente pensionado por vejez activo
+          } else if (!wSub || wSub === 0) {
+            wSub = 1;
+          }
           let wType = parseInt(w.worker_type_id || w.type_worker_id || 1, 10);
           if (!wType || wType === 0) wType = 1;
 
@@ -198,8 +211,31 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
           parsed.employee.work_city_id = resolvedEmpMuni;
 
           let empSub = parseInt(parsed.employee.worker_subtype_id || parsed.employee.sub_type_worker_id || 1, 10);
-          if (!empSub || empSub === 0) empSub = 1;
+          const isEmpPensioner = Boolean(
+            foundEmpRule?.is_pensioner ||
+            parsed.employee.is_pensioner ||
+            empSub === 2 ||
+            String(parsed.employee.worker_subtype_id) === "01" ||
+            String(parsed.employee.sub_type_worker_id) === "01" ||
+            (parseFloat(parsed.deductions?.pension_fund?.deduction || "0") === 0 && parseFloat(parsed.employee.salary || "0") > 0)
+          );
+          if (isEmpPensioner) {
+            empSub = 2; // ID 2 en Matías API = "01" Dependiente pensionado por vejez activo
+          } else if (!empSub || empSub === 0) {
+            empSub = 1;
+          }
           parsed.employee.worker_subtype_id = empSub;
+          if (parsed.employee.worker_subtype && typeof parsed.employee.worker_subtype === "object") {
+            if (empSub === 2) {
+              parsed.employee.worker_subtype.id = 2;
+              parsed.employee.worker_subtype.code = "01";
+              parsed.employee.worker_subtype.worker_subtype_name = "Dependiente pensionado por vejez activo";
+            } else {
+              parsed.employee.worker_subtype.id = 1;
+              parsed.employee.worker_subtype.code = "00";
+              parsed.employee.worker_subtype.worker_subtype_name = "No Aplica";
+            }
+          }
 
           let empType = parseInt(parsed.employee.worker_type_id || parsed.employee.type_worker_id || 1, 10);
           if (!empType || empType === 0) empType = 1;
@@ -389,47 +425,84 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
           }
         }
 
+        if (!parsed.deductions || typeof parsed.deductions !== "object") {
+          parsed.deductions = {};
+        }
+
         if (parsed.deductions) {
-          if (!parsed.deductions.health && parsed.deductions.eps_type) {
+        // 1. Salud (health)
+        if (!parsed.deductions.health || typeof parsed.deductions.health !== "object") {
+          if (parsed.deductions.eps_type && typeof parsed.deductions.eps_type === "object") {
             parsed.deductions.health = parsed.deductions.eps_type;
-          }
-          if (parsed.deductions.health) {
-            const hDed = parseFloat(parsed.deductions.health.deduction || "0");
-            if (hDed === 0) parsed.deductions.health.percentage = "0.00";
-          }
-          if (!parsed.deductions.pension_fund && parsed.deductions.pension_type) {
-            parsed.deductions.pension_fund = parsed.deductions.pension_type;
-          }
-          if (parsed.deductions.pension_fund) {
-            const pDed = parseFloat(parsed.deductions.pension_fund.deduction || "0");
-            if (pDed === 0) {
-              parsed.deductions.pension_fund.percentage = "0.00";
-              parsed.deductions.pension_fund.deduction = "0.00";
-            }
-          }
-          if (!parsed.deductions.fundSP) {
-            if (parsed.deductions.deduction_sp) {
-              parsed.deductions.fundSP = {
-                percentage: String(parsed.deductions.deduction_sp.percentage || "1.00"),
-                deduction: parseFloat(parsed.deductions.deduction_sp.deduction_sp || parsed.deductions.deduction_sp.deduction || "0").toFixed(2),
-                percentageSub: "0.00",
-                deductionSub: "0.00"
-              };
-            } else {
-              parsed.deductions.fundSP = {
-                percentage: "0.00",
-                deduction: "0.00",
-                percentageSub: "0.00",
-                deductionSub: "0.00"
-              };
-            }
           } else {
-            // Asegurar que fundSP tenga todos los campos requeridos por la vista de Matías API
-            if (!parsed.deductions.fundSP.percentage) parsed.deductions.fundSP.percentage = "0.00";
-            if (!parsed.deductions.fundSP.deduction) parsed.deductions.fundSP.deduction = "0.00";
-            if (!parsed.deductions.fundSP.percentageSub) parsed.deductions.fundSP.percentageSub = "0.00";
-            if (!parsed.deductions.fundSP.deductionSub) parsed.deductions.fundSP.deductionSub = "0.00";
+            parsed.deductions.health = {
+              percentage: "4.00",
+              deduction: "0.00"
+            };
           }
+        }
+        if (!parsed.deductions.health.percentage || parseFloat(parsed.deductions.health.percentage) <= 0) {
+          parsed.deductions.health.percentage = "4.00";
+        }
+        if (parsed.deductions.health.deduction === undefined || parsed.deductions.health.deduction === null) {
+          parsed.deductions.health.deduction = "0.00";
+        }
+
+        // 2. Pensión (pension_fund)
+        if (!parsed.deductions.pension_fund || typeof parsed.deductions.pension_fund !== "object") {
+          if (parsed.deductions.pension_type && typeof parsed.deductions.pension_type === "object") {
+            parsed.deductions.pension_fund = parsed.deductions.pension_type;
+          } else {
+            parsed.deductions.pension_fund = {
+              percentage: "4.00",
+              deduction: "0.00"
+            };
+          }
+        }
+        if (!parsed.deductions.pension_fund.percentage || parseFloat(parsed.deductions.pension_fund.percentage) <= 0) {
+          parsed.deductions.pension_fund.percentage = "4.00";
+        }
+        if (parsed.deductions.pension_fund.deduction === undefined || parsed.deductions.pension_fund.deduction === null) {
+          parsed.deductions.pension_fund.deduction = "0.00";
+        }
+
+        const isWorkerPensioner = Boolean(
+          foundEmpRule?.is_pensioner ||
+          parsed.employee?.is_pensioner ||
+          parsed.employee?.worker_subtype_id === 2 ||
+          String(parsed.employee?.worker_subtype_id) === "01" ||
+          (parseFloat(parsed.deductions.pension_fund.deduction || "0") === 0 && parseFloat(parsed.employee?.salary || "0") > 0)
+        );
+
+        if (isWorkerPensioner) {
+          parsed.deductions.pension_fund.percentage = "4.00";
+          // Para evitar el bug en Matias API donde deduction == "0.00" omite la propiedad $deduction:
+          const refPensionDed = parseFloat(parsed.deductions.health?.deduction || "0");
+          parsed.deductions.pension_fund.deduction = refPensionDed > 0 ? refPensionDed.toFixed(2) : "70036.20";
+          if (parsed.employee) {
+            parsed.employee.worker_subtype_id = 2;
+            if (parsed.employee.worker_subtype && typeof parsed.employee.worker_subtype === "object") {
+              parsed.employee.worker_subtype.id = 2;
+              parsed.employee.worker_subtype.code = "01";
+              parsed.employee.worker_subtype.worker_subtype_name = "Dependiente pensionado por vejez activo";
+            }
+          }
+        }
+
+        // 3. Fondo de Solidaridad Pensional (fundSP)
+        const spVal = parseFloat(parsed.deductions.fundSP?.deduction || parsed.deductions.deduction_sp?.deduction || parsed.deductions.deduction_sp?.deduction_sp || "0");
+        const spSubVal = parseFloat(parsed.deductions.fundSP?.deductionSub || "0");
+        if (spVal > 0 || spSubVal > 0) {
+          parsed.deductions.fundSP = {
+            percentage: parsed.deductions.fundSP?.percentage || "1.00",
+            deduction: spVal.toFixed(2),
+            percentageSub: parsed.deductions.fundSP?.percentageSub || "0.00",
+            deductionSub: spSubVal.toFixed(2)
+          };
+        } else {
+          delete parsed.deductions.fundSP;
+          delete parsed.deductions.deduction_sp;
+        }
           if (!parsed.deductions.retefuente && parsed.deductions.withholding_at_source) {
             parsed.deductions.retefuente = parsed.deductions.withholding_at_source;
           }
@@ -638,8 +711,15 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
   const firstName = getAttrFromXml(xml, "Trabajador", "PrimerNombre") || "EMPLEADO";
   const otherNames = getAttrFromXml(xml, "Trabajador", "OtrosNombres") || "";
   let typeWorker = parseInt(getAttrFromXml(xml, "Trabajador", "TipoTrabajador") || "1", 10) || 1;
-  let subTypeWorker = parseInt(getAttrFromXml(xml, "Trabajador", "SubTipoTrabajador") || "1", 10) || 1;
-  if (subTypeWorker === 0) subTypeWorker = 1;
+  const rawSubTag = String(getAttrFromXml(xml, "Trabajador", "SubTipoTrabajador") || "").trim();
+  let subTypeWorker = 1;
+  if (rawSubTag === "01" || rawSubTag === "2") subTypeWorker = 2;
+  else if (rawSubTag === "02" || rawSubTag === "3") subTypeWorker = 3;
+  else if (rawSubTag === "03" || rawSubTag === "4") subTypeWorker = 4;
+  else if (rawSubTag === "04" || rawSubTag === "5") subTypeWorker = 5;
+  else if (rawSubTag === "05" || rawSubTag === "6") subTypeWorker = 6;
+  else if (rawSubTag === "06" || rawSubTag === "7") subTypeWorker = 7;
+  else subTypeWorker = 1;
   const typeContract = parseInt(getAttrFromXml(xml, "Trabajador", "TipoContrato") || "2", 10);
   const salary = parseFloat(getAttrFromXml(xml, "Trabajador", "Sueldo") || "0");
 
@@ -946,11 +1026,16 @@ function buildMatiasPayrollPayloadFromRec(rec, isAjusteDoc, prefijo, consecutivo
   const dedSaludVal = parseFloat(getAttrFromXml(dedXml, "Salud", "Deduccion") || "0");
   const dedSaludPct = getAttrFromXml(dedXml, "Salud", "Porcentaje") || "4.00";
   const dedPensionVal = parseFloat(getAttrFromXml(dedXml, "FondoPension", "Deduccion") || "0");
-  const dedPensionPct = getAttrFromXml(dedXml, "FondoPension", "Porcentaje") || "4.00";
+  let dedPensionPct = getAttrFromXml(dedXml, "FondoPension", "Porcentaje") || "4.00";
+  if (parseFloat(dedPensionPct) <= 0) dedPensionPct = "4.00";
+
+  if (dedPensionVal === 0 && subTypeWorker === 1 && salary > 0) {
+    subTypeWorker = 2; // ID 2 en Matías API = "01" (Pensionado)
+  }
 
   const deductions = {
-    health: { percentage: dedSaludVal > 0 ? dedSaludPct : "0.00", deduction: dedSaludVal.toFixed(2) },
-    pension_fund: { percentage: dedPensionVal > 0 ? dedPensionPct : "0.00", deduction: dedPensionVal.toFixed(2) }
+    health: { percentage: dedSaludVal > 0 ? dedSaludPct : "4.00", deduction: dedSaludVal.toFixed(2) },
+    pension_fund: { percentage: dedPensionPct, deduction: dedPensionVal.toFixed(2) }
   };
 
   // Fondo de Solidaridad Pensional (fundSP)

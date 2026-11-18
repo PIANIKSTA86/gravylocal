@@ -317,16 +317,22 @@ routerAdd("POST", "/api/hub/create-company", (e) => {
   }
 
   try {
-    // LLamada HTTP interna al Orquestador (Node.js en puerto 8088)
-    const orchRes = $http.send({
-      url: "http://127.0.0.1:8088/api/orchestrate/create",
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name, nit, color, modules, email: creatorEmail, password: creatorPass
-      }),
-      timeout: 30 // Segundos
-    });
+    // LLamada HTTP interna al Orquestador (Node.js en puerto 8088) con timeout de 60s
+    let orchRes;
+    try {
+      orchRes = $http.send({
+        url: "http://127.0.0.1:8088/api/orchestrate/create",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name, nit, color, modules, email: creatorEmail, password: creatorPass
+        }),
+        timeout: 60 // 60 segundos para permitir copiado y arranque en Windows Server
+      });
+    } catch (netErr) {
+      e.json(500, { message: "Error comunicando con el Orquestador (:8088). Verifique que el servicio esté activo y con permisos de Administrador: " + String(netErr) });
+      return;
+    }
 
     if (orchRes.statusCode !== 200) {
       e.json(500, { message: "Error del orquestador: " + orchRes.raw });
@@ -337,44 +343,65 @@ routerAdd("POST", "/api/hub/create-company", (e) => {
     const newPort = orchData.port;
     const newUrl = orchData.url;
 
-    // 1. Guardar la nueva Empresa en el HUB
-    const companies = $app.findCollectionByNameOrId("companies");
-    const newComp = new Record(companies);
-    newComp.set("name", name);
-    newComp.set("nit", nit);
-    newComp.set("url", newUrl);
-    newComp.set("port", newPort);
-    newComp.set("active", true);
-    newComp.set("color_theme", color);
-    $app.save(newComp);
+    try {
+      // 1. Guardar la nueva Empresa en el HUB
+      const companies = $app.findCollectionByNameOrId("companies");
+      const newComp = new Record(companies);
+      newComp.set("name", name);
+      newComp.set("nit", nit);
+      newComp.set("url", newUrl);
+      newComp.set("port", newPort);
+      newComp.set("active", true);
+      newComp.set("color_theme", color);
+      $app.save(newComp);
 
-    // 2. Darle acceso al creador
-    const uca = $app.findCollectionByNameOrId("user_company_access");
-    const access = new Record(uca);
-    access.set("hub_user_id", authRecord.id);
-    access.set("company_id", newComp.id);
-    access.set("role", "admin");
-    access.set("company_email", creatorEmail);
-    access.set("company_pass", creatorPass);
-    access.set("active", true);
-    $app.save(access);
+      // 2. Darle acceso al creador
+      const uca = $app.findCollectionByNameOrId("user_company_access");
+      const access = new Record(uca);
+      access.set("hub_user_id", authRecord.id);
+      access.set("company_id", newComp.id);
+      access.set("role", "admin");
+      access.set("company_email", creatorEmail);
+      access.set("company_pass", creatorPass);
+      access.set("active", true);
+      $app.save(access);
 
-    // 3. Asignar las licencias iniciales
-    const licCol = $app.findCollectionByNameOrId("licenses");
-    for (const mod of modules) {
+      // 3. Asignar las licencias iniciales
+      const licCol = $app.findCollectionByNameOrId("licenses");
+      for (const mod of modules) {
+        try {
+          const lic = new Record(licCol);
+          lic.set("company_id", newComp.id);
+          lic.set("module_key", mod);
+          lic.set("enabled", true);
+          lic.set("plan", "perpetua");
+          $app.save(lic);
+        } catch (err) {
+          console.log("[GRAVY HUB] Error creando licencia inicial: " + err);
+        }
+      }
+
+      e.json(200, { ok: true, message: "Empresa aprovisionada con éxito", company: newComp.id });
+    } catch (dbErr) {
+      // Rollback: Si falló la escritura en la DB del HUB (por ejemplo permisos readonly), limpiar la carpeta creada
+      console.log("[GRAVY HUB] Falló guardado en base de datos. Ejecutando rollback en puerto " + newPort + ": " + dbErr);
       try {
-        const lic = new Record(licCol);
-        lic.set("company_id", newComp.id);
-        lic.set("module_key", mod);
-        lic.set("enabled", true);
-        lic.set("plan", "perpetua");
-        $app.save(lic);
-      } catch (err) {
-        console.log("[GRAVY HUB] Error creando licencia inicial: " + err);
+        $http.send({
+          url: "http://127.0.0.1:8088/api/orchestrate/delete",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ port: newPort }),
+          timeout: 45
+        });
+      } catch (_) {}
+
+      const errMsg = String(dbErr);
+      if (errMsg.indexOf("readonly database") !== -1 || errMsg.indexOf("(8)") !== -1) {
+        e.json(500, { message: "Error de permisos NTFS en el servidor: La base de datos del HUB (hub/pb_data) está en modo de solo lectura. Ejecute 'reparar_permisos.bat' como Administrador." });
+      } else {
+        e.json(500, { message: "Fallo al registrar la empresa en el HUB: " + errMsg });
       }
     }
-
-    e.json(200, { ok: true, message: "Empresa aprovisionada con éxito", company: newComp.id });
   } catch (err) {
     e.json(500, { message: "Fallo general aprovisionando: " + String(err) });
   }
@@ -558,13 +585,20 @@ routerAdd("POST", "/api/hub/delete-company", (e) => {
     const port = company.getInt("port");
 
     // 1. Llamar al orquestador en el puerto 8088 para detener el proceso y borrar archivos físicos
-    const orchRes = $http.send({
-      url: "http://127.0.0.1:8088/api/orchestrate/delete",
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ port }),
-      timeout: 15 // segundos
-    });
+    let orchRes;
+    try {
+      orchRes = $http.send({
+        url: "http://127.0.0.1:8088/api/orchestrate/delete",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ port }),
+        timeout: 60 // 60 segundos para permitir desbloqueo de archivos en Windows Server
+      });
+    } catch (netErr) {
+      console.error("[GRAVY HUB] Error conectando con el orquestador :8088:", netErr);
+      e.json(500, { message: "Error comunicando con el Orquestador (:8088). Verifique que el servicio esté ejecutándose con permisos de Administrador: " + String(netErr) });
+      return;
+    }
 
     if (orchRes.statusCode !== 200) {
       e.json(500, { message: "Error en el orquestador al eliminar archivos: " + orchRes.raw });
@@ -615,5 +649,74 @@ routerAdd("POST", "/api/hub/delete-company", (e) => {
     e.json(500, { message: "Error interno del HUB al eliminar la empresa: " + String(err) });
   }
 });
+
+routerAdd("POST", "/api/hub/update-superadmin", (e) => {
+  let body = {};
+  try { body = e.requestInfo().body || {}; } catch (_) {
+    try { body = $apis.requestInfo(e).body || {}; } catch (_) {}
+  }
+
+  const newEmail = String(body.new_email || "").trim().toLowerCase();
+  const newPass = String(body.new_password || "").trim();
+  const newName = String(body.new_name || "Super Administrador").trim();
+
+  if (!newEmail || !newPass) {
+    return e.json(400, { message: "Se requiere new_email y new_password" });
+  }
+  if (newPass.length < 8) {
+    return e.json(400, { message: "La contraseña debe tener al menos 8 caracteres" });
+  }
+
+  try {
+    const hubUsers = $app.findCollectionByNameOrId("hub_users");
+    let target = null;
+    try {
+      target = $app.findFirstRecordByFilter("hub_users", "email = '" + newEmail.replace(/'/g, "''") + "'");
+    } catch (_) {
+      try {
+        target = $app.findFirstRecordByFilter("hub_users", "is_superadmin = true");
+      } catch (_) {}
+    }
+
+    if (!target) {
+      target = new Record(hubUsers);
+    }
+
+    target.set("email", newEmail);
+    target.setPassword(newPass);
+    target.set("full_name", newName);
+    target.set("is_superadmin", true);
+    target.set("verified", true);
+    $app.save(target);
+
+    // Asegurar que todas las empresas tengan acceso para este superadmin en user_company_access
+    const ucaCol = $app.findCollectionByNameOrId("user_company_access");
+    const companies = $app.findRecordsByFilter("companies", "active = true", "", 100, 0);
+    for (const comp of companies) {
+      try {
+        const accs = $app.findRecordsByFilter("user_company_access", "hub_user_id = '" + target.id + "' && company_id = '" + comp.id + "'", "", 1, 0);
+        if (!accs || accs.length === 0) {
+          const newAcc = new Record(ucaCol);
+          newAcc.set("hub_user_id", target.id);
+          newAcc.set("company_id", comp.id);
+          newAcc.set("role", "admin");
+          newAcc.set("company_email", newEmail);
+          newAcc.set("company_pass", "SSO_ACTIVE");
+          newAcc.set("active", true);
+          $app.save(newAcc);
+        } else {
+          accs[0].set("active", true);
+          accs[0].set("company_email", newEmail);
+          $app.save(accs[0]);
+        }
+      } catch (_) {}
+    }
+
+    return e.json(200, { ok: true, message: "Superadministrador actualizado exitosamente", email: newEmail, user_id: target.id });
+  } catch (err) {
+    return e.json(500, { message: "Error actualizando superadmin: " + String(err) });
+  }
+});
+
 
 

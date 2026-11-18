@@ -29,6 +29,8 @@ import './modules/inventario.ts';
 import './modules/compras.ts';
 import './modules/ordenes-compra.ts';
 import './modules/compra-sugerida.ts';
+import './modules/whatsapp-modal.ts';
+import './modules/cotizaciones.ts';
 import './modules/pedidos.ts';
 import './modules/reservas-logistica.ts';
 import './modules/importaciones.ts';

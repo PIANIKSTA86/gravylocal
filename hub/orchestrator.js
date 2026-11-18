@@ -415,6 +415,30 @@ onBootstrap((e) => {
   }
 });
 
+async function safeRemoveDirWithRetry(dirPath, maxRetries = 5, delayMs = 1000) {
+  if (!fs.existsSync(dirPath)) return;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      console.warn(`[ORCHESTRATOR] Intento ${attempt}/${maxRetries} borrando ${dirPath}: ${err.message}`);
+      if (attempt === maxRetries) {
+        try {
+          const trashPath = `${dirPath}_trashed_${Date.now()}`;
+          fs.renameSync(dirPath, trashPath);
+          console.warn(`[ORCHESTRATOR] Carpeta bloqueada renombrada a ${trashPath} para liberar puerto.`);
+          return;
+        } catch (renameErr) {
+          console.error(`[ORCHESTRATOR] Falló renombre de carpeta residual: ${renameErr.message}`);
+          throw err;
+        }
+      }
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+}
+
 app.post('/api/orchestrate/delete', async (req, res) => {
   try {
     const { port } = req.body;
@@ -424,36 +448,39 @@ app.post('/api/orchestrate/delete', async (req, res) => {
 
     console.log(`[ORCHESTRATOR] Solicitando eliminación completa de la empresa en el puerto ${port}...`);
 
-    // 1. Detener el proceso que escucha en ese puerto en Windows
+    // 0. Si el proceso está registrado en la memoria de Node, matarlo directamente
+    if (activeProcesses[port]) {
+      try {
+        if (activeProcesses[port].process && typeof activeProcesses[port].process.kill === 'function') {
+          activeProcesses[port].process.kill('SIGKILL');
+        }
+      } catch (_) {}
+      delete activeProcesses[port];
+    }
+
+    // 1. Detener el proceso que escucha en ese puerto en Windows (PowerShell con safe stdout)
     await new Promise((resolve) => {
-      const killCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Stop-Process -Id $p -Force; write-host 'Proceso detenido.' } else { write-host 'No hay procesos en ese puerto.' }"`;
+      const killCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue; write-host 'Proceso detenido.' } else { write-host 'No hay procesos en ese puerto.' }"`;
       exec(killCmd, (err, stdout) => {
-        console.log(`[ORCHESTRATOR] Detener proceso resultado: ${stdout.trim()}`);
+        const outMsg = (stdout || '').trim();
+        console.log(`[ORCHESTRATOR] Detener proceso resultado: ${outMsg || 'Completado'}`);
         resolve();
       });
     });
 
-    // Remover del registro de procesos internos si existe
-    if (activeProcesses[port]) {
-      delete activeProcesses[port];
-    }
-
     // 2. Esperar a que se liberen los archivos de base de datos
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 2000));
 
-    // 3. Borrar físicamente el directorio empresas/empresa_<port>
+    // 3. Borrar físicamente el directorio empresas/empresa_<port> con reintentos
     const companyDir = path.join(EMPRESAS_DIR, `empresa_${port}`);
-    if (fs.existsSync(companyDir)) {
-      console.log(`[ORCHESTRATOR] Eliminando carpeta física: ${companyDir}`);
-      fs.rmSync(companyDir, { recursive: true, force: true });
-    }
+    await safeRemoveDirWithRetry(companyDir);
 
     // 4. Remover la empresa del archivo start.bat si existe
     const startBatPath = path.join(BASE_DIR, 'start.bat');
     if (fs.existsSync(startBatPath)) {
       try {
         let startBat = fs.readFileSync(startBatPath, 'utf8');
-        const lines = startBat.split('\r\n');
+        const lines = startBat.split(/\r?\n/);
         const filteredLines = lines.filter(line => !line.includes(`empresa_${port}`));
         fs.writeFileSync(startBatPath, filteredLines.join('\r\n'));
         console.log(`[ORCHESTRATOR] start.bat actualizado.`);
@@ -5147,6 +5174,238 @@ app.all('/api/orchestrate/restart/:port', async (req, res) => {
 
 
 // Registrar rutas y programador de respaldos desatendidos
+
+// ── SERVICIO WHATSAPP BOT (OPENWA) Y GENERACIÓN PDF DE ÓRDENES ──────
+const whatsappService = require('./whatsapp-service');
+
+app.get('/api/whatsapp/status', async (req, res) => {
+  try {
+    const status = await whatsappService.getStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/whatsapp/qr', async (req, res) => {
+  try {
+    const qrData = await whatsappService.getQr();
+    res.json(qrData);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/init', async (req, res) => {
+  try {
+    const force = !!(req.body && req.body.force);
+    const result = await whatsappService.initWhatsApp(force);
+    res.json(result);
+  } catch (err) {
+    console.error('[GRAVY ORCHESTRATOR] Error en /api/whatsapp/init:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/logout', async (req, res) => {
+  try {
+    const result = await whatsappService.logoutWhatsApp();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/send-pdf', async (req, res) => {
+  try {
+    const { phone, filename = 'documento.pdf', caption = '', pdfBase64 } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'El número de teléfono es obligatorio.' });
+    }
+    if (!pdfBase64) {
+      return res.status(400).json({ error: 'El archivo PDF (Base64) es obligatorio.' });
+    }
+    const result = await whatsappService.sendPdfDocument(phone, pdfBase64, filename, caption);
+    res.json(result);
+  } catch (err) {
+    console.error('[GRAVY ORCHESTRATOR] Error enviando WhatsApp:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function generateOrderPdf(order, lines, company = {}) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+      const buffers = [];
+      doc.on('data', b => buffers.push(b));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', err => reject(err));
+
+      const isCotiz = String(order.number || '').startsWith('COT-') || String(order.notes || '').toLowerCase().includes('cotiz') || order.order_type === 'COTIZACION';
+      const docTitle = isCotiz ? 'COTIZACIÓN DE VENTA' : 'PEDIDO DE VENTA';
+
+      const compName = company.name || 'GRAVY S.A.S';
+      const compNit = company.nit || '1130636393-2';
+      const compPhone = company.phone || '';
+      const compEmail = company.email || '';
+      const compAddress = company.address || '';
+
+      doc.fillColor('#0F172A').fontSize(16).font('Helvetica-Bold').text(compName, 40, 40);
+      doc.fillColor('#64748B').fontSize(9).font('Helvetica').text('NIT: ' + compNit);
+      if (compAddress) doc.text(compAddress);
+      if (compPhone || compEmail) doc.text((compPhone ? 'Tel: ' + compPhone + '  ' : '') + compEmail);
+
+      doc.fillColor('#1E3A8A').fontSize(14).font('Helvetica-Bold').text(docTitle, 360, 40, { align: 'right' });
+      doc.fillColor('#DC2626').fontSize(12).font('Helvetica-Bold').text(order.number || 'AUTO', 360, 58, { align: 'right' });
+      doc.fillColor('#475569').fontSize(8.5).font('Helvetica')
+        .text('Fecha Emisión: ' + (order.date || ''), 360, 74, { align: 'right' })
+        .text('Vencimiento: ' + (order.due_date || 'Inmediato'), 360, 86, { align: 'right' })
+        .text('Estado: ' + String(order.status || 'PENDIENTE').toUpperCase(), 360, 98, { align: 'right' });
+
+      doc.moveTo(40, 115).lineTo(572, 115).strokeColor('#E2E8F0').lineWidth(1).stroke();
+
+      const client = order.expand && order.expand.customer_id ? order.expand.customer_id : (order.customer || {});
+      const clientName = client.name || 'Cliente Ocasional';
+      const clientNit = client.doc_number || client.nit || '222222222222';
+      const clientPhone = client.phone || '';
+      const clientAddr = client.address || '';
+
+      doc.rect(40, 125, 532, 54).fillAndStroke('#F8FAFC', '#E2E8F0');
+      doc.fillColor('#1E293B').fontSize(9).font('Helvetica-Bold').text('INFORMACIÓN DEL CLIENTE / ADQUIRENTE', 50, 133);
+      doc.fillColor('#334155').fontSize(8.5).font('Helvetica')
+        .text('Nombre / Razón Social: ' + clientName, 50, 147)
+        .text('NIT / Documento: ' + clientNit, 50, 160)
+        .text('Teléfono / WhatsApp: ' + (clientPhone || '—'), 320, 147)
+        .text('Dirección: ' + (clientAddr || '—'), 320, 160);
+
+      let currentY = 190;
+      doc.rect(40, currentY, 532, 20).fill('#0F172A');
+      doc.fillColor('#FFFFFF').fontSize(8).font('Helvetica-Bold')
+        .text('DESCRIPCIÓN DEL PRODUCTO / SERVICIO', 48, currentY + 6)
+        .text('CANT.', 330, currentY + 6, { width: 45, align: 'right' })
+        .text('PRECIO UNIT.', 380, currentY + 6, { width: 65, align: 'right' })
+        .text('IVA %', 450, currentY + 6, { width: 35, align: 'right' })
+        .text('TOTAL', 490, currentY + 6, { width: 75, align: 'right' });
+
+      currentY += 20;
+
+      const fmt = (v) => '$ ' + Number(v || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+      const fmtN = (v) => Number(v || 0).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        const prodName = (l.expand && l.expand.product_id ? l.expand.product_id.name : '') || l.description || 'Ítem';
+        const parts = String(prodName).split(' — ');
+        const mainName = parts[0] || 'Ítem';
+        const comment = l.item_notes || (parts.length > 1 ? parts.slice(1).join(' — ') : '');
+
+        doc.fontSize(8.5).font('Helvetica');
+        const mainHeight = doc.heightOfString(mainName, { width: 275 });
+        let commentHeight = 0;
+        if (comment) {
+          doc.fontSize(7.5).font('Helvetica-Oblique');
+          commentHeight = doc.heightOfString(comment, { width: 270 }) + 3;
+        }
+        const rowHeight = Math.max(22, mainHeight + commentHeight + 8);
+
+        if (currentY + rowHeight > 680) {
+          doc.addPage();
+          currentY = 40;
+        }
+
+        if (i % 2 === 1) {
+          doc.rect(40, currentY, 532, rowHeight).fill('#F8FAFC');
+        }
+
+        doc.fillColor('#1E293B').fontSize(8.5).font('Helvetica-Bold')
+          .text(mainName, 48, currentY + 4, { width: 275 });
+
+        if (comment) {
+          doc.fillColor('#64748B').fontSize(7.5).font('Helvetica-Oblique')
+            .text('Nota: ' + comment, 52, currentY + 4 + mainHeight + 2, { width: 270 });
+        }
+
+        doc.fillColor('#334155').fontSize(8.5).font('Helvetica')
+          .text(fmtN(l.qty), 330, currentY + 4, { width: 45, align: 'right' })
+          .text(fmt(l.unit_price), 380, currentY + 4, { width: 65, align: 'right' })
+          .text(Number(l.iva_rate || 0) + '%', 450, currentY + 4, { width: 35, align: 'right' });
+
+        doc.fillColor('#1E3A8A').fontSize(8.5).font('Helvetica-Bold')
+          .text(fmt(l.total), 490, currentY + 4, { width: 75, align: 'right' });
+
+        doc.moveTo(40, currentY + rowHeight).lineTo(572, currentY + rowHeight).strokeColor('#F1F5F9').lineWidth(0.5).stroke();
+        currentY += rowHeight;
+      }
+
+      doc.moveTo(40, currentY).lineTo(572, currentY).strokeColor('#0F172A').lineWidth(1).stroke();
+      currentY += 8;
+
+      if (currentY + 100 > 720) {
+        doc.addPage();
+        currentY = 40;
+      }
+
+      const notesY = currentY;
+      doc.rect(40, notesY, 320, 65).fillAndStroke('#F8FAFC', '#E2E8F0');
+      doc.fillColor('#475569').fontSize(7.5).font('Helvetica-Bold').text('OBSERVACIONES GENERALES:', 48, notesY + 6);
+      doc.fillColor('#334155').fontSize(7.5).font('Helvetica').text(order.notes || 'Documento emitido sin observaciones adicionales.', 48, notesY + 18, { width: 304, height: 42 });
+
+      doc.fillColor('#64748B').fontSize(8.5).font('Helvetica')
+        .text('Subtotal Base:', 380, currentY, { width: 100, align: 'right' });
+      doc.fillColor('#1E293B').font('Helvetica-Bold')
+        .text(fmt(order.subtotal || 0), 490, currentY, { width: 75, align: 'right' });
+
+      currentY += 14;
+      doc.fillColor('#64748B').font('Helvetica')
+        .text('IVA Liquidado:', 380, currentY, { width: 100, align: 'right' });
+      doc.fillColor('#1E293B').font('Helvetica-Bold')
+        .text(fmt(order.iva_total || 0), 490, currentY, { width: 75, align: 'right' });
+
+      currentY += 16;
+      doc.moveTo(380, currentY).lineTo(572, currentY).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
+      currentY += 6;
+
+      doc.fillColor('#1E3A8A').fontSize(11).font('Helvetica-Bold')
+        .text('TOTAL:', 380, currentY, { width: 100, align: 'right' });
+      doc.fillColor('#1E3A8A').fontSize(11).font('Helvetica-Bold')
+        .text(fmt(order.total || 0), 490, currentY, { width: 75, align: 'right' });
+
+      doc.fillColor('#94A3B8').fontSize(7).font('Helvetica')
+        .text('Este documento constituye una oferta comercial administrativa y no representa una factura de venta ni título valor contable.', 40, 740, { align: 'center', width: 532 })
+        .text('Generado automáticamente por GRAVY ERP · ' + new Date().toLocaleString('es-CO'), 40, 750, { align: 'center', width: 532 });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+app.post('/api/orders/generate-pdf', async (req, res) => {
+  try {
+    const { order, lines, company = {} } = req.body;
+    if (!order) return res.status(400).json({ error: 'Datos de orden no proporcionados.' });
+    const pdfBuffer = await generateOrderPdf(order, lines || [], company);
+    if (req.body.format === 'base64' || req.query.format === 'base64') {
+      return res.json({
+        success: true,
+        pdfBase64: pdfBuffer.toString('base64'),
+        filename: (order.number || 'pedido') + '.pdf'
+      });
+    }
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Length': pdfBuffer.length,
+      'Content-Disposition': 'inline; filename="' + (order.number || 'pedido') + '.pdf"'
+    });
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('[GRAVY ORCHESTRATOR] Error al generar PDF de pedido/cotización:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 backupService.registerRoutes(app);
 backupService.setupScheduler(2); // Ejecutar respaldo automático diario a las 2:00 AM
 

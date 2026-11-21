@@ -3850,7 +3850,49 @@ async function renderTrialBalance() {
     try {
       const { accounts } = await ensureAccountsSaldos();
       const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
-      const url = `/api/gravy/report-trial-balance?fromDate=${fromDate}&toDate=${toDate}&includeThird=${includeThird}${isPhActive && includeThird ? '&includeProperty=true' : ''}${accountPrefix ? `&accountPrefix=${encodeURIComponent(accountPrefix)}` : ''}${getScopeQueryParams()}`;
+
+      // Pre-cargar cuentas de cartera e ingreso parametrizadas en PH
+      const phTargetAccountIds = new Set<string>();
+      const phPropsMap = new Map<string, any>();
+      const phPropsByCode = new Map<string, any>();
+
+      if (isPhActive) {
+        try {
+          const props: any = await api.getPhProperties(false).catch(() => []);
+          const pList = Array.isArray(props) ? props : (props?.items || []);
+          for (const p of pList) {
+            if (p.id) phPropsMap.set(String(p.id).toLowerCase(), p);
+            if (p.code) phPropsByCode.set(String(p.code).toUpperCase().trim(), p);
+          }
+        } catch (_) {}
+
+        try {
+          const concepts = await api.getPhBillingConcepts(false).catch(() => []);
+          for (const c of concepts) {
+            if (c.account_id) phTargetAccountIds.add(c.account_id);
+            if (c.cxc_account_id) phTargetAccountIds.add(c.cxc_account_id);
+          }
+        } catch (_) {}
+        try {
+          const phCfgRaw = await getSettingFirst(['ph_config_v1'], '{}');
+          const phCfg = JSON.parse(phCfgRaw || '{}');
+          if (phCfg.cxc_code) {
+            const acc = accounts.find(a => a.code === phCfg.cxc_code);
+            if (acc) phTargetAccountIds.add(acc.id);
+          }
+          if (phCfg.income_code) {
+            const acc = accounts.find(a => a.code === phCfg.income_code);
+            if (acc) phTargetAccountIds.add(acc.id);
+          }
+          if (phCfg.late_fee_income_code) {
+            const acc = accounts.find(a => a.code === phCfg.late_fee_income_code);
+            if (acc) phTargetAccountIds.add(acc.id);
+          }
+        } catch (_) {}
+        accounts.filter(a => String(a.code || '').startsWith('134595')).forEach(a => phTargetAccountIds.add(a.id));
+      }
+
+      const url = `/api/gravy/report-trial-balance?fromDate=${fromDate}&toDate=${toDate}&includeThird=${includeThird}${isPhActive ? '&includeProperty=true' : ''}${accountPrefix ? `&accountPrefix=${encodeURIComponent(accountPrefix)}` : ''}${getScopeQueryParams()}`;
       const data: any[] = await pb.send(url, { method: 'GET' });
 
       const accountById = new Map(accounts.map(a => [a.id, {
@@ -3867,6 +3909,7 @@ async function renderTrialBalance() {
         credit: 0,
         current: 0,
         third: new Map(),
+        towers: new Map(),
         children: [],
       }]));
 
@@ -3888,7 +3931,83 @@ async function renderTrialBalance() {
         acc.ownDebit += debit;
         acc.ownCredit += credit;
 
-        if (includeThird) {
+        if (isPhActive && phTargetAccountIds.has(acc.id)) {
+          let towerName = String(row.propertyTower || '').trim();
+          let propInfo: any = null;
+          if (row.propertyId) {
+            propInfo = phPropsMap.get(String(row.propertyId).toLowerCase());
+          }
+          if (!propInfo && row.propertyCode) {
+            propInfo = phPropsByCode.get(String(row.propertyCode).toUpperCase().trim());
+          }
+          if (!towerName && propInfo && propInfo.tower) {
+            towerName = String(propInfo.tower).trim();
+          }
+          if (!towerName && (row.propertyName || row.propertyCode)) {
+            const pMatch = String(row.propertyName || '').match(/Torre\s+([A-Za-z0-9]+)/i);
+            if (pMatch) {
+              towerName = `Torre ${pMatch[1].toUpperCase()}`;
+            }
+          }
+          if (!towerName) {
+            towerName = 'Sin Torre / General';
+          }
+
+          if (!acc.towers.has(towerName)) {
+            acc.towers.set(towerName, {
+              name: towerName,
+              prev: 0,
+              debit: 0,
+              credit: 0,
+              current: 0,
+              third: new Map(),
+            });
+          }
+          const tw = acc.towers.get(towerName);
+          tw.prev += prev;
+          tw.debit += debit;
+          tw.credit += credit;
+          tw.current = tw.prev + tw.debit - tw.credit;
+
+          if (includeThird) {
+            const thirdId = row.thirdPartyId || 'NO_TERCERO';
+            const thirdName = row.thirdPartyName || 'Sin tercero';
+            const doc = row.thirdPartyDoc || '';
+            const propId = (row.propertyId || '').trim();
+            const propCode = (row.propertyCode || '').trim();
+            const propName = (row.propertyName || '').trim();
+
+            const propKey = propId ? `__PROP_${propId}` : '';
+            const compositeKey = `${thirdId}${propKey}`;
+
+            let nameWithDoc = doc ? `${thirdName} (NIT: ${doc})` : thirdName;
+            if (propCode || propName) {
+              const propTag = propCode && propName
+                ? (propName.toLowerCase().includes(propCode.toLowerCase()) ? propName : `${propCode} - ${propName}`)
+                : (propCode || propName);
+              nameWithDoc = `[${propTag}] ${nameWithDoc}`;
+            }
+
+            if (!tw.third.has(compositeKey)) {
+              tw.third.set(compositeKey, {
+                id: compositeKey,
+                name: nameWithDoc,
+                propertyId: propId,
+                propertyCode: propCode,
+                propertyName: propName,
+                prev: 0,
+                debit: 0,
+                credit: 0,
+                current: 0,
+              });
+            }
+            const t = tw.third.get(compositeKey);
+            t.prev += prev;
+            t.debit += debit;
+            t.credit += credit;
+            t.current = t.prev + t.debit - t.credit;
+          }
+        } else if (includeThird) {
           const thirdId = row.thirdPartyId || 'NO_TERCERO';
           const thirdName = row.thirdPartyName || 'Sin tercero';
           const doc = row.thirdPartyDoc || '';
@@ -4014,7 +4133,71 @@ async function renderTrialBalance() {
       const displayRows = [];
       for (const r of rows) {
         displayRows.push({ ...r, thirdName: '' });
-        if (includeThird && r.node && r.node.third && r.node.third.size) {
+
+        const isTargetPhAcc = isPhActive && phTargetAccountIds.has(r.node?.id) && (r.level >= 5 || maxLevel >= 5);
+
+        if (isTargetPhAcc && r.node && r.node.towers && r.node.towers.size > 0) {
+          const sortedTowers = [...r.node.towers.values()].sort((a, b) => {
+            if (a.name === 'Sin Torre / General') return 1;
+            if (b.name === 'Sin Torre / General') return -1;
+            return a.name.localeCompare(b.name, undefined, { numeric: true });
+          });
+
+          for (const tw of sortedTowers) {
+            const hasTwActivity = Math.abs(tw.prev) > EPS || Math.abs(tw.debit) > EPS || Math.abs(tw.credit) > EPS || Math.abs(tw.current) > EPS;
+            if (!hasTwActivity) continue;
+
+            if (!includeThird) {
+              displayRows.push({
+                code: '',
+                account: tw.name,
+                level: r.level,
+                depth: r.depth + 1,
+                isGroup: false,
+                prev: tw.prev,
+                debit: tw.debit,
+                credit: tw.credit,
+                current: tw.current,
+                thirdName: '',
+                isTowerSubtotal: true,
+              });
+            } else {
+              displayRows.push({
+                code: '',
+                account: `Subtotal ${tw.name}`,
+                level: r.level,
+                depth: r.depth + 1,
+                isGroup: true,
+                prev: tw.prev,
+                debit: tw.debit,
+                credit: tw.credit,
+                current: tw.current,
+                thirdName: '',
+                isTowerSubtotal: true,
+              });
+
+              const thirdRows = [...tw.third.values()]
+                .filter(t => Math.abs(t.prev) > EPS || Math.abs(t.debit) > EPS || Math.abs(t.credit) > EPS || Math.abs(t.current) > EPS)
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+              for (const t of thirdRows) {
+                displayRows.push({
+                  code: '',
+                  account: 'Detalle por tercero',
+                  level: r.level,
+                  depth: r.depth + 2,
+                  isGroup: false,
+                  prev: t.prev,
+                  debit: t.debit,
+                  credit: t.credit,
+                  current: t.current,
+                  thirdName: t.name,
+                  isThirdDetail: true,
+                });
+              }
+            }
+          }
+        } else if (includeThird && r.node && r.node.third && r.node.third.size) {
           const thirdRows = [...r.node.third.values()]
             .filter(t => Math.abs(t.prev) > EPS || Math.abs(t.debit) > EPS || Math.abs(t.credit) > EPS || Math.abs(t.current) > EPS)
             .sort((a, b) => a.name.localeCompare(b.name));

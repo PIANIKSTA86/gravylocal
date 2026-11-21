@@ -760,6 +760,7 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
           COALESCE(prop.id, '') AS propertyId,
           COALESCE(prop.code, '') AS propertyCode,
           COALESCE(prop.name, '') AS propertyName,
+          COALESCE(prop.tower, '') AS propertyTower,
           SUM(CASE WHEN t.date < {:fromDate1} THEN l.debit - l.credit ELSE 0 END) AS prevBalance,
           SUM(CASE WHEN t.date >= {:fromDate2} AND t.date <= {:toDate1} THEN l.debit ELSE 0 END) AS debitSum,
           SUM(CASE WHEN t.date >= {:fromDate3} AND t.date <= {:toDate2} THEN l.credit ELSE 0 END) AS creditSum
@@ -790,6 +791,44 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
         GROUP BY
           l.account_id,
           COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO'),
+          COALESCE(prop.id, '')
+      `;
+    } else if (includeProperty) {
+      sql = `
+        SELECT
+          l.account_id AS accountId,
+          COALESCE(prop.id, '') AS propertyId,
+          COALESCE(prop.code, '') AS propertyCode,
+          COALESCE(prop.name, '') AS propertyName,
+          COALESCE(prop.tower, '') AS propertyTower,
+          SUM(CASE WHEN t.date < {:fromDate1} THEN l.debit - l.credit ELSE 0 END) AS prevBalance,
+          SUM(CASE WHEN t.date >= {:fromDate2} AND t.date <= {:toDate1} THEN l.debit ELSE 0 END) AS debitSum,
+          SUM(CASE WHEN t.date >= {:fromDate3} AND t.date <= {:toDate2} THEN l.credit ELSE 0 END) AS creditSum
+        FROM tx_lines l
+        INNER JOIN transactions t ON t.id = l.tx_id
+        INNER JOIN accounts a ON a.id = l.account_id
+        LEFT JOIN ph_invoices phi ON (
+          (l.cross_doc_ref != '' AND (
+            l.cross_doc_ref = phi.number
+            OR l.cross_doc_ref LIKE phi.number || '-%'
+          ))
+          OR (t.cross_type = 'ph_invoices' AND t.cross_number != '' AND phi.number = t.cross_number)
+          OR (l.cross_doc_ref = '' AND phi.tx_id = t.id AND (SELECT count(*) FROM ph_invoices WHERE tx_id = t.id) = 1)
+        )
+        LEFT JOIN ph_properties prop ON prop.id = COALESCE(
+          phi.property_id,
+          json_extract(t.teso_params, '$.ph_property_id'),
+          CASE 
+            WHEN l.cross_doc_ref LIKE 'ANTICIPO-%' THEN SUBSTR(l.cross_doc_ref, -15)
+            WHEN l.cross_doc_ref LIKE 'ANT-%' THEN SUBSTR(l.cross_doc_ref, 5) 
+            ELSE NULL 
+          END
+        )
+        WHERE t.status = 'active'
+          AND t.date <= {:toDate3}
+          ${accountWhere}
+        GROUP BY
+          l.account_id,
           COALESCE(prop.id, '')
       `;
     } else if (includeThird) {
@@ -840,6 +879,20 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
         propertyId: "",
         propertyCode: "",
         propertyName: "",
+        propertyTower: "",
+        prevBalance: -0,
+        debitSum: -0,
+        creditSum: -0
+      }));
+      query.all(data);
+      return c.json(200, data);
+    } else if (includeProperty) {
+      const data = arrayOf(new DynamicModel({
+        accountId: "",
+        propertyId: "",
+        propertyCode: "",
+        propertyName: "",
+        propertyTower: "",
         prevBalance: -0,
         debitSum: -0,
         creditSum: -0

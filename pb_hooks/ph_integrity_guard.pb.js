@@ -67,7 +67,7 @@ routerAdd("GET", "/api/ph/integrity-check", (c) => {
       FROM tx_lines l
       INNER JOIN transactions t ON t.id = l.tx_id
       INNER JOIN accounts a ON a.id = l.account_id
-      WHERE a.code = '13459501' AND t.status = 'active'
+      WHERE a.code LIKE '134595%' AND t.status = 'active'
     `;
     if (cutoffDate) {
       c13Sql += ` AND t.date <= '${cutoffDate}'`;
@@ -235,7 +235,7 @@ onRecordBeforeCreateRequest((e) => {
         e.record.set("total", sumDebits);
         e.record.set("subtotal", sumDebits);
       }
-    } catch (_) {}
+    } catch (_) { }
   }
   e.next();
 }, "ph_invoices");
@@ -262,7 +262,7 @@ onRecordBeforeUpdateRequest((e) => {
         e.record.set("total", sumDebits);
         e.record.set("subtotal", sumDebits);
       }
-    } catch (_) {}
+    } catch (_) { }
   }
   e.next();
 }, "ph_invoices");
@@ -286,7 +286,7 @@ onRecordUpdateRequest((e) => {
         $app.save(tx);
         console.log(`[GRAVY-PH-GUARD] Transacción ${txId} anulada automáticamente al anular factura ${e.record.getString("number")}.`);
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   e.next();
@@ -304,7 +304,7 @@ onRecordDeleteRequest((e) => {
         $app.delete(tx);
         console.log(`[GRAVY-PH-GUARD] Transacción ${txId} eliminada en cascada al borrar factura ${invNumber}.`);
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   e.next();

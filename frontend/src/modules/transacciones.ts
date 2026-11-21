@@ -3440,6 +3440,18 @@ async function seeTxDetail(id) {
 }
 
 window.emitTxToDianFromDetail = async function(txId: string, txNumber: string) {
+  // Pre-validar seguridad para facturas de venta: deben tener factura comercial asociada con productos
+  try {
+    const txRec = await (window as any).pb.get('transactions', txId, { expand: 'tx_type_id' }).catch(() => null);
+    const code = String(txRec?.expand?.tx_type_id?.code || '').toUpperCase();
+    if (code === 'FV' || code === 'POS' || String(txNumber).startsWith('FE') || String(txNumber).startsWith('POS')) {
+      const invs = await (window as any).pb.listAll('invoices', { filter: `tx_id="${(window as any).pb.escapeFilterValue(txId)}" || number="${(window as any).pb.escapeFilterValue(txNumber)}"` }).catch(() => []);
+      if (!invs.length) {
+        return (window as any).showToast('No se puede emitir a la DIAN: No se encontró la factura comercial de venta con productos asociada a este comprobante.', 'error', 7000);
+      }
+    }
+  } catch (_) {}
+
   (window as any).confirmDialog(
     'Emitir Documento a la DIAN',
     `¿Deseas firmar digitalmente y emitir el documento <strong>${txNumber}</strong> a la DIAN?<br><br>Esta acción enviará la información de la transacción y generará el XML UBL 2.1 firmado.`,

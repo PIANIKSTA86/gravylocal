@@ -2210,6 +2210,24 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       }
     }
 
+    // Búsqueda secundaria de seguridad por número de comprobante para auto-vincular integridad referencial
+    if (!invoice && tx) {
+      const docNum = String(tx.getString("number") || "").trim();
+      if (docNum) {
+        try {
+          invoice = $app.findFirstRecordByFilter("invoices", "number = '" + docNum.replace(/'/g, "''") + "' || tx_number = '" + docNum.replace(/'/g, "''") + "'");
+          if (invoice) {
+            if (!invoice.getString("tx_id")) {
+              invoice.set("tx_id", realTxId);
+              if (!invoice.getString("tx_number")) invoice.set("tx_number", docNum);
+              $app.save(invoice);
+              console.log("[DIAN HOOK] Auto-vinculado tx_id en factura comercial:", docNum);
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
     let dueDate = issueDate;
     if (invoice) {
       const invDueDate = invoice.getString("due_date");
@@ -2380,11 +2398,29 @@ routerAdd('POST', '/api/dian/emit', (e) => {
           });
         }
       }
+    } else if (isFV || isPOS) {
+      e.json(400, {
+        message: "No se puede emitir la factura electrónica " + (tx.getString("number") || "") + 
+                 " ante la DIAN porque no se encontró la factura comercial de venta con sus productos asociados (invoice_lines). " +
+                 "Por seguridad tributaria y confidencialidad comercial, está terminantemente prohibido emitir facturas de venta a partir de asientos contables del PUC."
+      });
+      return;
     } else {
       const lines = $app.findRecordsByFilter("tx_lines", "tx_id = '" + txId + "'", "line_order");
       let lineIdx = 1;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        let accCode = "";
+        try {
+          const accRec = $app.findRecordById("accounts", line.getString("account_id"));
+          if (accRec) accCode = String(accRec.getString("code") || "").trim();
+        } catch (_) {}
+
+        // PROHIBICIÓN ESTRICTA: Ignorar cuentas de Cartera (13), Inventario (14), Bancos/Efectivo (11) y Costo de Ventas (61/62/7)
+        if (accCode.startsWith("13") || accCode.startsWith("14") || accCode.startsWith("11") || accCode.startsWith("6") || accCode.startsWith("7")) {
+          continue;
+        }
+
         const d = line.getFloat("debit");
         const c = line.getFloat("credit");
         const amount = d > 0 ? d : c;
@@ -2398,7 +2434,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
             ivaAmount: 0,
             subtotal: amount,
             total: amount,
-            code: '99999999',
+            code: accCode || '99999999',
             unit: 'ZZ'
           });
           subtotal += amount;
@@ -2408,31 +2444,9 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     }
 
     if (items.length === 0) {
-      const txLines = $app.findRecordsByFilter("tx_lines", "tx_id = '" + realTxId + "'", "line_order");
-      let lineIdx = 1;
-      for (let i = 0; i < txLines.length; i++) {
-        const line = txLines[i];
-        const d = line.getFloat("debit");
-        const c = line.getFloat("credit");
-        const amount = d > 0 ? d : c;
-        if (amount > 0) {
-          items.push({
-            id: String(lineIdx++),
-            description: line.getString("description") || "Concepto Contable",
-            qty: 1,
-            price: amount,
-            ivaRate: 0,
-            ivaAmount: 0,
-            subtotal: amount,
-            total: amount,
-            code: '99999999',
-            unit: 'ZZ'
-          });
-          subtotal += amount;
-        }
-      }
-      if (items.length > 0) {
-        total = subtotal;
+      if (isFV || isPOS) {
+        e.json(400, { message: "La factura " + (tx.getString("number") || "") + " no contiene productos comerciales para emitir ante la DIAN." });
+        return;
       }
     }
 

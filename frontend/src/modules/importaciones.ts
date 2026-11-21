@@ -419,7 +419,7 @@ function renderImportRow(imp: any) {
       <td>
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewImportDetail('${(window as any).esc(imp.id)}')"><i class="fas fa-eye"></i></button>
-          <button class="btn btn-outline btn-sm text-indigo-700 hover:bg-indigo-50" style="border-color:#6366f1" title="Dossier Oficial DIAN / Gerencia" onclick="window.openImportExecutiveReport('${(window as any).esc(imp.id)}')"><i class="fas fa-file-contract"></i></button>
+          <button class="btn btn-outline btn-sm text-indigo-700 hover:bg-indigo-50" style="border-color:#6366f1" title="Informe Oficial DIAN / Gerencia" onclick="window.openImportExecutiveReport('${(window as any).esc(imp.id)}')"><i class="fas fa-file-contract"></i></button>
           
           ${imp.status !== 'recibido' && imp.status !== 'anulado' && (window as any).can('canWrite') ? `
             <button class="btn btn-outline btn-sm text-blue-600" style="border-color:#3b82f6" title="Editar" onclick="window.editImport('${(window as any).esc(imp.id)}')"><i class="fas fa-pen"></i></button>
@@ -6158,7 +6158,7 @@ async function viewImportDetail(importId: string) {
         <i class="fas fa-chart-line mr-1"></i> Trazabilidad
       </button>
       <button class="btn btn-secondary border-blue-600 text-blue-800 hover:bg-blue-50 font-bold" onclick="window.openImportExecutiveReport('${imp.id}')">
-        <i class="fas fa-file-contract mr-1.5 text-blue-600"></i> Dossier Oficial DIAN / Gerencia
+        <i class="fas fa-file-contract mr-1.5 text-blue-600"></i> Informe Oficial DIAN / Gerencia
       </button>
       ${imp.status !== 'recibido' && imp.status !== 'anulado' && (window as any).can('canWrite') ? `
         <button class="btn btn-secondary" onclick="closeModal(); window.editImport('${imp.id}')"><i class="fas fa-pen"></i> Editar</button>
@@ -8135,12 +8135,12 @@ async function buildTraceabilityPrintHTML(data: any) {
 (window as any).openImportForm = openImportForm;
 
 // ============================================================================
-// DOSSIER OFICIAL DE IMPORTACIÓN / REPORTE EJECUTIVO ADUANERO Y CONTABLE (DIAN/GERENCIA)
+// INFORME OFICIAL DE IMPORTACIÓN / REPORTE EJECUTIVO ADUANERO Y CONTABLE (DIAN/GERENCIA)
 // ============================================================================
 
 async function openImportExecutiveReport(importId: string) {
   try {
-    (window as any).showToast('Generando Dossier Oficial...', 'info');
+    (window as any).showToast('Generando Informe Oficial...', 'info');
 
     const [imp, lines, importInvoices, palletConfigs, txs, settingsList, warehouses, lotConfigs, linkedTxLines] = await Promise.all([
       (window as any).pb.get('imports', importId, { expand: 'supplier_id' }),
@@ -8335,7 +8335,7 @@ async function openImportExecutiveReport(importId: string) {
                   ${imp.status === 'recibido' ? '✓ CAPITALIZADA / NACIONALIZADA' : imp.status.toUpperCase()}
                 </span>
               </div>
-              <h2 class="text-2xl font-black tracking-tight mt-1">DOSSIER TÉCNICO DE IMPORTACIÓN Y COSTOS</h2>
+              <h2 class="text-2xl font-black tracking-tight mt-1">INFORME TÉCNICO DE IMPORTACIÓN Y COSTOS</h2>
               <p class="text-xs text-blue-200 mt-0.5">Liquidación Aduanera, Estructura Landed Cost CIF y Certificación Contable Oficial</p>
             </div>
             <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/20 text-right min-w-[200px]">
@@ -8616,7 +8616,7 @@ async function openImportExecutiveReport(importId: string) {
       </button>
     `;
 
-    (window as any).openModal(`Dossier Oficial de Importación — ${imp.number}`, modalContent, modalFooter, true);
+    (window as any).openModal(`Informe Oficial de Importación — ${imp.number}`, modalContent, modalFooter, true);
 
     // Conectar botones de acción
     setTimeout(() => {
@@ -8634,7 +8634,7 @@ async function openImportExecutiveReport(importId: string) {
     }, 150);
 
   } catch (err: any) {
-    (window as any).showToast('Error al generar dossier oficial: ' + err.message, 'error');
+    (window as any).showToast('Error al generar informe oficial: ' + err.message, 'error');
   }
 }
 
@@ -8651,7 +8651,7 @@ function exportExecutiveReportToExcel(data: any) {
 
   // Hoja 1: Resumen_Aduanero
   const resumenRows = [
-    ['DOSSIER OFICIAL DE IMPORTACIÓN Y LIQUIDACIÓN ADUANERA'],
+    ['INFORME OFICIAL DE IMPORTACIÓN Y LIQUIDACIÓN ADUANERA'],
     ['EMPRESA:', company.name],
     ['NIT:', company.nit],
     ['DIRECCIÓN:', company.address],
@@ -8813,7 +8813,7 @@ function exportExecutiveReportToExcel(data: any) {
     XLSX.utils.book_append_sheet(wb, wsInvs, 'Facturas_Consolidadas');
   }
 
-  const fileName = `Dossier_Oficial_Importacion_${imp.number}.xlsx`;
+  const fileName = `Informe_Oficial_Importacion_${imp.number}.xlsx`;
   XLSX.writeFile(wb, fileName);
   (window as any).showToast(`Archivo Excel exportado exitosamente: ${fileName}`, 'success');
 }
@@ -8911,7 +8911,7 @@ function buildExecutiveReportPrintHTML(data: any): string {
     <html lang="es">
     <head>
       <meta charset="UTF-8">
-      <title>Dossier Oficial de Importación - ${imp.number}</title>
+      <title>Informe Oficial de Importación - ${imp.number}</title>
       <style>
         @page { size: letter portrait; margin: 10mm 8mm; }
         * { box-sizing: border-box; }
@@ -9019,7 +9019,7 @@ function buildExecutiveReportPrintHTML(data: any): string {
         <div>
           <div class="company-name">${(window as any).esc(company.name)}</div>
           <div style="font-size:8.5px;color:#475569">NIT: ${(window as any).esc(company.nit)} | ${(window as any).esc(company.address)} ${company.phone ? '| Tel: ' + (window as any).esc(company.phone) : ''}</div>
-          <div class="doc-title">DOSSIER OFICIAL DE LIQUIDACIÓN DE IMPORTACIÓN Y COSTOS ADUANEROS</div>
+          <div class="doc-title">INFORME OFICIAL DE LIQUIDACIÓN DE IMPORTACIÓN Y COSTOS ADUANEROS</div>
         </div>
         <div style="text-align:right">
           <div style="font-size:7.5px;color:#64748B;font-weight:bold;text-transform:uppercase">Importación Nro.</div>
@@ -9082,7 +9082,7 @@ function buildExecutiveReportPrintHTML(data: any): string {
 
       <div class="section-title">5. Certificación Legal y Aprobaciones de Auditoría</div>
       <div style="font-size:8px;color:#64748B;margin-bottom:10px">
-        El presente dossier consolida los soportes aduaneros, prorrateos logísticos y registros contables bajo el marco regulatorio tributario y aduanero aplicable.
+        El presente informe consolida los soportes aduaneros, prorrateos logísticos y registros contables bajo el marco regulatorio tributario y aduanero aplicable.
       </div>
 
       <div class="signatures">

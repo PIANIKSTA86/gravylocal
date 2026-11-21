@@ -1,6 +1,8 @@
 const fs = require('fs');
-const docs = JSON.parse(fs.readFileSync('scratch/matias_docs.json', 'utf8'));
-
-const docPaths = Object.keys(docs.paths).filter(p => p.includes('download') || p.includes('xml') || p.includes('status') || p.includes('credit'));
-console.log("Matching paths:", docPaths);
-
+const content = fs.readFileSync('frontend/src/modules/copropiedades.ts', 'utf8');
+const lines = content.split('\n');
+lines.forEach((line, index) => {
+  if (line.includes('report-ph-cartera') || line.includes('/api/gravy/')) {
+    console.log(`L${index + 1}: ${line.trim()}`);
+  }
+});

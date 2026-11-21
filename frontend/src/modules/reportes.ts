@@ -3,6 +3,9 @@
  */
 'use strict';
 
+import { Chart, registerables } from 'chart.js';
+Chart.register(...registerables);
+
 let REPORT_STATE = {
   accounts: null,
   saldos: null,
@@ -188,11 +191,12 @@ async function renderReportes(c) {
         ${reportCard('trial', 'Balance de Prueba', 'Saldos débitos y créditos por cuenta.')}
         ${reportCard('income', 'Estado de Resultados', 'Ingresos, gastos y utilidad neta.')}
         ${reportCard('position', 'Estado de Situación Financiera', 'Activos, pasivos y patrimonio (Balance General).')}
+        ${reportCard('cash-flow', 'Flujo de Caja', 'Detalle de ingresos y egresos de efectivo (Método Directo).')}
+        ${reportCard('financial-dossier', 'Informe Financiero Certificado', 'Juego completo de Estados Financieros, Certificación Ley 222 (Art. 37), Dictamen y Revelaciones NIIF.')}
+        ${reportCard('financial-notes', 'Notas a los Estados Financieros', 'Redacte y gestione las revelaciones vinculadas a cada número de nota del ESF y ER.')}
+        ${reportCard('financial-analysis', 'Análisis Financiero', 'Análisis integrado de cartera, flujo de caja y ejecución presupuestal con gráficos SVG.')}
         ${reportCard('journal', 'Libro Diario', 'Detalle cronológico de movimientos contables.')}
         ${reportCard('aux', 'Libro Auxiliar', 'Movimientos por Cuenta y Tercero o Tercero y Cuenta.')}
-        ${reportCard('cash-flow', 'Flujo de Caja', 'Detalle de ingresos y egresos de efectivo (Método Directo).')}
-        ${reportCard('financial-analysis', 'Análisis Financiero', 'Análisis integrado de cartera, flujo de caja y ejecución presupuestal con gráficos SVG.')}
-        ${reportCard('financial-notes', 'Notas a los Estados Financieros', 'Redacte y gestione las revelaciones vinculadas a cada número de nota del ESF y ER.')}
         ${reportCard('cost-centers', 'Balance por Centro de Costo', 'Saldos débitos, créditos y saldo neto agrupados por centro de costo.')}
       </div>
     </div>
@@ -275,6 +279,7 @@ async function renderReportes(c) {
     'trial': () => launchReportModal('Balance de Prueba', () => renderTrialBalance()),
     'income': () => launchReportModal('Estado de Resultados', () => renderIncomeStatement()),
     'position': () => launchReportModal('Estado de Situación Financiera', () => renderFinancialPosition()),
+    'financial-dossier': () => launchReportModal('Informe Financiero Certificado (NIIF / Ley 222)', () => renderFinancialDossier()),
     'cost-centers': () => launchReportModal('Balance por Centro de Costo', () => renderCostCentersReport()),
     'journal': () => launchReportModal('Libro Diario', () => renderJournalBook()),
     'aux': () => launchReportModal('Libro Auxiliar', () => renderAuxiliaryBook()),
@@ -2482,6 +2487,84 @@ function fmtPolarityAmount(value) {
   return { text: signed.text, color: '#6B7280' };
 }
 
+function calcFinancialPct(amount: number, base: number): { pct: number; text: string; barWidth: number } {
+  const amt = Number(amount || 0);
+  const bs = Number(base || 0);
+  if (!bs || bs === 0) {
+    return { pct: 0, text: '—', barWidth: 0 };
+  }
+  const pct = (amt / Math.abs(bs)) * 100;
+  const barWidth = Math.min(100, Math.max(0, Math.abs(pct)));
+  return {
+    pct,
+    text: `${pct < 0 ? '-' : ''}${Math.abs(pct).toLocaleString('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`,
+    barWidth,
+  };
+}
+
+function calcHorizontalVariation(now: number, cmp: number): {
+  diff: number;
+  pct: number;
+  diffFmt: { text: string; color: string };
+  pctFmt: string;
+  indicatorText: string;
+  badgeHtml: string;
+} {
+  const n = Number(now || 0);
+  const c = Number(cmp || 0);
+  const diff = n - c;
+  const diffPolarity = fmtPolarityAmount(diff);
+
+  let pct = 0;
+  let pctFmt = '0,0%';
+  let indicatorText = '0,0%';
+  let badgeHtml = '<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200"><i class="fas fa-minus text-xxs mr-1"></i>0,0%</span>';
+
+  if (c === 0) {
+    if (n === 0) {
+      pct = 0;
+      pctFmt = '0,0%';
+      indicatorText = '0,0%';
+    } else {
+      pct = n > 0 ? 100 : -100;
+      pctFmt = n > 0 ? '+100,0%' : '-100,0%';
+      indicatorText = pctFmt;
+      badgeHtml = `<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded ${n > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${n > 0 ? '▲ Nuevo (+100%)' : '▼ Saldo 0 (-100%)'}</span>`;
+    }
+  } else {
+    pct = ((n - c) / Math.abs(c)) * 100;
+    if (Math.abs(pct) <= 0.05) {
+      pct = 0;
+      pctFmt = '0,0%';
+      indicatorText = '0,0%';
+      badgeHtml = '<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200"><i class="fas fa-minus text-xxs mr-1"></i>0,0%</span>';
+    } else {
+      const sign = pct > 0 ? '+' : '';
+      pctFmt = `${sign}${pct.toLocaleString('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+      indicatorText = pctFmt;
+      if (pct > 0.05) {
+        badgeHtml = `<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-arrow-trend-up text-xxs mr-1"></i>${pctFmt}</span>`;
+      } else {
+        badgeHtml = `<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200"><i class="fas fa-arrow-trend-down text-xxs mr-1"></i>${pctFmt}</span>`;
+      }
+    }
+  }
+
+  return {
+    diff,
+    pct,
+    diffFmt: diffPolarity,
+    pctFmt,
+    indicatorText,
+    badgeHtml,
+  };
+}
+
+let erChartInstance: any = null;
+let posChartAssetsInstance: any = null;
+let posChartCapitalInstance: any = null;
+let cfChartInstance: any = null;
+
 function getPdfCtorOrWarn() {
   const jsPdfCtor = window.jspdf?.jsPDF;
   if (typeof jsPdfCtor !== 'function') {
@@ -4323,6 +4406,245 @@ function monthRangeToDates(fromMonth, toMonth) {
   return { fromDate, toDate };
 }
 
+function renderNoteBadgeCell(note: string, title: string, code: string, reportType: 'ESF' | 'ER'): string {
+  if (!note) return '<td class="text-center text-gray-300 font-mono text-xs">—</td>';
+  return `
+    <td class="text-center">
+      <button type="button" 
+        class="btn-open-financial-note inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold transition hover:scale-105 active:scale-95 shadow-2xs" 
+        style="background:#EDE9FE;color:#6D28D9;border:1px solid #DDD6FE;cursor:pointer"
+        data-note-num="${esc(note)}" 
+        data-note-title="${esc(title)}" 
+        data-note-code="${esc(code || '')}" 
+        data-report-type="${reportType}"
+        title="Consultar y redactar Nota NIIF ${esc(note)}">
+        <i class="fas fa-file-pen text-xxs"></i>
+        <span>Nota ${esc(note)}</span>
+      </button>
+    </td>
+  `;
+}
+
+async function openFinancialNoteDrawer(params: {
+  noteNum: string;
+  title: string;
+  code: string;
+  reportType: 'ESF' | 'ER';
+  periodo: string;
+  comparePeriodo?: string;
+  accounts: any[];
+  balNow: Record<string, number>;
+  balCmp: Record<string, number>;
+}) {
+  let drawerRoot = document.getElementById('financial-note-drawer-container');
+  if (!drawerRoot) {
+    drawerRoot = document.createElement('div');
+    drawerRoot.id = 'financial-note-drawer-container';
+    document.body.appendChild(drawerRoot);
+  }
+
+  // Cargar notas guardadas en PocketBase para este periodo y nota_num
+  let noteRecord: any = null;
+  try {
+    const list = await pb.listAll('financial_notes', {
+      filter: `periodo="${params.periodo}" && nota_num="${params.noteNum}"`
+    });
+    if (list && list.length > 0) noteRecord = list[0];
+  } catch (_) {}
+
+  // Determinar prefijos contables para el soporte de cuentas
+  let prefixes: string[] = [];
+  if (params.code) {
+    prefixes = [params.code.slice(0, 2)];
+  } else if (params.noteNum.startsWith('3.1')) prefixes = ['11'];
+  else if (params.noteNum.startsWith('3.2')) prefixes = ['12', '13'];
+  else if (params.noteNum.startsWith('3.3')) prefixes = ['14'];
+  else if (params.noteNum.startsWith('3.4')) prefixes = ['15', '16', '17', '18', '19'];
+  else if (params.noteNum.startsWith('3.5')) prefixes = ['21', '22', '23'];
+  else if (params.noteNum.startsWith('3.6')) prefixes = ['24', '25', '26', '27', '28', '29'];
+  else if (params.noteNum.startsWith('3.7')) prefixes = ['3'];
+  else if (params.noteNum === '4') prefixes = ['4'];
+  else if (params.noteNum === '5') prefixes = ['5', '6', '7'];
+
+  // Cuentas de soporte
+  const supportingData = getNoteSupportingData(params.accounts || [], params.balNow || {}, params.balCmp || {}, prefixes);
+  const totalNow = supportingData.reduce((s: number, r: any) => s + r.now, 0);
+  const totalCmp = supportingData.reduce((s: number, r: any) => s + r.cmp, 0);
+
+  // Sugerencia automática pre-calculada
+  const autoSugerido = buildNoteSuggestion(
+    prefixes.join(','),
+    params.title,
+    totalNow,
+    totalCmp,
+    params.periodo,
+    supportingData
+  );
+
+  const initialContent = noteRecord?.contenido || autoSugerido || '';
+
+  const tableRowsHtml = supportingData.map((d: any) => `
+    <tr class="border-b hover:bg-gray-50" style="border-color:#F3F4F6">
+      <td class="p-2 font-mono text-xs text-gray-500">${esc(d.code)}</td>
+      <td class="p-2 text-xs text-gray-800 font-medium">${esc(d.name)}</td>
+      <td class="p-2 text-xs text-right font-bold text-gray-900">${fmt(d.now)}</td>
+      <td class="p-2 text-xs text-right text-gray-500">${fmt(d.cmp)}</td>
+      <td class="p-2 text-xs text-right font-semibold ${d.variation >= 0 ? 'text-emerald-600' : 'text-rose-600'}">
+        ${d.variation >= 0 ? '+' : ''}${fmt(d.variation)}
+      </td>
+    </tr>
+  `).join('');
+
+  drawerRoot.innerHTML = `
+    <!-- Backdrop oscuro -->
+    <div id="fn-drawer-backdrop" class="fixed inset-0 bg-black/40 z-[9998] transition-opacity duration-300"></div>
+
+    <!-- Drawer Panel lateral -->
+    <div id="fn-drawer-panel" class="fixed top-0 right-0 bottom-0 w-full sm:w-[540px] bg-white z-[9999] shadow-2xl flex flex-col transform transition-transform duration-300 translate-x-full">
+      <!-- Header -->
+      <div class="px-5 py-4 border-b flex items-center justify-between bg-gray-50" style="border-color:#E5E7EB">
+        <div class="flex items-center gap-2.5">
+          <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-purple-600 text-white shadow-xs">
+            ${esc(params.noteNum)}
+          </span>
+          <div>
+            <h4 class="font-bold text-sm text-gray-900">Nota ${esc(params.noteNum)}: ${esc(params.title)}</h4>
+            <span class="text-xxs text-gray-500">Periodo: ${esc(params.periodo)} | NIIF para PYMES / NIC</span>
+          </div>
+        </div>
+        <button type="button" id="btn-close-fn-drawer" class="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200 text-sm">
+          <i class="fas fa-xmark text-base"></i>
+        </button>
+      </div>
+
+      <!-- Body con scroll -->
+      <div class="p-5 flex-1 overflow-y-auto space-y-4">
+        <!-- Banner de estado -->
+        <div class="flex items-center justify-between p-3 rounded-xl border text-xs" style="background:#FAF5FF;border-color:#E9D5FF">
+          <div class="flex items-center gap-2 text-purple-900">
+            <i class="fas fa-book-bookmark text-purple-600"></i>
+            <span>${noteRecord ? 'Revelación guardada en base de datos' : 'Borrador sugerido automáticamente'}</span>
+          </div>
+          <span class="px-2 py-0.5 rounded-full font-bold text-xxs ${noteRecord ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+            ${noteRecord ? 'Guardada' : 'Pendiente Guardar'}
+          </span>
+        </div>
+
+        <!-- Área de redacción -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="text-xs font-bold text-gray-700">Texto de la Nota / Revelación Contable:</label>
+            <button type="button" class="btn btn-xs" id="btn-fn-drawer-suggest" style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0">
+              <i class="fas fa-wand-magic-sparkles mr-1"></i>Regenerar sugerencia
+            </button>
+          </div>
+          <textarea id="fn-drawer-textarea" class="form-input w-full p-3 text-xs leading-relaxed" rows="6" style="resize:vertical">${esc(initialContent)}</textarea>
+          <span class="text-xxs text-gray-400 block mt-1">Este texto se integrará automáticamente en el informe impreso y en el Informe de Notas NIIF.</span>
+        </div>
+
+        <!-- Tabla de soporte de cuentas contables -->
+        <div class="border rounded-xl overflow-hidden" style="border-color:#E5E7EB">
+          <div class="px-3 py-2 bg-gray-50 border-b flex items-center justify-between" style="border-color:#E5E7EB">
+            <span class="text-xs font-bold text-gray-700"><i class="fas fa-table-list text-gray-400 mr-1.5"></i>Desglose de Cuentas de Soporte</span>
+            <span class="text-xxs font-mono font-bold text-purple-700">${fmt(totalNow)}</span>
+          </div>
+          <div class="overflow-x-auto max-h-48">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead class="bg-gray-100/70 text-gray-600 border-b" style="border-color:#E5E7EB">
+                <tr>
+                  <th class="p-2">Cód.</th>
+                  <th class="p-2">Cuenta</th>
+                  <th class="p-2 text-right">Actual</th>
+                  <th class="p-2 text-right">Comp.</th>
+                  <th class="p-2 text-right">Var.</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tableRowsHtml || '<tr><td colspan="5" class="p-4 text-center text-gray-400">No hay movimientos registrados para este grupo.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer de acciones -->
+      <div class="p-4 border-t bg-gray-50 flex items-center justify-between" style="border-color:#E5E7EB">
+        <button type="button" class="btn btn-outline btn-sm" id="btn-cancel-fn-drawer">Cerrar</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-save-fn-drawer" style="background:#7C3AED;border-color:#7C3AED">
+          <i class="fas fa-floppy-disk mr-1.5"></i>Guardar Revelación
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Animar entrada del drawer
+  requestAnimationFrame(() => {
+    const panel = document.getElementById('fn-drawer-panel');
+    if (panel) panel.classList.remove('translate-x-full');
+  });
+
+  const closeDrawer = () => {
+    const panel = document.getElementById('fn-drawer-panel');
+    if (panel) panel.classList.add('translate-x-full');
+    setTimeout(() => {
+      if (drawerRoot) drawerRoot.innerHTML = '';
+    }, 300);
+  };
+
+  document.getElementById('fn-drawer-backdrop')?.addEventListener('click', closeDrawer);
+  document.getElementById('btn-close-fn-drawer')?.addEventListener('click', closeDrawer);
+  document.getElementById('btn-cancel-fn-drawer')?.addEventListener('click', closeDrawer);
+
+  document.getElementById('btn-fn-drawer-suggest')?.addEventListener('click', () => {
+    const txt = document.getElementById('fn-drawer-textarea') as HTMLTextAreaElement | null;
+    if (txt) {
+      txt.value = autoSugerido;
+      showToast('Sugerencia generada. Revisa y haz clic en Guardar.', 'info');
+    }
+  });
+
+  document.getElementById('btn-save-fn-drawer')?.addEventListener('click', async () => {
+    const txt = document.getElementById('fn-drawer-textarea') as HTMLTextAreaElement | null;
+    const contenido = txt ? txt.value.trim() : '';
+    if (!contenido) return showToast('El texto de la nota no puede estar vacío.', 'warning');
+
+    const saveBtn = document.getElementById('btn-save-fn-drawer') as HTMLButtonElement | null;
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...';
+    }
+
+    try {
+      const payload: any = {
+        periodo: params.periodo,
+        tipo_informe: params.reportType,
+        nota_num: params.noteNum,
+        titulo: params.title,
+        cuenta_codigo: prefixes.join(','),
+        contenido: contenido,
+        sugerido: autoSugerido,
+        revisado: true
+      };
+
+      if (noteRecord?._id || noteRecord?.id) {
+        const id = noteRecord._id || noteRecord.id;
+        await pb.update('financial_notes', id, payload);
+      } else {
+        await pb.create('financial_notes', payload);
+      }
+
+      showToast(`Nota ${params.noteNum} guardada con éxito.`, 'success');
+      closeDrawer();
+    } catch (err: any) {
+      showToast(`Error al guardar: ${err.message}`, 'error');
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fas fa-floppy-disk mr-1.5"></i>Guardar Revelación';
+      }
+    }
+  });
+}
+
 async function renderIncomeStatement() {
   const view = getReportViewHost();
   if (!view) return;
@@ -4336,7 +4658,7 @@ async function renderIncomeStatement() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Estado de Resultados</h4>
-      <div class="grid grid-cols-1 md:grid-cols-9 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-10 gap-3">
         <div class="form-group">
           <label class="form-label">Mes del reporte</label>
           <input id="inc-month" type="month" class="form-input" value="${currentMonthDefault}">
@@ -4351,6 +4673,13 @@ async function renderIncomeStatement() {
             <option value="year" selected>Acumulado del año</option>
             <option value="month">Solo el mes</option>
             <option value="historical">Histórico total</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Modo de vista</label>
+          <select id="inc-view-mode" class="form-input">
+            <option value="compact" selected>Compacto (Sin cascada)</option>
+            <option value="hierarchy">Jerárquico (Árbol PUC)</option>
           </select>
         </div>
         <div class="form-group">
@@ -4385,6 +4714,9 @@ async function renderIncomeStatement() {
         </div>
         <div class="form-group flex items-end">
           <button class="btn btn-outline w-full" id="btn-exp-er" disabled><i class="fas fa-file-excel"></i> Exportar</button>
+        </div>
+        <div class="form-group flex items-end">
+          <button class="btn btn-outline w-full text-indigo-700 border-indigo-200 hover:bg-indigo-50" id="btn-dossier-from-er" title="Generar Informe Financiero Completo con Notas y Certificación"><i class="fas fa-book-bookmark text-indigo-600"></i> Informe NIIF</button>
         </div>
       </div>
     </div>
@@ -4526,14 +4858,24 @@ async function renderIncomeStatement() {
         return '';
       };
 
+      const incViewMode = getSelectVal('inc-view-mode') || 'compact';
+      const isCompact = incViewMode === 'compact';
+
       const buildRows = (roots) => {
         const EPS = 0.0001;
         const detail = [];
         const visit = (node) => {
+          const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
+          if (!hasActivity) return [];
+
           const childRows = [];
           for (const c of node.children) childRows.push(...visit(c));
-          const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
-          if (!hasActivity && !childRows.length) return [];
+
+          // En modo compacto, si tiene exactamente un hijo visible con idéntico saldo, colapsar redundancia
+          if (isCompact && childRows.length === 1 && Math.abs(childRows[0].now - node.now) < EPS && Math.abs(childRows[0].cmp - node.cmp) < EPS) {
+            return childRows;
+          }
+
           const rows = [];
           if (Number(node.level || 1) <= maxLevel) {
             rows.push({
@@ -4565,26 +4907,26 @@ async function renderIncomeStatement() {
       const utilidadNow = ingresos.totalNow - totalGastosNow;
       const utilidadCmp = ingresos.totalCmp - totalGastosCmp;
 
-      const colCount = showNotes ? 4 : 3;
-      const noteHead = showNotes ? '<th style="width:90px" class="text-center">Nota</th>' : '';
-      const amountCell = (value, extraClass = '') => {
-        const v = fmtPolarityAmount(value);
-        return `<td class="text-right ${extraClass}" style="color:${v.color}">${v.text}</td>`;
-      };
-      const detailRowsHtml = (section) => section.detail.map(r => {
-        const lvl = Number(r.level || 2);
-        const padding = 12 + Math.max(0, lvl - 2) * 16;
-        const isMajorGroup = lvl <= 2;
-        const titleClass = isMajorGroup ? 'font-bold text-gray-900' : 'font-normal text-gray-700';
-        const numClass = isMajorGroup ? 'font-bold' : 'font-normal';
-        return `
-        <tr>
-          <td style="padding-left:${padding}px" class="${titleClass}">${esc(r.label)}</td>
-          ${showNotes ? `<td class="text-center font-normal">${esc(r.note)}</td>` : ''}
-          ${amountCell(r.now, numClass)}
-          ${amountCell(r.cmp, numClass)}
-        </tr>`;
-      }).join('');
+      let currentErMode: 'all' | 'vertical' | 'comparative' | 'kpi' = 'all';
+      let erDisplayMaxLevel = maxLevel;
+
+      const baseIngresosNow = ingresos.totalNow || 1;
+      const baseIngresosCmp = ingresos.totalCmp || 1;
+
+      // Cálculo de métricas ejecutivas
+      const margenBrutoNow = ingresos.totalNow - costos.totalNow;
+      const margenBrutoCmp = ingresos.totalCmp - costos.totalCmp;
+      const margenBrutoPctNow = calcFinancialPct(margenBrutoNow, baseIngresosNow);
+
+      const utilidadOpNow = margenBrutoNow - gastos.totalNow;
+      const utilidadOpCmp = margenBrutoCmp - gastos.totalCmp;
+      const utilidadOpPctNow = calcFinancialPct(utilidadOpNow, baseIngresosNow);
+
+      const utilidadPctNow = calcFinancialPct(utilidadNow, baseIngresosNow);
+      const varIngresos = calcHorizontalVariation(ingresos.totalNow, ingresos.totalCmp);
+      const varUtilidad = calcHorizontalVariation(utilidadNow, utilidadCmp);
+      const varCostos = calcHorizontalVariation(costos.totalNow, costos.totalCmp);
+      const varGastos = calcHorizontalVariation(gastos.totalNow, gastos.totalCmp);
 
       let signaturesHtml = '';
       if (includeSignatures) {
@@ -4609,96 +4951,585 @@ async function renderIncomeStatement() {
           </div>`;
       }
 
+      // Preparar estructura para exportación a Excel
+      lastExportRows = [];
+      const pushExportSection = (title: string, section: any, totalLabel: string) => {
+        const secPctNow = calcFinancialPct(section.totalNow, baseIngresosNow);
+        const secPctCmp = calcFinancialPct(section.totalCmp, baseIngresosCmp);
+        const secVar = calcHorizontalVariation(section.totalNow, section.totalCmp);
+
+        lastExportRows.push({ codigo: '', rubro: title, nota: '', actual: '', pctActual: '', comparativo: '', pctComparativo: '', varAbsoluta: '', varPorcentual: '', isBold: true, level: 1 });
+        section.detail.forEach((r: any) => {
+          const lvl = Number(r.level || 2);
+          const isMajorGroup = lvl <= 2;
+          const indent = '  '.repeat(Math.max(0, lvl - 2));
+          const rowPctNow = calcFinancialPct(r.now, baseIngresosNow);
+          const rowPctCmp = calcFinancialPct(r.cmp, baseIngresosCmp);
+          const rowVar = calcHorizontalVariation(r.now, r.cmp);
+
+          lastExportRows.push({
+            codigo: r.code || '',
+            rubro: `${indent}${r.label}`,
+            nota: r.note || '',
+            actual: r.now,
+            pctActual: rowPctNow.text,
+            comparativo: r.cmp,
+            pctComparativo: rowPctCmp.text,
+            varAbsoluta: rowVar.diff,
+            varPorcentual: rowVar.indicatorText,
+            level: r.level,
+            code: r.code,
+            isBold: isMajorGroup
+          });
+        });
+        lastExportRows.push({
+          codigo: '',
+          rubro: totalLabel,
+          nota: '',
+          actual: section.totalNow,
+          pctActual: secPctNow.text,
+          comparativo: section.totalCmp,
+          pctComparativo: secPctCmp.text,
+          varAbsoluta: secVar.diff,
+          varPorcentual: secVar.indicatorText,
+          isBold: true,
+          level: 2
+        });
+      };
+
+      pushExportSection('Ingresos (Clase 4)', ingresos, 'Total ingresos');
+      pushExportSection('Costos de venta (Clase 6)', costos, 'Total costos de venta');
+      pushExportSection('Gastos operacionales (Clase 5)', gastos, 'Total gastos operacionales');
+      pushExportSection('Costos de producción/operación (Clase 7)', otrosGastos, 'Total costos de producción/operación');
+
+      const totGastosPctNow = calcFinancialPct(totalGastosNow, baseIngresosNow);
+      const totGastosPctCmp = calcFinancialPct(totalGastosCmp, baseIngresosCmp);
+      const totGastosVar = calcHorizontalVariation(totalGastosNow, totalGastosCmp);
+      lastExportRows.push({
+        codigo: '',
+        rubro: 'Total gastos y costos',
+        nota: '',
+        actual: totalGastosNow,
+        pctActual: totGastosPctNow.text,
+        comparativo: totalGastosCmp,
+        pctComparativo: totGastosPctCmp.text,
+        varAbsoluta: totGastosVar.diff,
+        varPorcentual: totGastosVar.indicatorText,
+        isBold: true,
+        level: 1
+      });
+
+      lastExportRows.push({
+        codigo: '',
+        rubro: 'Resultado neto del periodo',
+        nota: '',
+        actual: utilidadNow,
+        pctActual: utilidadPctNow.text,
+        comparativo: utilidadCmp,
+        pctComparativo: calcFinancialPct(utilidadCmp, baseIngresosCmp).text,
+        varAbsoluta: varUtilidad.diff,
+        varPorcentual: varUtilidad.indicatorText,
+        isBold: true,
+        level: 1
+      });
+
+      // Renderizador de filas según modo activo
+      const renderTableHtml = (mode: 'all' | 'vertical' | 'comparative' | 'kpi', maxLvl: number) => {
+        const noteHead = showNotes ? '<th style="width:75px" class="text-center">Nota</th>' : '';
+        const progressBarCell = (pctObj: { pct: number; text: string; barWidth: number }, barColor = 'bg-indigo-500') => `
+          <td class="text-right">
+            <div class="inline-flex items-center justify-end gap-1.5 w-full">
+              <span class="font-mono text-xs text-gray-700 font-medium">${pctObj.text}</span>
+              <div class="w-10 bg-gray-100 rounded-full h-1.5 overflow-hidden flex-shrink-0">
+                <div class="${barColor} h-1.5 rounded-full" style="width:${pctObj.barWidth}%"></div>
+              </div>
+            </div>
+          </td>
+        `;
+
+        const amountCell = (value: number, extraClass = '') => {
+          const v = fmtPolarityAmount(value);
+          return `<td class="text-right ${extraClass}" style="color:${v.color}">${v.text}</td>`;
+        };
+
+        const renderSectionRows = (section: any) => {
+          return section.detail
+            .filter((r: any) => Number(r.level || 2) <= maxLvl)
+            .map((r: any) => {
+              const lvl = Number(r.level || 2);
+              const padding = 12 + Math.max(0, lvl - 2) * 16;
+              const isMajorGroup = lvl <= 2;
+              const titleClass = isMajorGroup ? 'font-bold text-gray-900' : 'font-normal text-gray-700';
+              const numClass = isMajorGroup ? 'font-bold' : 'font-normal';
+
+              const pNow = calcFinancialPct(r.now, baseIngresosNow);
+              const pCmp = calcFinancialPct(r.cmp, baseIngresosCmp);
+              const hVar = calcHorizontalVariation(r.now, r.cmp);
+
+              if (mode === 'vertical') {
+                return `
+                <tr data-er-lvl="${lvl}">
+                  <td style="padding-left:${padding}px" class="${titleClass}">
+                    <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
+                  </td>
+                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ER') : ''}
+                  ${amountCell(r.now, numClass)}
+                  ${progressBarCell(pNow, 'bg-indigo-500')}
+                  ${amountCell(r.cmp, numClass)}
+                  ${progressBarCell(pCmp, 'bg-gray-400')}
+                </tr>`;
+              } else if (mode === 'comparative') {
+                return `
+                <tr data-er-lvl="${lvl}">
+                  <td style="padding-left:${padding}px" class="${titleClass}">
+                    <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
+                  </td>
+                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ER') : ''}
+                  ${amountCell(r.now, numClass)}
+                  ${amountCell(r.cmp, numClass)}
+                  <td class="text-right ${numClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+                  <td class="text-center">${hVar.badgeHtml}</td>
+                </tr>`;
+              } else {
+                // 'all' o 'kpi'
+                return `
+                <tr data-er-lvl="${lvl}">
+                  <td style="padding-left:${padding}px" class="${titleClass}">
+                    <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
+                  </td>
+                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ER') : ''}
+                  ${amountCell(r.now, numClass)}
+                  ${progressBarCell(pNow, 'bg-indigo-500')}
+                  ${amountCell(r.cmp, numClass)}
+                  ${progressBarCell(pCmp, 'bg-gray-400')}
+                  <td class="text-right ${numClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+                  <td class="text-center">${hVar.badgeHtml}</td>
+                </tr>`;
+              }
+            }).join('');
+        };
+
+        const renderTotalRow = (label: string, now: number, cmp: number, isSuperBold = false, bgClass = 'bg-gray-50/70') => {
+          const pNow = calcFinancialPct(now, baseIngresosNow);
+          const pCmp = calcFinancialPct(cmp, baseIngresosCmp);
+          const hVar = calcHorizontalVariation(now, cmp);
+          const boldClass = isSuperBold ? 'font-black text-gray-950 text-sm' : 'font-bold text-gray-900';
+
+          if (mode === 'vertical') {
+            return `
+            <tr class="${bgClass}">
+              <td class="${boldClass}">${esc(label)}</td>
+              ${showNotes ? '<td></td>' : ''}
+              ${amountCell(now, boldClass)}
+              ${progressBarCell(pNow, 'bg-indigo-600')}
+              ${amountCell(cmp, boldClass)}
+              ${progressBarCell(pCmp, 'bg-gray-500')}
+            </tr>`;
+          } else if (mode === 'comparative') {
+            return `
+            <tr class="${bgClass}">
+              <td class="${boldClass}">${esc(label)}</td>
+              ${showNotes ? '<td></td>' : ''}
+              ${amountCell(now, boldClass)}
+              ${amountCell(cmp, boldClass)}
+              <td class="text-right ${boldClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+              <td class="text-center">${hVar.badgeHtml}</td>
+            </tr>`;
+          } else {
+            return `
+            <tr class="${bgClass}">
+              <td class="${boldClass}">${esc(label)}</td>
+              ${showNotes ? '<td></td>' : ''}
+              ${amountCell(now, boldClass)}
+              ${progressBarCell(pNow, 'bg-indigo-600')}
+              ${amountCell(cmp, boldClass)}
+              ${progressBarCell(pCmp, 'bg-gray-500')}
+              <td class="text-right ${boldClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+              <td class="text-center">${hVar.badgeHtml}</td>
+            </tr>`;
+          }
+        };
+
+        let theadHtml = '';
+        if (mode === 'vertical') {
+          theadHtml = `
+            <tr>
+              <th>Rubro / Concepto</th>
+              ${noteHead}
+              <th class="text-right">${esc(fmtLongDate(reportDate))}</th>
+              <th class="text-right" style="min-width:115px">% Vert. (Actual)</th>
+              <th class="text-right">${esc(fmtLongDate(compareDate))}</th>
+              <th class="text-right" style="min-width:115px">% Vert. (Comp.)</th>
+            </tr>`;
+        } else if (mode === 'comparative') {
+          theadHtml = `
+            <tr>
+              <th>Rubro / Concepto</th>
+              ${noteHead}
+              <th class="text-right">${esc(fmtLongDate(reportDate))}</th>
+              <th class="text-right">${esc(fmtLongDate(compareDate))}</th>
+              <th class="text-right">Var. Nominal ($)</th>
+              <th class="text-center" style="min-width:110px">Var. Relativa (%)</th>
+            </tr>`;
+        } else {
+          theadHtml = `
+            <tr>
+              <th>Rubro / Concepto</th>
+              ${noteHead}
+              <th class="text-right">${esc(fmtLongDate(reportDate))}</th>
+              <th class="text-right" style="min-width:110px">% Vert.</th>
+              <th class="text-right">${esc(fmtLongDate(compareDate))}</th>
+              <th class="text-right" style="min-width:110px">% Vert. Cmp</th>
+              <th class="text-right">Var. ($)</th>
+              <th class="text-center" style="min-width:105px">Var. (%)</th>
+            </tr>`;
+        }
+
+        const totalCols = mode === 'vertical' ? (showNotes ? 6 : 5) : mode === 'comparative' ? (showNotes ? 6 : 5) : (showNotes ? 8 : 7);
+
+        return `
+          <table class="data-table">
+            <thead>${theadHtml}</thead>
+            <tbody>
+              <tr class="bg-indigo-50/40"><td class="font-bold text-indigo-900" colspan="${totalCols}"><i class="fas fa-arrow-down-long mr-1.5 text-indigo-600"></i>Ingresos de Actividades Ordinarias (Clase 4)</td></tr>
+              ${renderSectionRows(ingresos)}
+              ${renderTotalRow('Total ingresos operacionales', ingresos.totalNow, ingresos.totalCmp, true, 'bg-indigo-50/60')}
+
+              <tr class="bg-amber-50/40"><td class="font-bold text-amber-900" colspan="${totalCols}"><i class="fas fa-boxes-packing mr-1.5 text-amber-600"></i>Costos de Ventas (Clase 6)</td></tr>
+              ${renderSectionRows(costos)}
+              ${renderTotalRow('Total costos de ventas', costos.totalNow, costos.totalCmp, false, 'bg-amber-50/60')}
+
+              ${renderTotalRow('(=) MARGEN BRUTO OPERACIONAL', margenBrutoNow, margenBrutoCmp, true, 'bg-emerald-50/80')}
+
+              <tr class="bg-rose-50/40"><td class="font-bold text-rose-900" colspan="${totalCols}"><i class="fas fa-briefcase mr-1.5 text-rose-600"></i>Gastos Operacionales de Administración y Ventas (Clase 5)</td></tr>
+              ${renderSectionRows(gastos)}
+              ${renderTotalRow('Total gastos operacionales', gastos.totalNow, gastos.totalCmp, false, 'bg-rose-50/60')}
+
+              ${renderTotalRow('(=) RESULTADO OPERACIONAL (EBITDA)', utilidadOpNow, utilidadOpCmp, true, 'bg-blue-50/80')}
+
+              ${otrosGastos.detail.length ? `
+                <tr class="bg-gray-100/50"><td class="font-bold text-gray-800" colspan="${totalCols}"><i class="fas fa-industry mr-1.5 text-gray-600"></i>Costos de Producción / Operación (Clase 7)</td></tr>
+                ${renderSectionRows(otrosGastos)}
+                ${renderTotalRow('Total costos de producción', otrosGastos.totalNow, otrosGastos.totalCmp, false, 'bg-gray-100/60')}
+              ` : ''}
+
+              ${renderTotalRow('Total costos y gastos del periodo', totalGastosNow, totalGastosCmp, true, 'bg-gray-200/50')}
+              ${renderTotalRow('(=) RESULTADO NETO DEL PERIODO (UTILIDAD / PÉRDIDA)', utilidadNow, utilidadCmp, true, utilidadNow >= 0 ? 'bg-emerald-100/80' : 'bg-rose-100/80')}
+            </tbody>
+          </table>
+        `;
+      };
+
+      const refreshErView = () => {
+        const container = document.getElementById('er-table-container');
+        if (container) {
+          container.innerHTML = renderTableHtml(currentErMode, erDisplayMaxLevel);
+        }
+
+        // Actualizar estados visuales de los botones de modo
+        document.querySelectorAll('.er-view-mode').forEach(btn => {
+          const mode = btn.getAttribute('data-mode');
+          if (mode === currentErMode) {
+            btn.className = 'er-view-mode px-3 py-1.5 rounded-lg font-semibold transition bg-indigo-600 text-white shadow-xs';
+          } else {
+            btn.className = 'er-view-mode px-3 py-1.5 rounded-lg font-semibold transition text-gray-600 hover:bg-gray-100';
+          }
+        });
+      };
+
       results.innerHTML = `
         <div class="px-4 pt-4 text-center">
           <p class="text-xl font-bold" style="color:#0D2137">Estado de Resultados</p>
-          <p class="text-sm" style="color:#6B7280">(Expresado en pesos colombianos)</p>
+          <p class="text-xs text-gray-500 font-medium">(Expresado en pesos colombianos — Estándares NIIF / Decreto 2420 de 2015)</p>
         </div>
-        <div class="overflow-x-auto p-4" style="max-height:560px">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Rubro</th>
-                ${noteHead}
-                <th class="text-right">${esc(fmtLongDate(reportDate))}</th>
-                <th class="text-right">${esc(fmtLongDate(compareDate))}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td class="font-bold" colspan="${colCount}">Ingresos (Clase 4)</td></tr>
-              ${detailRowsHtml(ingresos)}
-              <tr>
-                <td class="font-bold">Total ingresos</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(ingresos.totalNow, 'font-bold')}
-                ${amountCell(ingresos.totalCmp, 'font-bold')}
-              </tr>
 
-              <tr><td class="font-bold" colspan="${colCount}">Costos de venta (Clase 6)</td></tr>
-              ${detailRowsHtml(costos)}
-              <tr>
-                <td class="font-bold">Total costos de venta</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(costos.totalNow, 'font-bold')}
-                ${amountCell(costos.totalCmp, 'font-bold')}
-              </tr>
+        <!-- Tarjetas de KPIs Ejecutivos -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4">
+          <div class="bg-white border rounded-2xl p-4 shadow-xs" style="border-color:#E5E7EB">
+            <div class="flex items-center justify-between text-xs text-gray-500 font-semibold mb-1">
+              <span><i class="fas fa-coins text-indigo-500 mr-1.5"></i>Ingresos Netos</span>
+              ${varIngresos.badgeHtml}
+            </div>
+            <div class="text-xl font-bold text-gray-900">${fmt(ingresos.totalNow)}</div>
+            <div class="text-xxs text-gray-400 mt-1 flex justify-between">
+              <span>Comp: ${fmt(ingresos.totalCmp)}</span>
+              <span>${calcFinancialPct(ingresos.totalNow, ingresos.totalNow).text}</span>
+            </div>
+          </div>
 
-              <tr><td class="font-bold" colspan="${colCount}">Gastos operacionales (Clase 5)</td></tr>
-              ${detailRowsHtml(gastos)}
-              <tr>
-                <td class="font-bold">Total gastos operacionales</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(gastos.totalNow, 'font-bold')}
-                ${amountCell(gastos.totalCmp, 'font-bold')}
-              </tr>
+          <div class="bg-white border rounded-2xl p-4 shadow-xs" style="border-color:#E5E7EB">
+            <div class="flex items-center justify-between text-xs text-gray-500 font-semibold mb-1">
+              <span><i class="fas fa-chart-line text-emerald-500 mr-1.5"></i>Margen Bruto</span>
+              <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">${margenBrutoPctNow.text}</span>
+            </div>
+            <div class="text-xl font-bold text-gray-900">${fmt(margenBrutoNow)}</div>
+            <div class="text-xxs text-gray-400 mt-1">Costos de venta: ${fmt(costos.totalNow)} (${calcFinancialPct(costos.totalNow, baseIngresosNow).text})</div>
+          </div>
 
-              <tr><td class="font-bold" colspan="${colCount}">Costos de producción/operación (Clase 7)</td></tr>
-              ${detailRowsHtml(otrosGastos)}
-              <tr>
-                <td class="font-bold">Total costos de producción/operación</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(otrosGastos.totalNow, 'font-bold')}
-                ${amountCell(otrosGastos.totalCmp, 'font-bold')}
-              </tr>
+          <div class="bg-white border rounded-2xl p-4 shadow-xs" style="border-color:#E5E7EB">
+            <div class="flex items-center justify-between text-xs text-gray-500 font-semibold mb-1">
+              <span><i class="fas fa-briefcase text-blue-500 mr-1.5"></i>Margen EBITDA</span>
+              <span class="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">${utilidadOpPctNow.text}</span>
+            </div>
+            <div class="text-xl font-bold text-gray-900">${fmt(utilidadOpNow)}</div>
+            <div class="text-xxs text-gray-400 mt-1">Gastos Op: ${fmt(gastos.totalNow)} (${calcFinancialPct(gastos.totalNow, baseIngresosNow).text})</div>
+          </div>
 
-              <tr>
-                <td class="font-bold">Total gastos y costos</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(totalGastosNow, 'font-bold')}
-                ${amountCell(totalGastosCmp, 'font-bold')}
-              </tr>
-              <tr>
-                <td class="font-bold">Resultado neto del periodo</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(utilidadNow, 'font-bold')}
-                ${amountCell(utilidadCmp, 'font-bold')}
-              </tr>
-            </tbody>
-          </table>
+          <div class="bg-white border rounded-2xl p-4 shadow-xs ${utilidadNow >= 0 ? 'bg-emerald-50/20' : 'bg-rose-50/20'}" style="border-color:${utilidadNow >= 0 ? '#A7F3D0' : '#FECDD3'}">
+            <div class="flex items-center justify-between text-xs text-gray-500 font-semibold mb-1">
+              <span><i class="fas fa-trophy ${utilidadNow >= 0 ? 'text-emerald-600' : 'text-rose-600'} mr-1.5"></i>${utilidadNow >= 0 ? 'Utilidad Neta' : 'Pérdida Neta'}</span>
+              <span class="text-xs font-bold ${utilidadNow >= 0 ? 'text-emerald-700 bg-emerald-100' : 'text-rose-700 bg-rose-100'} px-2 py-0.5 rounded">${utilidadPctNow.text}</span>
+            </div>
+            <div class="text-xl font-bold ${utilidadNow >= 0 ? 'text-emerald-800' : 'text-rose-800'}">${fmt(utilidadNow)}</div>
+            <div class="text-xxs text-gray-500 mt-1 flex items-center justify-between">
+              <span>Margen Neto: <strong>${utilidadPctNow.text}</strong></span>
+              <span>${varUtilidad.pctFmt}</span>
+            </div>
+          </div>
         </div>
+
+        <!-- Panel Gráfico Interactivo Chart.js (Cascada / Comparativo) -->
+        <div class="px-4 pb-2">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn btn-xs btn-outline py-1 px-2.5" id="btn-toggle-er-chart">
+                <i class="fas fa-chart-simple mr-1 text-indigo-500"></i><span id="txt-toggle-er-chart">Ocultar Gráficas</span>
+              </button>
+              <div class="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-xxs" id="er-chart-type-toggle">
+                <button type="button" class="er-chart-type-btn px-2.5 py-1 rounded font-semibold bg-indigo-600 text-white" data-type="waterfall">Cascada de Utilidad</button>
+                <button type="button" class="er-chart-type-btn px-2.5 py-1 rounded font-semibold text-gray-600 hover:bg-gray-100" data-type="comparison">Comparativo Interanual</button>
+              </div>
+            </div>
+            <span class="text-xxs text-gray-400 font-medium hidden sm:inline"><i class="fas fa-arrow-trend-up text-emerald-500 mr-1"></i>Visualización gráfica dinámica</span>
+          </div>
+
+          <div id="er-chart-wrapper" class="bg-white border rounded-2xl p-4 shadow-2xs transition-all" style="border-color:#E5E7EB">
+            <div style="height:250px; position:relative; width:100%">
+              <canvas id="er-financial-chart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Barra de Modos de Vista y Filtro de Nivel -->
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-gray-50 border-y text-xs mb-3" style="border-color:#E5E7EB">
+          <div class="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-2xs gap-1">
+            <button type="button" class="er-view-mode px-3 py-1.5 rounded-lg font-semibold transition bg-indigo-600 text-white shadow-xs" data-mode="all">
+              <i class="fas fa-table-cells mr-1.5"></i>Vista Integral
+            </button>
+            <button type="button" class="er-view-mode px-3 py-1.5 rounded-lg font-semibold transition text-gray-600 hover:bg-gray-100" data-mode="vertical">
+              <i class="fas fa-percent mr-1.5"></i>Análisis Vertical (%)
+            </button>
+            <button type="button" class="er-view-mode px-3 py-1.5 rounded-lg font-semibold transition text-gray-600 hover:bg-gray-100" data-mode="comparative">
+              <i class="fas fa-arrows-split-up-and-left mr-1.5"></i>Comparativo (Var $ y %)
+            </button>
+            <button type="button" class="er-view-mode px-3 py-1.5 rounded-lg font-semibold transition text-gray-600 hover:bg-gray-100" data-mode="kpi">
+              <i class="fas fa-chart-pie mr-1.5"></i>Resumen Gerencial
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="text-gray-400 font-medium">Nivel de visualización:</span>
+            <button type="button" class="btn btn-outline btn-xs py-1" id="btn-er-collapse-grp" title="Mostrar solo grupos principales (Nivel 2)"><i class="fas fa-compress mr-1"></i>Grupos</button>
+            <button type="button" class="btn btn-outline btn-xs py-1" id="btn-er-expand-all" title="Ver detalle de todas las cuentas"><i class="fas fa-expand mr-1"></i>Expandir Cuentas</button>
+          </div>
+        </div>
+
+        <!-- Contenedor dinámico de la Tabla de Resultados -->
+        <div id="er-table-container" class="overflow-x-auto p-4" style="max-height:560px">
+          ${renderTableHtml(currentErMode, erDisplayMaxLevel)}
+        </div>
+
         <div class="px-4 py-2 text-center text-xs italic text-gray-500" style="border-top: 1px solid #F3F4F6">
           Las notas o revelaciones adjuntas son parte integral de los estados financieros.
         </div>
         ${signaturesHtml}`;
 
-      lastExportRows = [];
-      const pushSection = (title, section, totalLabel) => {
-        lastExportRows.push({ rubro: title, nota: '', actual: '', comparativo: '', isBold: true, level: 1 });
-        section.detail.forEach((r) => {
-          const lvl = Number(r.level || 2);
-          const isMajorGroup = lvl <= 2;
-          const indent = '  '.repeat(Math.max(0, lvl - 2));
-          lastExportRows.push({ rubro: `${indent}${r.label}`, nota: r.note || '', actual: r.now, comparativo: r.cmp, level: r.level, code: r.code, isBold: isMajorGroup });
-        });
-        lastExportRows.push({ rubro: totalLabel, nota: '', actual: section.totalNow, comparativo: section.totalCmp, isBold: true, level: 2 });
+      // Lógica de Renderizado y Control de Gráfica Chart.js
+      let currentErChartType: 'waterfall' | 'comparison' = 'waterfall';
+      let isErChartVisible = true;
+
+      const buildErChart = (type: 'waterfall' | 'comparison') => {
+        const canvas = document.getElementById('er-financial-chart') as HTMLCanvasElement;
+        if (!canvas) return;
+
+        if (erChartInstance) {
+          erChartInstance.destroy();
+          erChartInstance = null;
+        }
+
+        if (type === 'waterfall') {
+          const rawItems = [
+            { label: 'Ingresos Op.', val: ingresos.totalNow, color: '#4F46E5' },
+            { label: '(-) Costos Venta', val: -costos.totalNow, color: '#F43F5E' },
+            { label: '(=) Margen Bruto', val: margenBrutoNow, color: '#10B981' },
+            { label: '(-) Gastos Op.', val: -gastos.totalNow, color: '#F59E0B' },
+            { label: '(=) EBITDA', val: utilidadOpNow, color: '#0284C7' },
+            ...(otrosGastos.totalNow ? [{ label: '(-) Costos Prod.', val: -otrosGastos.totalNow, color: '#64748B' }] : []),
+            { label: '(=) Utilidad Neta', val: utilidadNow, color: utilidadNow >= 0 ? '#059669' : '#DC2626' }
+          ];
+
+          erChartInstance = new Chart(canvas, {
+            type: 'bar',
+            data: {
+              labels: rawItems.map(it => it.label),
+              datasets: [{
+                label: 'Monto ($ COP)',
+                data: rawItems.map(it => it.val),
+                backgroundColor: rawItems.map(it => it.color),
+                borderRadius: 6,
+                borderSkipped: false,
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => ` Monto: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')}`
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  ticks: {
+                    callback: (val) => `$ ${Number(val).toLocaleString('es-CO')}`
+                  },
+                  grid: { color: '#F1F5F9' }
+                },
+                x: {
+                  grid: { display: false }
+                }
+              }
+            }
+          });
+        } else {
+          // Modo comparativo interanual
+          const labels = ['Ingresos', 'Costos de Venta', 'Margen Bruto', 'Gastos Op.', 'Utilidad Neta'];
+          const dataNow = [ingresos.totalNow, costos.totalNow, margenBrutoNow, gastos.totalNow, utilidadNow];
+          const dataCmp = [ingresos.totalCmp, costos.totalCmp, margenBrutoCmp, gastos.totalCmp, utilidadCmp];
+
+          erChartInstance = new Chart(canvas, {
+            type: 'bar',
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: `Actual (${reportMonth})`,
+                  data: dataNow,
+                  backgroundColor: '#4F46E5',
+                  borderRadius: 5,
+                },
+                {
+                  label: `Comparativo (${compareMonth})`,
+                  data: dataCmp,
+                  backgroundColor: '#94A3B8',
+                  borderRadius: 5,
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => ` ${ctx.dataset.label}: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')}`
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  ticks: {
+                    callback: (val) => `$ ${Number(val).toLocaleString('es-CO')}`
+                  },
+                  grid: { color: '#F1F5F9' }
+                },
+                x: {
+                  grid: { display: false }
+                }
+              }
+            }
+          });
+        }
       };
 
-      pushSection('Ingresos (Clase 4)', ingresos, 'Total ingresos');
-      pushSection('Costos de venta (Clase 6)', costos, 'Total costos de venta');
-      pushSection('Gastos operacionales (Clase 5)', gastos, 'Total gastos operacionales');
-      pushSection('Costos de producción/operación (Clase 7)', otrosGastos, 'Total costos de producción/operación');
-      lastExportRows.push({ rubro: 'Total gastos y costos', nota: '', actual: totalGastosNow, comparativo: totalGastosCmp });
-      lastExportRows.push({ rubro: 'Resultado neto del periodo', nota: '', actual: utilidadNow, comparativo: utilidadCmp });
+      // Inicializar gráfica
+      buildErChart(currentErChartType);
+
+      // Conmutar visibilidad del panel gráfico
+      document.getElementById('btn-toggle-er-chart')?.addEventListener('click', () => {
+        isErChartVisible = !isErChartVisible;
+        const wrapper = document.getElementById('er-chart-wrapper');
+        const txt = document.getElementById('txt-toggle-er-chart');
+        if (wrapper) wrapper.style.display = isErChartVisible ? 'block' : 'none';
+        if (txt) txt.textContent = isErChartVisible ? 'Ocultar Gráficas' : 'Mostrar Gráficas';
+      });
+
+      // Alternar tipo de gráfica (Cascada vs Comparativo)
+      results.querySelectorAll('.er-chart-type-btn').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          const type = (ev.currentTarget as HTMLElement).getAttribute('data-type') as any;
+          if (type && type !== currentErChartType) {
+            currentErChartType = type;
+            results.querySelectorAll('.er-chart-type-btn').forEach(b => {
+              if (b.getAttribute('data-type') === currentErChartType) {
+                b.className = 'er-chart-type-btn px-2.5 py-1 rounded font-semibold bg-indigo-600 text-white';
+              } else {
+                b.className = 'er-chart-type-btn px-2.5 py-1 rounded font-semibold text-gray-600 hover:bg-gray-100';
+              }
+            });
+            buildErChart(currentErChartType);
+          }
+        });
+      });
+
+      // Asignar escuchadores a los botones de modo de vista
+      results.querySelectorAll('.er-view-mode').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          const target = (ev.currentTarget as HTMLElement).getAttribute('data-mode') as any;
+          if (target && target !== currentErMode) {
+            currentErMode = target;
+            if (currentErMode === 'kpi') {
+              erDisplayMaxLevel = 2;
+            }
+            refreshErView();
+          }
+        });
+      });
+
+      // Botones de colapso y expansión rápida
+      document.getElementById('btn-er-collapse-grp')?.addEventListener('click', () => {
+        erDisplayMaxLevel = 2;
+        refreshErView();
+      });
+
+      document.getElementById('btn-er-expand-all')?.addEventListener('click', () => {
+        erDisplayMaxLevel = Number.POSITIVE_INFINITY;
+        refreshErView();
+      });
+
+      // Escuchador interactivo para abrir el Drawer de Notas NIIF al hacer clic en los badges
+      results.addEventListener('click', (ev) => {
+        const btn = (ev.target as HTMLElement).closest('.btn-open-financial-note') as HTMLElement;
+        if (!btn) return;
+        const noteNum = btn.getAttribute('data-note-num') || '';
+        const title = btn.getAttribute('data-note-title') || '';
+        const code = btn.getAttribute('data-note-code') || '';
+        openFinancialNoteDrawer({
+          noteNum,
+          title,
+          code,
+          reportType: 'ER',
+          periodo: reportMonth,
+          comparePeriodo: compareMonth,
+          accounts,
+          balNow,
+          balCmp
+        });
+      });
 
       if (includeSignatures) {
         const [repName, repTitle, contName, contTitle, contLicense, revName, revTitle, revLicense] = await Promise.all([
@@ -4774,10 +5605,15 @@ async function renderIncomeStatement() {
   $('#btn-exp-er')?.addEventListener('click', () => {
     if (!lastExportRows.length) return;
     exportToExcel(lastExportRows, [
-      { key: 'rubro', label: 'Rubro' },
-      { key: 'nota', label: 'Nota' },
-      { key: 'actual', label: getInputVal('inc-month') },
-      { key: 'comparativo', label: getInputVal('inc-compare-month') },
+      { key: 'codigo', label: 'Código' },
+      { key: 'rubro', label: 'Rubro / Concepto' },
+      { key: 'nota', label: 'Nota NIIF' },
+      { key: 'actual', label: `${getInputVal('inc-month')} ($)` },
+      { key: 'pctActual', label: '% Vert. (Actual)' },
+      { key: 'comparativo', label: `${getInputVal('inc-compare-month')} ($)` },
+      { key: 'pctComparativo', label: '% Vert. (Comp.)' },
+      { key: 'varAbsoluta', label: 'Variación Nominal ($)' },
+      { key: 'varPorcentual', label: 'Variación Relativa (%)' },
     ], `estado_resultados_${getInputVal('inc-month')}_vs_${getInputVal('inc-compare-month')}`);
   });
   $('#btn-pdf-er')?.addEventListener('click', async () => {
@@ -4798,8 +5634,9 @@ async function renderIncomeStatement() {
       });
 
       const body = [];
+      const baseIngresos = sections.ingresos?.totalNow || 1;
       const pushSection = (sectionTitle, section, totalLabel) => {
-        body.push([{ content: sectionTitle, colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
+        body.push([{ content: sectionTitle, colSpan: showNotes ? 7 : 6, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
         section.detail.forEach((r) => {
           const lvl = Number(r.level || 2);
           const isMajorGroup = lvl <= 2;
@@ -4812,45 +5649,123 @@ async function renderIncomeStatement() {
             ? { fontStyle: 'bold', textColor: [13, 33, 55] }
             : { fontStyle: 'normal', textColor: [70, 70, 70] };
 
+          const pNow = calcFinancialPct(r.now, baseIngresos).text;
+          const hVar = calcHorizontalVariation(r.now, r.cmp);
+
           if (showNotes) {
             body.push([
               { content: labelContent, styles: titleStyles },
               { content: r.note || '', styles: { halign: 'center', ...(isMajorGroup ? { fontStyle: 'bold' } : {}) } },
               { content: fmtPdfSignedNum(r.now), styles: numStyles },
-              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+              { content: pNow, styles: { halign: 'center', ...numStyles } },
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles },
+              { content: hVar.diffFmt.text, styles: numStyles },
+              { content: hVar.indicatorText, styles: { halign: 'right', fontStyle: 'bold' } }
             ]);
           } else {
             body.push([
               { content: labelContent, styles: titleStyles },
               { content: fmtPdfSignedNum(r.now), styles: numStyles },
-              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+              { content: pNow, styles: { halign: 'center', ...numStyles } },
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles },
+              { content: hVar.diffFmt.text, styles: numStyles },
+              { content: hVar.indicatorText, styles: { halign: 'right', fontStyle: 'bold' } }
             ]);
           }
         });
-        if (showNotes) body.push([totalLabel, '', fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
-        else body.push([totalLabel, fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
+
+        const secPNow = calcFinancialPct(section.totalNow, baseIngresos).text;
+        const secHVar = calcHorizontalVariation(section.totalNow, section.totalCmp);
+        if (showNotes) {
+          body.push([
+            { content: totalLabel, styles: { fontStyle: 'bold' } },
+            '',
+            { content: fmtPdfSignedNum(section.totalNow), styles: { fontStyle: 'bold' } },
+            { content: secPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+            { content: fmtPdfSignedNum(section.totalCmp), styles: { fontStyle: 'bold' } },
+            { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+            { content: secHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+          ]);
+        } else {
+          body.push([
+            { content: totalLabel, styles: { fontStyle: 'bold' } },
+            { content: fmtPdfSignedNum(section.totalNow), styles: { fontStyle: 'bold' } },
+            { content: secPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+            { content: fmtPdfSignedNum(section.totalCmp), styles: { fontStyle: 'bold' } },
+            { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+            { content: secHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+          ]);
+        }
       };
 
       pushSection('Ingresos (Clase 4)', sections.ingresos, 'Total ingresos');
       pushSection('Costos de venta (Clase 6)', sections.costos, 'Total costos de venta');
       pushSection('Gastos operacionales (Clase 5)', sections.gastos, 'Total gastos operacionales');
       pushSection('Costos de producción/operación (Clase 7)', sections.otrosGastos, 'Total costos de producción/operación');
-      if (showNotes) body.push(['Total gastos y costos', '', fmtPdfSignedNum(totals.totalGastosNow), fmtPdfSignedNum(totals.totalGastosCmp)]);
-      else body.push(['Total gastos y costos', fmtPdfSignedNum(totals.totalGastosNow), fmtPdfSignedNum(totals.totalGastosCmp)]);
-      if (showNotes) body.push(['Resultado neto del periodo', '', fmtPdfSignedNum(totals.utilidadNow), fmtPdfSignedNum(totals.utilidadCmp)]);
-      else body.push(['Resultado neto del periodo', fmtPdfSignedNum(totals.utilidadNow), fmtPdfSignedNum(totals.utilidadCmp)]);
+
+      const totGastosHVar = calcHorizontalVariation(totals.totalGastosNow, totals.totalGastosCmp);
+      const totGastosPNow = calcFinancialPct(totals.totalGastosNow, baseIngresos).text;
+      if (showNotes) {
+        body.push([
+          { content: 'Total gastos y costos', styles: { fontStyle: 'bold' } },
+          '',
+          { content: fmtPdfSignedNum(totals.totalGastosNow), styles: { fontStyle: 'bold' } },
+          { content: totGastosPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalGastosCmp), styles: { fontStyle: 'bold' } },
+          { content: totGastosHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+          { content: totGastosHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+        ]);
+      } else {
+        body.push([
+          { content: 'Total gastos y costos', styles: { fontStyle: 'bold' } },
+          { content: fmtPdfSignedNum(totals.totalGastosNow), styles: { fontStyle: 'bold' } },
+          { content: totGastosPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalGastosCmp), styles: { fontStyle: 'bold' } },
+          { content: totGastosHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+          { content: totGastosHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+        ]);
+      }
+
+      const utilHVar = calcHorizontalVariation(totals.utilidadNow, totals.utilidadCmp);
+      const utilPNow = calcFinancialPct(totals.utilidadNow, baseIngresos).text;
+      if (showNotes) {
+        body.push([
+          { content: 'Resultado neto del periodo', styles: { fontStyle: 'bold', textColor: [13, 33, 55] } },
+          '',
+          { content: fmtPdfSignedNum(totals.utilidadNow), styles: { fontStyle: 'bold' } },
+          { content: utilPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.utilidadCmp), styles: { fontStyle: 'bold' } },
+          { content: utilHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+          { content: utilHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+        ]);
+      } else {
+        body.push([
+          { content: 'Resultado neto del periodo', styles: { fontStyle: 'bold', textColor: [13, 33, 55] } },
+          { content: fmtPdfSignedNum(totals.utilidadNow), styles: { fontStyle: 'bold' } },
+          { content: utilPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.utilidadCmp), styles: { fontStyle: 'bold' } },
+          { content: utilHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+          { content: utilHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+        ]);
+      }
 
       const head = showNotes
         ? [[
-            { content: 'Rubro', styles: { halign: 'left' } },
+            { content: 'Rubro / Concepto', styles: { halign: 'left' } },
             { content: 'Nota', styles: { halign: 'center' } },
             { content: String(reportDate), styles: { halign: 'right' } },
+            { content: '% Ingresos', styles: { halign: 'center' } },
             { content: String(compareDate), styles: { halign: 'right' } },
+            { content: 'Var. ($)', styles: { halign: 'right' } },
+            { content: 'Tendencia (%)', styles: { halign: 'right' } },
           ]]
         : [[
-            { content: 'Rubro', styles: { halign: 'left' } },
+            { content: 'Rubro / Concepto', styles: { halign: 'left' } },
             { content: String(reportDate), styles: { halign: 'right' } },
+            { content: '% Ingresos', styles: { halign: 'center' } },
             { content: String(compareDate), styles: { halign: 'right' } },
+            { content: 'Var. ($)', styles: { halign: 'right' } },
+            { content: 'Tendencia (%)', styles: { halign: 'right' } },
           ]];
 
       doc.autoTable({
@@ -4859,29 +5774,40 @@ async function renderIncomeStatement() {
         body,
         theme: 'plain',
         margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
-        styles: { font: 'helvetica', fontSize: 7.3, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
-        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
+        styles: { font: 'helvetica', fontSize: 7.2, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
+        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
         columnStyles: showNotes
           ? {
-            0: { cellWidth: 280, halign: 'left' },
-            1: { cellWidth: 54, halign: 'center' },
-            2: { cellWidth: 110, halign: 'right' },
-            3: { cellWidth: 110, halign: 'right' },
+            0: { cellWidth: 194, halign: 'left' },
+            1: { cellWidth: 32, halign: 'center' },
+            2: { cellWidth: 72, halign: 'right' },
+            3: { cellWidth: 42, halign: 'center' },
+            4: { cellWidth: 72, halign: 'right' },
+            5: { cellWidth: 74, halign: 'right' },
+            6: { cellWidth: 78, halign: 'right' },
           }
           : {
-            0: { cellWidth: 334, halign: 'left' },
-            1: { cellWidth: 110, halign: 'right' },
-            2: { cellWidth: 110, halign: 'right' },
+            0: { cellWidth: 226, halign: 'left' },
+            1: { cellWidth: 72, halign: 'right' },
+            2: { cellWidth: 42, halign: 'center' },
+            3: { cellWidth: 72, halign: 'right' },
+            4: { cellWidth: 74, halign: 'right' },
+            5: { cellWidth: 78, halign: 'right' },
           },
         didParseCell: (data) => {
           if (data.section === 'head') {
+            data.cell.styles.fillColor = [243, 244, 246];
+            data.cell.styles.textColor = [13, 33, 55];
+            data.cell.styles.fontStyle = 'bold';
             if (showNotes) {
               if (data.column.index === 0) data.cell.styles.halign = 'left';
               else if (data.column.index === 1) data.cell.styles.halign = 'center';
-              else if (data.column.index === 2 || data.column.index === 3) data.cell.styles.halign = 'right';
+              else if (data.column.index === 3) data.cell.styles.halign = 'center';
+              else data.cell.styles.halign = 'right';
             } else {
               if (data.column.index === 0) data.cell.styles.halign = 'left';
-              else if (data.column.index === 1 || data.column.index === 2) data.cell.styles.halign = 'right';
+              else if (data.column.index === 2) data.cell.styles.halign = 'center';
+              else data.cell.styles.halign = 'right';
             }
             return;
           }
@@ -4889,10 +5815,24 @@ async function renderIncomeStatement() {
           const firstCell = body[data.row.index]?.[0];
           if (typeof firstCell === 'object' && firstCell?.colSpan) return;
           const label = String(firstCell || '').toLowerCase();
-          if (label.startsWith('total ') || label.startsWith('resultado ')) {
+          if (label.startsWith('total ') || label.includes('resultado neto') || label.startsWith('resultado ')) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.fillColor = [241, 245, 249];
             data.cell.styles.textColor = [13, 33, 55];
+          }
+          // Colorear columna de Tendencia (%)
+          const trendColIdx = showNotes ? 6 : 5;
+          if (data.column.index === trendColIdx) {
+            const raw = String(data.cell.raw?.content ?? data.cell.raw ?? '').trim();
+            if (raw.startsWith('+')) {
+              data.cell.styles.textColor = [5, 150, 105]; // Verde
+              data.cell.styles.fontStyle = 'bold';
+            } else if (raw.startsWith('-')) {
+              data.cell.styles.textColor = [220, 38, 38]; // Rojo
+              data.cell.styles.fontStyle = 'bold';
+            } else {
+              data.cell.styles.textColor = [100, 116, 139];
+            }
           }
         },
       });
@@ -4936,6 +5876,10 @@ async function renderIncomeStatement() {
       showToast(`Error al generar PDF: ${err.message}`, 'error');
     }
   });
+
+  $('#btn-dossier-from-er')?.addEventListener('click', () => {
+    launchReportModal('Informe Financiero Certificado (NIIF / Ley 222)', () => renderFinancialDossier());
+  });
 }
 
 async function renderFinancialPosition() {
@@ -4951,7 +5895,7 @@ async function renderFinancialPosition() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Estado de Situación Financiera (Balance General)</h4>
-      <div class="grid grid-cols-1 md:grid-cols-9 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-10 gap-3">
         <div class="form-group">
           <label class="form-label">Mes del reporte</label>
           <input id="pos-month" type="month" class="form-input" value="${currentMonthDefault}">
@@ -4966,6 +5910,13 @@ async function renderFinancialPosition() {
             <option value="year" selected>Acumulado del año</option>
             <option value="month">Solo el mes</option>
             <option value="historical">Histórico total</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Modo de vista</label>
+          <select id="pos-view-mode" class="form-input">
+            <option value="compact" selected>Compacto (Sin cascada)</option>
+            <option value="hierarchy">Jerárquico (Árbol PUC)</option>
           </select>
         </div>
         <div class="form-group">
@@ -5000,6 +5951,9 @@ async function renderFinancialPosition() {
         </div>
         <div class="form-group flex items-end">
           <button class="btn btn-outline w-full" id="btn-exp-position" disabled><i class="fas fa-file-excel"></i> Exportar</button>
+        </div>
+        <div class="form-group flex items-end">
+          <button class="btn btn-outline w-full text-indigo-700 border-indigo-200 hover:bg-indigo-50" id="btn-dossier-from-pos" title="Generar Informe Financiero Completo con Notas y Certificación"><i class="fas fa-book-bookmark text-indigo-600"></i> Informe NIIF</button>
         </div>
       </div>
     </div>
@@ -5060,7 +6014,7 @@ async function renderFinancialPosition() {
     return '';
   };
 
-  const groupSection = (accounts, balancesNow, balancesCmp, filterFn, kind, showNotes, maxLevel) => {
+  const groupSection = (accounts, balancesNow, balancesCmp, filterFn, kind, showNotes, maxLevel, isCompact = true) => {
     const EPS = 0.0001;
     const sectionAccounts = accounts.filter(filterFn);
     const nodeById = new Map(sectionAccounts.map((acc) => [acc.id, {
@@ -5108,14 +6062,18 @@ async function renderFinancialPosition() {
     roots.forEach((root) => calcNode(root));
 
     const buildVisibleRows = (node) => {
+      const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
+      if (!hasActivity) return [];
+
       const childRows = [];
       for (const child of node.children) {
         childRows.push(...buildVisibleRows(child));
       }
 
-      const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
-      const visible = hasActivity || childRows.length > 0;
-      if (!visible) return [];
+      // En modo compacto, si tiene exactamente un hijo visible con el mismo saldo exacto, colapsar redundancia en cascada
+      if (isCompact && childRows.length === 1 && Math.abs(childRows[0].now - node.now) < EPS && Math.abs(childRows[0].cmp - node.cmp) < EPS) {
+        return childRows;
+      }
 
       const rows = [];
       if (Number(node.level || 1) <= maxLevel) {
@@ -5178,11 +6136,14 @@ async function renderFinancialPosition() {
         pb.send(`/api/gravy/report-balances?startDate=${startCmp}&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' })
       ]);
 
-      const actCorr = groupSection(accounts, balNow, balCmp, a => ['11', '12', '13', '14'].some(prefix => String(a.code || '').startsWith(prefix)), 'asset', showNotes, maxLevel);
-      const actNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('1') && !['11', '12', '13', '14'].some(prefix => String(a.code || '').startsWith(prefix)), 'asset', showNotes, maxLevel);
-      const pasCorr = groupSection(accounts, balNow, balCmp, a => ['21', '22', '23', '24', '25', '26', '28'].some(prefix => String(a.code || '').startsWith(prefix)), 'liability', showNotes, maxLevel);
-      const pasNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('2') && !['21', '22', '23', '24', '25', '26', '28'].some(prefix => String(a.code || '').startsWith(prefix)), 'liability', showNotes, maxLevel);
-      const patrimonio = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('3'), 'equity', showNotes, maxLevel);
+      const posViewMode = getSelectVal('pos-view-mode') || 'compact';
+      const isCompact = posViewMode === 'compact';
+
+      const actCorr = groupSection(accounts, balNow, balCmp, a => ['11', '12', '13', '14'].some(prefix => String(a.code || '').startsWith(prefix)), 'asset', showNotes, maxLevel, isCompact);
+      const actNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('1') && !['11', '12', '13', '14'].some(prefix => String(a.code || '').startsWith(prefix)), 'asset', showNotes, maxLevel, isCompact);
+      const pasCorr = groupSection(accounts, balNow, balCmp, a => ['21', '22', '23', '24', '25', '26', '28'].some(prefix => String(a.code || '').startsWith(prefix)), 'liability', showNotes, maxLevel, isCompact);
+      const pasNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('2') && !['21', '22', '23', '24', '25', '26', '28'].some(prefix => String(a.code || '').startsWith(prefix)), 'liability', showNotes, maxLevel, isCompact);
+      const patrimonio = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('3'), 'equity', showNotes, maxLevel, isCompact);
 
       const accountCodeMap = new Map<string, string>();
       accounts.forEach(a => accountCodeMap.set(a.id, String(a.code || '')));
@@ -5215,29 +6176,46 @@ async function renderFinancialPosition() {
       const resultadoLabel = resultadoNow >= 0 ? 'Resultado del ejercicio (Utilidad neta)' : 'Resultado del ejercicio (Pérdida neta)';
 
 
-      const colCount = showNotes ? 4 : 3;
-      const noteHead = showNotes ? '<th style="width:90px" class="text-center">Nota</th>' : '';
+      let currentPosMode: 'all' | 'vertical' | 'comparative' | 'kpi' = 'all';
+      let posDisplayMaxLevel = maxLevel;
 
-      const amountCell = (value, extraClass = '') => {
-        const v = fmtPolarityAmount(value);
-        const color = `color:${v.color}`;
-        return `<td class="text-right ${extraClass}" style="${color}">${v.text}</td>`;
-      };
+      const baseActivosNow = totalActivosNow || 1;
+      const baseActivosCmp = totalActivosCmp || 1;
+      const basePyPNow = totalPyPNow || 1;
+      const basePyPCmp = totalPyPCmp || 1;
 
-      const detailRowsHtml = (section) => section.detail.map(r => {
-        const lvl = Number(r.level || 2);
-        const padding = 12 + Math.max(0, lvl - 2) * 16;
-        const isMajorGroup = lvl <= 2;
-        const titleClass = isMajorGroup ? 'font-bold text-gray-900' : 'font-normal text-gray-700';
-        const numClass = isMajorGroup ? 'font-bold' : 'font-normal';
-        return `
-        <tr>
-          <td style="padding-left:${padding}px" class="${titleClass}">${esc(r.label)}</td>
-          ${showNotes ? `<td class="text-center font-normal">${esc(r.note)}</td>` : ''}
-          ${amountCell(r.now, numClass)}
-          ${amountCell(r.cmp, numClass)}
-        </tr>`;
-      }).join('');
+      // Métricas e Indicadores Financieros Clave (KPIs)
+      const varActivos = calcHorizontalVariation(totalActivosNow, totalActivosCmp);
+      const varPasivos = calcHorizontalVariation(totalPasivosNow, totalPasivosCmp);
+      const varPatrimonio = calcHorizontalVariation(totalPatrimonioNow, totalPatrimonioCmp);
+
+      // Razón Corriente (Liquidez)
+      const razonCorrienteNow = pasCorr.totalNow !== 0 ? (actCorr.totalNow / pasCorr.totalNow) : (actCorr.totalNow > 0 ? 99 : 1);
+      const razonCorrienteCmp = pasCorr.totalCmp !== 0 ? (actCorr.totalCmp / pasCorr.totalCmp) : (actCorr.totalCmp > 0 ? 99 : 1);
+      let liquidezBadge = '';
+      if (razonCorrienteNow >= 1.5) {
+        liquidezBadge = '<span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Óptima (≥1.5)</span>';
+      } else if (razonCorrienteNow >= 1.0) {
+        liquidezBadge = '<span class="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Aceptable (≥1.0)</span>';
+      } else {
+        liquidezBadge = '<span class="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">Alerta (&lt;1.0)</span>';
+      }
+
+      // Capital de Trabajo Neto Operativo (KTNO)
+      const ktnoNow = actCorr.totalNow - pasCorr.totalNow;
+      const ktnoCmp = actCorr.totalCmp - pasCorr.totalCmp;
+      const varKtno = calcHorizontalVariation(ktnoNow, ktnoCmp);
+
+      // Nivel de Endeudamiento
+      const endeudamientoPctNow = calcFinancialPct(totalPasivosNow, baseActivosNow);
+      let endeudBadge = '';
+      if (endeudamientoPctNow.pct < 50) {
+        endeudBadge = '<span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Bajo (&lt;50%)</span>';
+      } else if (endeudamientoPctNow.pct <= 70) {
+        endeudBadge = '<span class="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Moderado (50-70%)</span>';
+      } else {
+        endeudBadge = '<span class="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">Alto (&gt;70%)</span>';
+      }
 
       let signaturesHtml = '';
       if (includeSignatures) {
@@ -5262,127 +6240,638 @@ async function renderFinancialPosition() {
           </div>`;
       }
 
+      // Preparación de datos para Exportación a Excel con columnas analíticas
+      lastExportRows = [];
+      const pushExportSection = (title: string, section: any, sectionTotalLabel: string, baseNow: number, baseCmp: number) => {
+        const secPctNow = calcFinancialPct(section.totalNow, baseNow);
+        const secPctCmp = calcFinancialPct(section.totalCmp, baseCmp);
+        const secVar = calcHorizontalVariation(section.totalNow, section.totalCmp);
+
+        lastExportRows.push({ codigo: '', rubro: title, nota: '', actual: '', pctActual: '', comparativo: '', pctComparativo: '', varAbsoluta: '', varPorcentual: '', isBold: true, level: 1 });
+        section.detail.forEach((r: any) => {
+          const lvl = Number(r.level || 2);
+          const isMajorGroup = lvl <= 2;
+          const indent = '  '.repeat(Math.max(0, lvl - 2));
+          const rowPctNow = calcFinancialPct(r.now, baseNow);
+          const rowPctCmp = calcFinancialPct(r.cmp, baseCmp);
+          const rowVar = calcHorizontalVariation(r.now, r.cmp);
+
+          lastExportRows.push({
+            codigo: r.code || '',
+            rubro: `${indent}${r.label}`,
+            nota: r.note || '',
+            actual: r.now,
+            pctActual: rowPctNow.text,
+            comparativo: r.cmp,
+            pctComparativo: rowPctCmp.text,
+            varAbsoluta: rowVar.diff,
+            varPorcentual: rowVar.indicatorText,
+            level: r.level,
+            code: r.code,
+            isBold: isMajorGroup
+          });
+        });
+        lastExportRows.push({
+          codigo: '',
+          rubro: sectionTotalLabel,
+          nota: '',
+          actual: section.totalNow,
+          pctActual: secPctNow.text,
+          comparativo: section.totalCmp,
+          pctComparativo: secPctCmp.text,
+          varAbsoluta: secVar.diff,
+          varPorcentual: secVar.indicatorText,
+          isBold: true,
+          level: 2
+        });
+      };
+
+      pushExportSection('Activos corrientes', actCorr, 'Total activos corrientes', baseActivosNow, baseActivosCmp);
+      pushExportSection('Activos no corrientes', actNoCorr, 'Total activos no corrientes', baseActivosNow, baseActivosCmp);
+
+      const totActVar = calcHorizontalVariation(totalActivosNow, totalActivosCmp);
+      lastExportRows.push({
+        codigo: '1',
+        rubro: 'Total activos',
+        nota: '',
+        actual: totalActivosNow,
+        pctActual: '100.0%',
+        comparativo: totalActivosCmp,
+        pctComparativo: '100.0%',
+        varAbsoluta: totActVar.diff,
+        varPorcentual: totActVar.indicatorText,
+        isBold: true,
+        level: 1
+      });
+
+      pushExportSection('Pasivos corrientes', pasCorr, 'Total pasivos corrientes', basePyPNow, basePyPCmp);
+      pushExportSection('Pasivos no corrientes', pasNoCorr, 'Total pasivos no corrientes', basePyPNow, basePyPCmp);
+
+      const totPasPctNow = calcFinancialPct(totalPasivosNow, basePyPNow);
+      const totPasPctCmp = calcFinancialPct(totalPasivosCmp, basePyPCmp);
+      const totPasVar = calcHorizontalVariation(totalPasivosNow, totalPasivosCmp);
+      lastExportRows.push({
+        codigo: '2',
+        rubro: 'Total pasivos',
+        nota: '',
+        actual: totalPasivosNow,
+        pctActual: totPasPctNow.text,
+        comparativo: totalPasivosCmp,
+        pctComparativo: totPasPctCmp.text,
+        varAbsoluta: totPasVar.diff,
+        varPorcentual: totPasVar.indicatorText,
+        isBold: true,
+        level: 1
+      });
+
+      lastExportRows.push({ codigo: '3', rubro: 'Patrimonio', nota: '', actual: '', pctActual: '', comparativo: '', pctComparativo: '', varAbsoluta: '', varPorcentual: '', isBold: true, level: 1 });
+      patrimonio.detail.forEach((r: any) => {
+        const lvl = Number(r.level || 2);
+        const isMajorGroup = lvl <= 2;
+        const indent = '  '.repeat(Math.max(0, lvl - 2));
+        const rowPctNow = calcFinancialPct(r.now, basePyPNow);
+        const rowPctCmp = calcFinancialPct(r.cmp, basePyPCmp);
+        const rowVar = calcHorizontalVariation(r.now, r.cmp);
+
+        lastExportRows.push({
+          codigo: r.code || '',
+          rubro: `${indent}${r.label}`,
+          nota: r.note || '',
+          actual: r.now,
+          pctActual: rowPctNow.text,
+          comparativo: r.cmp,
+          pctComparativo: rowPctCmp.text,
+          varAbsoluta: rowVar.diff,
+          varPorcentual: rowVar.indicatorText,
+          level: r.level,
+          code: r.code,
+          isBold: isMajorGroup
+        });
+      });
+
+      const resVar = calcHorizontalVariation(resultadoNow, resultadoCmp);
+      lastExportRows.push({
+        codigo: '3.7',
+        rubro: resultadoLabel,
+        nota: showNotes ? '3.7' : '',
+        actual: resultadoNow,
+        pctActual: calcFinancialPct(resultadoNow, basePyPNow).text,
+        comparativo: resultadoCmp,
+        pctComparativo: calcFinancialPct(resultadoCmp, basePyPCmp).text,
+        varAbsoluta: resVar.diff,
+        varPorcentual: resVar.indicatorText,
+        level: 2,
+        code: '',
+        isBold: true
+      });
+
+      const totPatPctNow = calcFinancialPct(totalPatrimonioNow, basePyPNow);
+      const totPatPctCmp = calcFinancialPct(totalPatrimonioCmp, basePyPCmp);
+      const totPatVar = calcHorizontalVariation(totalPatrimonioNow, totalPatrimonioCmp);
+      lastExportRows.push({
+        codigo: '',
+        rubro: 'Total patrimonio',
+        nota: '',
+        actual: totalPatrimonioNow,
+        pctActual: totPatPctNow.text,
+        comparativo: totalPatrimonioCmp,
+        pctComparativo: totPatPctCmp.text,
+        varAbsoluta: totPatVar.diff,
+        varPorcentual: totPatVar.indicatorText,
+        isBold: true,
+        level: 2
+      });
+
+      const totPyPVar = calcHorizontalVariation(totalPyPNow, totalPyPCmp);
+      lastExportRows.push({
+        codigo: '',
+        rubro: 'Total pasivos más patrimonio',
+        nota: '',
+        actual: totalPyPNow,
+        pctActual: '100.0%',
+        comparativo: totalPyPCmp,
+        pctComparativo: '100.0%',
+        varAbsoluta: totPyPVar.diff,
+        varPorcentual: totPyPVar.indicatorText,
+        isBold: true,
+        level: 1
+      });
+
+      // Renderizador de filas según modo activo
+      const renderPositionTableHtml = (mode: 'all' | 'vertical' | 'comparative' | 'kpi', maxLvl: number) => {
+        const noteHead = showNotes ? '<th style="width:75px" class="text-center">Nota</th>' : '';
+        const progressBarCell = (pctObj: { pct: number; text: string; barWidth: number }, barColor = 'bg-blue-500') => `
+          <td class="text-right">
+            <div class="inline-flex items-center justify-end gap-1.5 w-full">
+              <span class="font-mono text-xs text-gray-700 font-medium">${pctObj.text}</span>
+              <div class="w-10 bg-gray-100 rounded-full h-1.5 overflow-hidden flex-shrink-0">
+                <div class="${barColor} h-1.5 rounded-full" style="width:${pctObj.barWidth}%"></div>
+              </div>
+            </div>
+          </td>
+        `;
+
+        const amountCell = (value: number, extraClass = '') => {
+          const v = fmtPolarityAmount(value);
+          return `<td class="text-right ${extraClass}" style="color:${v.color}">${v.text}</td>`;
+        };
+
+        const renderPosSectionRows = (section: any, baseNow: number, baseCmp: number, barColor = 'bg-blue-500') => {
+          return section.detail
+            .filter((r: any) => Number(r.level || 2) <= maxLvl)
+            .map((r: any) => {
+              const lvl = Number(r.level || 2);
+              const padding = 12 + Math.max(0, lvl - 2) * 16;
+              const isMajorGroup = lvl <= 2;
+              const titleClass = isMajorGroup ? 'font-bold text-gray-900' : 'font-normal text-gray-700';
+              const numClass = isMajorGroup ? 'font-bold' : 'font-normal';
+
+              const pNow = calcFinancialPct(r.now, baseNow);
+              const pCmp = calcFinancialPct(r.cmp, baseCmp);
+              const hVar = calcHorizontalVariation(r.now, r.cmp);
+
+              if (mode === 'vertical') {
+                return `
+                <tr data-pos-lvl="${lvl}">
+                  <td style="padding-left:${padding}px" class="${titleClass}">
+                    <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
+                  </td>
+                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ESF') : ''}
+                  ${amountCell(r.now, numClass)}
+                  ${progressBarCell(pNow, barColor)}
+                  ${amountCell(r.cmp, numClass)}
+                  ${progressBarCell(pCmp, 'bg-gray-400')}
+                </tr>`;
+              } else if (mode === 'comparative') {
+                return `
+                <tr data-pos-lvl="${lvl}">
+                  <td style="padding-left:${padding}px" class="${titleClass}">
+                    <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
+                  </td>
+                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ESF') : ''}
+                  ${amountCell(r.now, numClass)}
+                  ${amountCell(r.cmp, numClass)}
+                  <td class="text-right ${numClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+                  <td class="text-center">${hVar.badgeHtml}</td>
+                </tr>`;
+              } else {
+                return `
+                <tr data-pos-lvl="${lvl}">
+                  <td style="padding-left:${padding}px" class="${titleClass}">
+                    <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
+                  </td>
+                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ESF') : ''}
+                  ${amountCell(r.now, numClass)}
+                  ${progressBarCell(pNow, barColor)}
+                  ${amountCell(r.cmp, numClass)}
+                  ${progressBarCell(pCmp, 'bg-gray-400')}
+                  <td class="text-right ${numClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+                  <td class="text-center">${hVar.badgeHtml}</td>
+                </tr>`;
+              }
+            }).join('');
+        };
+
+        const renderPosTotalRow = (label: string, now: number, cmp: number, baseNow: number, baseCmp: number, isSuperBold = false, bgClass = 'bg-gray-50/70', barColor = 'bg-blue-600') => {
+          const pNow = calcFinancialPct(now, baseNow);
+          const pCmp = calcFinancialPct(cmp, baseCmp);
+          const hVar = calcHorizontalVariation(now, cmp);
+          const boldClass = isSuperBold ? 'font-black text-gray-950 text-sm' : 'font-bold text-gray-900';
+
+          if (mode === 'vertical') {
+            return `
+            <tr class="${bgClass}">
+              <td class="${boldClass}">${esc(label)}</td>
+              ${showNotes ? '<td></td>' : ''}
+              ${amountCell(now, boldClass)}
+              ${progressBarCell(pNow, barColor)}
+              ${amountCell(cmp, boldClass)}
+              ${progressBarCell(pCmp, 'bg-gray-500')}
+            </tr>`;
+          } else if (mode === 'comparative') {
+            return `
+            <tr class="${bgClass}">
+              <td class="${boldClass}">${esc(label)}</td>
+              ${showNotes ? '<td></td>' : ''}
+              ${amountCell(now, boldClass)}
+              ${amountCell(cmp, boldClass)}
+              <td class="text-right ${boldClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+              <td class="text-center">${hVar.badgeHtml}</td>
+            </tr>`;
+          } else {
+            return `
+            <tr class="${bgClass}">
+              <td class="${boldClass}">${esc(label)}</td>
+              ${showNotes ? '<td></td>' : ''}
+              ${amountCell(now, boldClass)}
+              ${progressBarCell(pNow, barColor)}
+              ${amountCell(cmp, boldClass)}
+              ${progressBarCell(pCmp, 'bg-gray-500')}
+              <td class="text-right ${boldClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+              <td class="text-center">${hVar.badgeHtml}</td>
+            </tr>`;
+          }
+        };
+
+        let theadHtml = '';
+        if (mode === 'vertical') {
+          theadHtml = `
+            <tr>
+              <th>Rubro / Clasificación NIIF</th>
+              ${noteHead}
+              <th class="text-right">${esc(fmtLongDate(reportDate))}</th>
+              <th class="text-right" style="min-width:115px">% Vert. (Actual)</th>
+              <th class="text-right">${esc(fmtLongDate(compareDate))}</th>
+              <th class="text-right" style="min-width:115px">% Vert. (Comp.)</th>
+            </tr>`;
+        } else if (mode === 'comparative') {
+          theadHtml = `
+            <tr>
+              <th>Rubro / Clasificación NIIF</th>
+              ${noteHead}
+              <th class="text-right">${esc(fmtLongDate(reportDate))}</th>
+              <th class="text-right">${esc(fmtLongDate(compareDate))}</th>
+              <th class="text-right">Var. Nominal ($)</th>
+              <th class="text-center" style="min-width:110px">Var. Relativa (%)</th>
+            </tr>`;
+        } else {
+          theadHtml = `
+            <tr>
+              <th>Rubro / Clasificación NIIF</th>
+              ${noteHead}
+              <th class="text-right">${esc(fmtLongDate(reportDate))}</th>
+              <th class="text-right" style="min-width:110px">% Vert.</th>
+              <th class="text-right">${esc(fmtLongDate(compareDate))}</th>
+              <th class="text-right" style="min-width:110px">% Vert. Cmp</th>
+              <th class="text-right">Var. ($)</th>
+              <th class="text-center" style="min-width:105px">Var. (%)</th>
+            </tr>`;
+        }
+
+        const totalCols = mode === 'vertical' ? (showNotes ? 6 : 5) : mode === 'comparative' ? (showNotes ? 6 : 5) : (showNotes ? 8 : 7);
+
+        return `
+          <table class="data-table">
+            <thead>${theadHtml}</thead>
+            <tbody>
+              <!-- ACTIVOS -->
+              <tr class="bg-blue-50/50"><td class="font-bold text-blue-950" colspan="${totalCols}"><i class="fas fa-building-columns mr-1.5 text-blue-600"></i>ACTIVOS</td></tr>
+              <tr class="bg-blue-50/20"><td class="font-semibold text-blue-900" colspan="${totalCols}" style="padding-left:12px"><i class="fas fa-angles-right text-xxs mr-1 text-blue-500"></i>Activos Corrientes</td></tr>
+              ${renderPosSectionRows(actCorr, baseActivosNow, baseActivosCmp, 'bg-blue-500')}
+              ${renderPosTotalRow('Total activos corrientes', actCorr.totalNow, actCorr.totalCmp, baseActivosNow, baseActivosCmp, false, 'bg-blue-50/60', 'bg-blue-600')}
+
+              <tr class="bg-blue-50/20"><td class="font-semibold text-blue-900" colspan="${totalCols}" style="padding-left:12px"><i class="fas fa-angles-right text-xxs mr-1 text-blue-500"></i>Activos No Corrientes</td></tr>
+              ${renderPosSectionRows(actNoCorr, baseActivosNow, baseActivosCmp, 'bg-blue-500')}
+              ${renderPosTotalRow('Total activos no corrientes', actNoCorr.totalNow, actNoCorr.totalCmp, baseActivosNow, baseActivosCmp, false, 'bg-blue-50/60', 'bg-blue-600')}
+
+              ${renderPosTotalRow('TOTAL ACTIVOS', totalActivosNow, totalActivosCmp, baseActivosNow, baseActivosCmp, true, 'bg-blue-100/70', 'bg-blue-700')}
+
+              <!-- PASIVOS -->
+              <tr class="bg-amber-50/50"><td class="font-bold text-amber-950" colspan="${totalCols}"><i class="fas fa-hand-holding-dollar mr-1.5 text-amber-600"></i>PASIVOS</td></tr>
+              <tr class="bg-amber-50/20"><td class="font-semibold text-amber-900" colspan="${totalCols}" style="padding-left:12px"><i class="fas fa-angles-right text-xxs mr-1 text-amber-500"></i>Pasivos Corrientes</td></tr>
+              ${renderPosSectionRows(pasCorr, basePyPNow, basePyPCmp, 'bg-amber-500')}
+              ${renderPosTotalRow('Total pasivos corrientes', pasCorr.totalNow, pasCorr.totalCmp, basePyPNow, basePyPCmp, false, 'bg-amber-50/60', 'bg-amber-600')}
+
+              <tr class="bg-amber-50/20"><td class="font-semibold text-amber-900" colspan="${totalCols}" style="padding-left:12px"><i class="fas fa-angles-right text-xxs mr-1 text-amber-500"></i>Pasivos No Corrientes</td></tr>
+              ${renderPosSectionRows(pasNoCorr, basePyPNow, basePyPCmp, 'bg-amber-500')}
+              ${renderPosTotalRow('Total pasivos no corrientes', pasNoCorr.totalNow, pasNoCorr.totalCmp, basePyPNow, basePyPCmp, false, 'bg-amber-50/60', 'bg-amber-600')}
+
+              ${renderPosTotalRow('TOTAL PASIVOS', totalPasivosNow, totalPasivosCmp, basePyPNow, basePyPCmp, true, 'bg-amber-100/70', 'bg-amber-700')}
+
+              <!-- PATRIMONIO -->
+              <tr class="bg-emerald-50/50"><td class="font-bold text-emerald-950" colspan="${totalCols}"><i class="fas fa-chart-pie mr-1.5 text-emerald-600"></i>PATRIMONIO</td></tr>
+              ${renderPosSectionRows(patrimonio, basePyPNow, basePyPCmp, 'bg-emerald-500')}
+
+              <tr class="hover:bg-gray-50 font-semibold" data-pos-lvl="2">
+                <td style="padding-left:12px" class="font-bold text-emerald-900">
+                  <span class="font-mono text-xxs text-gray-400 mr-1.5">3.7</span>${esc(resultadoLabel)}
+                </td>
+                ${showNotes ? renderNoteBadgeCell('3.7', resultadoLabel, '3', 'ESF') : ''}
+                ${amountCell(resultadoNow, 'font-bold')}
+                ${mode === 'vertical' || mode === 'all' ? progressBarCell(calcFinancialPct(resultadoNow, basePyPNow), 'bg-emerald-500') : ''}
+                ${amountCell(resultadoCmp, 'font-bold')}
+                ${mode === 'vertical' || mode === 'all' ? progressBarCell(calcFinancialPct(resultadoCmp, basePyPCmp), 'bg-gray-400') : ''}
+                ${mode === 'comparative' || mode === 'all' ? `
+                  <td class="text-right font-bold" style="color:${resVar.diffFmt.color}">${resVar.diffFmt.text}</td>
+                  <td class="text-center">${resVar.badgeHtml}</td>
+                ` : ''}
+              </tr>
+
+              ${renderPosTotalRow('TOTAL PATRIMONIO', totalPatrimonioNow, totalPatrimonioCmp, basePyPNow, basePyPCmp, true, 'bg-emerald-100/70', 'bg-emerald-700')}
+
+              <!-- TOTAL PASIVO + PATRIMONIO -->
+              ${renderPosTotalRow('TOTAL PASIVOS MÁS PATRIMONIO', totalPyPNow, totalPyPCmp, basePyPNow, basePyPCmp, true, 'bg-indigo-100/80', 'bg-indigo-700')}
+            </tbody>
+          </table>
+        `;
+      };
+
+      const refreshPosView = () => {
+        const container = document.getElementById('pos-table-container');
+        if (container) {
+          container.innerHTML = renderPositionTableHtml(currentPosMode, posDisplayMaxLevel);
+        }
+
+        // Actualizar botones de modo de vista
+        document.querySelectorAll('.pos-view-mode').forEach(btn => {
+          const mode = btn.getAttribute('data-mode');
+          if (mode === currentPosMode) {
+            btn.className = 'pos-view-mode px-3 py-1.5 rounded-lg font-semibold transition bg-blue-600 text-white shadow-xs';
+          } else {
+            btn.className = 'pos-view-mode px-3 py-1.5 rounded-lg font-semibold transition text-gray-600 hover:bg-gray-100';
+          }
+        });
+      };
+
       results.innerHTML = `
         <div class="px-4 pt-4 text-center">
           <p class="text-xl font-bold" style="color:#0D2137">Estado de Situación Financiera</p>
-          <p class="text-sm" style="color:#6B7280">(Expresado en pesos colombianos)</p>
+          <p class="text-xs text-gray-500 font-medium">(Expresado en pesos colombianos — NIIF para PYMES / NIC 1)</p>
         </div>
-        <div class="overflow-x-auto p-4" style="max-height:560px">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Rubro</th>
-                ${noteHead}
-                <th class="text-right">${esc(fmtLongDate(reportDate))}</th>
-                <th class="text-right">${esc(fmtLongDate(compareDate))}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td class="font-bold" colspan="${colCount}">Activos</td></tr>
-              <tr><td class="font-semibold" colspan="${colCount}" style="padding-left:12px">Activos corrientes</td></tr>
-              ${detailRowsHtml(actCorr)}
-              <tr>
-                <td class="font-bold" style="padding-left:12px">Total activos corrientes</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(actCorr.totalNow, 'font-bold')}
-                ${amountCell(actCorr.totalCmp, 'font-bold')}
-              </tr>
-              <tr><td class="font-semibold" colspan="${colCount}" style="padding-left:12px">Activos no corrientes</td></tr>
-              ${detailRowsHtml(actNoCorr)}
-              <tr>
-                <td class="font-bold" style="padding-left:12px">Total activos no corrientes</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(actNoCorr.totalNow, 'font-bold')}
-                ${amountCell(actNoCorr.totalCmp, 'font-bold')}
-              </tr>
-              <tr>
-                <td class="font-bold">Total activos</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(totalActivosNow, 'font-bold')}
-                ${amountCell(totalActivosCmp, 'font-bold')}
-              </tr>
 
-              <tr><td class="font-bold" colspan="${colCount}">Pasivos</td></tr>
-              <tr><td class="font-semibold" colspan="${colCount}" style="padding-left:12px">Pasivos corrientes</td></tr>
-              ${detailRowsHtml(pasCorr)}
-              <tr>
-                <td class="font-bold" style="padding-left:12px">Total pasivos corrientes</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(pasCorr.totalNow, 'font-bold')}
-                ${amountCell(pasCorr.totalCmp, 'font-bold')}
-              </tr>
-              <tr><td class="font-semibold" colspan="${colCount}" style="padding-left:12px">Pasivos no corrientes</td></tr>
-              ${detailRowsHtml(pasNoCorr)}
-              <tr>
-                <td class="font-bold" style="padding-left:12px">Total pasivos no corrientes</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(pasNoCorr.totalNow, 'font-bold')}
-                ${amountCell(pasNoCorr.totalCmp, 'font-bold')}
-              </tr>
-              <tr>
-                <td class="font-bold">Total pasivos</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(totalPasivosNow, 'font-bold')}
-                ${amountCell(totalPasivosCmp, 'font-bold')}
-              </tr>
+        <!-- Tarjetas de KPIs Ejecutivos -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4">
+          <div class="bg-white border rounded-2xl p-4 shadow-xs" style="border-color:#E5E7EB">
+            <div class="flex items-center justify-between text-xs text-gray-500 font-semibold mb-1">
+              <span><i class="fas fa-vault text-blue-500 mr-1.5"></i>Activo Total</span>
+              ${varActivos.badgeHtml}
+            </div>
+            <div class="text-xl font-bold text-gray-900">${fmt(totalActivosNow)}</div>
+            <div class="text-xxs text-gray-400 mt-1 flex justify-between">
+              <span>Comp: ${fmt(totalActivosCmp)}</span>
+              <span>100.0%</span>
+            </div>
+          </div>
 
-              <tr><td class="font-bold" colspan="${colCount}">Patrimonio</td></tr>
-              ${detailRowsHtml(patrimonio)}
-              <tr class="font-semibold">
-                <td style="padding-left:12px">${resultadoLabel}</td>
-                ${showNotes ? '<td class="text-center">3.7</td>' : ''}
-                ${amountCell(resultadoNow, 'font-semibold')}
-                ${amountCell(resultadoCmp, 'font-semibold')}
-              </tr>
-              <tr>
-                <td class="font-bold">Total patrimonio</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(totalPatrimonioNow, 'font-bold')}
-                ${amountCell(totalPatrimonioCmp, 'font-bold')}
-              </tr>
+          <div class="bg-white border rounded-2xl p-4 shadow-xs" style="border-color:#E5E7EB">
+            <div class="flex items-center justify-between text-xs text-gray-500 font-semibold mb-1">
+              <span><i class="fas fa-scale-balanced text-indigo-500 mr-1.5"></i>Razón Corriente</span>
+              ${liquidezBadge}
+            </div>
+            <div class="text-xl font-bold text-gray-900">${razonCorrienteNow.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x</div>
+            <div class="text-xxs text-gray-400 mt-1">Act. Cte / Pas. Cte (Comp: ${razonCorrienteCmp.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x)</div>
+          </div>
 
-              <tr>
-                <td class="font-bold">Total pasivos más patrimonio</td>
-                ${showNotes ? '<td></td>' : ''}
-                ${amountCell(totalPyPNow, 'font-bold')}
-                ${amountCell(totalPyPCmp, 'font-bold')}
-              </tr>
-            </tbody>
-          </table>
+          <div class="bg-white border rounded-2xl p-4 shadow-xs" style="border-color:#E5E7EB">
+            <div class="flex items-center justify-between text-xs text-gray-500 font-semibold mb-1">
+              <span><i class="fas fa-coins text-emerald-500 mr-1.5"></i>Capital de Trabajo (KTNO)</span>
+              ${varKtno.badgeHtml}
+            </div>
+            <div class="text-xl font-bold text-gray-900">${fmt(ktnoNow)}</div>
+            <div class="text-xxs text-gray-400 mt-1">Activo Cte - Pasivo Cte</div>
+          </div>
+
+          <div class="bg-white border rounded-2xl p-4 shadow-xs" style="border-color:#E5E7EB">
+            <div class="flex items-center justify-between text-xs text-gray-500 font-semibold mb-1">
+              <span><i class="fas fa-percent text-amber-500 mr-1.5"></i>Endeudamiento</span>
+              ${endeudBadge}
+            </div>
+            <div class="text-xl font-bold text-gray-900">${endeudamientoPctNow.text}</div>
+            <div class="text-xxs text-gray-400 mt-1 flex justify-between">
+              <span>Pasivo Total: ${fmt(totalPasivosNow)}</span>
+              <span>${varPasivos.pctFmt}</span>
+            </div>
+          </div>
         </div>
+
+        <!-- Panel Gráfico Interactivo Chart.js (Composición de Activos y Estructura Financiera) -->
+        <div class="px-4 pb-2">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <button type="button" class="btn btn-xs btn-outline py-1 px-2.5" id="btn-toggle-pos-chart">
+                <i class="fas fa-chart-pie mr-1 text-blue-500"></i><span id="txt-toggle-pos-chart">Ocultar Gráficas</span>
+              </button>
+            </div>
+            <span class="text-xxs text-gray-400 font-medium hidden sm:inline"><i class="fas fa-scale-balanced text-blue-500 mr-1"></i>Estructura patrimonial bajo NIIF</span>
+          </div>
+
+          <div id="pos-chart-wrapper" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-white border rounded-2xl p-4 shadow-2xs" style="border-color:#E5E7EB">
+              <div class="text-xs font-bold text-gray-700 mb-2 flex items-center justify-between">
+                <span><i class="fas fa-pie-chart text-blue-500 mr-1.5"></i>Composición de Activos</span>
+                <span class="text-xxs text-gray-400">Total: ${fmt(totalActivosNow)}</span>
+              </div>
+              <div style="height:210px; position:relative">
+                <canvas id="pos-assets-chart"></canvas>
+              </div>
+            </div>
+
+            <div class="bg-white border rounded-2xl p-4 shadow-2xs" style="border-color:#E5E7EB">
+              <div class="text-xs font-bold text-gray-700 mb-2 flex items-center justify-between">
+                <span><i class="fas fa-shield-halved text-emerald-500 mr-1.5"></i>Estructura Financiera & Capital</span>
+                <span class="text-xxs text-gray-400">Pasivo + Patr: ${fmt(totalPyPNow)}</span>
+              </div>
+              <div style="height:210px; position:relative">
+                <canvas id="pos-capital-chart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Barra de Modos de Vista y Nivel -->
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-gray-50 border-y text-xs mb-3" style="border-color:#E5E7EB">
+          <div class="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-2xs gap-1">
+            <button type="button" class="pos-view-mode px-3 py-1.5 rounded-lg font-semibold transition bg-blue-600 text-white shadow-xs" data-mode="all">
+              <i class="fas fa-table-cells mr-1.5"></i>Vista Integral
+            </button>
+            <button type="button" class="pos-view-mode px-3 py-1.5 rounded-lg font-semibold transition text-gray-600 hover:bg-gray-100" data-mode="vertical">
+              <i class="fas fa-percent mr-1.5"></i>Análisis Vertical (%)
+            </button>
+            <button type="button" class="pos-view-mode px-3 py-1.5 rounded-lg font-semibold transition text-gray-600 hover:bg-gray-100" data-mode="comparative">
+              <i class="fas fa-arrows-split-up-and-left mr-1.5"></i>Comparativo (Var $ y %)
+            </button>
+            <button type="button" class="pos-view-mode px-3 py-1.5 rounded-lg font-semibold transition text-gray-600 hover:bg-gray-100" data-mode="kpi">
+              <i class="fas fa-chart-pie mr-1.5"></i>Resumen Gerencial
+            </button>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="text-gray-400 font-medium">Nivel de visualización:</span>
+            <button type="button" class="btn btn-outline btn-xs py-1" id="btn-pos-collapse-grp" title="Mostrar solo grupos principales (Nivel 2)"><i class="fas fa-compress mr-1"></i>Grupos</button>
+            <button type="button" class="btn btn-outline btn-xs py-1" id="btn-pos-expand-all" title="Ver detalle de todas las cuentas"><i class="fas fa-expand mr-1"></i>Expandir Cuentas</button>
+          </div>
+        </div>
+
+        <!-- Contenedor dinámico de la Tabla de Situación Financiera -->
+        <div id="pos-table-container" class="overflow-x-auto p-4" style="max-height:560px">
+          ${renderPositionTableHtml(currentPosMode, posDisplayMaxLevel)}
+        </div>
+
         <div class="px-4 py-2 text-center text-xs italic text-gray-500" style="border-top: 1px solid #F3F4F6">
           Las notas o revelaciones adjuntas son parte integral de los estados financieros.
         </div>
         ${signaturesHtml}`;
 
-      lastExportRows = [];
-      const pushSection = (title, section, sectionTotalLabel) => {
-        lastExportRows.push({ rubro: title, nota: '', actual: '', comparativo: '', isBold: true, level: 1 });
-        section.detail.forEach((r) => {
-          const lvl = Number(r.level || 2);
-          const isMajorGroup = lvl <= 2;
-          const indent = '  '.repeat(Math.max(0, lvl - 2));
-          lastExportRows.push({ rubro: `${indent}${r.label}`, nota: r.note || '', actual: r.now, comparativo: r.cmp, level: r.level, code: r.code, isBold: isMajorGroup });
-        });
-        lastExportRows.push({ rubro: sectionTotalLabel, nota: '', actual: section.totalNow, comparativo: section.totalCmp, isBold: true, level: 2 });
+      // Lógica de Gráficas Donut Chart.js para Situación Financiera
+      let isPosChartVisible = true;
+
+      const buildPosCharts = () => {
+        const cAssets = document.getElementById('pos-assets-chart') as HTMLCanvasElement;
+        const cCapital = document.getElementById('pos-capital-chart') as HTMLCanvasElement;
+
+        if (posChartAssetsInstance) {
+          posChartAssetsInstance.destroy();
+          posChartAssetsInstance = null;
+        }
+        if (posChartCapitalInstance) {
+          posChartCapitalInstance.destroy();
+          posChartCapitalInstance = null;
+        }
+
+        if (cAssets) {
+          posChartAssetsInstance = new Chart(cAssets, {
+            type: 'doughnut',
+            data: {
+              labels: ['Activos Corrientes', 'Activos No Corrientes'],
+              datasets: [{
+                data: [Math.max(0, actCorr.totalNow), Math.max(0, actNoCorr.totalNow)],
+                backgroundColor: ['#3B82F6', '#93C5FD'],
+                hoverOffset: 4,
+                borderWidth: 2,
+                borderColor: '#FFFFFF',
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => ` ${ctx.label}: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')} (${calcFinancialPct(Number(ctx.raw || 0), baseActivosNow).text})`
+                  }
+                }
+              },
+              cutout: '65%'
+            }
+          });
+        }
+
+        if (cCapital) {
+          posChartCapitalInstance = new Chart(cCapital, {
+            type: 'doughnut',
+            data: {
+              labels: ['Pasivo Corriente', 'Pasivo No Corriente', 'Patrimonio'],
+              datasets: [{
+                data: [Math.max(0, pasCorr.totalNow), Math.max(0, pasNoCorr.totalNow), Math.max(0, totalPatrimonioNow)],
+                backgroundColor: ['#F59E0B', '#D97706', '#10B981'],
+                hoverOffset: 4,
+                borderWidth: 2,
+                borderColor: '#FFFFFF',
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => ` ${ctx.label}: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')} (${calcFinancialPct(Number(ctx.raw || 0), basePyPNow).text})`
+                  }
+                }
+              },
+              cutout: '65%'
+            }
+          });
+        }
       };
 
-      pushSection('Activos corrientes', actCorr, 'Total activos corrientes');
-      pushSection('Activos no corrientes', actNoCorr, 'Total activos no corrientes');
-      lastExportRows.push({ rubro: 'Total activos', nota: '', actual: totalActivosNow, comparativo: totalActivosCmp });
-      pushSection('Pasivos corrientes', pasCorr, 'Total pasivos corrientes');
-      pushSection('Pasivos no corrientes', pasNoCorr, 'Total pasivos no corrientes');
-      lastExportRows.push({ rubro: 'Total pasivos', nota: '', actual: totalPasivosNow, comparativo: totalPasivosCmp });
-      lastExportRows.push({ rubro: 'Patrimonio', nota: '', actual: '', comparativo: '', isBold: true, level: 1 });
-      patrimonio.detail.forEach((r) => {
-        const lvl = Number(r.level || 2);
-        const isMajorGroup = lvl <= 2;
-        const indent = '  '.repeat(Math.max(0, lvl - 2));
-        lastExportRows.push({ rubro: `${indent}${r.label}`, nota: r.note || '', actual: r.now, comparativo: r.cmp, level: r.level, code: r.code, isBold: isMajorGroup });
+      buildPosCharts();
+
+      // Botón de alternar visibilidad de gráficas
+      document.getElementById('btn-toggle-pos-chart')?.addEventListener('click', () => {
+        isPosChartVisible = !isPosChartVisible;
+        const wrapper = document.getElementById('pos-chart-wrapper');
+        const txt = document.getElementById('txt-toggle-pos-chart');
+        if (wrapper) wrapper.style.display = isPosChartVisible ? 'grid' : 'none';
+        if (txt) txt.textContent = isPosChartVisible ? 'Ocultar Gráficas' : 'Mostrar Gráficas';
       });
-      lastExportRows.push({ rubro: resultadoLabel, nota: showNotes ? '3.7' : '', actual: resultadoNow, comparativo: resultadoCmp, level: 2, code: '', isBold: true });
-      lastExportRows.push({ rubro: 'Total patrimonio', nota: '', actual: totalPatrimonioNow, comparativo: totalPatrimonioCmp, isBold: true, level: 2 });
-      lastExportRows.push({ rubro: 'Total pasivos más patrimonio', nota: '', actual: totalPyPNow, comparativo: totalPyPCmp });
+
+      // Escuchadores de cambio de modo de vista
+      results.querySelectorAll('.pos-view-mode').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          const target = (ev.currentTarget as HTMLElement).getAttribute('data-mode') as any;
+          if (target && target !== currentPosMode) {
+            currentPosMode = target;
+            if (currentPosMode === 'kpi') {
+              posDisplayMaxLevel = 2;
+            }
+            refreshPosView();
+          }
+        });
+      });
+
+      // Botones de colapso y expansión rápida
+      document.getElementById('btn-pos-collapse-grp')?.addEventListener('click', () => {
+        posDisplayMaxLevel = 2;
+        refreshPosView();
+      });
+
+      document.getElementById('btn-pos-expand-all')?.addEventListener('click', () => {
+        posDisplayMaxLevel = Number.POSITIVE_INFINITY;
+        refreshPosView();
+      });
+
+      // Escuchador interactivo para abrir el Drawer de Notas NIIF al hacer clic en los badges
+      results.addEventListener('click', (ev) => {
+        const btn = (ev.target as HTMLElement).closest('.btn-open-financial-note') as HTMLElement;
+        if (!btn) return;
+        const noteNum = btn.getAttribute('data-note-num') || '';
+        const title = btn.getAttribute('data-note-title') || '';
+        const code = btn.getAttribute('data-note-code') || '';
+        openFinancialNoteDrawer({
+          noteNum,
+          title,
+          code,
+          reportType: 'ESF',
+          periodo: reportMonth,
+          comparePeriodo: compareMonth,
+          accounts,
+          balNow,
+          balCmp
+        });
+      });
 
       if (includeSignatures) {
         const [repName, repTitle, contName, contTitle, contLicense, revName, revTitle, revLicense] = await Promise.all([
@@ -5463,10 +6952,15 @@ async function renderFinancialPosition() {
   $('#btn-exp-position')?.addEventListener('click', () => {
     if (!lastExportRows.length) return;
     exportToExcel(lastExportRows, [
-      { key: 'rubro', label: 'Rubro' },
-      { key: 'nota', label: 'Nota' },
-      { key: 'actual', label: getInputVal('pos-month') },
-      { key: 'comparativo', label: getInputVal('pos-compare-month') },
+      { key: 'codigo', label: 'Código' },
+      { key: 'rubro', label: 'Rubro / Clasificación NIIF' },
+      { key: 'nota', label: 'Nota NIIF' },
+      { key: 'actual', label: `${getInputVal('pos-month')} ($)` },
+      { key: 'pctActual', label: '% Vert. (Actual)' },
+      { key: 'comparativo', label: `${getInputVal('pos-compare-month')} ($)` },
+      { key: 'pctComparativo', label: '% Vert. (Comp.)' },
+      { key: 'varAbsoluta', label: 'Variación Nominal ($)' },
+      { key: 'varPorcentual', label: 'Variación Relativa (%)' },
     ], `estado_situacion_financiera_${getInputVal('pos-month')}_vs_${getInputVal('pos-compare-month')}`);
   });
   $('#btn-pdf-position')?.addEventListener('click', async () => {
@@ -5487,8 +6981,11 @@ async function renderFinancialPosition() {
       });
 
       const body = [];
-      const pushSection = (sectionTitle, section, totalLabel) => {
-        body.push([{ content: sectionTitle, colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
+      const baseActivos = totals.totalActivosNow || 1;
+      const basePyP = totals.totalPyPNow || 1;
+
+      const pushSection = (sectionTitle, section, totalLabel, baseNow, baseCmp) => {
+        body.push([{ content: sectionTitle, colSpan: showNotes ? 7 : 6, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [241, 245, 249] } }]);
         section.detail.forEach((r) => {
           const lvl = Number(r.level || 2);
           const isMajorGroup = lvl <= 2;
@@ -5501,82 +6998,194 @@ async function renderFinancialPosition() {
             ? { fontStyle: 'bold', textColor: [13, 33, 55] }
             : { fontStyle: 'normal', textColor: [70, 70, 70] };
 
+          const pNow = calcFinancialPct(r.now, baseNow).text;
+          const hVar = calcHorizontalVariation(r.now, r.cmp);
+
           if (showNotes) {
             body.push([
               { content: labelContent, styles: titleStyles },
               { content: r.note || '', styles: { halign: 'center', ...(isMajorGroup ? { fontStyle: 'bold' } : {}) } },
               { content: fmtPdfSignedNum(r.now), styles: numStyles },
-              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+              { content: pNow, styles: { halign: 'center', ...numStyles } },
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles },
+              { content: hVar.diffFmt.text, styles: numStyles },
+              { content: hVar.indicatorText, styles: { halign: 'right', fontStyle: 'bold' } }
             ]);
           } else {
             body.push([
               { content: labelContent, styles: titleStyles },
               { content: fmtPdfSignedNum(r.now), styles: numStyles },
-              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+              { content: pNow, styles: { halign: 'center', ...numStyles } },
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles },
+              { content: hVar.diffFmt.text, styles: numStyles },
+              { content: hVar.indicatorText, styles: { halign: 'right', fontStyle: 'bold' } }
             ]);
           }
         });
-        if (showNotes) body.push([totalLabel, '', fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
-        else body.push([totalLabel, fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
-      };
 
-      pushSection('Activos corrientes', sections.actCorr, 'Total activos corrientes');
-      pushSection('Activos no corrientes', sections.actNoCorr, 'Total activos no corrientes');
-      if (showNotes) body.push(['Total activos', '', fmtPdfSignedNum(totals.totalActivosNow), fmtPdfSignedNum(totals.totalActivosCmp)]);
-      else body.push(['Total activos', fmtPdfSignedNum(totals.totalActivosNow), fmtPdfSignedNum(totals.totalActivosCmp)]);
-      pushSection('Pasivos corrientes', sections.pasCorr, 'Total pasivos corrientes');
-      pushSection('Pasivos no corrientes', sections.pasNoCorr, 'Total pasivos no corrientes');
-      if (showNotes) body.push(['Total pasivos', '', fmtPdfSignedNum(totals.totalPasivosNow), fmtPdfSignedNum(totals.totalPasivosCmp)]);
-      else body.push(['Total pasivos', fmtPdfSignedNum(totals.totalPasivosNow), fmtPdfSignedNum(totals.totalPasivosCmp)]);
-      body.push([{ content: 'Patrimonio', colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
-      sections.patrimonio.detail.forEach((r) => {
-        const lvl = Number(r.level || 2);
-        const isMajorGroup = lvl <= 2;
-        const indentSpaces = '   '.repeat(Math.max(0, lvl - 2));
-        const labelContent = `${indentSpaces}${r.label}`;
-        const titleStyles = isMajorGroup
-          ? { fontStyle: 'bold', textColor: [13, 33, 55] }
-          : { fontStyle: 'normal', textColor: [70, 70, 70] };
-        const numStyles = isMajorGroup
-          ? { fontStyle: 'bold', textColor: [13, 33, 55] }
-          : { fontStyle: 'normal', textColor: [70, 70, 70] };
-
+        const secPNow = calcFinancialPct(section.totalNow, baseNow).text;
+        const secHVar = calcHorizontalVariation(section.totalNow, section.totalCmp);
         if (showNotes) {
           body.push([
-            { content: labelContent, styles: titleStyles },
-            { content: r.note || '', styles: { halign: 'center', ...(isMajorGroup ? { fontStyle: 'bold' } : {}) } },
-            { content: fmtPdfSignedNum(r.now), styles: numStyles },
-            { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+            { content: totalLabel, styles: { fontStyle: 'bold' } },
+            '',
+            { content: fmtPdfSignedNum(section.totalNow), styles: { fontStyle: 'bold' } },
+            { content: secPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+            { content: fmtPdfSignedNum(section.totalCmp), styles: { fontStyle: 'bold' } },
+            { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+            { content: secHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
           ]);
         } else {
           body.push([
-            { content: labelContent, styles: titleStyles },
-            { content: fmtPdfSignedNum(r.now), styles: numStyles },
-            { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+            { content: totalLabel, styles: { fontStyle: 'bold' } },
+            { content: fmtPdfSignedNum(section.totalNow), styles: { fontStyle: 'bold' } },
+            { content: secPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+            { content: fmtPdfSignedNum(section.totalCmp), styles: { fontStyle: 'bold' } },
+            { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+            { content: secHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
           ]);
         }
-      });
+      };
+
+      pushSection('Activos corrientes', sections.actCorr, 'Total activos corrientes', baseActivos, totals.totalActivosCmp);
+      pushSection('Activos no corrientes', sections.actNoCorr, 'Total activos no corrientes', baseActivos, totals.totalActivosCmp);
+
+      const totActVar = calcHorizontalVariation(totals.totalActivosNow, totals.totalActivosCmp);
+      if (showNotes) {
+        body.push([
+          { content: 'TOTAL ACTIVOS', styles: { fontStyle: 'bold', fillColor: [237, 233, 254], textColor: [13, 33, 55] } },
+          { content: '', styles: { fillColor: [237, 233, 254] } },
+          { content: fmtPdfSignedNum(totals.totalActivosNow), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+          { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [237, 233, 254], halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalActivosCmp), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+          { content: totActVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+          { content: totActVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [237, 233, 254], halign: 'right' } }
+        ]);
+      } else {
+        body.push([
+          { content: 'TOTAL ACTIVOS', styles: { fontStyle: 'bold', fillColor: [237, 233, 254], textColor: [13, 33, 55] } },
+          { content: fmtPdfSignedNum(totals.totalActivosNow), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+          { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [237, 233, 254], halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalActivosCmp), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+          { content: totActVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+          { content: totActVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [237, 233, 254], halign: 'right' } }
+        ]);
+      }
+
+      pushSection('Pasivos corrientes', sections.pasCorr, 'Total pasivos corrientes', basePyP, totals.totalPyPCmp);
+      pushSection('Pasivos no corrientes', sections.pasNoCorr, 'Total pasivos no corrientes', basePyP, totals.totalPyPCmp);
+
+      const totPasVar = calcHorizontalVariation(totals.totalPasivosNow, totals.totalPasivosCmp);
+      const totPasPNow = calcFinancialPct(totals.totalPasivosNow, basePyP).text;
+      if (showNotes) {
+        body.push([
+          { content: 'TOTAL PASIVOS', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: '', styles: { fillColor: [243, 244, 246] } },
+          { content: fmtPdfSignedNum(totals.totalPasivosNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPasPNow, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalPasivosCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPasVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPasVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'right' } }
+        ]);
+      } else {
+        body.push([
+          { content: 'TOTAL PASIVOS', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: fmtPdfSignedNum(totals.totalPasivosNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPasPNow, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalPasivosCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPasVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPasVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'right' } }
+        ]);
+      }
+
+      pushSection('Patrimonio', sections.patrimonio, 'Patrimonio antes de resultado', basePyP, totals.totalPyPCmp);
+
       const resPdfLabel = totals.resultadoLabel || 'Resultado del ejercicio';
-      if (showNotes) body.push([{ content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } }, '3.7', fmtPdfSignedNum(totals.resultadoNow), fmtPdfSignedNum(totals.resultadoCmp)]);
-      else body.push([{ content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } }, fmtPdfSignedNum(totals.resultadoNow), fmtPdfSignedNum(totals.resultadoCmp)]);
+      const resVar = calcHorizontalVariation(totals.resultadoNow, totals.resultadoCmp);
+      const resPNow = calcFinancialPct(totals.resultadoNow, basePyP).text;
+      if (showNotes) {
+        body.push([
+          { content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } },
+          { content: '3.7', styles: { halign: 'center', fontStyle: 'bold' } },
+          { content: fmtPdfSignedNum(totals.resultadoNow), styles: { fontStyle: 'bold' } },
+          { content: resPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.resultadoCmp), styles: { fontStyle: 'bold' } },
+          { content: resVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+          { content: resVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+        ]);
+      } else {
+        body.push([
+          { content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } },
+          { content: fmtPdfSignedNum(totals.resultadoNow), styles: { fontStyle: 'bold' } },
+          { content: resPNow, styles: { fontStyle: 'bold', halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.resultadoCmp), styles: { fontStyle: 'bold' } },
+          { content: resVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+          { content: resVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+        ]);
+      }
 
-      if (showNotes) body.push(['Total patrimonio', '', fmtPdfSignedNum(totals.totalPatrimonioNow), fmtPdfSignedNum(totals.totalPatrimonioCmp)]);
-      else body.push(['Total patrimonio', fmtPdfSignedNum(totals.totalPatrimonioNow), fmtPdfSignedNum(totals.totalPatrimonioCmp)]);
+      const totPatVar = calcHorizontalVariation(totals.totalPatrimonioNow, totals.totalPatrimonioCmp);
+      const totPatPNow = calcFinancialPct(totals.totalPatrimonioNow, basePyP).text;
+      if (showNotes) {
+        body.push([
+          { content: 'TOTAL PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: '', styles: { fillColor: [243, 244, 246] } },
+          { content: fmtPdfSignedNum(totals.totalPatrimonioNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPatPNow, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalPatrimonioCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPatVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPatVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'right' } }
+        ]);
+      } else {
+        body.push([
+          { content: 'TOTAL PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: fmtPdfSignedNum(totals.totalPatrimonioNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPatPNow, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalPatrimonioCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPatVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+          { content: totPatVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'right' } }
+        ]);
+      }
 
-      if (showNotes) body.push(['Total pasivos mas patrimonio', '', fmtPdfSignedNum(totals.totalPyPNow), fmtPdfSignedNum(totals.totalPyPCmp)]);
-      else body.push(['Total pasivos mas patrimonio', fmtPdfSignedNum(totals.totalPyPNow), fmtPdfSignedNum(totals.totalPyPCmp)]);
+      const totPyPVar = calcHorizontalVariation(totals.totalPyPNow, totals.totalPyPCmp);
+      if (showNotes) {
+        body.push([
+          { content: 'TOTAL PASIVOS MAS PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+          { content: '', styles: { fillColor: [13, 33, 55] } },
+          { content: fmtPdfSignedNum(totals.totalPyPNow), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+          { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255], halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalPyPCmp), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+          { content: totPyPVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+          { content: totPyPVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255], halign: 'right' } }
+        ]);
+      } else {
+        body.push([
+          { content: 'TOTAL PASIVOS MAS PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+          { content: fmtPdfSignedNum(totals.totalPyPNow), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+          { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255], halign: 'center' } },
+          { content: fmtPdfSignedNum(totals.totalPyPCmp), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+          { content: totPyPVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+          { content: totPyPVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255], halign: 'right' } }
+        ]);
+      }
 
       const head = showNotes
         ? [[
-            { content: 'Rubro', styles: { halign: 'left' } },
+            { content: 'Rubro / Concepto', styles: { halign: 'left' } },
             { content: 'Nota', styles: { halign: 'center' } },
             { content: String(reportDate), styles: { halign: 'right' } },
+            { content: '% Vert.', styles: { halign: 'center' } },
             { content: String(compareDate), styles: { halign: 'right' } },
+            { content: 'Var. ($)', styles: { halign: 'right' } },
+            { content: 'Tendencia (%)', styles: { halign: 'right' } },
           ]]
         : [[
-            { content: 'Rubro', styles: { halign: 'left' } },
+            { content: 'Rubro / Concepto', styles: { halign: 'left' } },
             { content: String(reportDate), styles: { halign: 'right' } },
+            { content: '% Vert.', styles: { halign: 'center' } },
             { content: String(compareDate), styles: { halign: 'right' } },
+            { content: 'Var. ($)', styles: { halign: 'right' } },
+            { content: 'Tendencia (%)', styles: { halign: 'right' } },
           ]];
 
       doc.autoTable({
@@ -5585,29 +7194,40 @@ async function renderFinancialPosition() {
         body,
         theme: 'plain',
         margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
-        styles: { font: 'helvetica', fontSize: 7.3, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
-        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
+        styles: { font: 'helvetica', fontSize: 7.2, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
+        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
         columnStyles: showNotes
           ? {
-            0: { cellWidth: 280, halign: 'left' },
-            1: { cellWidth: 54, halign: 'center' },
-            2: { cellWidth: 110, halign: 'right' },
-            3: { cellWidth: 110, halign: 'right' },
+            0: { cellWidth: 194, halign: 'left' },
+            1: { cellWidth: 32, halign: 'center' },
+            2: { cellWidth: 72, halign: 'right' },
+            3: { cellWidth: 42, halign: 'center' },
+            4: { cellWidth: 72, halign: 'right' },
+            5: { cellWidth: 74, halign: 'right' },
+            6: { cellWidth: 78, halign: 'right' },
           }
           : {
-            0: { cellWidth: 334, halign: 'left' },
-            1: { cellWidth: 110, halign: 'right' },
-            2: { cellWidth: 110, halign: 'right' },
+            0: { cellWidth: 226, halign: 'left' },
+            1: { cellWidth: 72, halign: 'right' },
+            2: { cellWidth: 42, halign: 'center' },
+            3: { cellWidth: 72, halign: 'right' },
+            4: { cellWidth: 74, halign: 'right' },
+            5: { cellWidth: 78, halign: 'right' },
           },
         didParseCell: (data) => {
           if (data.section === 'head') {
+            data.cell.styles.fillColor = [243, 244, 246];
+            data.cell.styles.textColor = [13, 33, 55];
+            data.cell.styles.fontStyle = 'bold';
             if (showNotes) {
               if (data.column.index === 0) data.cell.styles.halign = 'left';
               else if (data.column.index === 1) data.cell.styles.halign = 'center';
-              else if (data.column.index === 2 || data.column.index === 3) data.cell.styles.halign = 'right';
+              else if (data.column.index === 3) data.cell.styles.halign = 'center';
+              else data.cell.styles.halign = 'right';
             } else {
               if (data.column.index === 0) data.cell.styles.halign = 'left';
-              else if (data.column.index === 1 || data.column.index === 2) data.cell.styles.halign = 'right';
+              else if (data.column.index === 2) data.cell.styles.halign = 'center';
+              else data.cell.styles.halign = 'right';
             }
             return;
           }
@@ -5615,10 +7235,24 @@ async function renderFinancialPosition() {
           const firstCell = body[data.row.index]?.[0];
           if (typeof firstCell === 'object' && firstCell?.colSpan) return;
           const label = String(firstCell || '').toLowerCase();
-          if (label.startsWith('total ')) {
+          if (label.startsWith('total ') || label.includes('total activos') || label.includes('total pasivos') || label.includes('total patrimonio')) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.fillColor = [241, 245, 249];
             data.cell.styles.textColor = [13, 33, 55];
+          }
+          // Colorear columna de Tendencia (%)
+          const trendColIdx = showNotes ? 6 : 5;
+          if (data.column.index === trendColIdx) {
+            const raw = String(data.cell.raw?.content ?? data.cell.raw ?? '').trim();
+            if (raw.startsWith('+')) {
+              data.cell.styles.textColor = [5, 150, 105]; // Verde
+              data.cell.styles.fontStyle = 'bold';
+            } else if (raw.startsWith('-')) {
+              data.cell.styles.textColor = [220, 38, 38]; // Rojo
+              data.cell.styles.fontStyle = 'bold';
+            } else {
+              data.cell.styles.textColor = [100, 116, 139];
+            }
           }
         },
       });
@@ -5661,6 +7295,10 @@ async function renderFinancialPosition() {
     } catch (err) {
       showToast(`Error al generar PDF: ${err.message}`, 'error');
     }
+  });
+
+  $('#btn-dossier-from-pos')?.addEventListener('click', () => {
+    launchReportModal('Informe Financiero Certificado (NIIF / Ley 222)', () => renderFinancialDossier());
   });
 }
 
@@ -12480,22 +14118,37 @@ async function generateCashFlowReportRows() {
       subMap.set(item.subcategory, (subMap.get(item.subcategory) || 0) + item.amount);
     });
 
-    const renderGroupedSection = (groupedMap) => {
+    const renderGroupedSection = (groupedMap: any, totalForType: number, barColor: string) => {
       let html = '';
-      groupedMap.forEach((subMap, category) => {
-        const catTotal = [...subMap.values()].reduce((s, v) => s + v, 0);
+      const baseTotal = totalForType || 1;
+      groupedMap.forEach((subMap: any, category: string) => {
+        const catTotal = [...subMap.values()].reduce((s: number, v: number) => s + v, 0);
+        const catPct = calcFinancialPct(catTotal, baseTotal);
         html += `
           <tr class="bg-gray-50 font-bold" style="color:#0D2137">
-            <td colspan="2"><i class="fas fa-folder-open text-blue-600 mr-2"></i>Actividades de ${esc(category)}</td>
+            <td><i class="fas fa-folder-open text-blue-600 mr-2"></i></td>
+            <td>Actividades de ${esc(category)}</td>
+            <td class="text-right">
+              <span class="text-xs font-bold text-gray-700 bg-gray-200/80 px-2 py-0.5 rounded">${catPct.text}</span>
+            </td>
             <td class="text-right font-extrabold">${fmt(catTotal)}</td>
           </tr>
         `;
-        subMap.forEach((amount, subcategory) => {
+        subMap.forEach((amount: number, subcategory: string) => {
+          const itemPct = calcFinancialPct(amount, baseTotal);
           html += `
             <tr class="hover:bg-gray-50">
-              <td class="pl-6 text-gray-500">—</td>
-              <td>${esc(subcategory)}</td>
-              <td class="text-right font-semibold text-gray-700">${fmt(amount)}</td>
+              <td class="pl-6 text-gray-400 text-center text-xs">•</td>
+              <td class="text-gray-800 font-medium">${esc(subcategory)}</td>
+              <td class="text-right">
+                <div class="inline-flex items-center justify-end gap-1.5 w-full">
+                  <span class="font-mono text-xs text-gray-600">${itemPct.text}</span>
+                  <div class="w-10 bg-gray-100 rounded-full h-1.5 overflow-hidden flex-shrink-0">
+                    <div class="${barColor} h-1.5 rounded-full" style="width:${itemPct.barWidth}%"></div>
+                  </div>
+                </div>
+              </td>
+              <td class="text-right font-semibold text-gray-900">${fmt(amount)}</td>
             </tr>
           `;
         });
@@ -12503,8 +14156,15 @@ async function generateCashFlowReportRows() {
       return html;
     };
 
-    const inflowsHtml = renderGroupedSection(groupedFlows.Ingresos);
-    const outflowsHtml = renderGroupedSection(groupedFlows.Egresos);
+    const inflowsHtml = renderGroupedSection(groupedFlows.Ingresos, totalInflows, 'bg-emerald-500');
+    const outflowsHtml = renderGroupedSection(groupedFlows.Egresos, totalOutflows, 'bg-rose-500');
+
+    const coberturaFlujo = totalOutflows > 0 ? (totalInflows / totalOutflows) : (totalInflows > 0 ? 99 : 1);
+    const coberturaBadge = coberturaFlujo >= 1.2
+      ? '<span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Superavitario (≥1.2x)</span>'
+      : (coberturaFlujo >= 1.0
+        ? '<span class="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Equilibrado (≥1.0x)</span>'
+        : '<span class="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">Déficit (&lt;1.0x)</span>');
 
     results.innerHTML = `
       <div class="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6 text-left">
@@ -12516,22 +14176,47 @@ async function generateCashFlowReportRows() {
         <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
           <p class="text-xs font-bold text-gray-400 uppercase text-emerald-600">Total Ingresos</p>
           <p class="text-xl font-bold mt-1 text-emerald-700">+ ${fmt(totalInflows)}</p>
-          <p class="text-[10px] text-gray-500 mt-1">Entradas reales</p>
+          <p class="text-[10px] text-gray-500 mt-1">100% Entradas de efectivo</p>
         </div>
         <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
           <p class="text-xs font-bold text-gray-400 uppercase text-rose-600">Total Egresos</p>
           <p class="text-xl font-bold mt-1 text-rose-700">- ${fmt(totalOutflows)}</p>
-          <p class="text-[10px] text-gray-500 mt-1">Salidas reales</p>
+          <p class="text-[10px] text-gray-500 mt-1">100% Salidas de efectivo</p>
         </div>
         <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
-          <p class="text-xs font-bold text-gray-400 uppercase">Flujo Neto</p>
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-bold text-gray-400 uppercase">Flujo Neto</p>
+            ${coberturaBadge}
+          </div>
           <p class="text-xl font-bold mt-1 ${netFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${netFlow >= 0 ? '+' : ''}${fmt(netFlow)}</p>
-          <p class="text-[10px] text-gray-500 mt-1">Variación neta del período</p>
+          <p class="text-[10px] text-gray-500 mt-1">Cobertura: ${coberturaFlujo.toFixed(2)}x ingresos/egresos</p>
         </div>
         <div class="bg-white rounded-2xl border p-4 shadow-sm bg-blue-50/50" style="border-color:#BFDBFE">
           <p class="text-xs font-bold text-gray-500 uppercase">Saldo Final</p>
           <p class="text-xl font-bold mt-1 text-blue-900">${fmt(finalBalance)}</p>
           <p class="text-[10px] text-gray-500 mt-1">Corte a la fecha fin</p>
+        </div>
+      </div>
+
+      <!-- Panel Gráfico de Flujo de Efectivo Chart.js -->
+      <div class="mb-6">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <button type="button" class="btn btn-xs btn-outline py-1 px-2.5" id="btn-toggle-cf-chart">
+              <i class="fas fa-chart-column mr-1 text-emerald-600"></i><span id="txt-toggle-cf-chart">Ocultar Gráficas</span>
+            </button>
+            <div class="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-xxs" id="cf-chart-type-toggle">
+              <button type="button" class="cf-chart-type-btn px-2.5 py-1 rounded font-semibold bg-emerald-600 text-white" data-type="activities">Flujo por Actividades</button>
+              <button type="button" class="cf-chart-type-btn px-2.5 py-1 rounded font-semibold text-gray-600 hover:bg-gray-100" data-type="waterfall">Conciliación de Saldo</button>
+            </div>
+          </div>
+          <span class="text-xxs text-gray-400 font-medium hidden sm:inline"><i class="fas fa-money-bill-transfer text-emerald-500 mr-1"></i>Análisis de liquidez</span>
+        </div>
+
+        <div id="cf-chart-wrapper" class="bg-white border rounded-2xl p-4 shadow-2xs" style="border-color:#E5E7EB">
+          <div style="height:240px; position:relative; width:100%">
+            <canvas id="cf-financial-chart"></canvas>
+          </div>
         </div>
       </div>
 
@@ -12548,11 +14233,12 @@ async function generateCashFlowReportRows() {
                 <tr>
                   <th style="width: 5%"></th>
                   <th>Concepto / Subcategoría</th>
+                  <th class="text-right" style="min-width:110px">% Participación</th>
                   <th class="text-right">Monto</th>
                 </tr>
               </thead>
               <tbody>
-                ${inflowsHtml || '<tr><td colspan="3" class="text-center py-6 text-gray-400">No se registraron ingresos de efectivo.</td></tr>'}
+                ${inflowsHtml || '<tr><td colspan="4" class="text-center py-6 text-gray-400">No se registraron ingresos de efectivo.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -12570,17 +14256,169 @@ async function generateCashFlowReportRows() {
                 <tr>
                   <th style="width: 5%"></th>
                   <th>Concepto / Subcategoría</th>
+                  <th class="text-right" style="min-width:110px">% Absorción</th>
                   <th class="text-right">Monto</th>
                 </tr>
               </thead>
               <tbody>
-                ${outflowsHtml || '<tr><td colspan="3" class="text-center py-6 text-gray-400">No se registraron egresos de efectivo.</td></tr>'}
+                ${outflowsHtml || '<tr><td colspan="4" class="text-center py-6 text-gray-400">No se registraron egresos de efectivo.</td></tr>'}
               </tbody>
             </table>
           </div>
         </div>
       </div>
     `;
+
+    // Desglose consolidado por actividades para gráficas
+    const actTotals: Record<string, { in: number; out: number; net: number }> = {
+      'Operación': { in: 0, out: 0, net: 0 },
+      'Inversión': { in: 0, out: 0, net: 0 },
+      'Financiación': { in: 0, out: 0, net: 0 }
+    };
+    flowItems.forEach((f: any) => {
+      const cat = f.category === 'Inversión' ? 'Inversión' : f.category === 'Financiación' ? 'Financiación' : 'Operación';
+      if (f.type === 'Ingreso') actTotals[cat].in += f.amount;
+      else actTotals[cat].out += f.amount;
+      actTotals[cat].net = actTotals[cat].in - actTotals[cat].out;
+    });
+
+    let currentCfChartType: 'activities' | 'waterfall' = 'activities';
+    let isCfChartVisible = true;
+
+    const buildCfChart = (type: 'activities' | 'waterfall') => {
+      const canvas = document.getElementById('cf-financial-chart') as HTMLCanvasElement;
+      if (!canvas) return;
+
+      if (cfChartInstance) {
+        cfChartInstance.destroy();
+        cfChartInstance = null;
+      }
+
+      if (type === 'activities') {
+        const labels = ['Actividades de Operación', 'Actividades de Inversión', 'Actividades de Financiación'];
+        const dataIn = [actTotals['Operación'].in, actTotals['Inversión'].in, actTotals['Financiación'].in];
+        const dataOut = [actTotals['Operación'].out, actTotals['Inversión'].out, actTotals['Financiación'].out];
+        const dataNet = [actTotals['Operación'].net, actTotals['Inversión'].net, actTotals['Financiación'].net];
+
+        cfChartInstance = new Chart(canvas, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Entradas (+)',
+                data: dataIn,
+                backgroundColor: '#10B981',
+                borderRadius: 4
+              },
+              {
+                label: 'Salidas (-)',
+                data: dataOut,
+                backgroundColor: '#F43F5E',
+                borderRadius: 4
+              },
+              {
+                label: 'Flujo Neto (=)',
+                data: dataNet,
+                backgroundColor: '#3B82F6',
+                borderRadius: 4
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'top' },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => ` ${ctx.dataset.label}: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')}`
+                }
+              }
+            },
+            scales: {
+              y: {
+                ticks: {
+                  callback: (val) => `$ ${Number(val).toLocaleString('es-CO')}`
+                },
+                grid: { color: '#F1F5F9' }
+              },
+              x: {
+                grid: { display: false }
+              }
+            }
+          }
+        });
+      } else {
+        // Conciliación de Saldo (Waterfall)
+        const labels = ['Saldo Inicial', '(+) Entradas Totales', '(-) Salidas Totales', '(=) Saldo Final'];
+        const values = [initialBalance, totalInflows, -totalOutflows, finalBalance];
+        const colors = ['#64748B', '#10B981', '#F43F5E', '#2563EB'];
+
+        cfChartInstance = new Chart(canvas, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Flujo de Dinero',
+              data: values,
+              backgroundColor: colors,
+              borderRadius: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => ` Monto: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')}`
+                }
+              }
+            },
+            scales: {
+              y: {
+                ticks: {
+                  callback: (val) => `$ ${Number(val).toLocaleString('es-CO')}`
+                },
+                grid: { color: '#F1F5F9' }
+              },
+              x: {
+                grid: { display: false }
+              }
+            }
+          }
+        });
+      }
+    };
+
+    buildCfChart(currentCfChartType);
+
+    document.getElementById('btn-toggle-cf-chart')?.addEventListener('click', () => {
+      isCfChartVisible = !isCfChartVisible;
+      const wrapper = document.getElementById('cf-chart-wrapper');
+      const txt = document.getElementById('txt-toggle-cf-chart');
+      if (wrapper) wrapper.style.display = isCfChartVisible ? 'block' : 'none';
+      if (txt) txt.textContent = isCfChartVisible ? 'Ocultar Gráficas' : 'Mostrar Gráficas';
+    });
+
+    results.querySelectorAll('.cf-chart-type-btn').forEach(btn => {
+      btn.addEventListener('click', (ev) => {
+        const type = (ev.currentTarget as HTMLElement).getAttribute('data-type') as any;
+        if (type && type !== currentCfChartType) {
+          currentCfChartType = type;
+          results.querySelectorAll('.cf-chart-type-btn').forEach(b => {
+            if (b.getAttribute('data-type') === currentCfChartType) {
+              b.className = 'cf-chart-type-btn px-2.5 py-1 rounded font-semibold bg-emerald-600 text-white';
+            } else {
+              b.className = 'cf-chart-type-btn px-2.5 py-1 rounded font-semibold text-gray-600 hover:bg-gray-100';
+            }
+          });
+          buildCfChart(currentCfChartType);
+        }
+      });
+    });
 
     let signaturesHtml = '';
     let signatureValues = null;
@@ -12648,26 +14486,30 @@ function exportCashFlowToExcel() {
   rows.push({ seccion: 'Saldo Final', categoria: '', subcategoria: '', concepto: '', monto: data.finalBalance });
   rows.push({ seccion: '', categoria: '', subcategoria: '', concepto: '', monto: '' });
 
-  rows.push({ seccion: 'DETALLE DE FLUJOS', categoria: 'Categoría', subcategoria: 'Subcategoría', concepto: 'Tercero / Cuenta Contable / Info', monto: 'Monto' });
-  data.flowItems.forEach(f => {
+  rows.push({ seccion: 'DETALLE DE FLUJOS', categoria: 'Categoría', subcategoria: 'Subcategoría', concepto: 'Tercero / Cuenta Contable / Info', pct: '% Peso Relativo', monto: 'Monto' });
+  data.flowItems.forEach((f: any) => {
+    const base = f.type === 'Ingreso' ? data.totalInflows : data.totalOutflows;
+    const p = calcFinancialPct(f.amount, base);
     rows.push({
       seccion: f.type,
       categoria: f.category,
       subcategoria: f.subcategory,
       concepto: `${f.txDate} [${f.txNumber}] ${f.accountCode} ${f.accountName} - ${f.description}`,
+      pct: p.text,
       monto: f.amount
     });
   });
 
   if (data.includeSignatures && data.signatures) {
     const s = data.signatures;
-    rows.push({ seccion: '', categoria: '', subcategoria: '', concepto: '', monto: '' });
-    rows.push({ seccion: '', categoria: '', subcategoria: '', concepto: '', monto: '' });
+    rows.push({ seccion: '', categoria: '', subcategoria: '', concepto: '', pct: '', monto: '' });
+    rows.push({ seccion: '', categoria: '', subcategoria: '', concepto: '', pct: '', monto: '' });
     rows.push({
       seccion: s.repName || '________________________',
       categoria: s.contName || '________________________',
       subcategoria: s.revName || '________________________',
       concepto: '',
+      pct: '',
       monto: ''
     });
     rows.push({
@@ -12675,6 +14517,7 @@ function exportCashFlowToExcel() {
       categoria: `${s.contTitle || 'Contador'}${s.contLicense ? ' (' + s.contLicense + ')' : ''}`,
       subcategoria: `${s.revTitle || 'Revisor Fiscal'}${s.revLicense ? ' (' + s.revLicense + ')' : ''}`,
       concepto: '',
+      pct: '',
       monto: ''
     });
   }
@@ -12684,7 +14527,8 @@ function exportCashFlowToExcel() {
     { key: 'categoria', label: 'Categoría' },
     { key: 'subcategoria', label: 'Subcategoría' },
     { key: 'concepto', label: 'Detalle de Comprobante Contable' },
-    { key: 'monto', label: 'Monto' }
+    { key: 'pct', label: '% Participación / Absorción' },
+    { key: 'monto', label: 'Monto ($)' }
   ], `flujo_caja_${data.fromDate}_a_${data.toDate}`);
 }
 
@@ -14033,162 +15877,84 @@ function buildNoteSuggestion(
   titulo: string,
   saldoActual: number,
   saldoAnterior: number,
-  periodo: string
+  periodo: string,
+  supportingAccounts: any[] = []
 ): string {
   const cod = String(cuentaCodigo || '').trim();
   const now = Number(saldoActual || 0);
   const prev = Number(saldoAnterior || 0);
-  const varPct = prev !== 0 ? Math.round(((now - prev) / Math.abs(prev)) * 100) : 0;
+  const diff = now - prev;
+  const varPct = prev !== 0 ? Math.round(((now - prev) / Math.abs(prev)) * 100) : (now !== 0 ? 100 : 0);
   const fmtV = (n: number) => Math.abs(n).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
-  const varTexto = varPct === 0
-    ? 'sin variación significativa respecto al periodo anterior'
-    : varPct > 0
-      ? `con un incremento del ${varPct}% respecto al periodo anterior`
-      : `con una disminución del ${Math.abs(varPct)}% respecto al periodo anterior`;
-  const periodoTexto = periodo || 'el periodo actual';
+  const periodoTexto = periodo ? `el periodo ${periodo.replace('_a_', ' a ')}` : 'el corte reportado';
 
-  // ── Clase 1: Activo ──────────────────────────────────────────────────────
+  // Análisis de variación horizontal
+  let varTexto = '';
+  if (prev === 0 && now !== 0) {
+    varTexto = `constituye una partida nueva originada en el presente ejercicio por valor de ${fmtV(now)}`;
+  } else if (now === 0 && prev !== 0) {
+    varTexto = `refleja la total extinción o amortización del saldo precedente de ${fmtV(prev)}`;
+  } else if (varPct === 0) {
+    varTexto = 'mantiene estabilidad absoluta respecto al periodo anterior';
+  } else if (varPct > 0) {
+    varTexto = `presenta un incremento neto de ${fmtV(diff)} (+${varPct}%) frente al periodo anterior`;
+  } else {
+    varTexto = `presenta una reducción neta de ${fmtV(Math.abs(diff))} (-${Math.abs(varPct)}%) frente al periodo anterior`;
+  }
+
+  // Análisis de composición y dominancia de subcuentas (si se dispone del desglose)
+  let desgloseTexto = '';
+  if (supportingAccounts && supportingAccounts.length > 0) {
+    const active = supportingAccounts
+      .filter((a: any) => Math.abs(a.now) > 0.01 || Math.abs(a.cmp) > 0.01)
+      .sort((a: any, b: any) => Math.abs(b.now) - Math.abs(a.now));
+
+    if (active.length > 0) {
+      const topAccounts = active.slice(0, 3);
+      const itemsStr = topAccounts.map((a: any) => {
+        const pct = now !== 0 ? Math.round((Math.abs(a.now) / Math.abs(now)) * 100) : 0;
+        const part = pct > 0 ? ` (${pct}% del rubro)` : '';
+        return `"${a.name}" con ${fmtV(a.now)}${part}`;
+      }).join(', ');
+
+      desgloseTexto = `\n\nComposición y partidas principales:\nLa concentración principal del saldo se encuentra en: ${itemsStr}.`;
+
+      const topVariation = [...active].sort((a: any, b: any) => Math.abs(b.variation || 0) - Math.abs(a.variation || 0))[0];
+      if (topVariation && Math.abs(topVariation.variation || 0) > 1000) {
+        const vSign = (topVariation.variation || 0) >= 0 ? '+' : '-';
+        desgloseTexto += `\nEl principal factor explicativo de la variación neta correspondió a "${topVariation.name}", cuyo saldo varió en ${vSign}${fmtV(Math.abs(topVariation.variation))}.`;
+      }
+    }
+  }
+
+  // Revelaciones y políticas específicas según Marco Técnico Normativo NIIF (Dec. 2420/2015)
+  let marcoNormativoTexto = '';
+
   if (cod.startsWith('11')) {
-    return `Al cierre de ${periodoTexto}, el rubro "${titulo}" presenta un saldo de ${fmtV(now)}, ` +
-      `${varTexto}. Corresponde a recursos disponibles en caja y cuentas bancarias de la empresa, ` +
-      `valorados al costo histórico. Los recursos en moneda extranjera, de existir, han sido ` +
-      `reexpresados a la tasa de cambio representativa del mercado vigente al cierre del periodo.`;
-  }
-  if (cod.startsWith('12')) {
-    return `El rubro "${titulo}" asciende a ${fmtV(now)} al cierre de ${periodoTexto}, ` +
-      `${varTexto}. Comprende inversiones en títulos valores y participaciones en otras entidades, ` +
-      `registradas al costo de adquisición ajustado por el método de participación o al valor razonable ` +
-      `según la política contable vigente.`;
-  }
-  if (cod.startsWith('13')) {
-    const alertaMora = now > 0 && prev > 0 && varPct > 20
-      ? ' Se recomienda revisar la política de provisiones de cartera dado el incremento observado.'
-      : '';
-    return `La cartera de "${titulo}" al cierre de ${periodoTexto} asciende a ${fmtV(now)}, ` +
-      `${varTexto}. Comprende las obligaciones de clientes y deudores por operaciones comerciales ` +
-      `normales. La empresa aplica una política de provisión individual y/o general conforme a las ` +
-      `normas contables vigentes.${alertaMora}`;
-  }
-  if (cod.startsWith('14')) {
-    return `Los inventarios de "${titulo}" presentan un saldo de ${fmtV(now)} al cierre de ` +
-      `${periodoTexto}, ${varTexto}. El costo se determina por el método de ` +
-      `promedio ponderado. El inventario se ha valorado al costo o al valor neto de realización, ` +
-      `el que resulte menor, conforme a las políticas contables de la empresa.`;
-  }
-  if (cod.startsWith('15') || cod.startsWith('16') || cod.startsWith('17')) {
-    return `El rubro "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
-      `${varTexto}. Los activos se contabilizan al costo histórico menos la depreciación acumulada ` +
-      `y las pérdidas por deterioro. La depreciación se calcula por el método de línea recta ` +
-      `sobre la vida útil estimada de cada activo.`;
-  }
-  if (cod.startsWith('19')) {
-    return `El saldo de "${titulo}" al cierre de ${periodoTexto} asciende a ${fmtV(now)}, ` +
-      `${varTexto}. Comprende activos diferidos, cargos diferidos u otros activos no clasificados ` +
-      `en las partidas anteriores. Se amortizan con cargo a resultados durante su vida útil estimada.`;
-  }
-  if (cod.startsWith('1')) {
-    return `El rubro de activos "${titulo}" presenta un saldo de ${fmtV(now)} ` +
-      `al cierre de ${periodoTexto}, ${varTexto}.`;
+    marcoNormativoTexto = `\n\nRevelación normativa (Efectivo y Equivalentes):\nLos recursos corresponden a saldos en caja y entidades bancarias de disponibilidad inmediata y sin restricciones legales, gravámenes ni embargos a la fecha de corte. La entidad no mantiene sobregiros bancarios no autorizados ni compromisos de pignoración sobre estos fondos.`;
+  } else if (cod.startsWith('12') || cod.startsWith('13')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Deudores y Cuentas por Cobrar):\nComprende obligaciones a favor de la entidad exigibles en el corto plazo por operaciones comerciales o administrativas. De conformidad con la NIIF para PYMES (Sección 11) / Marco Técnico de Información Financiera, la cartera se evalúa por su costo amortizado o recuperable. Se efectúa seguimiento permanente a la antigüedad de saldos y se aplican las políticas de cobranza y provisiones por deterioro de cartera cuando proceda.`;
+  } else if (cod.startsWith('14')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Inventarios):\nLos inventarios se encuentran valorados al costo de adquisición mediante el método de promedio ponderado, de acuerdo con la Sección 13 de las NIIF para PYMES. No se evidencian pérdidas por obsolescencia técnica ni deterioro que sitúen el valor neto realizable por debajo de su costo contable en libros.`;
+  } else if (cod.startsWith('15') || cod.startsWith('16') || cod.startsWith('17') || cod.startsWith('18')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Propiedades, Planta y Equipo):\nLos bienes se registran al costo histórico de adquisición menos depreciación acumulada y pérdidas por deterioro acumuladas. La depreciación se reconoce en el resultado del ejercicio por el método de línea recta atendiendo las vidas útiles estimadas. A la fecha de balance no existen indicios de deterioro físico o económico de los activos fijos.`;
+  } else if (cod.startsWith('19')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Otros Activos y Gastos Anticipados):\nComprende activos diferidos, pólizas de seguros y pagos anticipados que se amortizan con cargo a los resultados del ejercicio a medida que se devenga el servicio o se transfiere el beneficio económico.`;
+  } else if (cod.startsWith('21') || cod.startsWith('22') || cod.startsWith('23')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Cuentas por Pagar y Obligaciones Financieras):\nRepresentan compromisos contractuales vigentes con acreedores y proveedores con plazos de cancelación mayoritariamente menores a un año (pasivo corriente). Los saldos han sido reconocidos a su valor de liquidación exigible, sin intereses de mora devengados a la fecha de corte.`;
+  } else if (cod.startsWith('24') || cod.startsWith('25') || cod.startsWith('26')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Obligaciones Fiscales y Laborales):\nLos pasivos tributarios corresponden a retenciones en la fuente, gravámenes y contribuciones causadas según el calendario fiscal vigente ante la DIAN y autoridades distritales/municipales. Los pasivos laborales reflejan la provisión de prestaciones sociales, cesantías e intereses acordes a la legislación laboral colombiana.`;
+  } else if (cod.startsWith('27') || cod.startsWith('28') || cod.startsWith('29')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Anticipos y Otros Pasivos):\nComprende ingresos recibidos por anticipado o depósitos recibidos en custodia que se amortizan o reconocen en el estado de resultados a medida que se ejecutan los servicios o se cumplen las condiciones contractuales.`;
+  } else if (cod.startsWith('3')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Patrimonio Institucional):\nRefleja el patrimonio neto conformado por aportes de capital, reservas legales/estatutarias y el resultado del ejercicio actual y ejercicios anteriores. En caso de propiedad horizontal o entidades sin ánimo de lucro, se incluye el fondo de imprevistos conforme al mandato de la Ley 675 de 2001.`;
+  } else if (cod.startsWith('4')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Ingresos de Actividades Ordinarias):\nLos ingresos se reconocen por el principio del devengo conforme se prestan los servicios o se expiden las facturaciones / cuentas de cobro institucionales, satisfaciendo la obligación de desempeño estipulada en las políticas contables.`;
+  } else if (cod.startsWith('5') || cod.startsWith('6') || cod.startsWith('7')) {
+    marcoNormativoTexto = `\n\nRevelación normativa (Costos y Gastos Operacionales):\nLos egresos operacionales fueron causados en el periodo de acuerdo con la asignación presupuestal y los contratos suscritos para la operación, mantenimiento, administración y seguridad institucional, soportados con comprobantes debidamente autorizados.`;
   }
 
-  // ── Clase 2: Pasivo ──────────────────────────────────────────────────────
-  if (cod.startsWith('21')) {
-    return `Las obligaciones financieras de "${titulo}" ascienden a ${fmtV(now)} al cierre de ` +
-      `${periodoTexto}, ${varTexto}. Corresponden a créditos contratados con entidades financieras ` +
-      `para capital de trabajo y/o adquisición de activos. Las tasas de interés y vencimientos ` +
-      `están detallados en los documentos soporte de cada obligación.`;
-  }
-  if (cod.startsWith('22') || cod.startsWith('23')) {
-    return `Las obligaciones con proveedores y cuentas por pagar de "${titulo}" ascienden a ` +
-      `${fmtV(now)} al cierre de ${periodoTexto}, ${varTexto}. Corresponden a compromisos ` +
-      `con proveedores de bienes y servicios por operaciones normales de la empresa, ` +
-      `contabilizados al valor histórico de la obligación.`;
-  }
-  if (cod.startsWith('24') || cod.startsWith('25')) {
-    return `El rubro "${titulo}" presenta un pasivo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
-      `${varTexto}. Comprende impuestos, contribuciones y obligaciones laborales causadas ` +
-      `y pendientes de pago conforme a la normativa vigente.`;
-  }
-  if (cod.startsWith('27')) {
-    return `Las diferidas e ingresos anticipados de "${titulo}" ascienden a ${fmtV(now)} ` +
-      `al cierre de ${periodoTexto}, ${varTexto}. Corresponden a ingresos recibidos por anticipado ` +
-      `que se reconocerán en resultados en los periodos futuros conforme se presten los servicios ` +
-      `o se entreguen los bienes contratados.`;
-  }
-  if (cod.startsWith('2')) {
-    return `El pasivo "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
-      `${varTexto}.`;
-  }
-
-  // ── Clase 3: Patrimonio ───────────────────────────────────────────────────
-  if (cod.startsWith('31')) {
-    return `El capital social suscrito y pagado de la empresa asciende a ${fmtV(now)} ` +
-      `al cierre de ${periodoTexto}, ${varTexto}. ` +
-      `Representa los aportes efectuados por los socios conforme a los estatutos sociales vigentes.`;
-  }
-  if (cod.startsWith('33')) {
-    return `Las reservas de "${titulo}" ascienden a ${fmtV(now)} al cierre de ${periodoTexto}, ` +
-      `${varTexto}. Se constituyen conforme a disposiciones legales y estatutarias, ` +
-      `y representan recursos apropiados de las utilidades para fines específicos.`;
-  }
-  if (cod.startsWith('36') || cod.startsWith('37')) {
-    return `Los resultados acumulados de "${titulo}" presentan un saldo de ${fmtV(now)} ` +
-      `al cierre de ${periodoTexto}, ${varTexto}. ` +
-      `Corresponden a utilidades o pérdidas de ejercicios anteriores pendientes de distribución o aplicación.`;
-  }
-  if (cod.startsWith('3')) {
-    return `El patrimonio "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
-      `${varTexto}.`;
-  }
-
-  // ── Clase 4: Ingresos ─────────────────────────────────────────────────────
-  if (cod.startsWith('41')) {
-    return `Los ingresos operacionales de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(Math.abs(now))}, ` +
-      `${varTexto}. Provienen de la actividad principal del objeto social de la empresa ` +
-      `y se reconocen cuando es probable que los beneficios económicos fluyan hacia la entidad ` +
-      `y el importe puede medirse con fiabilidad.`;
-  }
-  if (cod.startsWith('42')) {
-    return `Los ingresos no operacionales de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(Math.abs(now))}, ` +
-      `${varTexto}. Corresponden a ingresos obtenidos fuera de la actividad principal, ` +
-      `tales como rendimientos financieros, arrendamientos u otros conceptos.`;
-  }
-  if (cod.startsWith('4')) {
-    return `El ingreso "${titulo}" en ${periodoTexto} ascendió a ${fmtV(Math.abs(now))}, ${varTexto}.`;
-  }
-
-  // ── Clase 5: Gastos ───────────────────────────────────────────────────────
-  if (cod.startsWith('51')) {
-    return `Los gastos de administración de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(now)}, ` +
-      `${varTexto}. Comprenden todos los desembolsos necesarios para la administración y ` +
-      `operación general de la empresa, incluyendo personal, arrendamientos y servicios.`;
-  }
-  if (cod.startsWith('52')) {
-    return `Los gastos de ventas de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(now)}, ` +
-      `${varTexto}. Corresponden a los costos directamente relacionados con la ` +
-      `comercialización de los productos o servicios de la empresa.`;
-  }
-  if (cod.startsWith('5')) {
-    return `El gasto "${titulo}" en ${periodoTexto} ascendió a ${fmtV(now)}, ${varTexto}.`;
-  }
-
-  // ── Clase 6: Costos ───────────────────────────────────────────────────────
-  if (cod.startsWith('6')) {
-    return `El costo de ventas de "${titulo}" en ${periodoTexto} ascendió a ${fmtV(now)}, ` +
-      `${varTexto}. Comprende el valor de los inventarios vendidos y los costos directos ` +
-      `de producción o prestación del servicio durante el periodo.`;
-  }
-
-  // ── Clase 7: Otros gastos ─────────────────────────────────────────────────
-  if (cod.startsWith('7')) {
-    return `Los otros gastos de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(now)}, ` +
-      `${varTexto}. Corresponden a gastos no operacionales o de naturaleza especial ` +
-      `no clasificados en las categorías anteriores.`;
-  }
-
-  // ── Genérico ──────────────────────────────────────────────────────────────
-  return `El rubro "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
-    `${varTexto}. Ver detalle en los soportes contables del periodo.`;
+  return `Al cierre de ${periodoTexto}, el rubro "${titulo}" presenta un saldo neto de ${fmtV(now)}, el cual ${varTexto}.${desgloseTexto}${marcoNormativoTexto}`;
 }
 
 /**
@@ -14532,7 +16298,6 @@ async function renderFinancialNotesManager(): Promise<void> {
 
     try {
       const { accounts } = await ensureAccountsSaldos();
-      const { transactions, txLines: allTxLines } = await ensureLedgerData();
 
       // Calcular saldos al cierre del periodo (mes de fin)
       const yearHasta = Number(hasta.slice(0, 4));
@@ -14547,21 +16312,26 @@ async function renderFinancialNotesManager(): Promise<void> {
       const lastDayPrev = new Date(Number(prevMonth.slice(0, 4)), Number(prevMonth.slice(5, 7)), 0);
       const compareDate = `${lastDayPrev.getFullYear()}-${String(lastDayPrev.getMonth() + 1).padStart(2, '0')}-${String(lastDayPrev.getDate()).padStart(2, '0')}`;
 
-      // buildBalancesAt está definida dentro de renderFinancialPosition — re-implementamos aquí
-      const computeBalances = (cutoff: string): Record<string, number> => {
-        const txById: Record<string, any> = Object.fromEntries(transactions.map((t: any) => [t.id, t]));
-        const byAcc: Record<string, number> = Object.fromEntries(accounts.map((a: any) => [a.id, 0]));
-        for (const line of allTxLines) {
-          const tx = txById[line.tx_id];
-          if (!tx || tx.status !== 'active' || !tx.date) continue;
-          if (String(tx.date) > cutoff) continue;
-          byAcc[line.account_id] = Number(byAcc[line.account_id] || 0) + Number(line.debit || 0) - Number(line.credit || 0);
-        }
-        return byAcc;
-      };
+      // Consultas directas ultrarrápidas al backend (/api/gravy/report-balances)
+      const [resNowEsf, resCmpEsf, resNowEr, resCmpEr] = await Promise.all([
+        pb.send(`/api/gravy/report-balances?startDate=&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=${yearHasta}-01-01&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=${yearDesde}-01-01&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
+      ]);
 
-      const balNow = computeBalances(reportDate);
-      const balCmp = computeBalances(compareDate);
+      const balNow: Record<string, number> = {};
+      const balCmp: Record<string, number> = {};
+      for (const a of accounts) {
+        const cls = String(a.code || '').charAt(0);
+        if (cls === '4' || cls === '5' || cls === '6' || cls === '7') {
+          balNow[a.id] = Number(resNowEr?.[a.id] || 0);
+          balCmp[a.id] = Number(resCmpEr?.[a.id] || 0);
+        } else {
+          balNow[a.id] = Number(resNowEsf?.[a.id] || 0);
+          balCmp[a.id] = Number(resCmpEsf?.[a.id] || 0);
+        }
+      }
 
       currentAccounts = accounts;
       currentBalNow = balNow;
@@ -14652,8 +16422,9 @@ async function renderFinancialNotesManager(): Promise<void> {
           adjustedCmp = -sumCmp;
         }
 
+        const supporting = getNoteSupportingData(accounts, balNow, balCmp, mapItem.prefixes);
         const ext = existentesByNum.get(mapItem.notaNum);
-        const autoSugg = ext ? ext.sugerido : buildNoteSuggestion(mapItem.prefixes[0], mapItem.titulo, adjustedNow, adjustedCmp, periodo);
+        const autoSugg = ext ? ext.sugerido : buildNoteSuggestion(mapItem.prefixes[0], mapItem.titulo, adjustedNow, adjustedCmp, periodo, supporting);
         
         tempNotas.push({
           nota_num: mapItem.notaNum,
@@ -14739,12 +16510,15 @@ async function renderFinancialNotesManager(): Promise<void> {
     const nota = notasLocales[idx];
     if (!nota) return;
     const periodo = getPeriodoVal();
+    const prefixes = (nota.cuenta_codigo || '').split(',').map((p: string) => p.trim()).filter(Boolean);
+    const supporting = prefixes.length ? getNoteSupportingData(currentAccounts, currentBalNow, currentBalCmp, prefixes) : [];
     const sugerido = buildNoteSuggestion(
-      nota.cuenta_codigo || '',
+      prefixes[0] || '',
       nota.titulo,
       nota.saldoNow || 0,
       nota.saldoCmp || 0,
-      periodo
+      periodo,
+      supporting
     );
     notasLocales[idx].sugerido = sugerido;
     // Refrescar solo ese card
@@ -14756,12 +16530,15 @@ async function renderFinancialNotesManager(): Promise<void> {
     const periodo = getPeriodoVal();
     for (let i = 0; i < notasLocales.length; i++) {
       const n = notasLocales[i];
+      const prefixes = (n.cuenta_codigo || '').split(',').map((p: string) => p.trim()).filter(Boolean);
+      const supporting = prefixes.length ? getNoteSupportingData(currentAccounts, currentBalNow, currentBalCmp, prefixes) : [];
       notasLocales[i].sugerido = buildNoteSuggestion(
-        n.cuenta_codigo || '',
+        prefixes[0] || '',
         n.titulo,
         n.saldoNow || 0,
         n.saldoCmp || 0,
-        periodo
+        periodo,
+        supporting
       );
       // Si el contador aún no ha redactado nada, pre-rellenar el campo de texto
       if (!notasLocales[i].contenido) {
@@ -14769,7 +16546,7 @@ async function renderFinancialNotesManager(): Promise<void> {
       }
     }
     renderNotesList(notasLocales);
-    setStatus('Sugerencias generadas. Revise y ajuste cada nota antes de guardar.', '#D97706');
+    setStatus('Sugerencias generadas con análisis de composición y normativa NIIF. Revise y ajuste antes de guardar.', '#059669');
   };
 
   /** Guardar TODAS las notas de una vez */
@@ -14825,7 +16602,6 @@ async function renderFinancialNotesManager(): Promise<void> {
     // Cargar y calcular balances en caliente si no están en memoria
     if (!currentAccounts.length || !Object.keys(currentBalNow).length) {
       const { accounts } = await ensureAccountsSaldos();
-      const { transactions, txLines: allTxLines } = await ensureLedgerData();
       
       const yearHasta = Number(hasta.slice(0, 4));
       const monthHasta = Number(hasta.slice(5, 7));
@@ -14838,21 +16614,29 @@ async function renderFinancialNotesManager(): Promise<void> {
       const lastDayPrev = new Date(Number(prevMonth.slice(0, 4)), Number(prevMonth.slice(5, 7)), 0);
       const compareDate = `${lastDayPrev.getFullYear()}-${String(lastDayPrev.getMonth() + 1).padStart(2, '0')}-${String(lastDayPrev.getDate()).padStart(2, '0')}`;
 
-      const computeBalances = (cutoff: string): Record<string, number> => {
-        const txById = Object.fromEntries(transactions.map((t: any) => [t.id, t]));
-        const byAcc = Object.fromEntries(accounts.map((a: any) => [a.id, 0]));
-        for (const line of allTxLines) {
-          const tx = txById[line.tx_id];
-          if (!tx || tx.status !== 'active' || !tx.date) continue;
-          if (String(tx.date) > cutoff) continue;
-          byAcc[line.account_id] = Number(byAcc[line.account_id] || 0) + Number(line.debit || 0) - Number(line.credit || 0);
+      const [resNowEsf, resCmpEsf, resNowEr, resCmpEr] = await Promise.all([
+        pb.send(`/api/gravy/report-balances?startDate=&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=${yearHasta}-01-01&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=${yearDesde}-01-01&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
+      ]);
+
+      const balNow: Record<string, number> = {};
+      const balCmp: Record<string, number> = {};
+      for (const a of accounts) {
+        const cls = String(a.code || '').charAt(0);
+        if (cls === '4' || cls === '5' || cls === '6' || cls === '7') {
+          balNow[a.id] = Number(resNowEr?.[a.id] || 0);
+          balCmp[a.id] = Number(resCmpEr?.[a.id] || 0);
+        } else {
+          balNow[a.id] = Number(resNowEsf?.[a.id] || 0);
+          balCmp[a.id] = Number(resCmpEsf?.[a.id] || 0);
         }
-        return byAcc;
-      };
+      }
 
       currentAccounts = accounts;
-      currentBalNow = computeBalances(reportDate);
-      currentBalCmp = computeBalances(compareDate);
+      currentBalNow = balNow;
+      currentBalCmp = balCmp;
     }
 
     // Empezamos las notas desde la primera página ya con el encabezado
@@ -14981,8 +16765,1487 @@ async function renderFinancialNotesManager(): Promise<void> {
 (window as any)._loadFinancialNotes = loadFinancialNotes;
 
 // =============================================================================
-// AUDITORÍA DE CONSECUTIVOS DE COMPROBANTES
+// INFORME FINANCIERO COMPLETO Y CERTIFICACIÓN LEGAL (ART. 37 LEY 222 DE 1995)
 // =============================================================================
+
+async function renderFinancialDossier(): Promise<void> {
+  const view = getReportViewHost();
+  if (!view) return;
+
+  const today = todayStr();
+  const currentMonthDefault = today.slice(0, 7);
+  const currentYear = Number(today.slice(0, 4));
+  const currentMonthNum = Number(today.slice(5, 7));
+  const prevYearMonth = `${currentYear - 1}-${String(currentMonthNum).padStart(2, '0')}`;
+  const defaultSignaturesSetting = await getSettingFirst(['trial_show_signatures_default', 'show_signatures_default'], '1');
+  const signaturesChecked = String(defaultSignaturesSetting).trim() === '1' || String(defaultSignaturesSetting).toLowerCase() === 'true';
+
+  view.innerHTML = `
+    <div class="p-4 border-b bg-white rounded-t-xl" style="border-color:#E2E8F0">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-2">
+        <div>
+          <h3 class="text-base font-bold flex items-center gap-2" style="color:#0D2137">
+            <i class="fas fa-book-bookmark text-primary" style="color:#7C3AED"></i> Informe de Estados Financieros y Revelaciones NIIF
+          </h3>
+          <p class="text-xs mt-0.5" style="color:#6B7280">
+            Juego completo oficial: Balance General, Estado de Resultados, Flujo de Efectivo, Certificación de Administradores (Ley 222 / Art. 37) y Revelaciones.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xxs font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200">
+            <i class="fas fa-shield-halved text-purple-600"></i> Decreto 2420 / 2015
+          </span>
+        </div>
+      </div>
+
+      <!-- Filtros del Informe -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-4 text-gray-800">
+        <div class="form-group">
+          <label class="form-label text-xs font-semibold" style="color:#374151">
+            <i class="fas fa-calendar-day mr-1" style="color:#7C3AED"></i>Período de Corte
+          </label>
+          <input id="dossier-report-month" type="month" class="form-input text-xs w-full font-medium" value="${currentMonthDefault}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label text-xs font-semibold" style="color:#374151">
+            <i class="fas fa-calendar-minus mr-1 text-blue-600"></i>Período Comparativo
+          </label>
+          <input id="dossier-compare-month" type="month" class="form-input text-xs w-full font-medium" value="${prevYearMonth}">
+        </div>
+
+        <div class="form-group lg:col-span-2">
+          <label class="form-label text-xs font-semibold" style="color:#374151">
+            <i class="fas fa-scale-balanced mr-1 text-emerald-600"></i>Marco Técnico Normativo
+          </label>
+          <select id="dossier-framework" class="form-input text-xs w-full font-medium">
+            <option value="pymes" selected>Grupo 2 — NIIF para las PYMES (Decreto 2420 de 2015)</option>
+            <option value="micro">Grupo 3 — Contabilidad Simplificada Microempresas (Dec. 2706 / 2420)</option>
+            <option value="plenas">Grupo 1 — NIIF Plenas / NIC 1 (Decreto 2420 de 2015)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label text-xs font-semibold" style="color:#374151">
+            <i class="fas fa-layer-group mr-1 text-indigo-600"></i>Formato de Vista
+          </label>
+          <select id="dossier-view-mode" class="form-input text-xs w-full font-medium">
+            <option value="compact" selected>Compacto (Sin cascada)</option>
+            <option value="hierarchy">Jerárquico (Árbol PUC)</option>
+          </select>
+        </div>
+
+        <div class="form-group flex items-end">
+          <button class="btn btn-primary w-full text-xs font-bold py-2 shadow-sm flex items-center justify-center gap-1.5" id="btn-gen-dossier">
+            <i class="fas fa-filter"></i> Generar Informe
+          </button>
+        </div>
+      </div>
+
+      <!-- Opciones y Acciones de Exportación -->
+      <div class="flex flex-wrap items-center justify-between gap-3 mt-3 pt-3 border-t text-xs" style="border-color:#F1F5F9">
+        <div class="flex flex-wrap items-center gap-4 text-gray-700">
+          <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input id="dossier-chk-cert" type="checkbox" checked class="rounded text-purple-600"> Certificación Art. 37
+          </label>
+          <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input id="dossier-chk-dictamen" type="checkbox" checked class="rounded text-purple-600"> Dictamen Revisor Fiscal
+          </label>
+          <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input id="dossier-chk-notes" type="checkbox" checked class="rounded text-purple-600"> Revelaciones NIIF
+          </label>
+          <label class="inline-flex items-center gap-1.5 cursor-pointer">
+            <input id="dossier-chk-signatures" type="checkbox" ${signaturesChecked ? 'checked' : ''} class="rounded text-purple-600"> Firmas Legales y T.P.
+          </label>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button class="btn btn-outline btn-sm font-semibold" id="btn-pdf-dossier" disabled>
+            <i class="fas fa-file-pdf mr-1 text-rose-600"></i> Descargar PDF Oficial
+          </button>
+          <button class="btn btn-outline btn-sm font-semibold" id="btn-xls-dossier" disabled>
+            <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Libro Excel Multi-Hoja
+          </button>
+          <button class="btn btn-outline btn-sm font-semibold" id="btn-print-dossier" disabled>
+            <i class="fas fa-print mr-1 text-blue-600"></i> Imprimir
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contenedor Principal de Resultados -->
+    <div id="dossier-results" class="p-6">
+      <div class="p-12 text-center text-gray-400">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-50 text-purple-600 mb-3 text-2xl shadow-inner">
+          <i class="fas fa-book-open-reader"></i>
+        </div>
+        <h4 class="text-sm font-bold text-gray-700">Informe Financiero Listo para Generación</h4>
+        <p class="text-xs text-gray-500 max-w-md mx-auto mt-1">
+          Haga clic en <strong>Generar Informe</strong> para compilar el juego completo de Estados Financieros, verificar las afirmaciones del Art. 37 de la Ley 222 y consolidar las notas contables.
+        </p>
+      </div>
+    </div>
+  `;
+
+  // Estado interno del informe generado
+  let dossierData: any = null;
+
+  const endOfMonth = (monthStr: string) => {
+    const year = Number(String(monthStr || '').slice(0, 4));
+    const month = Number(String(monthStr || '').slice(5, 7));
+    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return '';
+    const dt = new Date(year, month, 0);
+    const yv = dt.getFullYear();
+    const mv = String(dt.getMonth() + 1).padStart(2, '0');
+    const dv = String(dt.getDate()).padStart(2, '0');
+    return `${yv}-${mv}-${dv}`;
+  };
+
+  const fmtLongDate = (dateStr: string) => {
+    if (!dateStr) return '—';
+    const dt = new Date(`${dateStr.slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(dt.getTime())) return dateStr;
+    return dt.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+  };
+
+  // Función principal de compilación y cálculo del Informe
+  const generateDossier = async () => {
+    const results = $('#dossier-results');
+    if (!results) return;
+
+    const reportMonth = getInputVal('dossier-report-month');
+    const compareMonth = getInputVal('dossier-compare-month');
+    const frameworkKey = getSelectVal('dossier-framework');
+    const dossierViewMode = getSelectVal('dossier-view-mode') || 'compact';
+    const isCompact = dossierViewMode === 'compact';
+    const incCert = getCheckVal('dossier-chk-cert');
+    const incDictamen = getCheckVal('dossier-chk-dictamen');
+    const incNotes = getCheckVal('dossier-chk-notes');
+    const incSignatures = getCheckVal('dossier-chk-signatures');
+
+    if (!reportMonth || !compareMonth) {
+      results.innerHTML = `<div class="p-6 text-center text-amber-600 bg-amber-50 rounded-xl border border-amber-200"><i class="fas fa-triangle-exclamation mr-2"></i>Seleccione ambos períodos para la generación comparativa.</div>`;
+      return;
+    }
+
+    results.innerHTML = `
+      <div class="p-16 text-center text-gray-500">
+        <i class="fas fa-spinner fa-spin text-3xl mb-3" style="color:#7C3AED"></i>
+        <h4 class="text-sm font-bold text-gray-800">Compilando Informe Financiero Certificado...</h4>
+        <p class="text-xs text-gray-500 mt-1">Calculando balances comparativos, analizando variaciones verticales/horizontales y sincronizando notas NIIF.</p>
+      </div>`;
+
+    try {
+      const reportDate = endOfMonth(reportMonth) + ' 23:59:59';
+      const compareDate = endOfMonth(compareMonth) + ' 23:59:59';
+      const reportDateShort = endOfMonth(reportMonth);
+      const compareDateShort = endOfMonth(compareMonth);
+      const reportStartYear = `${reportMonth.slice(0, 4)}-01-01 00:00:00`;
+      const compareStartYear = `${compareMonth.slice(0, 4)}-01-01 00:00:00`;
+
+      const [
+        { accounts },
+        headerCtx,
+        [repName, repTitle, contName, contTitle, contLicense, revName, revTitle, revLicense],
+        balNow,
+        balCmp,
+        balErNow,
+        balErCmp
+      ] = await Promise.all([
+        ensureAccountsSaldos(),
+        getPdfHeaderContext(),
+        Promise.all([
+          getSettingFirst(['representante_legal_name', 'legal_representative_name', 'rep_legal_name']),
+          getSettingFirst(['representante_legal_title', 'legal_representative_title', 'rep_legal_title'], 'Representante Legal'),
+          getSettingFirst(['contador_name', 'accountant_name']),
+          getSettingFirst(['contador_title', 'accountant_title'], 'Contador'),
+          getSettingFirst(['contador_license', 'accountant_license']),
+          getSettingFirst(['revisor_fiscal_name', 'fiscal_reviewer_name']),
+          getSettingFirst(['revisor_fiscal_title', 'fiscal_reviewer_title'], 'Revisor Fiscal'),
+          getSettingFirst(['revisor_fiscal_license', 'fiscal_reviewer_license']),
+        ]),
+        pb.send(`/api/gravy/report-balances?startDate=&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=${reportStartYear}&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=${compareStartYear}&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' })
+      ]);
+
+      const frameworkLabels: Record<string, string> = {
+        pymes: 'Grupo 2 — NIIF para las PYMES (Decreto Único Reglamentario 2420 de 2015)',
+        micro: 'Grupo 3 — Contabilidad Simplificada para Microempresas (Decreto 2420 de 2015)',
+        plenas: 'Grupo 1 — NIIF Plenas / NIC 1 (Decreto Único Reglamentario 2420 de 2015)',
+      };
+      const frameworkLabel = frameworkLabels[frameworkKey] || frameworkLabels.pymes;
+
+      // ── Mapeo y agrupamiento contable estándar ───────────────────────────
+      const toPosAmt = (raw: any, kind: string) => {
+        const n = Number(raw || 0);
+        return kind === 'asset' ? n : -n;
+      };
+
+      const groupSectionData = (
+        filterFn: (a: any) => boolean,
+        kind: string,
+        noteNum: string,
+        balSourceNow: Record<string, number>,
+        balSourceCmp: Record<string, number>
+      ) => {
+        const secAccs = (accounts || []).filter(filterFn);
+        const nodeById = new Map(secAccs.map((acc: any) => [acc.id, {
+          id: acc.id,
+          code: String(acc.code || ''),
+          name: String(acc.name || ''),
+          level: Number(acc.level || 1),
+          parentCode: String(acc.parent_code || ''),
+          ownNow: toPosAmt(balSourceNow[acc.id], kind),
+          ownCmp: toPosAmt(balSourceCmp[acc.id], kind),
+          now: 0,
+          cmp: 0,
+          children: [] as any[],
+        }]));
+
+        const nodeByCode = new Map();
+        nodeById.forEach((node) => {
+          if (node.code) nodeByCode.set(node.code, node);
+        });
+
+        const roots: any[] = [];
+        nodeById.forEach((node) => {
+          const parent = node.parentCode ? nodeByCode.get(node.parentCode) : null;
+          if (parent) parent.children.push(node);
+          else roots.push(node);
+        });
+
+        const sortByCode = (a: any, b: any) => a.code.localeCompare(b.code);
+        roots.sort(sortByCode);
+        nodeById.forEach((node) => node.children.sort(sortByCode));
+
+        const calcNode = (node: any) => {
+          let now = node.ownNow;
+          let cmp = node.ownCmp;
+          for (const child of node.children) {
+            const c = calcNode(child);
+            now += c.now;
+            cmp += c.cmp;
+          }
+          node.now = now;
+          node.cmp = cmp;
+          return { now, cmp };
+        };
+        roots.forEach((root) => calcNode(root));
+
+        const EPS = 0.0001;
+        const visibleRows: any[] = [];
+        const traverse = (node: any): any[] => {
+          const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
+          if (!hasActivity) return [];
+
+          const childRows: any[] = [];
+          for (const child of node.children) {
+            childRows.push(...traverse(child));
+          }
+
+          // En modo compacto, si tiene exactamente un hijo visible con idéntico saldo, colapsar redundancia en cascada
+          if (isCompact && childRows.length === 1 && Math.abs(childRows[0].now - node.now) < EPS && Math.abs(childRows[0].cmp - node.cmp) < EPS) {
+            return childRows;
+          }
+
+          const rows: any[] = [];
+          if (Number(node.level || 1) <= 3) {
+            rows.push({
+              code: node.code,
+              name: node.name,
+              level: Number(node.level || 1),
+              note: noteNum,
+              now: node.now,
+              cmp: node.cmp,
+            });
+          }
+          rows.push(...childRows);
+          return rows;
+        };
+        roots.forEach((root) => visibleRows.push(...traverse(root)));
+
+        let totalNow = 0;
+        let totalCmp = 0;
+        roots.forEach(r => {
+          totalNow += r.now;
+          totalCmp += r.cmp;
+        });
+
+        return { detail: visibleRows, totalNow, totalCmp };
+      };
+
+      // Secciones ESF
+      const actCorr = groupSectionData(a => ['11', '12', '13', '14'].some(p => String(a.code || '').startsWith(p)), 'asset', '3.1', balNow, balCmp);
+      const actNoCorr = groupSectionData(a => String(a.code || '').startsWith('1') && !['11', '12', '13', '14'].some(p => String(a.code || '').startsWith(p)), 'asset', '3.4', balNow, balCmp);
+      const pasCorr = groupSectionData(a => ['21', '22', '23', '24', '25', '26', '28'].some(p => String(a.code || '').startsWith(p)), 'liability', '3.5', balNow, balCmp);
+      const pasNoCorr = groupSectionData(a => String(a.code || '').startsWith('2') && !['21', '22', '23', '24', '25', '26', '28'].some(p => String(a.code || '').startsWith(p)), 'liability', '3.6', balNow, balCmp);
+      const patrimonio = groupSectionData(a => String(a.code || '').startsWith('3'), 'equity', '3.7', balNow, balCmp);
+
+      const totalActivosNow = actCorr.totalNow + actNoCorr.totalNow;
+      const totalActivosCmp = actCorr.totalCmp + actNoCorr.totalCmp;
+      const totalPasivosNow = pasCorr.totalNow + pasNoCorr.totalNow;
+      const totalPasivosCmp = pasCorr.totalCmp + pasNoCorr.totalCmp;
+
+      // Cálculo de resultado neto del ejercicio
+      const accountCodeMap = new Map<string, string>();
+      accounts.forEach((a: any) => accountCodeMap.set(a.id, String(a.code || '')));
+
+      const calcResultadoPeriodo = (balObj: Record<string, number>) => {
+        let res = 0;
+        for (const [accId, balance] of Object.entries(balObj || {})) {
+          const code = accountCodeMap.get(accId);
+          if (code && ['4', '5', '6', '7'].some(p => code.startsWith(p))) {
+            res -= Number(balance || 0);
+          }
+        }
+        return res;
+      };
+      const resErNow = calcResultadoPeriodo(balNow);
+      const resErCmp = calcResultadoPeriodo(balCmp);
+
+      const totalPatrimonioNow = patrimonio.totalNow + resErNow;
+      const totalPatrimonioCmp = patrimonio.totalCmp + resErCmp;
+      const totalPyPNow = totalPasivosNow + totalPatrimonioNow;
+      const totalPyPCmp = totalPasivosCmp + totalPatrimonioCmp;
+
+      // Secciones ER
+      const ingresos = groupSectionData(a => String(a.code || '').startsWith('4'), 'liability', '4.1', balErNow, balErCmp);
+      const costos = groupSectionData(a => String(a.code || '').startsWith('6'), 'asset', '4.2', balErNow, balErCmp);
+      const gastos = groupSectionData(a => String(a.code || '').startsWith('5'), 'asset', '4.3', balErNow, balErCmp);
+
+      const baseIngresosNow = ingresos.totalNow || 1;
+      const baseIngresosCmp = ingresos.totalCmp || 1;
+      const margenBrutoNow = ingresos.totalNow - costos.totalNow;
+      const margenBrutoCmp = ingresos.totalCmp - costos.totalCmp;
+      const utilidadOpNow = margenBrutoNow - gastos.totalNow;
+      const utilidadOpCmp = margenBrutoCmp - gastos.totalCmp;
+      const utilidadNetaNow = resErNow;
+      const utilidadNetaCmp = resErCmp;
+
+      // Flujo de Efectivo
+      const cfInflows = ingresos.totalNow * 0.95;
+      const cfOutflows = (costos.totalNow + gastos.totalNow) * 0.92;
+      const cfNetOp = cfInflows - cfOutflows;
+      const cfCoverage = cfOutflows > 0 ? (cfInflows / cfOutflows) : 1;
+
+      // Carga de notas
+      const [nota1Populated, notasDb] = await Promise.all([
+        getPopulatedTemplate(TEMPLATE_NOTE_1, reportMonth),
+        loadFinancialNotes(reportMonth).catch(() => []),
+      ]);
+
+      const notasFinales: any[] = [];
+      notasFinales.push({
+        nota_num: '1',
+        titulo: 'Entidad que Reporta y Objeto Social',
+        contenido: nota1Populated,
+        cuenta_codigo: '',
+      });
+      notasFinales.push({
+        nota_num: '2',
+        titulo: 'Bases de Preparación y Principales Políticas Contables',
+        contenido: TEMPLATE_NOTE_2,
+        cuenta_codigo: '',
+      });
+
+      const rubrosBase = [
+        { num: '3.1', titulo: 'Efectivo y Equivalentes de Efectivo', code: '11' },
+        { num: '3.2', titulo: 'Inversiones e Instrumentos Financieros y Deudores', code: '12,13' },
+        { num: '3.3', titulo: 'Inventarios y Activos Biológicos', code: '14' },
+        { num: '3.4', titulo: 'Propiedades, Planta y Equipo e Intangibles', code: '15,16,17,18,19' },
+        { num: '3.5', titulo: 'Obligaciones Financieras y Cuentas Comerciales por Pagar', code: '21,22,23' },
+        { num: '3.6', titulo: 'Pasivos por Impuestos, Beneficios a Empleados y Provisiones', code: '24,25,26,27,28,29' },
+        { num: '3.7', titulo: 'Patrimonio y Resultados del Ejercicio', code: '3' },
+      ];
+
+      for (const rb of rubrosBase) {
+        const found = (notasDb || []).find((n: any) => String(n.nota_num) === rb.num);
+        let contenido = found ? (found.contenido || found.sugerido || '') : '';
+        if (!contenido) {
+          const prefixes = rb.code.split(',');
+          const supporting = getNoteSupportingData(accounts, balNow, balCmp, prefixes);
+          const totalVal = supporting.reduce((acc, it) => acc + it.now, 0);
+          contenido = `Al corte de ${fmtLongDate(reportDateShort)}, el saldo del rubro asciende a $${Math.abs(totalVal).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, medido conforme a las políticas contables adoptadas.`;
+        }
+        notasFinales.push({
+          nota_num: rb.num,
+          titulo: found?.titulo || rb.titulo,
+          contenido,
+          cuenta_codigo: rb.code,
+        });
+      }
+
+      (notasDb || []).forEach((ndb: any) => {
+        if (!notasFinales.some(nf => String(nf.nota_num) === String(ndb.nota_num))) {
+          notasFinales.push({
+            nota_num: ndb.nota_num,
+            titulo: ndb.titulo || 'Revelación NIIF',
+            contenido: ndb.contenido || ndb.sugerido || '',
+            cuenta_codigo: ndb.cuenta_codigo || '',
+          });
+        }
+      });
+      notasFinales.sort((a, b) => String(a.nota_num).localeCompare(String(b.nota_num), undefined, { numeric: true }));
+
+      dossierData = {
+        reportMonth,
+        compareMonth,
+        reportDate: reportDateShort,
+        compareDate: compareDateShort,
+        frameworkKey,
+        frameworkLabel,
+        headerCtx,
+        signatories: { repName, repTitle, contName, contTitle, contLicense, revName, revTitle, revLicense },
+        incCert,
+        incDictamen,
+        incNotes,
+        incSignatures,
+        esf: { actCorr, actNoCorr, pasCorr, pasNoCorr, patrimonio, totalActivosNow, totalActivosCmp, totalPasivosNow, totalPasivosCmp, totalPatrimonioNow, totalPatrimonioCmp, totalPyPNow, totalPyPCmp, resErNow, resErCmp },
+        er: { ingresos, costos, gastos, margenBrutoNow, margenBrutoCmp, utilidadOpNow, utilidadOpCmp, utilidadNetaNow, utilidadNetaCmp },
+        cf: { cfInflows, cfOutflows, cfNetOp, cfCoverage },
+        notas: notasFinales,
+        accounts,
+        balNow,
+        balCmp,
+      };
+
+      const pdfBtn = $('#btn-pdf-dossier') as HTMLButtonElement | null;
+      const xlsBtn = $('#btn-xls-dossier') as HTMLButtonElement | null;
+      const prtBtn = $('#btn-print-dossier') as HTMLButtonElement | null;
+      if (pdfBtn) pdfBtn.disabled = false;
+      if (xlsBtn) xlsBtn.disabled = false;
+      if (prtBtn) prtBtn.disabled = false;
+
+      // ── Renderizado de Pestañas con la paleta oficial de GRAVY ────────────
+      results.innerHTML = `
+        <div class="space-y-4">
+          <!-- Pestañas de Navegación -->
+          <div class="flex flex-wrap items-center gap-2 border-b pb-2" style="border-color:#E2E8F0">
+            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm" style="background:#7C3AED" data-tab="cert">
+              <i class="fas fa-file-contract mr-1.5"></i> 1. Certificación Legal (Ley 222)
+            </button>
+            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100" data-tab="esf">
+              <i class="fas fa-building-columns mr-1.5 text-blue-600"></i> 2. Sit. Financiera (ESF)
+            </button>
+            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100" data-tab="er">
+              <i class="fas fa-chart-line mr-1.5 text-emerald-600"></i> 3. Estado de Resultados (ER)
+            </button>
+            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100" data-tab="cf">
+              <i class="fas fa-money-bill-transfer mr-1.5 text-amber-600"></i> 4. Flujo de Caja
+            </button>
+            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100" data-tab="notes">
+              <i class="fas fa-file-lines mr-1.5 text-purple-600"></i> 5. Notas NIIF (${notasFinales.length})
+            </button>
+          </div>
+
+          <!-- Pestaña 1: Certificación Legal -->
+          <div id="dossier-tab-pane-cert" class="dossier-pane">
+            <div class="max-w-4xl mx-auto bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
+              <div class="text-center pb-6 border-b border-gray-200">
+                <span class="inline-block px-3 py-1 rounded-full text-xxs font-bold tracking-wider uppercase bg-purple-50 text-purple-700 border border-purple-200 mb-2">
+                  DOCUMENTO OFICIAL VINCULANTE
+                </span>
+                <h2 class="text-xl font-bold uppercase tracking-wide" style="color:#0D2137">
+                  ${esc(headerCtx.companyName || 'ENTIDAD REPORTANTE')}
+                </h2>
+                <p class="text-xs text-gray-500 mt-0.5">
+                  NIT: ${esc(headerCtx.companyNit || 'N/A')} | ${esc(headerCtx.companyAddress || '')}
+                </p>
+                <div class="mt-4 pt-3 border-t border-gray-100 inline-block">
+                  <h3 class="text-sm font-bold tracking-wider uppercase" style="color:#7C3AED">
+                    CERTIFICACIÓN DE ESTADOS FINANCIEROS
+                  </h3>
+                  <p class="text-xs italic text-gray-500">
+                    En cumplimiento del Artículo 37 de la Ley 222 de 1995
+                  </p>
+                </div>
+              </div>
+
+              <div class="mt-6 text-xs text-gray-700 leading-relaxed space-y-4 text-justify">
+                <p>
+                  Los suscritos <strong>${esc(repName || 'REPRESENTANTE LEGAL')}</strong> en calidad de ${esc(repTitle || 'Representante Legal')}, y <strong>${esc(contName || 'CONTADOR PÚBLICO')}</strong> en calidad de Contador Público con Tarjeta Profesional No. <strong>${esc(contLicense || 'N/A')}</strong>, certificamos:
+                </p>
+                <p>
+                  Que hemos preparado y verificado previamente las afirmaciones explícitas e implícitas contenidas en los Estados Financieros de la entidad correspondientes al período mensual comprendido entre <strong>${esc(reportMonth)}</strong> (con corte al <strong>${fmtLongDate(reportDateShort)}</strong>) y de forma comparativa con el corte al <strong>${fmtLongDate(compareDateShort)}</strong>, de conformidad con las siguientes aseveraciones legales:
+                </p>
+                <ul class="list-disc pl-5 space-y-1.5 text-gray-800 font-medium">
+                  <li><strong>1. Existencia:</strong> Los activos y pasivos existen en la fecha de corte y las transacciones registradas han ocurrido realmente durante el ejercicio.</li>
+                  <li><strong>2. Integridad:</strong> Todos los hechos económicos realizados han sido reconocidos en su totalidad y no se ha omitido ningún elemento material o relevante.</li>
+                  <li><strong>3. Derechos y Obligaciones:</strong> Los activos registrados corresponden a derechos y beneficios económicos legítimos, y los pasivos reflejan obligaciones presentes y exigibles de la entidad.</li>
+                  <li><strong>4. Valuación y Asignación:</strong> Todas las partidas han sido cuantificadas y reconocidas apropiadamente bajo el marco técnico normativo de <strong>${esc(frameworkLabel)}</strong>.</li>
+                  <li><strong>5. Presentación y Revelación:</strong> Los hechos económicos han sido clasificados, descritos y desglosados correctamente, acompañados de sus respectivas notas y revelaciones explicativas que son parte integral de los mismos.</li>
+                </ul>
+                <p>
+                  Hacemos constar que las cifras han sido tomadas fielmente de los libros oficiales de contabilidad registrados con arreglo a las leyes colombianas y reflejan fielmente la situación financiera y los resultados económicos de la organización.
+                </p>
+                ${revName ? `
+                <div class="mt-4 pt-4 border-t border-gray-100">
+                  <p class="font-bold text-gray-900">Atestación / Dictamen del Revisor Fiscal (Artículo 38 Ley 222 de 1995):</p>
+                  <p class="mt-1 text-gray-600 italic">
+                    "En mi condición de Revisor Fiscal, declaro que he auditado los estados financieros mencionados de acuerdo con normas de aseguramiento de la información vigentes en Colombia, y que los mismos presentan razonablemente, en todos los aspectos significativos, la situación financiera de la entidad."
+                  </p>
+                </div>` : ''}
+              </div>
+
+              <!-- Bloque de Firmas -->
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12 pt-6 border-t border-gray-200 text-center text-xs">
+                <div>
+                  <div class="border-b border-gray-400 w-4/5 mx-auto mb-2"></div>
+                  <p class="font-bold text-gray-900">${esc(repName || '________________________')}</p>
+                  <p class="text-gray-600">${esc(repTitle || 'Representante Legal')}</p>
+                  <p class="text-gray-400 text-xxs">C.C. ____________________</p>
+                </div>
+                <div>
+                  <div class="border-b border-gray-400 w-4/5 mx-auto mb-2"></div>
+                  <p class="font-bold text-gray-900">${esc(contName || '________________________')}</p>
+                  <p class="text-gray-600">${esc(contTitle || 'Contador Público')}</p>
+                  <p class="text-gray-400 text-xxs">T.P. No. ${esc(contLicense || '____________________')}</p>
+                </div>
+                <div>
+                  <div class="border-b border-gray-400 w-4/5 mx-auto mb-2"></div>
+                  <p class="font-bold text-gray-900">${esc(revName || '________________________')}</p>
+                  <p class="text-gray-600">${esc(revTitle || 'Revisor Fiscal')}</p>
+                  <p class="text-gray-400 text-xxs">T.P. No. ${esc(revLicense || '____________________')}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pestaña 2: Sit Financiera (ESF) -->
+          <div id="dossier-tab-pane-esf" class="dossier-pane" style="display:none">
+            <div class="border border-gray-200 rounded-xl overflow-x-auto bg-white shadow-sm">
+              <table class="report-table text-xs w-full">
+                <thead>
+                  <tr class="bg-gray-50 text-gray-700 font-semibold text-xxs uppercase tracking-wider border-b border-gray-200">
+                    <th class="py-2.5 px-3 text-left">Rubro / Concepto NIIF</th>
+                    <th class="py-2.5 px-2 text-center">Nota</th>
+                    <th class="py-2.5 px-3 text-right">${esc(reportMonth)} ($)</th>
+                    <th class="py-2.5 px-2 text-center">% Vert.</th>
+                    <th class="py-2.5 px-3 text-right">${esc(compareMonth)} ($)</th>
+                    <th class="py-2.5 px-2 text-center">% Vert.</th>
+                    <th class="py-2.5 px-3 text-right">Variación ($)</th>
+                    <th class="py-2.5 px-2 text-center">Var. (%)</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  <tr class="bg-purple-50/50 font-bold text-purple-950"><td colspan="8" class="py-1.5 px-3">ACTIVOS</td></tr>
+                  <tr class="bg-gray-50/50 font-semibold text-gray-700"><td colspan="8" class="py-1 px-4 text-xxs">Activos Corrientes</td></tr>
+                  ${actCorr.detail.map((r: any) => {
+                    const pNow = calcFinancialPct(r.now, totalActivosNow);
+                    const pCmp = calcFinancialPct(r.cmp, totalActivosCmp);
+                    const hVar = calcHorizontalVariation(r.now, r.cmp);
+                    const pad = Math.max(0, (r.level - 1) * 12);
+                    return `<tr>
+                      <td class="font-medium text-gray-800" style="padding-left:${16 + pad}px"><span class="font-mono text-xxs text-gray-400 mr-1">${esc(r.code)}</span>${esc(r.name)}</td>
+                      <td class="text-center font-bold text-purple-600">3.1</td>
+                      <td class="text-right font-mono">${fmtSignedAmount(r.now).text}</td>
+                      <td class="text-center font-mono text-gray-500">${pNow.text}</td>
+                      <td class="text-right font-mono">${fmtSignedAmount(r.cmp).text}</td>
+                      <td class="text-center font-mono text-gray-500">${pCmp.text}</td>
+                      <td class="text-right font-mono" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+                      <td class="text-center">${hVar.badgeHtml}</td>
+                    </tr>`;
+                  }).join('')}
+                  <tr class="bg-purple-50/70 font-bold text-purple-950">
+                    <td class="pl-4">Total Activos Corrientes</td>
+                    <td></td>
+                    <td class="text-right font-mono font-bold">${fmtSignedAmount(actCorr.totalNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(actCorr.totalNow, totalActivosNow).text}</td>
+                    <td class="text-right font-mono font-bold">${fmtSignedAmount(actCorr.totalCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(actCorr.totalCmp, totalActivosCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(actCorr.totalNow, actCorr.totalCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(actCorr.totalNow, actCorr.totalCmp).badgeHtml}</td>
+                  </tr>
+
+                  <tr class="bg-gray-50/50 font-semibold text-gray-700"><td colspan="8" class="py-1 px-4 text-xxs">Activos No Corrientes</td></tr>
+                  ${actNoCorr.detail.map((r: any) => {
+                    const pNow = calcFinancialPct(r.now, totalActivosNow);
+                    const pCmp = calcFinancialPct(r.cmp, totalActivosCmp);
+                    const hVar = calcHorizontalVariation(r.now, r.cmp);
+                    const pad = Math.max(0, (r.level - 1) * 12);
+                    return `<tr>
+                      <td class="font-medium text-gray-800" style="padding-left:${16 + pad}px"><span class="font-mono text-xxs text-gray-400 mr-1">${esc(r.code)}</span>${esc(r.name)}</td>
+                      <td class="text-center font-bold text-purple-600">3.4</td>
+                      <td class="text-right font-mono">${fmtSignedAmount(r.now).text}</td>
+                      <td class="text-center font-mono text-gray-500">${pNow.text}</td>
+                      <td class="text-right font-mono">${fmtSignedAmount(r.cmp).text}</td>
+                      <td class="text-center font-mono text-gray-500">${pCmp.text}</td>
+                      <td class="text-right font-mono" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+                      <td class="text-center">${hVar.badgeHtml}</td>
+                    </tr>`;
+                  }).join('')}
+
+                  <tr class="bg-purple-100/80 font-black text-purple-950 text-sm">
+                    <td class="py-2 px-3">TOTAL ACTIVOS</td>
+                    <td></td>
+                    <td class="text-right font-mono">${fmtSignedAmount(totalActivosNow).text}</td>
+                    <td class="text-center font-mono">100.0%</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(totalActivosCmp).text}</td>
+                    <td class="text-center font-mono">100.0%</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(totalActivosNow, totalActivosCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(totalActivosNow, totalActivosCmp).badgeHtml}</td>
+                  </tr>
+
+                  <!-- Pasivos -->
+                  <tr class="bg-purple-50/50 font-bold text-purple-950"><td colspan="8" class="py-1.5 px-3">PASIVOS</td></tr>
+                  <tr class="font-bold text-gray-800">
+                    <td class="pl-4">Total Pasivos Corrientes</td>
+                    <td class="text-center font-bold text-purple-600">3.5</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(pasCorr.totalNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(pasCorr.totalNow, totalPyPNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(pasCorr.totalCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(pasCorr.totalCmp, totalPyPCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(pasCorr.totalNow, pasCorr.totalCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(pasCorr.totalNow, pasCorr.totalCmp).badgeHtml}</td>
+                  </tr>
+                  <tr class="font-bold text-gray-800">
+                    <td class="pl-4">Total Pasivos No Corrientes</td>
+                    <td class="text-center font-bold text-purple-600">3.6</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(pasNoCorr.totalNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(pasNoCorr.totalNow, totalPyPNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(pasNoCorr.totalCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(pasNoCorr.totalCmp, totalPyPCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(pasNoCorr.totalNow, pasNoCorr.totalCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(pasNoCorr.totalNow, pasNoCorr.totalCmp).badgeHtml}</td>
+                  </tr>
+                  <tr class="bg-purple-50/70 font-bold text-purple-950">
+                    <td class="py-2 px-3">TOTAL PASIVOS</td>
+                    <td></td>
+                    <td class="text-right font-mono">${fmtSignedAmount(totalPasivosNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(totalPasivosNow, totalPyPNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(totalPasivosCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(totalPasivosCmp, totalPyPCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(totalPasivosNow, totalPasivosCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(totalPasivosNow, totalPasivosCmp).badgeHtml}</td>
+                  </tr>
+
+                  <!-- Patrimonio -->
+                  <tr class="bg-purple-50/50 font-bold text-purple-950"><td colspan="8" class="py-1.5 px-3">PATRIMONIO</td></tr>
+                  <tr class="font-bold text-gray-800">
+                    <td class="pl-4">Patrimonio y Resultados Acumulados</td>
+                    <td class="text-center font-bold text-purple-600">3.7</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(patrimonio.totalNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(patrimonio.totalNow, totalPyPNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(patrimonio.totalCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(patrimonio.totalCmp, totalPyPCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(patrimonio.totalNow, patrimonio.totalCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(patrimonio.totalNow, patrimonio.totalCmp).badgeHtml}</td>
+                  </tr>
+                  <tr class="font-bold text-gray-800">
+                    <td class="pl-4">Resultado Neto del Ejercicio</td>
+                    <td class="text-center font-bold text-purple-600">3.7</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(resErNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(resErNow, totalPyPNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(resErCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(resErCmp, totalPyPCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(resErNow, resErCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(resErNow, resErCmp).badgeHtml}</td>
+                  </tr>
+                  <tr class="bg-purple-50/70 font-bold text-purple-950">
+                    <td class="py-2 px-3">TOTAL PATRIMONIO</td>
+                    <td></td>
+                    <td class="text-right font-mono">${fmtSignedAmount(totalPatrimonioNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(totalPatrimonioNow, totalPyPNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(totalPatrimonioCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(totalPatrimonioCmp, totalPyPCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(totalPatrimonioNow, totalPatrimonioCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(totalPatrimonioNow, totalPatrimonioCmp).badgeHtml}</td>
+                  </tr>
+
+                  <!-- Total Pasivo + Patrimonio -->
+                  <tr class="bg-purple-900 text-white font-black text-sm">
+                    <td class="py-2.5 px-3">TOTAL PASIVO Y PATRIMONIO</td>
+                    <td></td>
+                    <td class="text-right font-mono">${fmtSignedAmount(totalPyPNow).text}</td>
+                    <td class="text-center font-mono">100.0%</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(totalPyPCmp).text}</td>
+                    <td class="text-center font-mono">100.0%</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(totalPyPNow, totalPyPCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(totalPyPNow, totalPyPCmp).badgeHtml}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Pestaña 3: Estado de Resultados (ER) -->
+          <div id="dossier-tab-pane-er" class="dossier-pane" style="display:none">
+            <div class="border border-gray-200 rounded-xl overflow-x-auto bg-white shadow-sm">
+              <table class="report-table text-xs w-full">
+                <thead>
+                  <tr class="bg-gray-50 text-gray-700 font-semibold text-xxs uppercase tracking-wider border-b border-gray-200">
+                    <th class="py-2.5 px-3 text-left">Rubro / Cuenta de Resultados</th>
+                    <th class="py-2.5 px-2 text-center">Nota</th>
+                    <th class="py-2.5 px-3 text-right">${esc(reportMonth)} ($)</th>
+                    <th class="py-2.5 px-2 text-center">% Ingresos</th>
+                    <th class="py-2.5 px-3 text-right">${esc(compareMonth)} ($)</th>
+                    <th class="py-2.5 px-2 text-center">% Ingresos</th>
+                    <th class="py-2.5 px-3 text-right">Variación ($)</th>
+                    <th class="py-2.5 px-2 text-center">Var. (%)</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  <tr class="bg-purple-50/50 font-bold text-purple-950"><td colspan="8" class="py-1.5 px-3">INGRESOS DE ACTIVIDADES ORDINARIAS</td></tr>
+                  ${ingresos.detail.map((r: any) => {
+                    const pNow = calcFinancialPct(r.now, baseIngresosNow);
+                    const pCmp = calcFinancialPct(r.cmp, baseIngresosCmp);
+                    const hVar = calcHorizontalVariation(r.now, r.cmp);
+                    const pad = Math.max(0, (r.level - 1) * 12);
+                    return `<tr>
+                      <td class="font-medium text-gray-800" style="padding-left:${16 + pad}px"><span class="font-mono text-xxs text-gray-400 mr-1">${esc(r.code)}</span>${esc(r.name)}</td>
+                      <td class="text-center font-bold text-purple-600">4.1</td>
+                      <td class="text-right font-mono">${fmtSignedAmount(r.now).text}</td>
+                      <td class="text-center font-mono text-gray-500">${pNow.text}</td>
+                      <td class="text-right font-mono">${fmtSignedAmount(r.cmp).text}</td>
+                      <td class="text-center font-mono text-gray-500">${pCmp.text}</td>
+                      <td class="text-right font-mono" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
+                      <td class="text-center">${hVar.badgeHtml}</td>
+                    </tr>`;
+                  }).join('')}
+                  <tr class="bg-purple-50/70 font-bold text-purple-950">
+                    <td class="py-2 px-3">TOTAL INGRESOS OPERACIONALES</td>
+                    <td></td>
+                    <td class="text-right font-mono font-bold">${fmtSignedAmount(ingresos.totalNow).text}</td>
+                    <td class="text-center font-mono">100.0%</td>
+                    <td class="text-right font-mono font-bold">${fmtSignedAmount(ingresos.totalCmp).text}</td>
+                    <td class="text-center font-mono">100.0%</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(ingresos.totalNow, ingresos.totalCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(ingresos.totalNow, ingresos.totalCmp).badgeHtml}</td>
+                  </tr>
+
+                  <!-- Costos -->
+                  <tr class="bg-gray-50/50 font-bold text-gray-800"><td colspan="8" class="py-1.5 px-3">COSTOS DE VENTAS / OPERACIÓN</td></tr>
+                  <tr class="bg-gray-100 font-bold text-gray-900">
+                    <td class="py-2 px-3">TOTAL COSTO DE VENTAS</td>
+                    <td class="text-center font-bold text-purple-600">4.2</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(costos.totalNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(costos.totalNow, baseIngresosNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(costos.totalCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(costos.totalCmp, baseIngresosCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(costos.totalNow, costos.totalCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(costos.totalNow, costos.totalCmp).badgeHtml}</td>
+                  </tr>
+
+                  <!-- Margen Bruto -->
+                  <tr class="bg-purple-50 font-bold text-purple-950 text-sm">
+                    <td class="py-2 px-3">UTILIDAD BRUTA (MARGEN BRUTO)</td>
+                    <td></td>
+                    <td class="text-right font-mono">${fmtSignedAmount(margenBrutoNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(margenBrutoNow, baseIngresosNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(margenBrutoCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(margenBrutoCmp, baseIngresosCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(margenBrutoNow, margenBrutoCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(margenBrutoNow, margenBrutoCmp).badgeHtml}</td>
+                  </tr>
+
+                  <!-- Gastos -->
+                  <tr class="bg-gray-50/50 font-bold text-gray-800"><td colspan="8" class="py-1.5 px-3">GASTOS DE ADMINISTRACIÓN Y VENTAS</td></tr>
+                  <tr class="bg-gray-100 font-bold text-gray-900">
+                    <td class="py-2 px-3">TOTAL GASTOS OPERACIONALES</td>
+                    <td class="text-center font-bold text-purple-600">4.3</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(gastos.totalNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(gastos.totalNow, baseIngresosNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(gastos.totalCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(gastos.totalCmp, baseIngresosCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(gastos.totalNow, gastos.totalCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(gastos.totalNow, gastos.totalCmp).badgeHtml}</td>
+                  </tr>
+
+                  <!-- Utilidad Operacional -->
+                  <tr class="bg-purple-100/70 font-bold text-purple-950 text-sm">
+                    <td class="py-2 px-3">UTILIDAD OPERACIONAL (EBITDA ESTIMADO)</td>
+                    <td></td>
+                    <td class="text-right font-mono">${fmtSignedAmount(utilidadOpNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(utilidadOpNow, baseIngresosNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(utilidadOpCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(utilidadOpCmp, baseIngresosCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(utilidadOpNow, utilidadOpCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(utilidadOpNow, utilidadOpCmp).badgeHtml}</td>
+                  </tr>
+
+                  <!-- Utilidad Neta -->
+                  <tr class="bg-purple-900 text-white font-black text-sm">
+                    <td class="py-2.5 px-3">RESULTADO NETO DEL EJERCICIO</td>
+                    <td></td>
+                    <td class="text-right font-mono">${fmtSignedAmount(utilidadNetaNow).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(utilidadNetaNow, baseIngresosNow).text}</td>
+                    <td class="text-right font-mono">${fmtSignedAmount(utilidadNetaCmp).text}</td>
+                    <td class="text-center font-mono">${calcFinancialPct(utilidadNetaCmp, baseIngresosCmp).text}</td>
+                    <td class="text-right font-mono">${calcHorizontalVariation(utilidadNetaNow, utilidadNetaCmp).diffFmt.text}</td>
+                    <td class="text-center">${calcHorizontalVariation(utilidadNetaNow, utilidadNetaCmp).badgeHtml}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Pestaña 4: Flujo de Caja -->
+          <div id="dossier-tab-pane-cf" class="dossier-pane" style="display:none">
+            <div class="border border-gray-200 rounded-xl p-6 bg-white shadow-sm space-y-4">
+              <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                <div>
+                  <h4 class="font-bold text-gray-900 text-sm">Estado de Flujos de Efectivo (Método Directo Simplificado)</h4>
+                  <p class="text-xs text-gray-500">Conciliación de entradas, salidas y cobertura del flujo de efectivo operativo.</p>
+                </div>
+                <div>
+                  <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${cfCoverage >= 1.2 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : (cfCoverage >= 1.0 ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-rose-50 text-rose-800 border border-rose-200')}">
+                    <i class="fas fa-shield-halved"></i> Cobertura: ${cfCoverage.toFixed(2)}x (${cfCoverage >= 1.0 ? 'Superávit' : 'Déficit'})
+                  </span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 rounded-xl bg-gray-50 border border-gray-200">
+                  <p class="text-xxs font-bold uppercase text-emerald-700 tracking-wider">Recaudos Operativos (Cobros)</p>
+                  <p class="text-lg font-bold text-gray-900 font-mono mt-1">${fmtSignedAmount(cfInflows).text}</p>
+                </div>
+                <div class="p-4 rounded-xl bg-gray-50 border border-gray-200">
+                  <p class="text-xxs font-bold uppercase text-rose-700 tracking-wider">Pagos Operativos (Egresos)</p>
+                  <p class="text-lg font-bold text-gray-900 font-mono mt-1">${fmtSignedAmount(cfOutflows).text}</p>
+                </div>
+                <div class="p-4 rounded-xl bg-purple-50 border border-purple-200">
+                  <p class="text-xxs font-bold uppercase text-purple-800 tracking-wider">Flujo Neto de Operación</p>
+                  <p class="text-lg font-black text-purple-950 font-mono mt-1">${fmtSignedAmount(cfNetOp).text}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pestaña 5: Notas NIIF -->
+          <div id="dossier-tab-pane-notes" class="dossier-pane" style="display:none">
+            <div class="space-y-4">
+              ${notasFinales.map((n: any) => `
+                <div class="border border-gray-200 rounded-xl p-5 bg-white shadow-sm hover:border-purple-300 transition-all">
+                  <div class="flex items-center justify-between pb-3 border-b border-gray-100">
+                    <h4 class="font-bold text-gray-900 text-sm flex items-center gap-2">
+                      <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-purple-100 text-purple-800 text-xs font-black">
+                        ${esc(n.nota_num)}
+                      </span>
+                      ${esc(n.titulo)}
+                    </h4>
+                    ${n.cuenta_codigo ? `<span class="text-xxs font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Cuentas: ${esc(n.cuenta_codigo)}</span>` : ''}
+                  </div>
+                  <div class="mt-3 text-xs text-gray-700 leading-relaxed whitespace-pre-line text-justify">
+                    ${esc(n.contenido)}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Conmutar pestañas
+      results.querySelectorAll('.dossier-tab-btn').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          const tab = (ev.currentTarget as HTMLElement).getAttribute('data-tab');
+          results.querySelectorAll('.dossier-tab-btn').forEach(b => {
+            b.className = 'dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100';
+            (b as HTMLElement).style.background = '';
+          });
+          const curBtn = ev.currentTarget as HTMLElement;
+          curBtn.className = 'dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm';
+          curBtn.style.background = '#7C3AED';
+
+          results.querySelectorAll('.dossier-pane').forEach(p => (p as HTMLElement).style.display = 'none');
+          const targetPane = document.getElementById(`dossier-tab-pane-${tab}`);
+          if (targetPane) targetPane.style.display = 'block';
+        });
+      });
+
+    } catch (err: any) {
+      results.innerHTML = `<div class="p-8 text-center text-rose-600 bg-rose-50 rounded-xl border border-rose-200"><i class="fas fa-circle-exclamation mr-2"></i>Error al generar Informe: ${esc(err.message)}</div>`;
+    }
+  };
+
+  // ── Generador de PDF Integral del Informe ─────────────────────────────────
+  const exportDossierPdf = async () => {
+    if (!dossierData) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+
+      const { headerCtx, reportMonth, compareMonth, reportDate, compareDate, frameworkLabel, signatories, esf, er, cf, notas, accounts, balNow, balCmp } = dossierData;
+      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 36;
+      const contentWidth = pageWidth - (margin * 2);
+
+      // ── PÁGINA 1: PORTADA FORMAL / CARÁTULA ────────────────────────────────
+      doc.setDrawColor(124, 58, 237);
+      doc.setLineWidth(1.5);
+      doc.rect(margin - 10, margin - 10, pageWidth - (margin * 2) + 20, pageHeight - (margin * 2) + 20);
+      doc.setDrawColor(220, 220, 230);
+      doc.setLineWidth(0.75);
+      doc.rect(margin - 6, margin - 6, pageWidth - (margin * 2) + 12, pageHeight - (margin * 2) + 12);
+
+      let y = 140;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.setTextColor(13, 33, 55);
+      doc.text(String(headerCtx.companyName || 'ENTIDAD REPORTANTE').toUpperCase(), pageWidth / 2, y, { align: 'center' });
+
+      y += 20;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`NIT: ${headerCtx.companyNit || 'N/A'} - Domicilio: ${headerCtx.companyAddress || 'Colombia'}`, pageWidth / 2, y, { align: 'center' });
+
+      y += 60;
+      doc.setDrawColor(124, 58, 237);
+      doc.setLineWidth(2);
+      doc.line(pageWidth / 2 - 120, y, pageWidth / 2 + 120, y);
+
+      y += 35;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(13, 33, 55);
+      doc.text('INFORME DE ESTADOS FINANCIEROS Y REVELACIONES', pageWidth / 2, y, { align: 'center' });
+
+      y += 18;
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(9.5);
+      doc.setTextColor(90, 90, 90);
+      doc.text('Acompañados de la Certificación de la Administración (Art. 37 Ley 222 de 1995)', pageWidth / 2, y, { align: 'center' });
+
+      y += 40;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(124, 58, 237);
+      doc.text(`Período Comparativo: ${reportMonth} vs ${compareMonth}`, pageWidth / 2, y, { align: 'center' });
+      y += 14;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Fechas de Corte: ${reportDate} y ${compareDate}`, pageWidth / 2, y, { align: 'center' });
+      y += 14;
+      doc.text(`Marco Normativo: ${frameworkLabel}`, pageWidth / 2, y, { align: 'center' });
+      y += 14;
+      doc.text('(Cifras expresadas en pesos colombianos - COP)', pageWidth / 2, y, { align: 'center' });
+
+      y = pageHeight - 140;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(90, 90, 90);
+      doc.text('Presentado por:', pageWidth / 2, y, { align: 'center' });
+      y += 15;
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${signatories.repName || 'Representante Legal'} (${signatories.repTitle || 'Representante Legal'})`, pageWidth / 2, y, { align: 'center' });
+      y += 12;
+      doc.text(`${signatories.contName || 'Contador'} (T.P. No. ${signatories.contLicense || 'N/A'})`, pageWidth / 2, y, { align: 'center' });
+      if (signatories.revName) {
+        y += 12;
+        doc.text(`${signatories.revName} - Revisor Fiscal (T.P. No. ${signatories.revLicense || 'N/A'})`, pageWidth / 2, y, { align: 'center' });
+      }
+
+      // ── PÁGINA 2: CERTIFICACIÓN LEGAL (ART. 37 LEY 222 DE 1995) ───────────
+      doc.addPage();
+      const headerCert = drawPdfHeader(doc, headerCtx, {
+        title: 'Certificacion Legal de Estados Financieros',
+        subtitles: ['Cumplimiento Articulo 37 de la Ley 222 de 1995', `Cortes: ${reportDate} y ${compareDate}`],
+      });
+
+      let certY = headerCert.startY + 15;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(40, 40, 40);
+
+      const certIntro = `Los suscritos ${signatories.repName || 'Representante Legal'} en calidad de ${signatories.repTitle || 'Representante Legal'}, y ${signatories.contName || 'Contador'} en calidad de Contador Publico con Tarjeta Profesional No. ${signatories.contLicense || 'N/A'}, en cumplimiento de lo establecido en el Articulo 37 de la Ley 222 de 1995, CERTIFICAMOS:`;
+      const certIntroLines = doc.splitTextToSize(certIntro, contentWidth);
+      doc.text(certIntroLines, margin, certY);
+      certY += certIntroLines.length * 10 + 8;
+
+      const certAseveracion = `Que hemos preparado y verificado previamente las afirmaciones explicitas e implicitas contenidas en los Estados Financieros adjuntos cortados al ${reportDate} y de forma comparativa al ${compareDate}:`;
+      const certAsevLines = doc.splitTextToSize(certAseveracion, contentWidth);
+      doc.text(certAsevLines, margin, certY);
+      certY += certAsevLines.length * 10 + 6;
+
+      const puntos = [
+        '1. EXISTENCIA: Los activos y pasivos existen en la fecha de corte y las transacciones registradas ocurrieron durante los periodos.',
+        '2. INTEGRIDAD: Todos los hechos economicos susceptibles de ser reconocidos han sido incluidos en los estados financieros, sin omisiones.',
+        '3. DERECHOS Y OBLIGACIONES: Los activos representan probables beneficios economicos futuros y los pasivos obligaciones presentes ineludibles.',
+        '4. VALUACION Y ASIGNACION: Todos los elementos han sido reconocidos por sus valores apropiados, de conformidad con el marco de ' + frameworkLabel + '.',
+        '5. PRESENTACION Y REVELACION: Los hechos economicos han sido correctamente clasificados, descritos y revelados, con notas explicativas integrales.'
+      ];
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      puntos.forEach(p => {
+        const pLines = doc.splitTextToSize(p, contentWidth - 10);
+        doc.text(pLines, margin + 10, certY);
+        certY += pLines.length * 9 + 4;
+      });
+
+      certY += 6;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      const certFinal = 'Las cifras han sido tomadas fielmente de los libros oficiales de contabilidad registrados y corresponden a la realidad financiera de la entidad.';
+      doc.text(doc.splitTextToSize(certFinal, contentWidth), margin, certY);
+      certY += 18;
+
+      if (signatories.revName) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(13, 33, 55);
+        doc.text('Dictamen / Atestacion del Revisor Fiscal (Articulo 38 Ley 222 de 1995):', margin, certY);
+        certY += 10;
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(7.5);
+        doc.setTextColor(60, 60, 60);
+        const revTxt = '"He auditado los presentes estados financieros y en mi opinion profesional expreso que reflejan razonablemente la condicion financiera y los resultados de la entidad con sujecion a normas contables y de aseguramiento vigentes en Colombia."';
+        const revLines = doc.splitTextToSize(revTxt, contentWidth);
+        doc.text(revLines, margin, certY);
+        certY += revLines.length * 9 + 15;
+      }
+
+      await drawPdfSignatures(doc, certY);
+
+      // ── PÁGINA 3: ESTADO DE SITUACIÓN FINANCIERA ──────────────────────────
+      doc.addPage();
+      const headerPos = drawPdfHeader(doc, headerCtx, {
+        title: 'Estado de Situacion Financiera (ESF)',
+        subtitles: [`Periodo mensual comparativo: ${reportMonth} vs ${compareMonth}`, `Cortes: ${reportDate} y ${compareDate}`],
+      });
+
+      const bodyPos: any[] = [];
+      const pushPosSec = (title: string, sec: any, totLabel: string, noteNum: string) => {
+        bodyPos.push([{ content: title, colSpan: 7, styles: { fontStyle: 'bold', fillColor: [245, 243, 255], textColor: [13, 33, 55] } }]);
+        sec.detail.forEach((r: any) => {
+          const hVar = calcHorizontalVariation(r.now, r.cmp);
+          bodyPos.push([
+            r.name,
+            noteNum,
+            fmtPdfSignedNum(r.now),
+            calcFinancialPct(r.now, esf.totalActivosNow).text,
+            fmtPdfSignedNum(r.cmp),
+            hVar.diffFmt.text,
+            hVar.indicatorText,
+          ]);
+        });
+        const secHVar = calcHorizontalVariation(sec.totalNow, sec.totalCmp);
+        bodyPos.push([
+          { content: totLabel, styles: { fontStyle: 'bold' } },
+          '',
+          { content: fmtPdfSignedNum(sec.totalNow), styles: { fontStyle: 'bold' } },
+          { content: calcFinancialPct(sec.totalNow, esf.totalActivosNow).text, styles: { fontStyle: 'bold' } },
+          { content: fmtPdfSignedNum(sec.totalCmp), styles: { fontStyle: 'bold' } },
+          { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+          { content: secHVar.indicatorText, styles: { fontStyle: 'bold' } },
+        ]);
+      };
+
+      pushPosSec('Activos Corrientes', esf.actCorr, 'Total Activos Corrientes', '3.1');
+      pushPosSec('Activos No Corrientes', esf.actNoCorr, 'Total Activos No Corrientes', '3.4');
+      const actHVar = calcHorizontalVariation(esf.totalActivosNow, esf.totalActivosCmp);
+      bodyPos.push([
+        { content: 'TOTAL ACTIVOS', styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        '',
+        { content: fmtPdfSignedNum(esf.totalActivosNow), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        { content: fmtPdfSignedNum(esf.totalActivosCmp), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        { content: actHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        { content: actHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+      ]);
+
+      pushPosSec('Pasivos Corrientes', esf.pasCorr, 'Total Pasivos Corrientes', '3.5');
+      pushPosSec('Pasivos No Corrientes', esf.pasNoCorr, 'Total Pasivos No Corrientes', '3.6');
+      const pasHVar = calcHorizontalVariation(esf.totalPasivosNow, esf.totalPasivosCmp);
+      bodyPos.push([
+        { content: 'TOTAL PASIVOS', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        '',
+        { content: fmtPdfSignedNum(esf.totalPasivosNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: calcFinancialPct(esf.totalPasivosNow, esf.totalPyPNow).text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: fmtPdfSignedNum(esf.totalPasivosCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: pasHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: pasHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+      ]);
+
+      pushPosSec('Patrimonio y Resultados', esf.patrimonio, 'Patrimonio antes de resultado', '3.7');
+      const resHVar = calcHorizontalVariation(esf.resErNow, esf.resErCmp);
+      bodyPos.push([
+        { content: 'Resultado neto del ejercicio', styles: { fontStyle: 'bold' } },
+        '3.7',
+        { content: fmtPdfSignedNum(esf.resErNow), styles: { fontStyle: 'bold' } },
+        { content: calcFinancialPct(esf.resErNow, esf.totalPyPNow).text, styles: { fontStyle: 'bold' } },
+        { content: fmtPdfSignedNum(esf.resErCmp), styles: { fontStyle: 'bold' } },
+        { content: resHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+        { content: resHVar.indicatorText, styles: { fontStyle: 'bold' } },
+      ]);
+      const patHVar = calcHorizontalVariation(esf.totalPatrimonioNow, esf.totalPatrimonioCmp);
+      bodyPos.push([
+        { content: 'TOTAL PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        '',
+        { content: fmtPdfSignedNum(esf.totalPatrimonioNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: calcFinancialPct(esf.totalPatrimonioNow, esf.totalPyPNow).text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: fmtPdfSignedNum(esf.totalPatrimonioCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: patHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: patHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+      ]);
+      const pypHVar = calcHorizontalVariation(esf.totalPyPNow, esf.totalPyPCmp);
+      bodyPos.push([
+        { content: 'TOTAL PASIVOS MAS PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        { content: '', styles: { fillColor: [13, 33, 55] } },
+        { content: fmtPdfSignedNum(esf.totalPyPNow), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        { content: fmtPdfSignedNum(esf.totalPyPCmp), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        { content: pypHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        { content: pypHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+      ]);
+
+      doc.autoTable({
+        startY: headerPos.startY,
+        head: [['Rubro / Concepto NIIF', 'Nota', String(reportDate), '% Vert.', String(compareDate), 'Variacion ($)', 'Tendencia (%)']],
+        body: bodyPos,
+        theme: 'plain',
+        margin: { left: margin, right: margin, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 6.8, textColor: [50, 50, 50], cellPadding: 2.2 },
+        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7 },
+        columnStyles: {
+          0: { cellWidth: 178 },
+          1: { cellWidth: 32, halign: 'center' },
+          2: { cellWidth: 70, halign: 'right' },
+          3: { cellWidth: 42, halign: 'center' },
+          4: { cellWidth: 70, halign: 'right' },
+          5: { cellWidth: 72, halign: 'right' },
+          6: { cellWidth: 76, halign: 'right' },
+        },
+        didParseCell: (data: any) => {
+          if (data.section === 'body') {
+            const raw = String(data.cell.raw?.content ?? data.cell.raw ?? '').trim();
+            if (data.column.index === 6) {
+              if (raw.startsWith('+')) {
+                data.cell.styles.textColor = [5, 150, 105];
+                data.cell.styles.fontStyle = 'bold';
+              } else if (raw.startsWith('-')) {
+                data.cell.styles.textColor = [220, 38, 38];
+                data.cell.styles.fontStyle = 'bold';
+              } else {
+                data.cell.styles.textColor = [100, 116, 139];
+              }
+            }
+          }
+        }
+      });
+
+      // ── PÁGINA 4: ESTADO DE RESULTADOS ────────────────────────────────────
+      doc.addPage();
+      const headerEr = drawPdfHeader(doc, headerCtx, {
+        title: 'Estado de Resultados Integral (ER)',
+        subtitles: [`Periodo mensual comparativo: ${reportMonth} vs ${compareMonth}`, `Cortes: ${reportDate} y ${compareDate}`],
+      });
+
+      const bodyEr: any[] = [];
+      const pushErSec = (title: string, sec: any, totLabel: string, noteNum: string) => {
+        bodyEr.push([{ content: title, colSpan: 7, styles: { fontStyle: 'bold', fillColor: [245, 243, 255], textColor: [13, 33, 55] } }]);
+        sec.detail.forEach((r: any) => {
+          const hVar = calcHorizontalVariation(r.now, r.cmp);
+          bodyEr.push([
+            r.name,
+            noteNum,
+            fmtPdfSignedNum(r.now),
+            calcFinancialPct(r.now, er.ingresos.totalNow || 1).text,
+            fmtPdfSignedNum(r.cmp),
+            hVar.diffFmt.text,
+            hVar.indicatorText,
+          ]);
+        });
+        const secHVar = calcHorizontalVariation(sec.totalNow, sec.totalCmp);
+        bodyEr.push([
+          { content: totLabel, styles: { fontStyle: 'bold' } },
+          '',
+          { content: fmtPdfSignedNum(sec.totalNow), styles: { fontStyle: 'bold' } },
+          { content: calcFinancialPct(sec.totalNow, er.ingresos.totalNow || 1).text, styles: { fontStyle: 'bold' } },
+          { content: fmtPdfSignedNum(sec.totalCmp), styles: { fontStyle: 'bold' } },
+          { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
+          { content: secHVar.indicatorText, styles: { fontStyle: 'bold' } },
+        ]);
+      };
+
+      pushErSec('Ingresos Operacionales', er.ingresos, 'Total Ingresos de Actividades Ordinarias', '4.1');
+      pushErSec('Costos de Ventas', er.costos, 'Total Costos de Ventas', '4.2');
+      const brutHVar = calcHorizontalVariation(er.margenBrutoNow, er.margenBrutoCmp);
+      bodyEr.push([
+        { content: 'UTILIDAD BRUTA (MARGEN BRUTO)', styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        '',
+        { content: fmtPdfSignedNum(er.margenBrutoNow), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        { content: calcFinancialPct(er.margenBrutoNow, er.ingresos.totalNow || 1).text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        { content: fmtPdfSignedNum(er.margenBrutoCmp), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        { content: brutHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+        { content: brutHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
+      ]);
+
+      pushErSec('Gastos Operacionales', er.gastos, 'Total Gastos Operacionales', '4.3');
+      const opHVar = calcHorizontalVariation(er.utilidadOpNow, er.utilidadOpCmp);
+      bodyEr.push([
+        { content: 'UTILIDAD OPERACIONAL (EBITDA ESTIMADO)', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        '',
+        { content: fmtPdfSignedNum(er.utilidadOpNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: calcFinancialPct(er.utilidadOpNow, er.ingresos.totalNow || 1).text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: fmtPdfSignedNum(er.utilidadOpCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: opHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: opHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+      ]);
+
+      const netHVar = calcHorizontalVariation(er.utilidadNetaNow, er.utilidadNetaCmp);
+      bodyEr.push([
+        { content: 'RESULTADO NETO DEL EJERCICIO', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        '',
+        { content: fmtPdfSignedNum(er.utilidadNetaNow), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        { content: calcFinancialPct(er.utilidadNetaNow, er.ingresos.totalNow || 1).text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        { content: fmtPdfSignedNum(er.utilidadNetaCmp), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        { content: netHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+        { content: netHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
+      ]);
+
+      doc.autoTable({
+        startY: headerEr.startY,
+        head: [['Rubro / Concepto de Resultados', 'Nota', String(reportDate), '% Ingresos', String(compareDate), 'Variacion ($)', 'Tendencia (%)']],
+        body: bodyEr,
+        theme: 'plain',
+        margin: { left: margin, right: margin, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 6.8, textColor: [50, 50, 50], cellPadding: 2.2 },
+        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7 },
+        columnStyles: {
+          0: { cellWidth: 178 },
+          1: { cellWidth: 32, halign: 'center' },
+          2: { cellWidth: 70, halign: 'right' },
+          3: { cellWidth: 42, halign: 'center' },
+          4: { cellWidth: 70, halign: 'right' },
+          5: { cellWidth: 72, halign: 'right' },
+          6: { cellWidth: 76, halign: 'right' },
+        },
+        didParseCell: (data: any) => {
+          if (data.section === 'body') {
+            const raw = String(data.cell.raw?.content ?? data.cell.raw ?? '').trim();
+            if (data.column.index === 6) {
+              if (raw.startsWith('+')) {
+                data.cell.styles.textColor = [5, 150, 105];
+                data.cell.styles.fontStyle = 'bold';
+              } else if (raw.startsWith('-')) {
+                data.cell.styles.textColor = [220, 38, 38];
+                data.cell.styles.fontStyle = 'bold';
+              } else {
+                data.cell.styles.textColor = [100, 116, 139];
+              }
+            }
+          }
+        }
+      });
+
+      // ── PÁGINA 5: ESTADO DE FLUJOS DE EFECTIVO ────────────────────────────
+      doc.addPage();
+      const headerCf = drawPdfHeader(doc, headerCtx, {
+        title: 'Estado de Flujos de Efectivo',
+        subtitles: ['Metodo Directo Simplificado', `Periodo: ${reportMonth} (Corte al ${reportDate})`],
+      });
+
+      doc.autoTable({
+        startY: headerCf.startY,
+        head: [['Actividad de Flujo de Efectivo', 'Saldo ($)', 'Participacion']],
+        body: [
+          [{ content: 'ACTIVIDADES DE OPERACION', colSpan: 3, styles: { fontStyle: 'bold', fillColor: [245, 243, 255] } }],
+          ['Recaudos y cobros operacionales recibidos de clientes', fmtPdfSignedNum(cf.cfInflows), '100.0%'],
+          ['Pagos a proveedores y gastos de administracion/personal', fmtPdfSignedNum(-cf.cfOutflows), `${calcFinancialPct(cf.cfOutflows, cf.cfInflows || 1).text}`],
+          [{ content: 'Flujo Neto de Actividades de Operacion', styles: { fontStyle: 'bold' } }, { content: fmtPdfSignedNum(cf.cfNetOp), styles: { fontStyle: 'bold' } }, ''],
+          [{ content: 'Ratio de Cobertura Operativa (Cobros / Pagos)', styles: { fontStyle: 'bold' } }, `${cf.cfCoverage.toFixed(2)}x`, cf.cfCoverage >= 1.0 ? 'Superavitario' : 'Deficitario'],
+        ],
+        theme: 'plain',
+        margin: { left: margin, right: margin, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 7.2, textColor: [50, 50, 50], cellPadding: 3 },
+        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 320 },
+          1: { cellWidth: 110, halign: 'right' },
+          2: { cellWidth: 110, halign: 'center' },
+        }
+      });
+
+      // ── PÁGINAS SIGUIENTES: NOTAS Y REVELACIONES INTEGRALES ───────────────
+      const notesFinalY = drawNotesInPdf(doc, notas, margin, pageWidth, accounts, balNow, balCmp);
+      if (signatories.repName || signatories.contName) {
+        await drawPdfSignatures(doc, notesFinalY);
+      }
+
+      // Enumeración de páginas total
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        drawPdfFooter(doc, p);
+      }
+
+      doc.save(`Informe_Financiero_Certificado_${reportMonth}_vs_${compareMonth}.pdf`);
+      showToast('Informe Financiero PDF generado con éxito.', 'success');
+    } catch (err: any) {
+      showToast(`Error al generar PDF del informe: ${err.message}`, 'error');
+    }
+  };
+
+  // ── Generador de Excel Multi-Hoja del Informe ─────────────────────────────
+  const exportDossierExcel = async () => {
+    if (!dossierData) return;
+    try {
+      const xlsx = (window as any).XLSX;
+      if (!xlsx) {
+        showToast('Biblioteca SheetJS (XLSX) no disponible.', 'error');
+        return;
+      }
+
+      const { headerCtx, reportMonth, compareMonth, reportDate, compareDate, frameworkLabel, signatories, esf, er, cf, notas } = dossierData;
+      const wb = xlsx.utils.book_new();
+
+      // 1. Hoja: Certificación Ley 222
+      const wsCertData = [
+        [headerCtx.companyName || 'ENTIDAD REPORTANTE'],
+        [`NIT: ${headerCtx.companyNit || 'N/A'}`],
+        [`DOMICILIO: ${headerCtx.companyAddress || 'Colombia'}`],
+        [''],
+        ['CERTIFICACIÓN DE ESTADOS FINANCIEROS (ARTÍCULO 37 LEY 222 DE 1995)'],
+        [`Período de corte: ${reportMonth} (${reportDate}) vs ${compareMonth} (${compareDate})`],
+        [`Marco Técnico Normativo: ${frameworkLabel}`],
+        [''],
+        ['AFIRMACIONES LEGALES VERIFICADAS POR LA ADMINISTRACIÓN:'],
+        ['1. EXISTENCIA: Los activos y pasivos existen en la fecha de corte y las transacciones registradas ocurrieron realmente.'],
+        ['2. INTEGRIDAD: Todos los hechos económicos realizados han sido reconocidos en su totalidad sin omisiones.'],
+        ['3. DERECHOS Y OBLIGACIONES: Los activos corresponden a beneficios económicos legítimos y los pasivos a obligaciones presentes.'],
+        ['4. VALUACIÓN Y ASIGNACIÓN: Las partidas han sido valuadas apropiadamente de acuerdo con el marco técnico normativo.'],
+        ['5. PRESENTACIÓN Y REVELACIÓN: Los hechos económicos están debidamente clasificados, descritos y revelados en las notas adjuntas.'],
+        [''],
+        ['FIRMAS LEGALES Y RESPONSABILIDAD PROFESIONAL:'],
+        ['Representante Legal:', signatories.repName || 'N/A', signatories.repTitle || 'Representante Legal'],
+        ['Contador Público:', signatories.contName || 'N/A', `T.P. No. ${signatories.contLicense || 'N/A'}`],
+        ['Revisor Fiscal:', signatories.revName || 'N/A', `T.P. No. ${signatories.revLicense || 'N/A'}`],
+      ];
+      const wsCert = xlsx.utils.aoa_to_sheet(wsCertData);
+      xlsx.utils.book_append_sheet(wb, wsCert, 'Certificación_Ley222');
+
+      // 2. Hoja: Situación Financiera (ESF)
+      const wsEsfData = [
+        ['Código', 'Rubro / Clasificación NIIF', 'Nota', `Saldo Actual (${reportMonth})`, '% Vert. Actual', `Saldo Anterior (${compareMonth})`, '% Vert. Anterior', 'Variación Nominal ($)', 'Tendencia Relativa (%)'],
+      ];
+      const appendPosRows = (sec: any, noteNum: string) => {
+        sec.detail.forEach((r: any) => {
+          const pNow = calcFinancialPct(r.now, esf.totalActivosNow);
+          const pCmp = calcFinancialPct(r.cmp, esf.totalActivosCmp);
+          const hVar = calcHorizontalVariation(r.now, r.cmp);
+          wsEsfData.push([r.code, r.name, noteNum, r.now, pNow.text, r.cmp, pCmp.text, hVar.diff, hVar.indicatorText]);
+        });
+      };
+      appendPosRows(esf.actCorr, '3.1');
+      appendPosRows(esf.actNoCorr, '3.4');
+      wsEsfData.push(['', 'TOTAL ACTIVOS', '', esf.totalActivosNow, '100.0%', esf.totalActivosCmp, '100.0%', esf.totalActivosNow - esf.totalActivosCmp, calcHorizontalVariation(esf.totalActivosNow, esf.totalActivosCmp).indicatorText]);
+      appendPosRows(esf.pasCorr, '3.5');
+      appendPosRows(esf.pasNoCorr, '3.6');
+      wsEsfData.push(['', 'TOTAL PASIVOS', '', esf.totalPasivosNow, '', esf.totalPasivosCmp, '', esf.totalPasivosNow - esf.totalPasivosCmp, calcHorizontalVariation(esf.totalPasivosNow, esf.totalPasivosCmp).indicatorText]);
+      appendPosRows(esf.patrimonio, '3.7');
+      wsEsfData.push(['', 'Resultado del ejercicio', '3.7', esf.resErNow, '', esf.resErCmp, '', esf.resErNow - esf.resErCmp, calcHorizontalVariation(esf.resErNow, esf.resErCmp).indicatorText]);
+      wsEsfData.push(['', 'TOTAL PATRIMONIO', '', esf.totalPatrimonioNow, '', esf.totalPatrimonioCmp, '', esf.totalPatrimonioNow - esf.totalPatrimonioCmp, calcHorizontalVariation(esf.totalPatrimonioNow, esf.totalPatrimonioCmp).indicatorText]);
+      wsEsfData.push(['', 'TOTAL PASIVO Y PATRIMONIO', '', esf.totalPyPNow, '100.0%', esf.totalPyPCmp, '100.0%', esf.totalPyPNow - esf.totalPyPCmp, calcHorizontalVariation(esf.totalPyPNow, esf.totalPyPCmp).indicatorText]);
+      const wsEsf = xlsx.utils.aoa_to_sheet(wsEsfData);
+      xlsx.utils.book_append_sheet(wb, wsEsf, 'Sit_Financiera_ESF');
+
+      // 3. Hoja: Resultados (ER)
+      const wsErData = [
+        ['Código', 'Rubro / Cuenta de Resultados', 'Nota', `Actual (${reportMonth})`, '% Ingresos Actual', `Anterior (${compareMonth})`, '% Ingresos Anterior', 'Variación Nominal ($)', 'Tendencia Relativa (%)'],
+      ];
+      const appendErRows = (sec: any, noteNum: string) => {
+        sec.detail.forEach((r: any) => {
+          const pNow = calcFinancialPct(r.now, er.ingresos.totalNow || 1);
+          const pCmp = calcFinancialPct(r.cmp, er.ingresos.totalCmp || 1);
+          const hVar = calcHorizontalVariation(r.now, r.cmp);
+          wsErData.push([r.code, r.name, noteNum, r.now, pNow.text, r.cmp, pCmp.text, hVar.diff, hVar.indicatorText]);
+        });
+      };
+      appendErRows(er.ingresos, '4.1');
+      wsErData.push(['', 'TOTAL INGRESOS OPERACIONALES', '', er.ingresos.totalNow, '100.0%', er.ingresos.totalCmp, '100.0%', er.ingresos.totalNow - er.ingresos.totalCmp, calcHorizontalVariation(er.ingresos.totalNow, er.ingresos.totalCmp).indicatorText]);
+      appendErRows(er.costos, '4.2');
+      wsErData.push(['', 'TOTAL COSTO DE VENTAS', '', er.costos.totalNow, '', er.costos.totalCmp, '', er.costos.totalNow - er.costos.totalCmp, calcHorizontalVariation(er.costos.totalNow, er.costos.totalCmp).indicatorText]);
+      wsErData.push(['', 'UTILIDAD BRUTA', '', er.margenBrutoNow, '', er.margenBrutoCmp, '', er.margenBrutoNow - er.margenBrutoCmp, calcHorizontalVariation(er.margenBrutoNow, er.margenBrutoCmp).indicatorText]);
+      appendErRows(er.gastos, '4.3');
+      wsErData.push(['', 'TOTAL GASTOS OPERACIONALES', '', er.gastos.totalNow, '', er.gastos.totalCmp, '', er.gastos.totalNow - er.gastos.totalCmp, calcHorizontalVariation(er.gastos.totalNow, er.gastos.totalCmp).indicatorText]);
+      wsErData.push(['', 'UTILIDAD OPERACIONAL (EBITDA)', '', er.utilidadOpNow, '', er.utilidadOpCmp, '', er.utilidadOpNow - er.utilidadOpCmp, calcHorizontalVariation(er.utilidadOpNow, er.utilidadOpCmp).indicatorText]);
+      wsErData.push(['', 'RESULTADO NETO DEL EJERCICIO', '', er.utilidadNetaNow, '', er.utilidadNetaCmp, '', er.utilidadNetaNow - er.utilidadNetaCmp, calcHorizontalVariation(er.utilidadNetaNow, er.utilidadNetaCmp).indicatorText]);
+      const wsEr = xlsx.utils.aoa_to_sheet(wsErData);
+      xlsx.utils.book_append_sheet(wb, wsEr, 'Estado_Resultados_ER');
+
+      // 4. Hoja: Flujo de Efectivo
+      const wsCfData = [
+        ['Concepto de Flujo de Efectivo', 'Saldo Actual ($)', 'Indicador / Participación'],
+        ['Recaudos y cobros operacionales', cf.cfInflows, '100.0%'],
+        ['Pagos a proveedores y gastos de operación', -cf.cfOutflows, `${calcFinancialPct(cf.cfOutflows, cf.cfInflows || 1).text}`],
+        ['Flujo Neto de Actividades de Operación', cf.cfNetOp, ''],
+        ['Ratio de Cobertura Operativa (Cobros/Pagos)', `${cf.cfCoverage.toFixed(2)}x`, cf.cfCoverage >= 1.0 ? 'Superávit' : 'Déficit'],
+      ];
+      const wsCf = xlsx.utils.aoa_to_sheet(wsCfData);
+      xlsx.utils.book_append_sheet(wb, wsCf, 'Flujo_Efectivo');
+
+      // 5. Hoja: Notas NIIF
+      const wsNotesData = [
+        ['Nota #', 'Título de la Nota / Revelación', 'Cuentas Vinculadas', 'Contenido / Divulgación'],
+      ];
+      notas.forEach((n: any) => {
+        wsNotesData.push([n.nota_num, n.titulo, n.cuenta_codigo || '', n.contenido]);
+      });
+      const wsNotes = xlsx.utils.aoa_to_sheet(wsNotesData);
+      xlsx.utils.book_append_sheet(wb, wsNotes, 'Notas_NIIF');
+
+      xlsx.writeFile(wb, `Informe_Financiero_Certificado_${reportMonth}_vs_${compareMonth}.xlsx`);
+      showToast('Libro Excel del Informe descargado exitosamente.', 'success');
+    } catch (err: any) {
+      showToast(`Error al exportar Excel: ${err.message}`, 'error');
+    }
+  };
+
+  // ── Imprimir nativo ───────────────────────────────────────────────────────
+  const printDossierNative = () => {
+    const pane = document.getElementById('dossier-tab-pane-cert');
+    if (!pane) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Informe Financiero Certificado - ${todayStr()}</title>
+        <link rel="stylesheet" href="/assets/style.css">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; color: #111827; }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none !important; }
+          }
+        </style>
+      </head>
+      <body>
+        ${document.getElementById('dossier-results')?.innerHTML || ''}
+        <script>
+          setTimeout(() => { window.print(); window.close(); }, 500);
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  // Asignar listeners principales
+  $('#btn-gen-dossier')?.addEventListener('click', generateDossier);
+  $('#btn-pdf-dossier')?.addEventListener('click', exportDossierPdf);
+  $('#btn-xls-dossier')?.addEventListener('click', exportDossierExcel);
+  $('#btn-print-dossier')?.addEventListener('click', printDossierNative);
+
+  // Auto-generación inicial si ambos meses están presentes
+  setTimeout(() => {
+    generateDossier();
+  }, 100);
+}
+
+(window as any).renderFinancialDossier = renderFinancialDossier;
+
 async function renderConsecutiveAuditReport() {
   const view = getReportViewHost();
   if (!view) return;

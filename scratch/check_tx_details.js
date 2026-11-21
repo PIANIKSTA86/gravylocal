@@ -1,9 +1,8 @@
-const { DatabaseSync } = require('node:sqlite');
-const db = new DatabaseSync('pb_data/data.db');
+const sqlite3 = require('sqlite3').verbose();
+const dbPath = './empresas/empresa_8091/pb_data/data.db';
+const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY);
 
-const tx = db.prepare("SELECT * FROM transactions WHERE id = 'ory5sv2andpyl3d'").get();
-console.log('Transaction:', tx);
-
-const allLines = db.prepare("SELECT * FROM tx_lines WHERE tx_id = 'ory5sv2andpyl3d'").all();
-console.log('All lines:', allLines);
-
+db.get("SELECT id, number, cross_number, cross_type, cross_amount, cross_enabled, description, status, user_id FROM transactions WHERE id = 'fmyzflvzcg3jqso'", (err, row) => {
+  if (err) console.error(err);
+  else console.log("Transaction details:\n", JSON.stringify(row, null, 2));
+});

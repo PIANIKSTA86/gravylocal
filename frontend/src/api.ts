@@ -6485,6 +6485,21 @@ const API = {
 
       const allInvoices = [...invoices];
 
+      // Mapa global de número de factura a property_id (para cruce de anticipos a períodos futuros sin límite de período)
+      const invPropMap = new Map<string, string>();
+      try {
+        const allInvoicesLight = await pb.listAll('ph_invoices', {
+          fields: 'id,number,property_id',
+          filter: 'status!="voided"',
+          perPage: 500,
+        }).catch(() => []);
+        for (const i of (allInvoicesLight || [])) {
+          if (i && i.number && i.property_id) {
+            invPropMap.set(String(i.number).toUpperCase().trim(), String(i.property_id).toLowerCase());
+          }
+        }
+      } catch (_) {}
+
       // Filtrar facturas que fueron emitidas después de la fecha de corte si se especificó
       if (cutoffDate) {
         invoices = invoices.filter(inv => {
@@ -6596,16 +6611,21 @@ const API = {
             // Si es un recaudo que cruza una factura posterior a la fecha de corte,
             // ese recaudo representa un anticipo a favor del inmueble al corte actual
             const baseInvNum = ref.split("-").slice(0, 3).join("-");
-            const rawInv = (allInvoices || []).find((i: any) => String(i.number || "").trim().toUpperCase() === baseInvNum);
-            if (rawInv && rawInv.property_id) {
-              const pidKey = String(rawInv.property_id).toLowerCase();
-              advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
-            } else if (tl.description) {
-              for (const p of properties) {
-                if (tl.description.includes(`Unidad ${p.code}`) || (p.name && tl.description.includes(p.name)) || (p.code && tl.description.includes(`- ${p.code}`))) {
-                  const pidKey = String(p.id).toLowerCase();
-                  advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
-                  break;
+            const pidFromMap = invPropMap.get(baseInvNum);
+            if (pidFromMap) {
+              advancesByPropMap.set(pidFromMap, (advancesByPropMap.get(pidFromMap) || 0) + valAbono);
+            } else {
+              const rawInv = (allInvoices || []).find((i: any) => String(i.number || "").trim().toUpperCase() === baseInvNum);
+              if (rawInv && rawInv.property_id) {
+                const pidKey = String(rawInv.property_id).toLowerCase();
+                advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+              } else if (tl.description) {
+                for (const p of properties) {
+                  if (tl.description.includes(`Unidad ${p.code}`) || (p.name && tl.description.includes(p.name)) || (p.code && tl.description.includes(`- ${p.code}`))) {
+                    const pidKey = String(p.id).toLowerCase();
+                    advancesByPropMap.set(pidKey, (advancesByPropMap.get(pidKey) || 0) + valAbono);
+                    break;
+                  }
                 }
               }
             }
@@ -6750,8 +6770,8 @@ const API = {
         // Si quedó saldo de anticipo o abono libre para la unidad, se guarda en el pool
         if (generalAbono > 0) {
           propAdvancePool += generalAbono;
-          advancesByPropMap.set(pIdKey, propAdvancePool);
         }
+        advancesByPropMap.set(pIdKey, propAdvancePool);
       }
 
       // 4. Incorporar saldos a favor (anticipos no absorbidos en cuenta 134595)

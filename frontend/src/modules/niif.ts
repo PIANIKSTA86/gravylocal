@@ -2037,11 +2037,11 @@ async function renderSubTabCategorias(c: HTMLElement) {
 
   try {
     const [cRes, ccRes, uRes, tpRes, paRes, uvtRes] = await Promise.all([
-      pb.listAll('niif_asset_categories', { filter: 'active=true', sort: 'code' }),
+      pb.listAll('niif_asset_categories', { filter: 'active=true', sort: 'code', expand: 'account_asset_id' }),
       pb.listAll('cost_centers', { filter: 'active=true', sort: 'code' }),
       pb.listAll('users', { sort: 'name' }),
       pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
-      pb.listAll('niif_assets', { filter: 'active=true', sort: 'code' }),
+      pb.listAll('niif_assets', { sort: 'code' }),
       fetchConfiguredCompanyUvt()
     ]);
     categories = cRes;
@@ -2065,7 +2065,10 @@ async function renderSubTabCategorias(c: HTMLElement) {
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="form-group">
           <label class="form-label">Código / Placa <span class="text-red-500">*</span></label>
-          <input id="ast-code" class="form-input" placeholder="Ej: AST-001" value="${esc(a?.code || '')}" style="text-transform:uppercase" required ${id ? 'disabled' : ''}>
+          <div class="flex gap-1.5">
+            <input id="ast-code" class="form-input flex-1" placeholder="Ej: AST-001 o 15280501" value="${esc(a?.code || '')}" style="text-transform:uppercase" required ${id ? 'disabled' : ''}>
+            ${!id ? `<button type="button" class="btn btn-outline btn-xs px-2" id="btn-suggest-ast-code" title="Sugerir siguiente consecutivo según categoría"><i class="fas fa-wand-magic-sparkles text-indigo-600"></i></button>` : ''}
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Nombre del Activo <span class="text-red-500">*</span></label>
@@ -2431,12 +2434,72 @@ async function renderSubTabCategorias(c: HTMLElement) {
   document.getElementById('ast-service-date')?.addEventListener('change', () => syncImmediate50UvtState(false));
   syncDepreciableState();
 
+  // Sugerencia asistida de código de placa según categoría contable
+  const suggestNextCodeForCategory = (catId: string, force = false) => {
+    if (!catId || id) return;
+    const codeInput = $('#ast-code') as HTMLInputElement | null;
+    if (!codeInput) return;
+    if (!force && codeInput.value.trim() && codeInput.dataset.autoFilled !== 'true') return;
+
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) return;
+
+    const pucCode = (cat.expand?.account_asset_id?.code || '').replace(/[^0-9]/g, '');
+    const prefix = pucCode || cat.code || 'AST';
+
+    let maxNum = 0;
+    parentAssets.forEach((ast: any) => {
+      const c = String(ast.code || '').trim();
+      if (pucCode && c.startsWith(pucCode)) {
+        const suffix = c.slice(pucCode.length).replace(/[^0-9]/g, '');
+        const n = parseInt(suffix, 10);
+        if (!isNaN(n) && n > maxNum) maxNum = n;
+      } else if (!pucCode && c.startsWith(prefix)) {
+        const suffix = c.slice(prefix.length).replace(/[^0-9]/g, '');
+        const n = parseInt(suffix, 10);
+        if (!isNaN(n) && n > maxNum) maxNum = n;
+      }
+    });
+
+    const nextSeq = maxNum + 1;
+    let suggested = '';
+    if (pucCode) {
+      suggested = `${pucCode}${String(nextSeq).padStart(2, '0')}`;
+    } else {
+      suggested = `${prefix}-${String(nextSeq).padStart(3, '0')}`;
+    }
+
+    codeInput.value = suggested;
+    codeInput.dataset.autoFilled = 'true';
+    if (force) {
+      showToast(`Código sugerido generado: ${suggested}`, 'info', 3000);
+    }
+  };
+
+  $('#btn-suggest-ast-code')?.addEventListener('click', () => {
+    const catId = getSelectVal('ast-cat');
+    if (!catId) {
+      showToast('Selecciona primero una categoría para sugerir el código', 'warning');
+      return;
+    }
+    suggestNextCodeForCategory(catId, true);
+  });
+
+  $('#ast-code')?.addEventListener('input', () => {
+    const input = $('#ast-code') as HTMLInputElement | null;
+    if (input) input.dataset.autoFilled = 'false';
+  });
+
   // Escuchar cambios de categoría para auto-completar parámetros
   $('#ast-cat')?.addEventListener('change', () => {
     const catId = getSelectVal('ast-cat');
     if (!catId) return;
     const cat = categories.find(c => c.id === catId);
     if (!cat) return;
+
+    if (!id) {
+      suggestNextCodeForCategory(catId, false);
+    }
 
     const costVal = Number(getInputVal('ast-cost') || 0);
 
@@ -2598,7 +2661,32 @@ async function renderSubTabCategorias(c: HTMLElement) {
       const container = document.getElementById('activos-subtab-content');
       if (container) await renderSubTabCatalogo(container);
     } catch (err: any) {
-      showToast('Error al guardar activo: ' + err.message, 'error');
+      let detail = '';
+      if (err?.data?.data && typeof err.data.data === 'object') {
+        const entries = Object.entries(err.data.data);
+        if (entries.length > 0) {
+          const fieldMap: Record<string, string> = {
+            code: 'Código/Placa',
+            name: 'Nombre',
+            cost: 'Costo',
+            category_id: 'Categoría',
+            depreciation_method: 'Método depreciación',
+            useful_life_niif: 'Vida útil NIIF',
+            useful_life_fiscal: 'Vida útil Fiscal',
+            provider_id: 'Proveedor'
+          };
+          detail = ': ' + entries.map(([field, msgObj]: [string, any]) => {
+            const label = fieldMap[field] || field;
+            const msg = msgObj?.message || msgObj?.code || 'inválido';
+            return `${label} (${msg === 'Value must be unique.' ? 'ya existe, asigne otro código' : msg})`;
+          }).join(', ');
+        }
+      } else if (err?.status === 400 && err?.message === 'Failed to create record.') {
+        detail = ': Tu rol actual no tiene permisos suficientes para registrar activos fijos o hay datos incompletos.';
+      } else if (err?.message) {
+        detail = ': ' + err.message;
+      }
+      showToast('Error al guardar activo' + detail, 'error', 8000);
     }
   });
 };
@@ -2613,7 +2701,10 @@ async function renderSubTabCategorias(c: HTMLElement) {
       const container = document.getElementById('activos-subtab-content');
       if (container) await renderSubTabCatalogo(container);
     } catch (err: any) {
-      showToast('Error al eliminar activo: ' + err.message, 'error');
+      const msg = (err?.status === 400 && (err?.message?.includes('delete') || err?.message === 'Failed to delete record.'))
+        ? 'No tienes permisos de rol para eliminar activos fijos.'
+        : err.message;
+      showToast('Error al eliminar activo: ' + msg, 'error');
     }
   });
 };

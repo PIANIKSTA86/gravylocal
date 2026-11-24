@@ -396,7 +396,10 @@ const getHubUrl = (): string => {
   if (parts.length >= 3) {
     const sub = parts[0].toLowerCase();
     const rootDomain = parts.slice(1).join('.');
-    if (sub === 'domestiko' || sub === 'app' || sub === 'hub' || sub === 'cloud' || sub === 'sistema' || sub === 'erp') {
+    if (sub === 'cloud') {
+      return `${protocol}//hub-cloud.${rootDomain}`;
+    }
+    if (sub === 'domestiko' || sub === 'app' || sub === 'hub' || sub === 'sistema' || sub === 'erp') {
       return `${protocol}//hub.${rootDomain}`;
     }
     if (sub.startsWith('hub-')) {
@@ -408,6 +411,7 @@ const getHubUrl = (): string => {
 };
 
 const HUB_URL = getHubUrl();
+(window as any).HUB_URL = HUB_URL;
 
 function resolveCompanyUrl(url: string): string {
   if (!url) return window.location.origin;

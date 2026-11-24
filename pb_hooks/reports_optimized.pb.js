@@ -16,7 +16,7 @@ routerAdd("GET", "/api/gravy/report-balances", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -26,7 +26,7 @@ routerAdd("GET", "/api/gravy/report-balances", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -112,7 +112,7 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -122,7 +122,7 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -270,7 +270,7 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
       }
     }
 
-    const portfolioNet = isRecaudo 
+    const portfolioNet = isRecaudo
       ? Math.max(0, portfolioGross - portfolioCreditBalances)
       : Math.max(0, provGross - provCredit);
 
@@ -363,7 +363,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -373,7 +373,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -661,7 +661,7 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -671,7 +671,7 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -934,7 +934,7 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -944,7 +944,7 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -1053,7 +1053,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -1063,7 +1063,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -1290,7 +1290,7 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -1300,7 +1300,7 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
   let cutoffDate = String(queryParams.cutoffDate || queryParams.asOfDate || '').trim();
   if (!cutoffDate) {
@@ -1310,7 +1310,7 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
   }
 
   let phPropertyId = String(queryParams.propertyId || queryParams.property_id || '').trim();
-  let phConceptId  = String(queryParams.conceptId  || queryParams.concept_id  || '').trim();
+  let phConceptId = String(queryParams.conceptId || queryParams.concept_id || '').trim();
 
   try {
     // ── 1. Facturas activas (no anuladas) hasta la fecha de corte ─────────────
@@ -1502,49 +1502,49 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
       const daysOverdue = daysDiff(dueStr);
 
       let por_vencer = 0, de_0_a_30 = 0, de_31_a_60 = 0, de_61_a_90 = 0, mayor_a_90 = 0;
-      if (daysOverdue < 0)       { por_vencer = saldo; }
-      else if (daysOverdue <= 30)  { de_0_a_30  = saldo; }
-      else if (daysOverdue <= 60)  { de_31_a_60 = saldo; }
-      else if (daysOverdue <= 90)  { de_61_a_90 = saldo; }
-      else                         { mayor_a_90 = saldo; }
+      if (daysOverdue < 0) { por_vencer = saldo; }
+      else if (daysOverdue <= 30) { de_0_a_30 = saldo; }
+      else if (daysOverdue <= 60) { de_31_a_60 = saldo; }
+      else if (daysOverdue <= 90) { de_61_a_90 = saldo; }
+      else { mayor_a_90 = saldo; }
 
-      totals.grandTotal  += saldo;
-      totals.por_vencer  += por_vencer;
-      totals.de_0_a_30   += de_0_a_30;
-      totals.de_31_a_60  += de_31_a_60;
-      totals.de_61_a_90  += de_61_a_90;
-      totals.mayor_a_90  += mayor_a_90;
+      totals.grandTotal += saldo;
+      totals.por_vencer += por_vencer;
+      totals.de_0_a_30 += de_0_a_30;
+      totals.de_31_a_60 += de_31_a_60;
+      totals.de_61_a_90 += de_61_a_90;
+      totals.mayor_a_90 += mayor_a_90;
 
       const invLines = linesByInv[inv.invoice_id] || [];
 
       rows.push({
-        invoice_id:      inv.invoice_id,
-        invoice_number:  inv.invoice_number,
-        period:          inv.period,
-        invoice_date:    inv.invoice_date,
-        due_date:        dueStr,
-        days_overdue:    daysOverdue,
-        property_id:     inv.property_id,
-        property_code:   inv.property_code,
-        property_name:   inv.property_name,
-        tower:           inv.tower,
-        apartment:       inv.apartment,
-        coef:            inv.coef,
-        owner_id:        inv.owner_id,
-        owner_name:      inv.owner_name,
-        owner_doc:       inv.owner_doc,
+        invoice_id: inv.invoice_id,
+        invoice_number: inv.invoice_number,
+        period: inv.period,
+        invoice_date: inv.invoice_date,
+        due_date: dueStr,
+        days_overdue: daysOverdue,
+        property_id: inv.property_id,
+        property_code: inv.property_code,
+        property_name: inv.property_name,
+        tower: inv.tower,
+        apartment: inv.apartment,
+        coef: inv.coef,
+        owner_id: inv.owner_id,
+        owner_name: inv.owner_name,
+        owner_doc: inv.owner_doc,
         total_facturado: Number(inv.total || 0),
-        total_abonado:   totalAbonado,
-        saldo:           saldo,
-        por_vencer:      por_vencer,
-        de_0_a_30:       de_0_a_30,
-        de_31_a_60:      de_31_a_60,
-        de_61_a_90:      de_61_a_90,
-        mayor_a_90:      mayor_a_90,
-        lines:           invLines.map(l => ({
-          concept_id:   l.concept_id,
+        total_abonado: totalAbonado,
+        saldo: saldo,
+        por_vencer: por_vencer,
+        de_0_a_30: de_0_a_30,
+        de_31_a_60: de_31_a_60,
+        de_61_a_90: de_61_a_90,
+        mayor_a_90: mayor_a_90,
+        lines: invLines.map(l => ({
+          concept_id: l.concept_id,
           concept_name: l.concept_name,
-          amount:       Number(l.amount || 0)
+          amount: Number(l.amount || 0)
         }))
       });
     }
@@ -1554,14 +1554,14 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
       const rem = advancesByProp[pKey];
       if (rem > 0.01) {
         let propRec = null;
-        try { propRec = $app.findRecordById("ph_properties", pKey.toLowerCase()); } catch (_) {}
+        try { propRec = $app.findRecordById("ph_properties", pKey.toLowerCase()); } catch (_) { }
         if (propRec) {
           let ownerRec = null;
           try {
             if (propRec.getString("owner_id")) {
               ownerRec = $app.findRecordById("third_parties", propRec.getString("owner_id"));
             }
-          } catch (_) {}
+          } catch (_) { }
 
           rows.push({
             invoice_id: "ADV-" + pKey,
@@ -1613,7 +1613,7 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -1623,7 +1623,7 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -1824,7 +1824,7 @@ routerAdd("GET", "/api/gravy/report-sales-by-seller", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -1834,7 +1834,7 @@ routerAdd("GET", "/api/gravy/report-sales-by-seller", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -1960,7 +1960,7 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -1970,7 +1970,7 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -2093,7 +2093,7 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
         const parsed = JSON.parse(invSetting.getString("value") || "{}");
         if (parsed.costing_scope) costingScope = parsed.costing_scope;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const stockMap = {};
     const globalStock = {};
@@ -2230,7 +2230,7 @@ routerAdd("GET", "/api/gravy/report-cost-centers", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -2240,7 +2240,7 @@ routerAdd("GET", "/api/gravy/report-cost-centers", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
@@ -2337,7 +2337,7 @@ routerAdd("GET", "/api/gravy/report-client-cartera-history", (c) => {
       const ri = c.requestInfo();
       authRecord = ri ? (ri.auth || ri.authRecord) : null;
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
@@ -2347,7 +2347,7 @@ routerAdd("GET", "/api/gravy/report-client-cartera-history", (c) => {
     if (c && typeof c.requestInfo === "function") {
       queryParams = c.requestInfo().query || {};
     }
-  } catch (_) {}
+  } catch (_) { }
   if (!queryParams) queryParams = {};
 
   let thirdId = String(queryParams.thirdId || (c.queryParam ? c.queryParam("thirdId") : '') || '').trim();
@@ -2381,7 +2381,7 @@ routerAdd("GET", "/api/gravy/report-client-cartera-history", (c) => {
       $app.db().newQuery("SELECT id, name, doc_number, doc_type, phone, email, address, city, type FROM third_parties WHERE id = {:id} LIMIT 1")
         .bind({ id: thirdId })
         .one(thirdModel);
-    } catch (_) {}
+    } catch (_) { }
 
     // 2. Facturas registradas en la tabla 'invoices' para este cliente
     let sqlInvoices = `
@@ -2572,8 +2572,8 @@ routerAdd("GET", "/api/gravy/report-client-cartera-history", (c) => {
 
       if (Number(line.credit || 0) > 0.0001) {
         const isNC = (
-          line.tx_type_code === 'NC' || 
-          line.tx_number.startsWith('NC-') || 
+          line.tx_type_code === 'NC' ||
+          line.tx_number.startsWith('NC-') ||
           (line.tx_type_name || '').toLowerCase().indexOf('crédito') !== -1 ||
           (line.line_desc || '').toLowerCase().indexOf('nota crédito') !== -1
         );
@@ -2615,7 +2615,7 @@ routerAdd("GET", "/api/gravy/report-client-cartera-history", (c) => {
 
       const totalRet = g.ret_invoice + g.ret_payments;
       const baseOriginal = g.gross_amount > 0 ? g.gross_amount : g.initial_debits;
-      
+
       let rawBalance = baseOriginal - totalRet - g.total_notes - g.total_payments;
       if (Math.abs(rawBalance) < 0.5) rawBalance = 0;
       if (rawBalance < 0) rawBalance = 0;

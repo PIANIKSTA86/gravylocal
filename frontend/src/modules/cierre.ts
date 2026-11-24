@@ -12,7 +12,7 @@ async function renderCierre(c) {
   try {
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
-    const currentKey = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
+    const currentKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
     // Load all data in parallel for the current period
     const [accounts, saldos] = await Promise.all([
@@ -105,7 +105,7 @@ async function renderCierre(c) {
             ${(can('canWrite') && isGlobal) ? `<button class="btn btn-primary btn-sm ml-auto" id="btn-enable-period-inline"><i class="fas fa-calendar-plus"></i> Habilitar ahora</button>` : ''}
           </div>`
         : isCurrentClosed
-        ? `<div class="mb-4 p-4 rounded-2xl border flex items-center gap-3" style="background:#FEF2F2;border-color:#FECACA">
+          ? `<div class="mb-4 p-4 rounded-2xl border flex items-center gap-3" style="background:#FEF2F2;border-color:#FECACA">
             <i class="fas fa-lock text-xl" style="color:#B91C1C"></i>
             <div>
               <p class="font-semibold" style="color:#B91C1C">Período ${currentKey} CERRADO</p>
@@ -113,7 +113,7 @@ async function renderCierre(c) {
             </div>
             ${(can('canWrite') && isGlobal) ? `<button class="btn btn-outline btn-sm ml-auto" onclick="reOpenPeriod('${currentKey}')"><i class="fas fa-lock-open"></i> Re-abrir</button>` : ''}
           </div>`
-        : `<div class="mb-4 p-4 rounded-2xl border flex items-center gap-3" style="background:#F0FFF4;border-color:#BBF7D0">
+          : `<div class="mb-4 p-4 rounded-2xl border flex items-center gap-3" style="background:#F0FFF4;border-color:#BBF7D0">
             <i class="fas fa-lock-open text-xl" style="color:#15803D"></i>
             <div>
               <p class="font-semibold" style="color:#15803D">Período ${currentKey} HABILITADO</p>
@@ -146,7 +146,7 @@ async function renderCierre(c) {
                   <td class="text-sm" style="color:#6B7280">${esc(p.enabledBy || p.closedBy || '—')}</td>
                   <td class="text-sm" style="color:#6B7280">${esc(p.enabledAt || '—')}</td>
                   <td>${esc(p.closedAt || '—')}</td>
-                  <td class="font-semibold" style="color:${(p.utilidad||0) >= 0 ? '#15803D' : '#B91C1C'}">${fmt(p.utilidad || 0)}</td>
+                  <td class="font-semibold" style="color:${(p.utilidad || 0) >= 0 ? '#15803D' : '#B91C1C'}">${fmt(p.utilidad || 0)}</td>
                   <td class="text-sm" style="color:#6B7280">${esc(p.note || '—')}</td>
                   <td>
                     <div class="flex gap-1">
@@ -162,30 +162,47 @@ async function renderCierre(c) {
 
       <!-- Asientos de cierre -->
       <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
-        <h4 class="font-bold mb-3" style="color:#0D2137">Asientos de Cierre Sugeridos</h4>
-        <p class="text-sm mb-4" style="color:#6B7280">Al cerrar el Periodo, el asistente genera automaticamente los asientos de traslado de ingresos y gastos a la cuenta de resultados (Clase 3).</p>
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="font-bold" style="color:#0D2137">Asientos de Cierre Contable</h4>
+          <span class="badge ${currentKey.endsWith('-12') ? 'badge-green' : 'badge-amber'} text-xs font-semibold">
+            ${currentKey.endsWith('-12') ? 'Cierre Anual Autorizado' : 'Solo Bloqueo Mensual'}
+          </span>
+        </div>
+        <div class="mb-3 p-3 rounded-xl border flex items-start gap-2.5 text-xs" style="background:#EFF6FF;border-color:#BFDBFE;color:#1E40AF">
+          <i class="fas fa-info-circle text-sm mt-0.5"></i>
+          <div>
+            <strong>Normativa Contable NIIF / PUC Colombia (Decreto 2420/2015):</strong>
+            El asiento contable de cancelación de cuentas de resultado (traslado de Clases 4, 5, 6 y 7 a Patrimonio/Utilidad del Ejercicio) se realiza <strong>únicamente al 31 de Diciembre</strong>. En los meses de Enero a Noviembre, el cierre es de control administrativo y bloqueo de transacciones para no resetear las cuentas de ingresos y costos antes de fin de año.
+          </div>
+        </div>
+        <p class="text-xs mb-3" style="color:#6B7280">Resumen preliminar de saldos nominales a cancelar al cierre anual:</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           ${ingresos > 0
-            ? `<div class="rounded-xl p-4 border" style="background:#F0FFF4;border-color:#BBF7D0">
-                <p class="text-xs font-semibold mb-2" style="color:#15803D">1. Cierre de Ingresos (Cl.4 ? Cl.3)</p>
-                <p class="text-sm" style="color:#374151">Debito cuentas de ingreso: <strong>${fmt(ingresos)}</strong></p>
-                <p class="text-sm" style="color:#374151">Credito resultado del ejercicio: <strong>${fmt(ingresos)}</strong></p>
+        ? `<div class="rounded-xl p-4 border" style="background:#F0FFF4;border-color:#BBF7D0">
+                <p class="text-xs font-semibold mb-2" style="color:#15803D">1. Cierre de Ingresos (Cl.4 &rarr; Cl.3)</p>
+                <p class="text-sm" style="color:#374151">Débito cuentas de ingreso: <strong>${fmt(ingresos)}</strong></p>
+                <p class="text-sm" style="color:#374151">Crédito resultado del ejercicio: <strong>${fmt(ingresos)}</strong></p>
               </div>`
-            : ''
-          }
+        : ''
+      }
           ${gastos > 0
-            ? `<div class="rounded-xl p-4 border" style="background:#FEF2F2;border-color:#FECACA">
-                <p class="text-xs font-semibold mb-2" style="color:#B91C1C">2. Cierre de Gastos (Cl.3 ? Cl.5/6)</p>
-                <p class="text-sm" style="color:#374151">Debito resultado del ejercicio: <strong>${fmt(gastos)}</strong></p>
-                <p class="text-sm" style="color:#374151">Credito cuentas de gasto: <strong>${fmt(gastos)}</strong></p>
+        ? `<div class="rounded-xl p-4 border" style="background:#FEF2F2;border-color:#FECACA">
+                <p class="text-xs font-semibold mb-2" style="color:#B91C1C">2. Cierre de Gastos y Costos (Cl.3 &rarr; Cl.5/6/7)</p>
+                <p class="text-sm" style="color:#374151">Débito resultado del ejercicio: <strong>${fmt(gastos)}</strong></p>
+                <p class="text-sm" style="color:#374151">Crédito cuentas de gasto: <strong>${fmt(gastos)}</strong></p>
               </div>`
-            : ''
-          }
+        : ''
+      }
         </div>
         ${can('canWrite') && !isCurrentClosed && isGlobal
-          ? `<div class="mt-4"><button class="btn btn-primary" id="btn-gen-cierre-entries"><i class="fas fa-magic"></i> Generar Asiento de Cierre</button></div>`
-          : ''
-        }
+        ? `<div class="mt-4 flex items-center gap-3">
+              <button class="btn ${currentKey.endsWith('-12') ? 'btn-primary' : 'btn-outline'}" id="btn-gen-cierre-entries">
+                <i class="fas fa-magic mr-1"></i> ${currentKey.endsWith('-12') ? 'Generar Asiento de Cierre Anual' : 'Generar Asiento (Solo Cierre Anual)'}
+              </button>
+              ${!currentKey.endsWith('-12') ? '<span class="text-xs text-amber-700 italic"><i class="fas fa-triangle-exclamation mr-1"></i>Recomendado únicamente para el período 12</span>' : ''}
+            </div>`
+        : ''
+      }
       </div>`;
 
     $('#btn-new-cierre')?.addEventListener('click', () => openCierreForm(periodos));
@@ -200,7 +217,7 @@ async function renderCierre(c) {
 
 function openCierreForm(periodos, targetKey = null) {
   const now = new Date();
-  const defaultKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,'0')}`;
+  const defaultKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const keyToUse = targetKey || defaultKey;
   openModal(
     'Realizar Cierre Contable',
@@ -351,6 +368,20 @@ async function reOpenPeriod(key) {
 
 async function generateCierreEntries(accounts, saldos, utilidad) {
   if (!can('canWrite')) return showToast('Sin permisos para generar asientos', 'error');
+
+  const nowMonth = new Date().getMonth() + 1;
+  if (nowMonth !== 12) {
+    const continuar = window.confirm(
+      'ADVERTENCIA NORMATIVA (NIIF / PUC COLOMBIA):\n\n' +
+      'El asiento de cierre de cuentas de resultado (cancelación de clases 4, 5, 6 y 7 a patrimonio) ' +
+      'se debe efectuar únicamente al 31 de DICIEMBRE al finalizar el ejercicio contable.\n\n' +
+      'Si genera este asiento en un mes intermedio, dejará en cero los saldos de ingresos y costos, ' +
+      'lo que alterará el acumulado anual de los estados financieros.\n\n' +
+      '¿Está completamente seguro de que desea generar este comprobante contable de cierre?'
+    );
+    if (!continuar) return;
+  }
+
   // Find resultado del ejercicio account (3605, 3610, or first Clase 3 account without parent)
   const clase3Accounts = accounts.filter(a => (a.code || '').startsWith('3'));
   const resultadoAcc = clase3Accounts.find(a => a.code === '360505' || a.code === '36050501') ||
@@ -358,8 +389,8 @@ async function generateCierreEntries(accounts, saldos, utilidad) {
     clase3Accounts.find(a => !a.parent_code);
   if (!resultadoAcc) return showToast('no se encontro la cuenta de Resultado del Ejercicio (Clase 3). Creala en el Plan de Cuentas.', 'error');
 
-  const ingresoAccounts = accounts.filter(a => (a.code||'').startsWith('4') && Math.abs(Number(saldos[a.id]||0)) > 0.001);
-  const gastoAccounts = accounts.filter(a => ['5','6','7'].includes((a.code||'').charAt(0)) && Math.abs(Number(saldos[a.id]||0)) > 0.001);
+  const ingresoAccounts = accounts.filter(a => (a.code || '').startsWith('4') && Math.abs(Number(saldos[a.id] || 0)) > 0.001);
+  const gastoAccounts = accounts.filter(a => ['5', '6', '7'].includes((a.code || '').charAt(0)) && Math.abs(Number(saldos[a.id] || 0)) > 0.001);
 
   if (!ingresoAccounts.length && !gastoAccounts.length) return showToast('No hay saldos de ingresos ni gastos para cerrar.', 'warning');
 
@@ -406,8 +437,8 @@ async function generateCierreEntries(accounts, saldos, utilidad) {
           </tbody>
         </table>
       </div>
-      <p class="p-3 rounded-xl font-semibold text-center" style="background:${utilidad>=0?'#F0FFF4':'#FEF2F2'};color:${utilidad>=0?'#15803D':'#B91C1C'}">
-        Resultado neto a trasladar: ${fmt(Math.abs(utilidad))} - ${utilidad>=0?'UTILIDAD':'Perdida'}
+      <p class="p-3 rounded-xl font-semibold text-center" style="background:${utilidad >= 0 ? '#F0FFF4' : '#FEF2F2'};color:${utilidad >= 0 ? '#15803D' : '#B91C1C'}">
+        Resultado neto a trasladar: ${fmt(Math.abs(utilidad))} - ${utilidad >= 0 ? 'UTILIDAD' : 'Perdida'}
       </p>
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
@@ -426,7 +457,7 @@ async function generateCierreEntries(accounts, saldos, utilidad) {
         const val = Number(saldos[a.id] || 0);
         const deb = val < 0 ? Math.abs(val) : 0;
         const cred = val > 0 ? val : 0;
-        lines.push({ account_id: a.id, debit: deb, credit: cred, description: 'Cierre de ingresos', line_order: lines.length+1 });
+        lines.push({ account_id: a.id, debit: deb, credit: cred, description: 'Cierre de ingresos', line_order: lines.length + 1 });
       });
       // Trasladar clase 4
       if (netIngresosVal !== 0) {
@@ -435,7 +466,7 @@ async function generateCierreEntries(accounts, saldos, utilidad) {
           debit: netIngresosVal < 0 ? Math.abs(netIngresosVal) : 0,
           credit: netIngresosVal > 0 ? netIngresosVal : 0,
           description: 'Traslado de ingresos al resultado',
-          line_order: lines.length+1
+          line_order: lines.length + 1
         });
       }
 
@@ -444,7 +475,7 @@ async function generateCierreEntries(accounts, saldos, utilidad) {
         const val = Number(saldos[a.id] || 0);
         const deb = val < 0 ? Math.abs(val) : 0;
         const cred = val > 0 ? val : 0;
-        lines.push({ account_id: a.id, debit: deb, credit: cred, description: 'Cierre de gastos/costos', line_order: lines.length+1 });
+        lines.push({ account_id: a.id, debit: deb, credit: cred, description: 'Cierre de gastos/costos', line_order: lines.length + 1 });
       });
       // Trasladar clase 5/6/7
       if (netGastosVal !== 0) {
@@ -453,7 +484,7 @@ async function generateCierreEntries(accounts, saldos, utilidad) {
           debit: netGastosVal > 0 ? netGastosVal : 0,
           credit: netGastosVal < 0 ? Math.abs(netGastosVal) : 0,
           description: 'Traslado de gastos al resultado',
-          line_order: lines.length+1
+          line_order: lines.length + 1
         });
       }
 
@@ -461,7 +492,7 @@ async function generateCierreEntries(accounts, saldos, utilidad) {
         tx_type_id: cmType.id,
         number: '',
         date: todayStr(),
-        description: `Asiento de cierre ${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`,
+        description: `Asiento de cierre ${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
         user_id: pb.currentUser?.id,
         status: 'active',
       }, lines);
@@ -473,17 +504,17 @@ async function generateCierreEntries(accounts, saldos, utilidad) {
 
 // Helper functions for cierre entries preview
 function byClass4(accounts, saldos) {
-  return -accounts.filter(a => (a.code||'').startsWith('4')).reduce((sum, a) => sum + Number(saldos[a.id] || 0), 0);
+  return -accounts.filter(a => (a.code || '').startsWith('4')).reduce((sum, a) => sum + Number(saldos[a.id] || 0), 0);
 }
 function gastoTotal(accounts, saldos) {
-  return accounts.filter(a => ['5','6','7'].includes((a.code||'').charAt(0))).reduce((sum, a) => sum + Number(saldos[a.id] || 0), 0);
+  return accounts.filter(a => ['5', '6', '7'].includes((a.code || '').charAt(0))).reduce((sum, a) => sum + Number(saldos[a.id] || 0), 0);
 }
 
 // ── Habilitar un período para digitación ─────────────────────────────────────
 function openEnablePeriodForm(periodos) {
   if (!can('canWrite')) return showToast('No tienes permisos para habilitar períodos', 'error');
   const now = new Date();
-  const defaultKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,'0')}`;
+  const defaultKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   openModal(
     '<i class="fas fa-calendar-plus mr-2" style="color:#7C3AED"></i>Habilitar Período',
     `<div class="space-y-4">

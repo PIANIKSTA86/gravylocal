@@ -526,7 +526,17 @@ async function initApp() {
         const hubUrl = (window as any).HUB_URL ||
           (() => {
             const { protocol, hostname, port } = window.location;
-            return port ? `${protocol}//${hostname}:8089` : `${protocol}//hub.${hostname}`;
+            if (port) return `${protocol}//${hostname}:8089`;
+            const parts = hostname.split('.');
+            if (parts.length >= 3) {
+              const sub = parts[0].toLowerCase();
+              const rootDomain = parts.slice(1).join('.');
+              if (sub === 'cloud') return `${protocol}//hub-cloud.${rootDomain}`;
+              if (sub.startsWith('hub-')) return `${protocol}//${hostname}`;
+              if (sub === 'domestiko' || sub === 'app' || sub === 'hub' || sub === 'sistema' || sub === 'erp') return `${protocol}//hub.${rootDomain}`;
+              return `${protocol}//hub-${sub}.${rootDomain}`;
+            }
+            return `${protocol}//hub.${hostname}`;
           })();
         const hubRes = await fetch(`${hubUrl}/api/hub/my-companies`, {
           headers: { 'Authorization': `Bearer ${hubToken}` }

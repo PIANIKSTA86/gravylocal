@@ -8,7 +8,9 @@
 onBootstrap((e) => {
   e.next();
 
-  const authRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'superadmin')";
+  const authRuleWrite = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
+  const authRuleDelete = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador')";
+  const authRule = authRuleWrite;
 
   // 1. Obtener referencias de otras colecciones para relaciones
   let accountsColId = "";
@@ -70,9 +72,9 @@ onBootstrap((e) => {
         type: "base",
         listRule: "@request.auth.id != ''",
         viewRule: "@request.auth.id != ''",
-        createRule: authRule,
-        updateRule: authRule,
-        deleteRule: authRule,
+        createRule: authRuleWrite,
+        updateRule: authRuleWrite,
+        deleteRule: authRuleDelete,
         fields: fields,
         indexes: [
           "CREATE UNIQUE INDEX idx_nac_code ON niif_asset_categories (code)"
@@ -139,6 +141,19 @@ onBootstrap((e) => {
       needsSave = true;
     }
 
+    if (!niifAssets.createRule || !niifAssets.createRule.includes('auxiliar')) {
+      niifAssets.createRule = authRuleWrite;
+      needsSave = true;
+    }
+    if (!niifAssets.updateRule || !niifAssets.updateRule.includes('auxiliar')) {
+      niifAssets.updateRule = authRuleWrite;
+      needsSave = true;
+    }
+    if (!niifAssets.deleteRule || !niifAssets.deleteRule.includes('administrador')) {
+      niifAssets.deleteRule = authRuleDelete;
+      needsSave = true;
+    }
+
     if (needsSave) {
       $app.save(niifAssets);
       console.log("[GRAVY-ACTIVOS] Colección niif_assets extendida con campos adicionales y vidas útiles relajadas.");
@@ -191,9 +206,9 @@ onBootstrap((e) => {
         type: "base",
         listRule: "@request.auth.id != ''",
         viewRule: "@request.auth.id != ''",
-        createRule: authRule,
-        updateRule: authRule,
-        deleteRule: authRule,
+        createRule: authRuleWrite,
+        updateRule: authRuleWrite,
+        deleteRule: authRuleDelete,
         fields: fields
       });
 
@@ -250,9 +265,9 @@ onBootstrap((e) => {
         type: "base",
         listRule: "@request.auth.id != ''",
         viewRule: "@request.auth.id != ''",
-        createRule: authRule,
-        updateRule: authRule,
-        deleteRule: authRule,
+        createRule: authRuleWrite,
+        updateRule: authRuleWrite,
+        deleteRule: authRuleDelete,
         fields: [
           { name: "code", type: "text", required: true },
           { name: "date", type: "text", required: true },
@@ -271,4 +286,32 @@ onBootstrap((e) => {
       console.error("[GRAVY-ACTIVOS] Error creando niif_asset_inventories:", err);
     }
   }
+
+  // 6. Asegurar reglas actualizadas en todas las colecciones de activos existentes
+  const ensureUpdatedRules = (colName) => {
+    try {
+      const col = $app.findCollectionByNameOrId(colName);
+      if (!col) return;
+      let changed = false;
+      if (!col.createRule || !col.createRule.includes('auxiliar')) {
+        col.createRule = authRuleWrite;
+        changed = true;
+      }
+      if (!col.updateRule || !col.updateRule.includes('auxiliar')) {
+        col.updateRule = authRuleWrite;
+        changed = true;
+      }
+      if (!col.deleteRule || !col.deleteRule.includes('administrador')) {
+        col.deleteRule = authRuleDelete;
+        changed = true;
+      }
+      if (changed) {
+        $app.save(col);
+        console.log(`[GRAVY-ACTIVOS] Reglas actualizadas para colección ${colName}`);
+      }
+    } catch (_) {}
+  };
+  ensureUpdatedRules("niif_asset_categories");
+  ensureUpdatedRules("niif_asset_events");
+  ensureUpdatedRules("niif_asset_inventories");
 });

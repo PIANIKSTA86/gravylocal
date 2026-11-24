@@ -1378,7 +1378,7 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
 
       <div>
         <label class="form-label">Observaciones / Notas Tributarias</label>
-        <textarea id="ds-notes" class="form-input w-full" rows="2" placeholder="Observaciones adicionales del soporte...">${esc(existingPur?.notes || '')}</textarea>
+        <textarea id="ds-notes" class="form-input w-full" rows="2" placeholder="Observaciones adicionales del soporte...">${esc((existingPur?.notes && existingPur.notes !== 'Documento Soporte a No Obligado a Facturar') ? existingPur.notes : '')}</textarea>
       </div>
     </form>
   `;
@@ -1618,7 +1618,7 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         payment_dian_code: dianCode,
         payment_method: paymentMethod,
         bank_account_id: bankAccountId,
-        notes: (document.getElementById('ds-notes') as HTMLTextAreaElement).value || 'Documento Soporte a No Obligado a Facturar',
+        notes: (document.getElementById('ds-notes') as HTMLTextAreaElement)?.value?.trim() || '',
         status: (existingPur && existingPur.status) ? existingPur.status : 'draft',
         subtotal: subtotalSum,
         total: subtotalSum,

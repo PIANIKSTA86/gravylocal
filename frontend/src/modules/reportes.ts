@@ -3,9 +3,6 @@
  */
 'use strict';
 
-import { Chart, registerables } from 'chart.js';
-Chart.register(...registerables);
-
 let REPORT_STATE = {
   accounts: null,
   saldos: null,
@@ -191,12 +188,11 @@ async function renderReportes(c) {
         ${reportCard('trial', 'Balance de Prueba', 'Saldos débitos y créditos por cuenta.')}
         ${reportCard('income', 'Estado de Resultados', 'Ingresos, gastos y utilidad neta.')}
         ${reportCard('position', 'Estado de Situación Financiera', 'Activos, pasivos y patrimonio (Balance General).')}
-        ${reportCard('cash-flow', 'Flujo de Caja', 'Detalle de ingresos y egresos de efectivo (Método Directo).')}
-        ${reportCard('financial-dossier', 'Informe Financiero Certificado', 'Juego completo de Estados Financieros, Certificación Ley 222 (Art. 37), Dictamen y Revelaciones NIIF.')}
-        ${reportCard('financial-notes', 'Notas a los Estados Financieros', 'Redacte y gestione las revelaciones vinculadas a cada número de nota del ESF y ER.')}
-        ${reportCard('financial-analysis', 'Análisis Financiero', 'Análisis integrado de cartera, flujo de caja y ejecución presupuestal con gráficos SVG.')}
         ${reportCard('journal', 'Libro Diario', 'Detalle cronológico de movimientos contables.')}
         ${reportCard('aux', 'Libro Auxiliar', 'Movimientos por Cuenta y Tercero o Tercero y Cuenta.')}
+        ${reportCard('cash-flow', 'Flujo de Caja', 'Detalle de ingresos y egresos de efectivo (Método Directo).')}
+        ${reportCard('financial-analysis', 'Análisis Financiero', 'Análisis integrado de cartera, flujo de caja y ejecución presupuestal con gráficos SVG.')}
+        ${reportCard('financial-notes', 'Notas a los Estados Financieros', 'Redacte y gestione las revelaciones vinculadas a cada número de nota del ESF y ER.')}
         ${reportCard('cost-centers', 'Balance por Centro de Costo', 'Saldos débitos, créditos y saldo neto agrupados por centro de costo.')}
       </div>
     </div>
@@ -279,7 +275,6 @@ async function renderReportes(c) {
     'trial': () => launchReportModal('Balance de Prueba', () => renderTrialBalance()),
     'income': () => launchReportModal('Estado de Resultados', () => renderIncomeStatement()),
     'position': () => launchReportModal('Estado de Situación Financiera', () => renderFinancialPosition()),
-    'financial-dossier': () => launchReportModal('Informe Financiero Certificado (NIIF / Ley 222)', () => renderFinancialDossier()),
     'cost-centers': () => launchReportModal('Balance por Centro de Costo', () => renderCostCentersReport()),
     'journal': () => launchReportModal('Libro Diario', () => renderJournalBook()),
     'aux': () => launchReportModal('Libro Auxiliar', () => renderAuxiliaryBook()),
@@ -718,12 +713,12 @@ async function renderInventoryGeneralReport() {
 
     filteredRows = term
       ? cachedReportRows.filter(r =>
-          r.code.toLowerCase().includes(term) ||
-          r.name.toLowerCase().includes(term) ||
-          r.ean_code.toLowerCase().includes(term) ||
-          r.marca.toLowerCase().includes(term) ||
-          r.consignment_supplier.toLowerCase().includes(term)
-        )
+        r.code.toLowerCase().includes(term) ||
+        r.name.toLowerCase().includes(term) ||
+        r.ean_code.toLowerCase().includes(term) ||
+        r.marca.toLowerCase().includes(term) ||
+        r.consignment_supplier.toLowerCase().includes(term)
+      )
       : cachedReportRows;
 
     // Totales calculados
@@ -814,30 +809,30 @@ async function renderInventoryGeneralReport() {
           </thead>
           <tbody class="divide-y divide-gray-100 text-gray-800">
             ${filteredRows.length ? filteredRows.map(r => {
-              // Badges de condiciones especiales
-              const badges: string[] = [];
-              if (r.is_consigned) {
-                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800" title="Consignación - Proveedor: ${esc(r.consignment_supplier)}"><i class="fas fa-handshake"></i> Consig.</span>`);
-              }
-              if (r.track_lots) {
-                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800" title="Control de Lotes / Vencimiento"><i class="fas fa-barcode"></i> Lotes</span>`);
-              }
-              if (r.track_pallets) {
-                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-800" title="Control de Pallets"><i class="fas fa-pallet"></i> Pallets</span>`);
-              }
-              if (r.is_combo) {
-                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800" title="Kit / Combo"><i class="fas fa-layer-group"></i> Combo</span>`);
-              }
-              if (r.visto_bueno_required || r.registro_sanitario) {
-                const regTitle = [r.visto_bueno_entidad, r.registro_sanitario].filter(Boolean).join(' - ');
-                badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-100 text-teal-800" title="Regulador: ${esc(regTitle)}"><i class="fas fa-shield-halved"></i> ${esc(r.visto_bueno_entidad || 'INVIMA')}</span>`);
-              }
+      // Badges de condiciones especiales
+      const badges: string[] = [];
+      if (r.is_consigned) {
+        badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800" title="Consignación - Proveedor: ${esc(r.consignment_supplier)}"><i class="fas fa-handshake"></i> Consig.</span>`);
+      }
+      if (r.track_lots) {
+        badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800" title="Control de Lotes / Vencimiento"><i class="fas fa-barcode"></i> Lotes</span>`);
+      }
+      if (r.track_pallets) {
+        badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-800" title="Control de Pallets"><i class="fas fa-pallet"></i> Pallets</span>`);
+      }
+      if (r.is_combo) {
+        badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800" title="Kit / Combo"><i class="fas fa-layer-group"></i> Combo</span>`);
+      }
+      if (r.visto_bueno_required || r.registro_sanitario) {
+        const regTitle = [r.visto_bueno_entidad, r.registro_sanitario].filter(Boolean).join(' - ');
+        badges.push(`<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-100 text-teal-800" title="Regulador: ${esc(regTitle)}"><i class="fas fa-shield-halved"></i> ${esc(r.visto_bueno_entidad || 'INVIMA')}</span>`);
+      }
 
-              const rowClass = r.is_consigned
-                ? 'hover:bg-amber-50/50 bg-amber-50/20'
-                : (r.totalQty < 0 ? 'bg-red-50/30 hover:bg-red-50' : 'hover:bg-gray-50');
+      const rowClass = r.is_consigned
+        ? 'hover:bg-amber-50/50 bg-amber-50/20'
+        : (r.totalQty < 0 ? 'bg-red-50/30 hover:bg-red-50' : 'hover:bg-gray-50');
 
-              return `
+      return `
                 <tr class="${rowClass} transition-colors">
                   <td class="p-2.5 font-mono text-blue-800 font-semibold whitespace-nowrap">${esc(r.code)}</td>
                   <td class="p-2.5 font-medium text-gray-900">
@@ -851,13 +846,13 @@ async function renderInventoryGeneralReport() {
 
                   <!-- Celdas dinámicas de cantidad por bodega -->
                   ${displayWarehouses.map(w => {
-                    const qWh = r.whQty[w.id] || 0;
-                    return `
+        const qWh = r.whQty[w.id] || 0;
+        return `
                       <td class="p-2.5 text-right font-mono border-l border-r border-blue-50 ${qWh < 0 ? 'text-red-600 font-bold' : (qWh === 0 ? 'text-gray-300' : 'text-gray-800 font-medium')}">
                         ${qWh === 0 ? '—' : fmtN(qWh)}
                       </td>
                     `;
-                  }).join('')}
+      }).join('')}
 
                   <td class="p-2.5 text-right font-semibold font-mono bg-emerald-50/40 border-r border-emerald-100 ${r.totalQty < 0 ? 'text-red-600' : (r.totalQty === 0 ? 'text-gray-400' : 'text-emerald-900')}">
                     ${fmtN(r.totalQty)}
@@ -882,7 +877,7 @@ async function renderInventoryGeneralReport() {
                   ` : ''}
                 </tr>
               `;
-            }).join('') : `
+    }).join('') : `
               <tr>
                 <td colspan="${5 + displayWarehouses.length + 3 + (isDetailed ? 4 : 0)}" class="p-10 text-center text-gray-400">
                   <i class="fas fa-boxes-stacked text-2xl mb-1 text-gray-300 block"></i>
@@ -899,13 +894,13 @@ async function renderInventoryGeneralReport() {
 
               <!-- Totales por bodega -->
               ${displayWarehouses.map(w => {
-                const subTotalWh = filteredRows.reduce((sum, r) => sum + (r.whQty[w.id] || 0), 0);
-                return `
+      const subTotalWh = filteredRows.reduce((sum, r) => sum + (r.whQty[w.id] || 0), 0);
+      return `
                   <td class="p-2.5 text-right text-blue-950 font-mono border-l border-r border-blue-200 bg-blue-100/60">
                     ${fmtN(subTotalWh)}
                   </td>
                 `;
-              }).join('')}
+    }).join('')}
 
               <td class="p-2.5 text-right text-emerald-950 font-extrabold font-mono bg-emerald-100 border-r border-emerald-300">
                 ${fmtN(totalQty)}
@@ -1237,9 +1232,9 @@ async function renderInventoryComparativoReport() {
                 <td class="p-2.5 font-medium text-gray-800">${esc(p.name)}</td>
                 <td class="p-2.5 text-gray-500">${esc(p.unit)}</td>
                 ${cachedWarehouses.map(w => {
-                  const qty = p.whQuantities[w.id] || 0;
-                  return `<td class="p-2.5 text-right ${qty > 0 ? 'font-semibold text-gray-800' : 'text-gray-300'}">${qty > 0 ? fmtN(qty) : '—'}</td>`;
-                }).join('')}
+      const qty = p.whQuantities[w.id] || 0;
+      return `<td class="p-2.5 text-right ${qty > 0 ? 'font-semibold text-gray-800' : 'text-gray-300'}">${qty > 0 ? fmtN(qty) : '—'}</td>`;
+    }).join('')}
                 <td class="p-2.5 text-right font-bold text-blue-900 bg-blue-50/30">${fmtN(p.total)}</td>
               </tr>
             `).join('') : `
@@ -1364,7 +1359,7 @@ async function renderInventoryConteoReport() {
         whSel.appendChild(opt);
       });
     }
-  } catch (_) {}
+  } catch (_) { }
 
   let cachedConteoRows: any[] = [];
 
@@ -1771,7 +1766,7 @@ async function renderInventoryAlertasReport() {
         whSel.appendChild(opt);
       });
     }
-  } catch (_) {}
+  } catch (_) { }
 
   let cachedAlertRows: any[] = [];
 
@@ -2062,7 +2057,7 @@ async function renderInventoryRotacionReport() {
         whSel.appendChild(opt);
       });
     }
-  } catch (_) {}
+  } catch (_) { }
 
   let cachedRotRows: any[] = [];
 
@@ -2174,7 +2169,7 @@ async function renderInventoryRotacionReport() {
       for (const p of products) {
         const flow = prodFlow.get(p.id) || { periodIn: 0, periodOut: 0, postIn: 0, postOut: 0, outCostSum: 0 };
         const curStock = currentStockByProd.get(p.id) || { qty: 0, costSum: 0, costCount: 0 };
-        
+
         let cost = 0;
         if (curStock.costCount > 0) {
           cost = curStock.costSum / curStock.costCount;
@@ -2408,7 +2403,7 @@ async function ensureLedgerData(explicitToDate = '') {
   if (!REPORT_STATE.transactions || !REPORT_STATE.txLines) {
     let txFilter = 'status="active"';
     let linesFilter = 'tx_id.status="active"';
-    
+
     if (limitDate) {
       txFilter += ` && date <= "${limitDate} 23:59:59"`;
       linesFilter += ` && tx_id.date <= "${limitDate} 23:59:59"`;
@@ -2423,15 +2418,15 @@ async function ensureLedgerData(explicitToDate = '') {
     }
 
     const [transactions, txLines] = await Promise.all([
-      pb.listAll('transactions', { 
-        sort: '-id', 
-        expand: 'tx_type_id,third_party_id', 
-        filter: txFilter 
+      pb.listAll('transactions', {
+        sort: '-id',
+        expand: 'tx_type_id,third_party_id',
+        filter: txFilter
       }),
-      pb.listAll('tx_lines', { 
-        sort: 'id', 
-        expand: 'account_id,tx_id', 
-        filter: linesFilter 
+      pb.listAll('tx_lines', {
+        sort: 'id',
+        expand: 'account_id,tx_id',
+        filter: linesFilter
       }),
     ]);
     REPORT_STATE.transactions = transactions;
@@ -2458,7 +2453,7 @@ async function getSettingFirst(keys, fallback = '') {
     try {
       const value = await API.getSetting(key);
       if (value) return value;
-    } catch (_) {}
+    } catch (_) { }
   }
   return fallback;
 }
@@ -2507,7 +2502,6 @@ function calcHorizontalVariation(now: number, cmp: number): {
   pct: number;
   diffFmt: { text: string; color: string };
   pctFmt: string;
-  indicatorText: string;
   badgeHtml: string;
 } {
   const n = Number(now || 0);
@@ -2516,37 +2510,28 @@ function calcHorizontalVariation(now: number, cmp: number): {
   const diffPolarity = fmtPolarityAmount(diff);
 
   let pct = 0;
-  let pctFmt = '0,0%';
-  let indicatorText = '0,0%';
-  let badgeHtml = '<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200"><i class="fas fa-minus text-xxs mr-1"></i>0,0%</span>';
+  let pctFmt = '0.0%';
+  let badgeHtml = '<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200"><i class="fas fa-minus text-xxs mr-1"></i>0.0%</span>';
 
   if (c === 0) {
     if (n === 0) {
       pct = 0;
-      pctFmt = '0,0%';
-      indicatorText = '0,0%';
+      pctFmt = '0.0%';
     } else {
       pct = n > 0 ? 100 : -100;
-      pctFmt = n > 0 ? '+100,0%' : '-100,0%';
-      indicatorText = pctFmt;
+      pctFmt = n > 0 ? '+100.0%' : '-100.0%';
       badgeHtml = `<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded ${n > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${n > 0 ? '▲ Nuevo (+100%)' : '▼ Saldo 0 (-100%)'}</span>`;
     }
   } else {
     pct = ((n - c) / Math.abs(c)) * 100;
-    if (Math.abs(pct) <= 0.05) {
-      pct = 0;
-      pctFmt = '0,0%';
-      indicatorText = '0,0%';
-      badgeHtml = '<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200"><i class="fas fa-minus text-xxs mr-1"></i>0,0%</span>';
+    const sign = pct > 0 ? '+' : '';
+    pctFmt = `${sign}${pct.toLocaleString('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+    if (pct > 0.05) {
+      badgeHtml = `<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-arrow-trend-up text-xxs mr-1"></i>${pctFmt}</span>`;
+    } else if (pct < -0.05) {
+      badgeHtml = `<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200"><i class="fas fa-arrow-trend-down text-xxs mr-1"></i>${pctFmt}</span>`;
     } else {
-      const sign = pct > 0 ? '+' : '';
-      pctFmt = `${sign}${pct.toLocaleString('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
-      indicatorText = pctFmt;
-      if (pct > 0.05) {
-        badgeHtml = `<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"><i class="fas fa-arrow-trend-up text-xxs mr-1"></i>${pctFmt}</span>`;
-      } else {
-        badgeHtml = `<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200"><i class="fas fa-arrow-trend-down text-xxs mr-1"></i>${pctFmt}</span>`;
-      }
+      badgeHtml = '<span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200"><i class="fas fa-minus text-xxs mr-1"></i>0.0%</span>';
     }
   }
 
@@ -2555,15 +2540,9 @@ function calcHorizontalVariation(now: number, cmp: number): {
     pct,
     diffFmt: diffPolarity,
     pctFmt,
-    indicatorText,
     badgeHtml,
   };
 }
-
-let erChartInstance: any = null;
-let posChartAssetsInstance: any = null;
-let posChartCapitalInstance: any = null;
-let cfChartInstance: any = null;
 
 function getPdfCtorOrWarn() {
   const jsPdfCtor = window.jspdf?.jsPDF;
@@ -2603,7 +2582,7 @@ async function getScopeBranchName(specificBranchId?: string): Promise<string> {
     if (found) {
       return found.code ? `${found.code} - ${found.name}` : found.name;
     }
-  } catch (_) {}
+  } catch (_) { }
   return targetId;
 }
 
@@ -2620,7 +2599,7 @@ async function getScopeCostCenterName(specificCostCenterId?: string): Promise<st
     if (found) {
       return found.code ? `${found.code} - ${found.name}` : found.name;
     }
-  } catch (_) {}
+  } catch (_) { }
   return targetId;
 }
 
@@ -2666,7 +2645,7 @@ async function getPdfHeaderContext(opts?: { branchId?: string; costCenterId?: st
     try {
       const activeCo = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
       if (activeCo.company_name) resolvedCompanyName = String(activeCo.company_name).trim();
-    } catch (_) {}
+    } catch (_) { }
   }
   if (!resolvedCompanyName || resolvedCompanyName.toUpperCase() === 'EMPRESA') {
     resolvedCompanyName = String(localStorage.getItem('active_company_name') || localStorage.getItem('company_name') || (window as any).COMPANY_NAME_CACHE || 'EMPRESA').trim();
@@ -2682,7 +2661,7 @@ async function getPdfHeaderContext(opts?: { branchId?: string; costCenterId?: st
     try {
       const activeCo = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
       if (activeCo.company_nit || activeCo.nit) resolvedNit = String(activeCo.company_nit || activeCo.nit).trim();
-    } catch (_) {}
+    } catch (_) { }
   }
   if (!resolvedNit || resolvedNit === 'N/A') {
     resolvedNit = String(localStorage.getItem('active_company_nit') || localStorage.getItem('company_nit') || (window as any).COMPANY_NIT_CACHE || '').trim();
@@ -2694,7 +2673,7 @@ async function getPdfHeaderContext(opts?: { branchId?: string; costCenterId?: st
     try {
       const activeCo = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
       if (activeCo.company_address) resolvedAddress = String(activeCo.company_address).trim();
-    } catch (_) {}
+    } catch (_) { }
   }
   if (!resolvedAddress) {
     resolvedAddress = String(localStorage.getItem('active_company_address') || localStorage.getItem('company_address') || (window as any).COMPANY_ADDRESS_CACHE || '').trim();
@@ -2725,7 +2704,7 @@ async function getPdfHeaderContext(opts?: { branchId?: string; costCenterId?: st
       if (stored) {
         userName = String(stored.full_name || stored.name || stored.username || stored.email || '').trim();
       }
-    } catch (_) {}
+    } catch (_) { }
   }
   if (!userName || userName.toLowerCase() === 'usuario') {
     userName = String(sessionStorage.getItem('user_name') || localStorage.getItem('user_name') || localStorage.getItem('hub_user_name') || '').trim();
@@ -2765,7 +2744,7 @@ async function getPopulatedTemplate(templateText: string, periodStr: string): Pr
   const headerCtx = await getPdfHeaderContext();
   const empresa = headerCtx.companyName || '________________________';
   const nit = headerCtx.companyNit || '________________________';
-  
+
   let formattedPeriod = periodStr;
   try {
     const y = Number(periodStr.slice(0, 4));
@@ -2778,7 +2757,7 @@ async function getPopulatedTemplate(templateText: string, periodStr: string): Pr
       ];
       formattedPeriod = `${monthNames[m - 1]} de ${y}`;
     }
-  } catch (_) {}
+  } catch (_) { }
 
   return templateText
     .replace(/{empresa}/g, empresa)
@@ -2789,7 +2768,7 @@ async function getPopulatedTemplate(templateText: string, periodStr: string): Pr
 function getNoteSupportingData(accounts: any[], balNow: Record<string, number>, balCmp: Record<string, number>, prefixes: string[]): any[] {
   const detail = [];
   const EPS = 0.01;
-  
+
   for (const acc of accounts) {
     const code = String(acc.code || '');
     if (!prefixes.some(p => code.startsWith(p))) continue;
@@ -2798,7 +2777,7 @@ function getNoteSupportingData(accounts: any[], balNow: Record<string, number>, 
 
     let sumNow = Number(balNow[acc.id] || 0);
     let sumCmp = Number(balCmp[acc.id] || 0);
-    
+
     for (const child of accounts) {
       const childCode = String(child.code || '');
       if (childCode.startsWith(code) && child.id !== acc.id) {
@@ -3173,7 +3152,7 @@ async function renderAgingPortfolio() {
     sellers = selRes || [];
     cruceAccounts = (accRes || []).filter((a: any) => a.maneja_cruce === 1 || a.maneja_cruce === true || a.maneja_cruce === '1');
     cruceAccounts.sort((a: any, b: any) => String(a.code || '').localeCompare(String(b.code || '')));
-  } catch (_) {}
+  } catch (_) { }
 
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
@@ -3369,11 +3348,11 @@ async function renderAgingPortfolio() {
           vencimiento: d.due_date,
           expired_days: Number(d.expired_days || 0),
           saldo_a_favor: saldoAFavorVal,
-          por_vencer:  d.bucket === 'por_vencer' ? Number(d.open || 0) : 0,
-          de_0_a_30:   d.bucket === 'b0_30'      ? Number(d.open || 0) : 0,
-          de_31_a_60:  d.bucket === 'b31_60'     ? Number(d.open || 0) : 0,
-          de_61_a_90:  d.bucket === 'b61_90'     ? Number(d.open || 0) : 0,
-          mayor_a_90:  d.bucket === 'b90p'       ? Number(d.open || 0) : 0,
+          por_vencer: d.bucket === 'por_vencer' ? Number(d.open || 0) : 0,
+          de_0_a_30: d.bucket === 'b0_30' ? Number(d.open || 0) : 0,
+          de_31_a_60: d.bucket === 'b31_60' ? Number(d.open || 0) : 0,
+          de_61_a_90: d.bucket === 'b61_90' ? Number(d.open || 0) : 0,
+          mayor_a_90: d.bucket === 'b90p' ? Number(d.open || 0) : 0,
           total: Number(d.open || 0),
         };
       }).sort((a, b) => {
@@ -3384,12 +3363,12 @@ async function renderAgingPortfolio() {
 
       const totals = rows.reduce((acc, r) => {
         acc.saldo_a_favor += r.saldo_a_favor;
-        acc.por_vencer     += r.por_vencer;
-        acc.de_0_a_30      += r.de_0_a_30;
-        acc.de_31_a_60     += r.de_31_a_60;
-        acc.de_61_a_90     += r.de_61_a_90;
-        acc.mayor_a_90     += r.mayor_a_90;
-        acc.total          += r.total;
+        acc.por_vencer += r.por_vencer;
+        acc.de_0_a_30 += r.de_0_a_30;
+        acc.de_31_a_60 += r.de_31_a_60;
+        acc.de_61_a_90 += r.de_61_a_90;
+        acc.mayor_a_90 += r.mayor_a_90;
+        acc.total += r.total;
         return acc;
       }, { saldo_a_favor: 0, por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 });
 
@@ -3411,9 +3390,9 @@ async function renderAgingPortfolio() {
               <i class="fas fa-bookmark mr-1" style="color:#E87D1E"></i>${esc(cuenta)}
             </td>
           </tr>`);
-        
+
         let accountSubtotal = { saldo_a_favor: 0, por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
-        
+
         // Group by third party within this account
         const byThird = new Map();
         for (const r of cuentaRows) {
@@ -3421,7 +3400,7 @@ async function renderAgingPortfolio() {
           if (!byThird.has(key)) byThird.set(key, []);
           byThird.get(key).push(r);
         }
-        
+
         for (const [tercero, terceroRows] of byThird) {
           let thirdSubtotal = { saldo_a_favor: 0, por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
           for (const r of terceroRows) {
@@ -3449,7 +3428,7 @@ async function renderAgingPortfolio() {
             thirdSubtotal.mayor_a_90 += r.mayor_a_90;
             thirdSubtotal.total += r.total;
           }
-          
+
           bodyRowsHtml.push(`<tr style="background:#F9FAFB">
             <td colspan="6" class="font-semibold text-xs" style="padding-left: 20px; color:#4B5563">Subtotal ${esc(tercero)}</td>
             <td class="font-semibold text-xs text-right" style="color:#2563EB">${thirdSubtotal.saldo_a_favor > 0 ? `-${fmt(thirdSubtotal.saldo_a_favor)}` : fmt(0)}</td>
@@ -3460,7 +3439,7 @@ async function renderAgingPortfolio() {
             <td class="font-semibold text-xs text-right" style="color:#4B5563">${fmt(thirdSubtotal.mayor_a_90)}</td>
             <td class="font-semibold text-xs text-right" style="color:#1F2937">${fmt(thirdSubtotal.total)}</td>
           </tr>`);
-          
+
           accountSubtotal.saldo_a_favor += thirdSubtotal.saldo_a_favor;
           accountSubtotal.por_vencer += thirdSubtotal.por_vencer;
           accountSubtotal.de_0_a_30 += thirdSubtotal.de_0_a_30;
@@ -3469,7 +3448,7 @@ async function renderAgingPortfolio() {
           accountSubtotal.mayor_a_90 += thirdSubtotal.mayor_a_90;
           accountSubtotal.total += thirdSubtotal.total;
         }
-        
+
         bodyRowsHtml.push(`<tr style="background:#FDF6E3">
             <td colspan="6" class="font-bold">Subtotal Cuenta ${esc(cuenta)}</td>
             <td class="font-bold" style="color:#2563EB">${accountSubtotal.saldo_a_favor > 0 ? `-${fmt(accountSubtotal.saldo_a_favor)}` : fmt(0)}</td>
@@ -3529,21 +3508,21 @@ async function renderAgingPortfolio() {
   $('#btn-exp-aging')?.addEventListener('click', () => {
     if (!lastExportRows.length) return;
     exportToExcel(lastExportRows, [
-      { key: 'tercero',           label: 'Tercero' },
+      { key: 'tercero', label: 'Tercero' },
       { key: 'documento_tercero', label: 'Documento tercero' },
-      { key: 'vendedor',          label: 'Vendedor / Asesor' },
-      { key: 'cuenta',            label: 'Cuenta' },
-      { key: 'documento_cruce',   label: 'Doc. Cruce' },
-      { key: 'fecha_documento',   label: 'Fecha documento' },
-      { key: 'plazo_dias',        label: 'Plazo (días)' },
-      { key: 'vencimiento',       label: 'Vencimiento' },
-      { key: 'saldo_a_favor',     label: 'Saldo a Favor' },
-      { key: 'por_vencer',        label: 'Por Vencer' },
-      { key: 'de_0_a_30',         label: '0-30 días' },
-      { key: 'de_31_a_60',        label: '31-60 días' },
-      { key: 'de_61_a_90',        label: '61-90 días' },
-      { key: 'mayor_a_90',        label: 'Más de 90 días' },
-      { key: 'total',             label: 'Total' },
+      { key: 'vendedor', label: 'Vendedor / Asesor' },
+      { key: 'cuenta', label: 'Cuenta' },
+      { key: 'documento_cruce', label: 'Doc. Cruce' },
+      { key: 'fecha_documento', label: 'Fecha documento' },
+      { key: 'plazo_dias', label: 'Plazo (días)' },
+      { key: 'vencimiento', label: 'Vencimiento' },
+      { key: 'saldo_a_favor', label: 'Saldo a Favor' },
+      { key: 'por_vencer', label: 'Por Vencer' },
+      { key: 'de_0_a_30', label: '0-30 días' },
+      { key: 'de_31_a_60', label: '31-60 días' },
+      { key: 'de_61_a_90', label: '61-90 días' },
+      { key: 'mayor_a_90', label: 'Más de 90 días' },
+      { key: 'total', label: 'Total' },
     ], `cartera_por_edades_${lastPdfMeta.mode || 'cxc'}`);
   });
 
@@ -3557,12 +3536,12 @@ async function renderAgingPortfolio() {
 
       const totals = lastPdfRows.reduce((acc, r) => {
         acc.saldo_a_favor += Number(r.saldo_a_favor || 0);
-        acc.por_vencer     += Number(r.por_vencer     || 0);
-        acc.de_0_a_30      += Number(r.de_0_a_30      || 0);
-        acc.de_31_a_60     += Number(r.de_31_a_60     || 0);
-        acc.de_61_a_90     += Number(r.de_61_a_90     || 0);
-        acc.mayor_a_90     += Number(r.mayor_a_90     || 0);
-        acc.total          += Number(r.total         || 0);
+        acc.por_vencer += Number(r.por_vencer || 0);
+        acc.de_0_a_30 += Number(r.de_0_a_30 || 0);
+        acc.de_31_a_60 += Number(r.de_31_a_60 || 0);
+        acc.de_61_a_90 += Number(r.de_61_a_90 || 0);
+        acc.mayor_a_90 += Number(r.mayor_a_90 || 0);
+        acc.total += Number(r.total || 0);
         return acc;
       }, { saldo_a_favor: 0, por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 });
 
@@ -3597,7 +3576,7 @@ async function renderAgingPortfolio() {
           body.push([{ content: cuenta, colSpan: 13, styles: { fontStyle: 'bold', fillColor: [235, 240, 248], textColor: [13, 33, 55] } }]);
           accountSectionIndices.add(rowIdx++);
         }
-        
+
         const byThird = new Map();
         for (const r of cuentaRows) {
           const key = r.tercero;
@@ -3687,16 +3666,16 @@ async function renderAgingPortfolio() {
         styles: { font: 'helvetica', fontSize: 7.0, textColor: [55, 55, 55], cellPadding: 2.2, lineWidth: 0, overflow: 'linebreak' },
         headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.3, lineWidth: { bottom: 0.25 } },
         columnStyles: {
-          0:  { cellWidth: 120 },
-          1:  { cellWidth: 80 },
-          2:  { cellWidth: 55 },
-          3:  { cellWidth: 44 },
-          4:  { cellWidth: 26, halign: 'right' },
-          5:  { cellWidth: 44 },
-          6:  { cellWidth: 50, halign: 'right' },
-          7:  { cellWidth: 50, halign: 'right' },
-          8:  { cellWidth: 40, halign: 'right' },
-          9:  { cellWidth: 40, halign: 'right' },
+          0: { cellWidth: 120 },
+          1: { cellWidth: 80 },
+          2: { cellWidth: 55 },
+          3: { cellWidth: 44 },
+          4: { cellWidth: 26, halign: 'right' },
+          5: { cellWidth: 44 },
+          6: { cellWidth: 50, halign: 'right' },
+          7: { cellWidth: 50, halign: 'right' },
+          8: { cellWidth: 40, halign: 'right' },
+          9: { cellWidth: 40, halign: 'right' },
           10: { cellWidth: 40, halign: 'right' },
           11: { cellWidth: 40, halign: 'right' },
           12: { cellWidth: 55, halign: 'right' },
@@ -3816,7 +3795,7 @@ async function renderTrialBalance() {
         .map(a => `<option value="${esc(a.code)}">${esc(a.code)} - ${esc(a.name)}</option>`)
         .join('');
     }
-  }).catch(() => {});
+  }).catch(() => { });
 
   let lastExportRows = [];
   let lastTrialPdf = null;
@@ -3850,49 +3829,7 @@ async function renderTrialBalance() {
     try {
       const { accounts } = await ensureAccountsSaldos();
       const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
-
-      // Pre-cargar cuentas de cartera e ingreso parametrizadas en PH
-      const phTargetAccountIds = new Set<string>();
-      const phPropsMap = new Map<string, any>();
-      const phPropsByCode = new Map<string, any>();
-
-      if (isPhActive) {
-        try {
-          const props: any = await api.getPhProperties(false).catch(() => []);
-          const pList = Array.isArray(props) ? props : (props?.items || []);
-          for (const p of pList) {
-            if (p.id) phPropsMap.set(String(p.id).toLowerCase(), p);
-            if (p.code) phPropsByCode.set(String(p.code).toUpperCase().trim(), p);
-          }
-        } catch (_) {}
-
-        try {
-          const concepts = await api.getPhBillingConcepts(false).catch(() => []);
-          for (const c of concepts) {
-            if (c.account_id) phTargetAccountIds.add(c.account_id);
-            if (c.cxc_account_id) phTargetAccountIds.add(c.cxc_account_id);
-          }
-        } catch (_) {}
-        try {
-          const phCfgRaw = await getSettingFirst(['ph_config_v1'], '{}');
-          const phCfg = JSON.parse(phCfgRaw || '{}');
-          if (phCfg.cxc_code) {
-            const acc = accounts.find(a => a.code === phCfg.cxc_code);
-            if (acc) phTargetAccountIds.add(acc.id);
-          }
-          if (phCfg.income_code) {
-            const acc = accounts.find(a => a.code === phCfg.income_code);
-            if (acc) phTargetAccountIds.add(acc.id);
-          }
-          if (phCfg.late_fee_income_code) {
-            const acc = accounts.find(a => a.code === phCfg.late_fee_income_code);
-            if (acc) phTargetAccountIds.add(acc.id);
-          }
-        } catch (_) {}
-        accounts.filter(a => String(a.code || '').startsWith('134595')).forEach(a => phTargetAccountIds.add(a.id));
-      }
-
-      const url = `/api/gravy/report-trial-balance?fromDate=${fromDate}&toDate=${toDate}&includeThird=${includeThird}${isPhActive ? '&includeProperty=true' : ''}${accountPrefix ? `&accountPrefix=${encodeURIComponent(accountPrefix)}` : ''}${getScopeQueryParams()}`;
+      const url = `/api/gravy/report-trial-balance?fromDate=${fromDate}&toDate=${toDate}&includeThird=${includeThird}${isPhActive && includeThird ? '&includeProperty=true' : ''}${accountPrefix ? `&accountPrefix=${encodeURIComponent(accountPrefix)}` : ''}${getScopeQueryParams()}`;
       const data: any[] = await pb.send(url, { method: 'GET' });
 
       const accountById = new Map(accounts.map(a => [a.id, {
@@ -3909,7 +3846,6 @@ async function renderTrialBalance() {
         credit: 0,
         current: 0,
         third: new Map(),
-        towers: new Map(),
         children: [],
       }]));
 
@@ -3931,83 +3867,7 @@ async function renderTrialBalance() {
         acc.ownDebit += debit;
         acc.ownCredit += credit;
 
-        if (isPhActive && phTargetAccountIds.has(acc.id)) {
-          let towerName = String(row.propertyTower || '').trim();
-          let propInfo: any = null;
-          if (row.propertyId) {
-            propInfo = phPropsMap.get(String(row.propertyId).toLowerCase());
-          }
-          if (!propInfo && row.propertyCode) {
-            propInfo = phPropsByCode.get(String(row.propertyCode).toUpperCase().trim());
-          }
-          if (!towerName && propInfo && propInfo.tower) {
-            towerName = String(propInfo.tower).trim();
-          }
-          if (!towerName && (row.propertyName || row.propertyCode)) {
-            const pMatch = String(row.propertyName || '').match(/Torre\s+([A-Za-z0-9]+)/i);
-            if (pMatch) {
-              towerName = `Torre ${pMatch[1].toUpperCase()}`;
-            }
-          }
-          if (!towerName) {
-            towerName = 'Sin Torre / General';
-          }
-
-          if (!acc.towers.has(towerName)) {
-            acc.towers.set(towerName, {
-              name: towerName,
-              prev: 0,
-              debit: 0,
-              credit: 0,
-              current: 0,
-              third: new Map(),
-            });
-          }
-          const tw = acc.towers.get(towerName);
-          tw.prev += prev;
-          tw.debit += debit;
-          tw.credit += credit;
-          tw.current = tw.prev + tw.debit - tw.credit;
-
-          if (includeThird) {
-            const thirdId = row.thirdPartyId || 'NO_TERCERO';
-            const thirdName = row.thirdPartyName || 'Sin tercero';
-            const doc = row.thirdPartyDoc || '';
-            const propId = (row.propertyId || '').trim();
-            const propCode = (row.propertyCode || '').trim();
-            const propName = (row.propertyName || '').trim();
-
-            const propKey = propId ? `__PROP_${propId}` : '';
-            const compositeKey = `${thirdId}${propKey}`;
-
-            let nameWithDoc = doc ? `${thirdName} (NIT: ${doc})` : thirdName;
-            if (propCode || propName) {
-              const propTag = propCode && propName
-                ? (propName.toLowerCase().includes(propCode.toLowerCase()) ? propName : `${propCode} - ${propName}`)
-                : (propCode || propName);
-              nameWithDoc = `[${propTag}] ${nameWithDoc}`;
-            }
-
-            if (!tw.third.has(compositeKey)) {
-              tw.third.set(compositeKey, {
-                id: compositeKey,
-                name: nameWithDoc,
-                propertyId: propId,
-                propertyCode: propCode,
-                propertyName: propName,
-                prev: 0,
-                debit: 0,
-                credit: 0,
-                current: 0,
-              });
-            }
-            const t = tw.third.get(compositeKey);
-            t.prev += prev;
-            t.debit += debit;
-            t.credit += credit;
-            t.current = t.prev + t.debit - t.credit;
-          }
-        } else if (includeThird) {
+        if (includeThird) {
           const thirdId = row.thirdPartyId || 'NO_TERCERO';
           const thirdName = row.thirdPartyName || 'Sin tercero';
           const doc = row.thirdPartyDoc || '';
@@ -4125,6 +3985,19 @@ async function renderTrialBalance() {
         return acc;
       }, { prev: 0, debit: 0, credit: 0, current: 0 });
 
+      // Conciliación de Resultado del Período para paridad directa con Estado de Resultados
+      let trialPeriodIngresos = 0;
+      let trialPeriodEgresos = 0;
+      for (const r of roots) {
+        const cls = String(r.code || '').charAt(0);
+        if (cls === '4') {
+          trialPeriodIngresos += (r.credit - r.debit); // naturaleza crédito
+        } else if (['5', '6', '7'].includes(cls)) {
+          trialPeriodEgresos += (r.debit - r.credit);  // naturaleza débito
+        }
+      }
+      const trialPeriodUtilidad = trialPeriodIngresos - trialPeriodEgresos;
+
       const totalPrev = fmtSignedAmount(totals.prev);
       const totalDebit = fmtSignedAmount(totals.debit);
       const totalCredit = fmtSignedAmount(totals.credit);
@@ -4133,71 +4006,7 @@ async function renderTrialBalance() {
       const displayRows = [];
       for (const r of rows) {
         displayRows.push({ ...r, thirdName: '' });
-
-        const isTargetPhAcc = isPhActive && phTargetAccountIds.has(r.node?.id) && (r.level >= 5 || maxLevel >= 5);
-
-        if (isTargetPhAcc && r.node && r.node.towers && r.node.towers.size > 0) {
-          const sortedTowers = [...r.node.towers.values()].sort((a, b) => {
-            if (a.name === 'Sin Torre / General') return 1;
-            if (b.name === 'Sin Torre / General') return -1;
-            return a.name.localeCompare(b.name, undefined, { numeric: true });
-          });
-
-          for (const tw of sortedTowers) {
-            const hasTwActivity = Math.abs(tw.prev) > EPS || Math.abs(tw.debit) > EPS || Math.abs(tw.credit) > EPS || Math.abs(tw.current) > EPS;
-            if (!hasTwActivity) continue;
-
-            if (!includeThird) {
-              displayRows.push({
-                code: '',
-                account: tw.name,
-                level: r.level,
-                depth: r.depth + 1,
-                isGroup: false,
-                prev: tw.prev,
-                debit: tw.debit,
-                credit: tw.credit,
-                current: tw.current,
-                thirdName: '',
-                isTowerSubtotal: true,
-              });
-            } else {
-              displayRows.push({
-                code: '',
-                account: `Subtotal ${tw.name}`,
-                level: r.level,
-                depth: r.depth + 1,
-                isGroup: true,
-                prev: tw.prev,
-                debit: tw.debit,
-                credit: tw.credit,
-                current: tw.current,
-                thirdName: '',
-                isTowerSubtotal: true,
-              });
-
-              const thirdRows = [...tw.third.values()]
-                .filter(t => Math.abs(t.prev) > EPS || Math.abs(t.debit) > EPS || Math.abs(t.credit) > EPS || Math.abs(t.current) > EPS)
-                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-              for (const t of thirdRows) {
-                displayRows.push({
-                  code: '',
-                  account: 'Detalle por tercero',
-                  level: r.level,
-                  depth: r.depth + 2,
-                  isGroup: false,
-                  prev: t.prev,
-                  debit: t.debit,
-                  credit: t.credit,
-                  current: t.current,
-                  thirdName: t.name,
-                  isThirdDetail: true,
-                });
-              }
-            }
-          }
-        } else if (includeThird && r.node && r.node.third && r.node.third.size) {
+        if (includeThird && r.node && r.node.third && r.node.third.size) {
           const thirdRows = [...r.node.third.values()]
             .filter(t => Math.abs(t.prev) > EPS || Math.abs(t.debit) > EPS || Math.abs(t.credit) > EPS || Math.abs(t.current) > EPS)
             .sort((a, b) => a.name.localeCompare(b.name));
@@ -4276,6 +4085,21 @@ async function renderTrialBalance() {
             ${accountPrefix ? ` &bull; <span class="font-semibold" style="color:#0D2137">FILTRADO POR CUENTA: ${esc(accountPrefix)}</span>` : ''}
           </p>
         </div>
+        <!-- Conciliación Paritaria con Estado de Resultados -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 px-4 pt-3 pb-1">
+          <div class="stat-card p-3 rounded-xl border bg-emerald-50/50 border-emerald-200 text-xs">
+            <div class="text-[10px] font-bold uppercase text-emerald-800">Total Ingresos Período (Cl. 4 Créd.)</div>
+            <div class="text-base font-extrabold text-emerald-700">${fmt(trialPeriodIngresos)}</div>
+          </div>
+          <div class="stat-card p-3 rounded-xl border bg-red-50/50 border-red-200 text-xs">
+            <div class="text-[10px] font-bold uppercase text-red-800">Total Egresos Período (Cl. 5/6/7 Déb.)</div>
+            <div class="text-base font-extrabold text-red-700">${fmt(trialPeriodEgresos)}</div>
+          </div>
+          <div class="stat-card p-3 rounded-xl border ${trialPeriodUtilidad >= 0 ? 'bg-purple-50/50 border-purple-200' : 'bg-rose-50/50 border-rose-200'} text-xs">
+            <div class="text-[10px] font-bold uppercase ${trialPeriodUtilidad >= 0 ? 'text-purple-800' : 'text-rose-800'}">Resultado del Período (ER Conforme)</div>
+            <div class="text-base font-extrabold ${trialPeriodUtilidad >= 0 ? 'text-purple-900' : 'text-rose-700'}">${fmt(trialPeriodUtilidad)}</div>
+          </div>
+        </div>
         <div class="overflow-x-auto p-4" style="max-height:520px">
           <table class="data-table">
             <thead>
@@ -4291,12 +4115,19 @@ async function renderTrialBalance() {
             </thead>
             <tbody>
               ${displayRows.length
-                ? displayRows.map((r) => {
-                  const prev = fmtPolarityAmount(r.prev);
-                  const debit = fmtPolarityAmount(r.debit);
-                  const credit = fmtPolarityAmount(r.credit);
-                  const current = fmtPolarityAmount(r.current);
-                  return `
+          ? displayRows.map((r) => {
+            const isCredit = ['2', '3', '4'].includes(String(r.code || '').charAt(0));
+            // En NIIF / PUC, pasivo, patrimonio e ingresos son de naturaleza crédito.
+            // Si tienen saldo neto crédito (-r.current < 0 en débito-crédito), su saldo es normal.
+            const prev = isCredit
+              ? { text: fmtSignedAmount(-r.prev).text, color: r.prev <= 0 ? '#166534' : '#B91C1C' }
+              : fmtPolarityAmount(r.prev);
+            const debit = fmtPolarityAmount(r.debit);
+            const credit = fmtPolarityAmount(r.credit);
+            const current = isCredit
+              ? { text: fmtSignedAmount(-r.current).text, color: r.current <= 0 ? '#166534' : '#B91C1C' }
+              : fmtPolarityAmount(r.current);
+            return `
                 <tr>
                   <td class="font-mono text-xs ${r.isGroup ? 'font-bold' : ''}">${esc(r.code)}</td>
                   <td class="${r.isGroup ? 'font-bold' : ''}" style="padding-left:${8 + (r.depth * 18)}px">${esc(r.account)}</td>
@@ -4306,8 +4137,8 @@ async function renderTrialBalance() {
                   <td class="${r.isGroup ? 'font-bold' : ''}" style="color:${credit.color}">${credit.text}</td>
                   <td class="${r.isGroup ? 'font-bold' : ''}" style="color:${current.color}">${current.text}</td>
                 </tr>`;
-                }).join('')
-                : `<tr><td colspan="${includeThird ? '7' : '6'}" class="text-center py-10" style="color:#9CA3AF">No hay datos para el lapso o cuenta seleccionada.</td></tr>`}
+          }).join('')
+          : `<tr><td colspan="${includeThird ? '7' : '6'}" class="text-center py-10" style="color:#9CA3AF">No hay datos para el lapso o cuenta seleccionada.</td></tr>`}
             </tbody>
             <tfoot>
               <tr>
@@ -4589,245 +4420,6 @@ function monthRangeToDates(fromMonth, toMonth) {
   return { fromDate, toDate };
 }
 
-function renderNoteBadgeCell(note: string, title: string, code: string, reportType: 'ESF' | 'ER'): string {
-  if (!note) return '<td class="text-center text-gray-300 font-mono text-xs">—</td>';
-  return `
-    <td class="text-center">
-      <button type="button" 
-        class="btn-open-financial-note inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold transition hover:scale-105 active:scale-95 shadow-2xs" 
-        style="background:#EDE9FE;color:#6D28D9;border:1px solid #DDD6FE;cursor:pointer"
-        data-note-num="${esc(note)}" 
-        data-note-title="${esc(title)}" 
-        data-note-code="${esc(code || '')}" 
-        data-report-type="${reportType}"
-        title="Consultar y redactar Nota NIIF ${esc(note)}">
-        <i class="fas fa-file-pen text-xxs"></i>
-        <span>Nota ${esc(note)}</span>
-      </button>
-    </td>
-  `;
-}
-
-async function openFinancialNoteDrawer(params: {
-  noteNum: string;
-  title: string;
-  code: string;
-  reportType: 'ESF' | 'ER';
-  periodo: string;
-  comparePeriodo?: string;
-  accounts: any[];
-  balNow: Record<string, number>;
-  balCmp: Record<string, number>;
-}) {
-  let drawerRoot = document.getElementById('financial-note-drawer-container');
-  if (!drawerRoot) {
-    drawerRoot = document.createElement('div');
-    drawerRoot.id = 'financial-note-drawer-container';
-    document.body.appendChild(drawerRoot);
-  }
-
-  // Cargar notas guardadas en PocketBase para este periodo y nota_num
-  let noteRecord: any = null;
-  try {
-    const list = await pb.listAll('financial_notes', {
-      filter: `periodo="${params.periodo}" && nota_num="${params.noteNum}"`
-    });
-    if (list && list.length > 0) noteRecord = list[0];
-  } catch (_) {}
-
-  // Determinar prefijos contables para el soporte de cuentas
-  let prefixes: string[] = [];
-  if (params.code) {
-    prefixes = [params.code.slice(0, 2)];
-  } else if (params.noteNum.startsWith('3.1')) prefixes = ['11'];
-  else if (params.noteNum.startsWith('3.2')) prefixes = ['12', '13'];
-  else if (params.noteNum.startsWith('3.3')) prefixes = ['14'];
-  else if (params.noteNum.startsWith('3.4')) prefixes = ['15', '16', '17', '18', '19'];
-  else if (params.noteNum.startsWith('3.5')) prefixes = ['21', '22', '23'];
-  else if (params.noteNum.startsWith('3.6')) prefixes = ['24', '25', '26', '27', '28', '29'];
-  else if (params.noteNum.startsWith('3.7')) prefixes = ['3'];
-  else if (params.noteNum === '4') prefixes = ['4'];
-  else if (params.noteNum === '5') prefixes = ['5', '6', '7'];
-
-  // Cuentas de soporte
-  const supportingData = getNoteSupportingData(params.accounts || [], params.balNow || {}, params.balCmp || {}, prefixes);
-  const totalNow = supportingData.reduce((s: number, r: any) => s + r.now, 0);
-  const totalCmp = supportingData.reduce((s: number, r: any) => s + r.cmp, 0);
-
-  // Sugerencia automática pre-calculada
-  const autoSugerido = buildNoteSuggestion(
-    prefixes.join(','),
-    params.title,
-    totalNow,
-    totalCmp,
-    params.periodo,
-    supportingData
-  );
-
-  const initialContent = noteRecord?.contenido || autoSugerido || '';
-
-  const tableRowsHtml = supportingData.map((d: any) => `
-    <tr class="border-b hover:bg-gray-50" style="border-color:#F3F4F6">
-      <td class="p-2 font-mono text-xs text-gray-500">${esc(d.code)}</td>
-      <td class="p-2 text-xs text-gray-800 font-medium">${esc(d.name)}</td>
-      <td class="p-2 text-xs text-right font-bold text-gray-900">${fmt(d.now)}</td>
-      <td class="p-2 text-xs text-right text-gray-500">${fmt(d.cmp)}</td>
-      <td class="p-2 text-xs text-right font-semibold ${d.variation >= 0 ? 'text-emerald-600' : 'text-rose-600'}">
-        ${d.variation >= 0 ? '+' : ''}${fmt(d.variation)}
-      </td>
-    </tr>
-  `).join('');
-
-  drawerRoot.innerHTML = `
-    <!-- Backdrop oscuro -->
-    <div id="fn-drawer-backdrop" class="fixed inset-0 bg-black/40 z-[9998] transition-opacity duration-300"></div>
-
-    <!-- Drawer Panel lateral -->
-    <div id="fn-drawer-panel" class="fixed top-0 right-0 bottom-0 w-full sm:w-[540px] bg-white z-[9999] shadow-2xl flex flex-col transform transition-transform duration-300 translate-x-full">
-      <!-- Header -->
-      <div class="px-5 py-4 border-b flex items-center justify-between bg-gray-50" style="border-color:#E5E7EB">
-        <div class="flex items-center gap-2.5">
-          <span class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-purple-600 text-white shadow-xs">
-            ${esc(params.noteNum)}
-          </span>
-          <div>
-            <h4 class="font-bold text-sm text-gray-900">Nota ${esc(params.noteNum)}: ${esc(params.title)}</h4>
-            <span class="text-xxs text-gray-500">Periodo: ${esc(params.periodo)} | NIIF para PYMES / NIC</span>
-          </div>
-        </div>
-        <button type="button" id="btn-close-fn-drawer" class="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200 text-sm">
-          <i class="fas fa-xmark text-base"></i>
-        </button>
-      </div>
-
-      <!-- Body con scroll -->
-      <div class="p-5 flex-1 overflow-y-auto space-y-4">
-        <!-- Banner de estado -->
-        <div class="flex items-center justify-between p-3 rounded-xl border text-xs" style="background:#FAF5FF;border-color:#E9D5FF">
-          <div class="flex items-center gap-2 text-purple-900">
-            <i class="fas fa-book-bookmark text-purple-600"></i>
-            <span>${noteRecord ? 'Revelación guardada en base de datos' : 'Borrador sugerido automáticamente'}</span>
-          </div>
-          <span class="px-2 py-0.5 rounded-full font-bold text-xxs ${noteRecord ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-            ${noteRecord ? 'Guardada' : 'Pendiente Guardar'}
-          </span>
-        </div>
-
-        <!-- Área de redacción -->
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <label class="text-xs font-bold text-gray-700">Texto de la Nota / Revelación Contable:</label>
-            <button type="button" class="btn btn-xs" id="btn-fn-drawer-suggest" style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0">
-              <i class="fas fa-wand-magic-sparkles mr-1"></i>Regenerar sugerencia
-            </button>
-          </div>
-          <textarea id="fn-drawer-textarea" class="form-input w-full p-3 text-xs leading-relaxed" rows="6" style="resize:vertical">${esc(initialContent)}</textarea>
-          <span class="text-xxs text-gray-400 block mt-1">Este texto se integrará automáticamente en el informe impreso y en el Informe de Notas NIIF.</span>
-        </div>
-
-        <!-- Tabla de soporte de cuentas contables -->
-        <div class="border rounded-xl overflow-hidden" style="border-color:#E5E7EB">
-          <div class="px-3 py-2 bg-gray-50 border-b flex items-center justify-between" style="border-color:#E5E7EB">
-            <span class="text-xs font-bold text-gray-700"><i class="fas fa-table-list text-gray-400 mr-1.5"></i>Desglose de Cuentas de Soporte</span>
-            <span class="text-xxs font-mono font-bold text-purple-700">${fmt(totalNow)}</span>
-          </div>
-          <div class="overflow-x-auto max-h-48">
-            <table class="w-full text-left border-collapse text-xs">
-              <thead class="bg-gray-100/70 text-gray-600 border-b" style="border-color:#E5E7EB">
-                <tr>
-                  <th class="p-2">Cód.</th>
-                  <th class="p-2">Cuenta</th>
-                  <th class="p-2 text-right">Actual</th>
-                  <th class="p-2 text-right">Comp.</th>
-                  <th class="p-2 text-right">Var.</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${tableRowsHtml || '<tr><td colspan="5" class="p-4 text-center text-gray-400">No hay movimientos registrados para este grupo.</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Footer de acciones -->
-      <div class="p-4 border-t bg-gray-50 flex items-center justify-between" style="border-color:#E5E7EB">
-        <button type="button" class="btn btn-outline btn-sm" id="btn-cancel-fn-drawer">Cerrar</button>
-        <button type="button" class="btn btn-primary btn-sm" id="btn-save-fn-drawer" style="background:#7C3AED;border-color:#7C3AED">
-          <i class="fas fa-floppy-disk mr-1.5"></i>Guardar Revelación
-        </button>
-      </div>
-    </div>
-  `;
-
-  // Animar entrada del drawer
-  requestAnimationFrame(() => {
-    const panel = document.getElementById('fn-drawer-panel');
-    if (panel) panel.classList.remove('translate-x-full');
-  });
-
-  const closeDrawer = () => {
-    const panel = document.getElementById('fn-drawer-panel');
-    if (panel) panel.classList.add('translate-x-full');
-    setTimeout(() => {
-      if (drawerRoot) drawerRoot.innerHTML = '';
-    }, 300);
-  };
-
-  document.getElementById('fn-drawer-backdrop')?.addEventListener('click', closeDrawer);
-  document.getElementById('btn-close-fn-drawer')?.addEventListener('click', closeDrawer);
-  document.getElementById('btn-cancel-fn-drawer')?.addEventListener('click', closeDrawer);
-
-  document.getElementById('btn-fn-drawer-suggest')?.addEventListener('click', () => {
-    const txt = document.getElementById('fn-drawer-textarea') as HTMLTextAreaElement | null;
-    if (txt) {
-      txt.value = autoSugerido;
-      showToast('Sugerencia generada. Revisa y haz clic en Guardar.', 'info');
-    }
-  });
-
-  document.getElementById('btn-save-fn-drawer')?.addEventListener('click', async () => {
-    const txt = document.getElementById('fn-drawer-textarea') as HTMLTextAreaElement | null;
-    const contenido = txt ? txt.value.trim() : '';
-    if (!contenido) return showToast('El texto de la nota no puede estar vacío.', 'warning');
-
-    const saveBtn = document.getElementById('btn-save-fn-drawer') as HTMLButtonElement | null;
-    if (saveBtn) {
-      saveBtn.disabled = true;
-      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...';
-    }
-
-    try {
-      const payload: any = {
-        periodo: params.periodo,
-        tipo_informe: params.reportType,
-        nota_num: params.noteNum,
-        titulo: params.title,
-        cuenta_codigo: prefixes.join(','),
-        contenido: contenido,
-        sugerido: autoSugerido,
-        revisado: true
-      };
-
-      if (noteRecord?._id || noteRecord?.id) {
-        const id = noteRecord._id || noteRecord.id;
-        await pb.update('financial_notes', id, payload);
-      } else {
-        await pb.create('financial_notes', payload);
-      }
-
-      showToast(`Nota ${params.noteNum} guardada con éxito.`, 'success');
-      closeDrawer();
-    } catch (err: any) {
-      showToast(`Error al guardar: ${err.message}`, 'error');
-      if (saveBtn) {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="fas fa-floppy-disk mr-1.5"></i>Guardar Revelación';
-      }
-    }
-  });
-}
-
 async function renderIncomeStatement() {
   const view = getReportViewHost();
   if (!view) return;
@@ -4841,7 +4433,7 @@ async function renderIncomeStatement() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Estado de Resultados</h4>
-      <div class="grid grid-cols-1 md:grid-cols-10 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-9 gap-3">
         <div class="form-group">
           <label class="form-label">Mes del reporte</label>
           <input id="inc-month" type="month" class="form-input" value="${currentMonthDefault}">
@@ -4856,13 +4448,6 @@ async function renderIncomeStatement() {
             <option value="year" selected>Acumulado del año</option>
             <option value="month">Solo el mes</option>
             <option value="historical">Histórico total</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Modo de vista</label>
-          <select id="inc-view-mode" class="form-input">
-            <option value="compact" selected>Compacto (Sin cascada)</option>
-            <option value="hierarchy">Jerárquico (Árbol PUC)</option>
           </select>
         </div>
         <div class="form-group">
@@ -4897,9 +4482,6 @@ async function renderIncomeStatement() {
         </div>
         <div class="form-group flex items-end">
           <button class="btn btn-outline w-full" id="btn-exp-er" disabled><i class="fas fa-file-excel"></i> Exportar</button>
-        </div>
-        <div class="form-group flex items-end">
-          <button class="btn btn-outline w-full text-indigo-700 border-indigo-200 hover:bg-indigo-50" id="btn-dossier-from-er" title="Generar Informe Financiero Completo con Notas y Certificación"><i class="fas fa-book-bookmark text-indigo-600"></i> Informe NIIF</button>
         </div>
       </div>
     </div>
@@ -5041,24 +4623,14 @@ async function renderIncomeStatement() {
         return '';
       };
 
-      const incViewMode = getSelectVal('inc-view-mode') || 'compact';
-      const isCompact = incViewMode === 'compact';
-
       const buildRows = (roots) => {
         const EPS = 0.0001;
         const detail = [];
         const visit = (node) => {
-          const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
-          if (!hasActivity) return [];
-
           const childRows = [];
           for (const c of node.children) childRows.push(...visit(c));
-
-          // En modo compacto, si tiene exactamente un hijo visible con idéntico saldo, colapsar redundancia
-          if (isCompact && childRows.length === 1 && Math.abs(childRows[0].now - node.now) < EPS && Math.abs(childRows[0].cmp - node.cmp) < EPS) {
-            return childRows;
-          }
-
+          const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
+          if (!hasActivity && !childRows.length) return [];
           const rows = [];
           if (Number(node.level || 1) <= maxLevel) {
             rows.push({
@@ -5159,7 +4731,7 @@ async function renderIncomeStatement() {
             comparativo: r.cmp,
             pctComparativo: rowPctCmp.text,
             varAbsoluta: rowVar.diff,
-            varPorcentual: rowVar.indicatorText,
+            varPorcentual: rowVar.pctFmt,
             level: r.level,
             code: r.code,
             isBold: isMajorGroup
@@ -5174,7 +4746,7 @@ async function renderIncomeStatement() {
           comparativo: section.totalCmp,
           pctComparativo: secPctCmp.text,
           varAbsoluta: secVar.diff,
-          varPorcentual: secVar.indicatorText,
+          varPorcentual: secVar.pctFmt,
           isBold: true,
           level: 2
         });
@@ -5197,7 +4769,7 @@ async function renderIncomeStatement() {
         comparativo: totalGastosCmp,
         pctComparativo: totGastosPctCmp.text,
         varAbsoluta: totGastosVar.diff,
-        varPorcentual: totGastosVar.indicatorText,
+        varPorcentual: totGastosVar.pctFmt,
         isBold: true,
         level: 1
       });
@@ -5211,7 +4783,7 @@ async function renderIncomeStatement() {
         comparativo: utilidadCmp,
         pctComparativo: calcFinancialPct(utilidadCmp, baseIngresosCmp).text,
         varAbsoluta: varUtilidad.diff,
-        varPorcentual: varUtilidad.indicatorText,
+        varPorcentual: varUtilidad.pctFmt,
         isBold: true,
         level: 1
       });
@@ -5255,7 +4827,7 @@ async function renderIncomeStatement() {
                   <td style="padding-left:${padding}px" class="${titleClass}">
                     <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
                   </td>
-                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ER') : ''}
+                  ${showNotes ? `<td class="text-center font-normal text-gray-500">${esc(r.note)}</td>` : ''}
                   ${amountCell(r.now, numClass)}
                   ${progressBarCell(pNow, 'bg-indigo-500')}
                   ${amountCell(r.cmp, numClass)}
@@ -5267,7 +4839,7 @@ async function renderIncomeStatement() {
                   <td style="padding-left:${padding}px" class="${titleClass}">
                     <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
                   </td>
-                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ER') : ''}
+                  ${showNotes ? `<td class="text-center font-normal text-gray-500">${esc(r.note)}</td>` : ''}
                   ${amountCell(r.now, numClass)}
                   ${amountCell(r.cmp, numClass)}
                   <td class="text-right ${numClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
@@ -5280,7 +4852,7 @@ async function renderIncomeStatement() {
                   <td style="padding-left:${padding}px" class="${titleClass}">
                     <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
                   </td>
-                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ER') : ''}
+                  ${showNotes ? `<td class="text-center font-normal text-gray-500">${esc(r.note)}</td>` : ''}
                   ${amountCell(r.now, numClass)}
                   ${progressBarCell(pNow, 'bg-indigo-500')}
                   ${amountCell(r.cmp, numClass)}
@@ -5423,6 +4995,9 @@ async function renderIncomeStatement() {
       results.innerHTML = `
         <div class="px-4 pt-4 text-center">
           <p class="text-xl font-bold" style="color:#0D2137">Estado de Resultados</p>
+          <p class="text-xs text-indigo-700 font-bold uppercase tracking-wider mt-0.5">
+            ${periodType === 'month' ? `[Período Mensual: ${esc(reportMonth)}]` : periodType === 'year' ? `[Acumulado del Año a ${esc(reportMonth)}]` : `[Histórico Total a ${esc(reportMonth)}]`}
+          </p>
           <p class="text-xs text-gray-500 font-medium">(Expresado en pesos colombianos — Estándares NIIF / Decreto 2420 de 2015)</p>
         </div>
 
@@ -5471,28 +5046,6 @@ async function renderIncomeStatement() {
           </div>
         </div>
 
-        <!-- Panel Gráfico Interactivo Chart.js (Cascada / Comparativo) -->
-        <div class="px-4 pb-2">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <button type="button" class="btn btn-xs btn-outline py-1 px-2.5" id="btn-toggle-er-chart">
-                <i class="fas fa-chart-simple mr-1 text-indigo-500"></i><span id="txt-toggle-er-chart">Ocultar Gráficas</span>
-              </button>
-              <div class="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-xxs" id="er-chart-type-toggle">
-                <button type="button" class="er-chart-type-btn px-2.5 py-1 rounded font-semibold bg-indigo-600 text-white" data-type="waterfall">Cascada de Utilidad</button>
-                <button type="button" class="er-chart-type-btn px-2.5 py-1 rounded font-semibold text-gray-600 hover:bg-gray-100" data-type="comparison">Comparativo Interanual</button>
-              </div>
-            </div>
-            <span class="text-xxs text-gray-400 font-medium hidden sm:inline"><i class="fas fa-arrow-trend-up text-emerald-500 mr-1"></i>Visualización gráfica dinámica</span>
-          </div>
-
-          <div id="er-chart-wrapper" class="bg-white border rounded-2xl p-4 shadow-2xs transition-all" style="border-color:#E5E7EB">
-            <div style="height:250px; position:relative; width:100%">
-              <canvas id="er-financial-chart"></canvas>
-            </div>
-          </div>
-        </div>
-
         <!-- Barra de Modos de Vista y Filtro de Nivel -->
         <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-gray-50 border-y text-xs mb-3" style="border-color:#E5E7EB">
           <div class="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-2xs gap-1">
@@ -5527,148 +5080,6 @@ async function renderIncomeStatement() {
         </div>
         ${signaturesHtml}`;
 
-      // Lógica de Renderizado y Control de Gráfica Chart.js
-      let currentErChartType: 'waterfall' | 'comparison' = 'waterfall';
-      let isErChartVisible = true;
-
-      const buildErChart = (type: 'waterfall' | 'comparison') => {
-        const canvas = document.getElementById('er-financial-chart') as HTMLCanvasElement;
-        if (!canvas) return;
-
-        if (erChartInstance) {
-          erChartInstance.destroy();
-          erChartInstance = null;
-        }
-
-        if (type === 'waterfall') {
-          const rawItems = [
-            { label: 'Ingresos Op.', val: ingresos.totalNow, color: '#4F46E5' },
-            { label: '(-) Costos Venta', val: -costos.totalNow, color: '#F43F5E' },
-            { label: '(=) Margen Bruto', val: margenBrutoNow, color: '#10B981' },
-            { label: '(-) Gastos Op.', val: -gastos.totalNow, color: '#F59E0B' },
-            { label: '(=) EBITDA', val: utilidadOpNow, color: '#0284C7' },
-            ...(otrosGastos.totalNow ? [{ label: '(-) Costos Prod.', val: -otrosGastos.totalNow, color: '#64748B' }] : []),
-            { label: '(=) Utilidad Neta', val: utilidadNow, color: utilidadNow >= 0 ? '#059669' : '#DC2626' }
-          ];
-
-          erChartInstance = new Chart(canvas, {
-            type: 'bar',
-            data: {
-              labels: rawItems.map(it => it.label),
-              datasets: [{
-                label: 'Monto ($ COP)',
-                data: rawItems.map(it => it.val),
-                backgroundColor: rawItems.map(it => it.color),
-                borderRadius: 6,
-                borderSkipped: false,
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: { display: false },
-                tooltip: {
-                  callbacks: {
-                    label: (ctx) => ` Monto: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')}`
-                  }
-                }
-              },
-              scales: {
-                y: {
-                  ticks: {
-                    callback: (val) => `$ ${Number(val).toLocaleString('es-CO')}`
-                  },
-                  grid: { color: '#F1F5F9' }
-                },
-                x: {
-                  grid: { display: false }
-                }
-              }
-            }
-          });
-        } else {
-          // Modo comparativo interanual
-          const labels = ['Ingresos', 'Costos de Venta', 'Margen Bruto', 'Gastos Op.', 'Utilidad Neta'];
-          const dataNow = [ingresos.totalNow, costos.totalNow, margenBrutoNow, gastos.totalNow, utilidadNow];
-          const dataCmp = [ingresos.totalCmp, costos.totalCmp, margenBrutoCmp, gastos.totalCmp, utilidadCmp];
-
-          erChartInstance = new Chart(canvas, {
-            type: 'bar',
-            data: {
-              labels,
-              datasets: [
-                {
-                  label: `Actual (${reportMonth})`,
-                  data: dataNow,
-                  backgroundColor: '#4F46E5',
-                  borderRadius: 5,
-                },
-                {
-                  label: `Comparativo (${compareMonth})`,
-                  data: dataCmp,
-                  backgroundColor: '#94A3B8',
-                  borderRadius: 5,
-                }
-              ]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: { position: 'top' },
-                tooltip: {
-                  callbacks: {
-                    label: (ctx) => ` ${ctx.dataset.label}: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')}`
-                  }
-                }
-              },
-              scales: {
-                y: {
-                  ticks: {
-                    callback: (val) => `$ ${Number(val).toLocaleString('es-CO')}`
-                  },
-                  grid: { color: '#F1F5F9' }
-                },
-                x: {
-                  grid: { display: false }
-                }
-              }
-            }
-          });
-        }
-      };
-
-      // Inicializar gráfica
-      buildErChart(currentErChartType);
-
-      // Conmutar visibilidad del panel gráfico
-      document.getElementById('btn-toggle-er-chart')?.addEventListener('click', () => {
-        isErChartVisible = !isErChartVisible;
-        const wrapper = document.getElementById('er-chart-wrapper');
-        const txt = document.getElementById('txt-toggle-er-chart');
-        if (wrapper) wrapper.style.display = isErChartVisible ? 'block' : 'none';
-        if (txt) txt.textContent = isErChartVisible ? 'Ocultar Gráficas' : 'Mostrar Gráficas';
-      });
-
-      // Alternar tipo de gráfica (Cascada vs Comparativo)
-      results.querySelectorAll('.er-chart-type-btn').forEach(btn => {
-        btn.addEventListener('click', (ev) => {
-          const type = (ev.currentTarget as HTMLElement).getAttribute('data-type') as any;
-          if (type && type !== currentErChartType) {
-            currentErChartType = type;
-            results.querySelectorAll('.er-chart-type-btn').forEach(b => {
-              if (b.getAttribute('data-type') === currentErChartType) {
-                b.className = 'er-chart-type-btn px-2.5 py-1 rounded font-semibold bg-indigo-600 text-white';
-              } else {
-                b.className = 'er-chart-type-btn px-2.5 py-1 rounded font-semibold text-gray-600 hover:bg-gray-100';
-              }
-            });
-            buildErChart(currentErChartType);
-          }
-        });
-      });
-
       // Asignar escuchadores a los botones de modo de vista
       results.querySelectorAll('.er-view-mode').forEach(btn => {
         btn.addEventListener('click', (ev) => {
@@ -5692,26 +5103,6 @@ async function renderIncomeStatement() {
       document.getElementById('btn-er-expand-all')?.addEventListener('click', () => {
         erDisplayMaxLevel = Number.POSITIVE_INFINITY;
         refreshErView();
-      });
-
-      // Escuchador interactivo para abrir el Drawer de Notas NIIF al hacer clic en los badges
-      results.addEventListener('click', (ev) => {
-        const btn = (ev.target as HTMLElement).closest('.btn-open-financial-note') as HTMLElement;
-        if (!btn) return;
-        const noteNum = btn.getAttribute('data-note-num') || '';
-        const title = btn.getAttribute('data-note-title') || '';
-        const code = btn.getAttribute('data-note-code') || '';
-        openFinancialNoteDrawer({
-          noteNum,
-          title,
-          code,
-          reportType: 'ER',
-          periodo: reportMonth,
-          comparePeriodo: compareMonth,
-          accounts,
-          balNow,
-          balCmp
-        });
       });
 
       if (includeSignatures) {
@@ -5817,9 +5208,8 @@ async function renderIncomeStatement() {
       });
 
       const body = [];
-      const baseIngresos = sections.ingresos?.totalNow || 1;
       const pushSection = (sectionTitle, section, totalLabel) => {
-        body.push([{ content: sectionTitle, colSpan: showNotes ? 7 : 6, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
+        body.push([{ content: sectionTitle, colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
         section.detail.forEach((r) => {
           const lvl = Number(r.level || 2);
           const isMajorGroup = lvl <= 2;
@@ -5832,124 +5222,46 @@ async function renderIncomeStatement() {
             ? { fontStyle: 'bold', textColor: [13, 33, 55] }
             : { fontStyle: 'normal', textColor: [70, 70, 70] };
 
-          const pNow = calcFinancialPct(r.now, baseIngresos).text;
-          const hVar = calcHorizontalVariation(r.now, r.cmp);
-
           if (showNotes) {
             body.push([
               { content: labelContent, styles: titleStyles },
               { content: r.note || '', styles: { halign: 'center', ...(isMajorGroup ? { fontStyle: 'bold' } : {}) } },
               { content: fmtPdfSignedNum(r.now), styles: numStyles },
-              { content: pNow, styles: { halign: 'center', ...numStyles } },
-              { content: fmtPdfSignedNum(r.cmp), styles: numStyles },
-              { content: hVar.diffFmt.text, styles: numStyles },
-              { content: hVar.indicatorText, styles: { halign: 'right', fontStyle: 'bold' } }
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
             ]);
           } else {
             body.push([
               { content: labelContent, styles: titleStyles },
               { content: fmtPdfSignedNum(r.now), styles: numStyles },
-              { content: pNow, styles: { halign: 'center', ...numStyles } },
-              { content: fmtPdfSignedNum(r.cmp), styles: numStyles },
-              { content: hVar.diffFmt.text, styles: numStyles },
-              { content: hVar.indicatorText, styles: { halign: 'right', fontStyle: 'bold' } }
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
             ]);
           }
         });
-
-        const secPNow = calcFinancialPct(section.totalNow, baseIngresos).text;
-        const secHVar = calcHorizontalVariation(section.totalNow, section.totalCmp);
-        if (showNotes) {
-          body.push([
-            { content: totalLabel, styles: { fontStyle: 'bold' } },
-            '',
-            { content: fmtPdfSignedNum(section.totalNow), styles: { fontStyle: 'bold' } },
-            { content: secPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-            { content: fmtPdfSignedNum(section.totalCmp), styles: { fontStyle: 'bold' } },
-            { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-            { content: secHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
-          ]);
-        } else {
-          body.push([
-            { content: totalLabel, styles: { fontStyle: 'bold' } },
-            { content: fmtPdfSignedNum(section.totalNow), styles: { fontStyle: 'bold' } },
-            { content: secPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-            { content: fmtPdfSignedNum(section.totalCmp), styles: { fontStyle: 'bold' } },
-            { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-            { content: secHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
-          ]);
-        }
+        if (showNotes) body.push([totalLabel, '', fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
+        else body.push([totalLabel, fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
       };
 
       pushSection('Ingresos (Clase 4)', sections.ingresos, 'Total ingresos');
       pushSection('Costos de venta (Clase 6)', sections.costos, 'Total costos de venta');
       pushSection('Gastos operacionales (Clase 5)', sections.gastos, 'Total gastos operacionales');
       pushSection('Costos de producción/operación (Clase 7)', sections.otrosGastos, 'Total costos de producción/operación');
-
-      const totGastosHVar = calcHorizontalVariation(totals.totalGastosNow, totals.totalGastosCmp);
-      const totGastosPNow = calcFinancialPct(totals.totalGastosNow, baseIngresos).text;
-      if (showNotes) {
-        body.push([
-          { content: 'Total gastos y costos', styles: { fontStyle: 'bold' } },
-          '',
-          { content: fmtPdfSignedNum(totals.totalGastosNow), styles: { fontStyle: 'bold' } },
-          { content: totGastosPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalGastosCmp), styles: { fontStyle: 'bold' } },
-          { content: totGastosHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-          { content: totGastosHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
-        ]);
-      } else {
-        body.push([
-          { content: 'Total gastos y costos', styles: { fontStyle: 'bold' } },
-          { content: fmtPdfSignedNum(totals.totalGastosNow), styles: { fontStyle: 'bold' } },
-          { content: totGastosPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalGastosCmp), styles: { fontStyle: 'bold' } },
-          { content: totGastosHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-          { content: totGastosHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
-        ]);
-      }
-
-      const utilHVar = calcHorizontalVariation(totals.utilidadNow, totals.utilidadCmp);
-      const utilPNow = calcFinancialPct(totals.utilidadNow, baseIngresos).text;
-      if (showNotes) {
-        body.push([
-          { content: 'Resultado neto del periodo', styles: { fontStyle: 'bold', textColor: [13, 33, 55] } },
-          '',
-          { content: fmtPdfSignedNum(totals.utilidadNow), styles: { fontStyle: 'bold' } },
-          { content: utilPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.utilidadCmp), styles: { fontStyle: 'bold' } },
-          { content: utilHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-          { content: utilHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
-        ]);
-      } else {
-        body.push([
-          { content: 'Resultado neto del periodo', styles: { fontStyle: 'bold', textColor: [13, 33, 55] } },
-          { content: fmtPdfSignedNum(totals.utilidadNow), styles: { fontStyle: 'bold' } },
-          { content: utilPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.utilidadCmp), styles: { fontStyle: 'bold' } },
-          { content: utilHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-          { content: utilHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
-        ]);
-      }
+      if (showNotes) body.push(['Total gastos y costos', '', fmtPdfSignedNum(totals.totalGastosNow), fmtPdfSignedNum(totals.totalGastosCmp)]);
+      else body.push(['Total gastos y costos', fmtPdfSignedNum(totals.totalGastosNow), fmtPdfSignedNum(totals.totalGastosCmp)]);
+      if (showNotes) body.push(['Resultado neto del periodo', '', fmtPdfSignedNum(totals.utilidadNow), fmtPdfSignedNum(totals.utilidadCmp)]);
+      else body.push(['Resultado neto del periodo', fmtPdfSignedNum(totals.utilidadNow), fmtPdfSignedNum(totals.utilidadCmp)]);
 
       const head = showNotes
         ? [[
-            { content: 'Rubro / Concepto', styles: { halign: 'left' } },
-            { content: 'Nota', styles: { halign: 'center' } },
-            { content: String(reportDate), styles: { halign: 'right' } },
-            { content: '% Ingresos', styles: { halign: 'center' } },
-            { content: String(compareDate), styles: { halign: 'right' } },
-            { content: 'Var. ($)', styles: { halign: 'right' } },
-            { content: 'Tendencia (%)', styles: { halign: 'right' } },
-          ]]
+          { content: 'Rubro', styles: { halign: 'left' } },
+          { content: 'Nota', styles: { halign: 'center' } },
+          { content: String(reportDate), styles: { halign: 'right' } },
+          { content: String(compareDate), styles: { halign: 'right' } },
+        ]]
         : [[
-            { content: 'Rubro / Concepto', styles: { halign: 'left' } },
-            { content: String(reportDate), styles: { halign: 'right' } },
-            { content: '% Ingresos', styles: { halign: 'center' } },
-            { content: String(compareDate), styles: { halign: 'right' } },
-            { content: 'Var. ($)', styles: { halign: 'right' } },
-            { content: 'Tendencia (%)', styles: { halign: 'right' } },
-          ]];
+          { content: 'Rubro', styles: { halign: 'left' } },
+          { content: String(reportDate), styles: { halign: 'right' } },
+          { content: String(compareDate), styles: { halign: 'right' } },
+        ]];
 
       doc.autoTable({
         startY: header.startY,
@@ -5957,40 +5269,29 @@ async function renderIncomeStatement() {
         body,
         theme: 'plain',
         margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
-        styles: { font: 'helvetica', fontSize: 7.2, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
-        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
+        styles: { font: 'helvetica', fontSize: 7.3, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
         columnStyles: showNotes
           ? {
-            0: { cellWidth: 194, halign: 'left' },
-            1: { cellWidth: 32, halign: 'center' },
-            2: { cellWidth: 72, halign: 'right' },
-            3: { cellWidth: 42, halign: 'center' },
-            4: { cellWidth: 72, halign: 'right' },
-            5: { cellWidth: 74, halign: 'right' },
-            6: { cellWidth: 78, halign: 'right' },
+            0: { cellWidth: 280, halign: 'left' },
+            1: { cellWidth: 54, halign: 'center' },
+            2: { cellWidth: 110, halign: 'right' },
+            3: { cellWidth: 110, halign: 'right' },
           }
           : {
-            0: { cellWidth: 226, halign: 'left' },
-            1: { cellWidth: 72, halign: 'right' },
-            2: { cellWidth: 42, halign: 'center' },
-            3: { cellWidth: 72, halign: 'right' },
-            4: { cellWidth: 74, halign: 'right' },
-            5: { cellWidth: 78, halign: 'right' },
+            0: { cellWidth: 334, halign: 'left' },
+            1: { cellWidth: 110, halign: 'right' },
+            2: { cellWidth: 110, halign: 'right' },
           },
         didParseCell: (data) => {
           if (data.section === 'head') {
-            data.cell.styles.fillColor = [243, 244, 246];
-            data.cell.styles.textColor = [13, 33, 55];
-            data.cell.styles.fontStyle = 'bold';
             if (showNotes) {
               if (data.column.index === 0) data.cell.styles.halign = 'left';
               else if (data.column.index === 1) data.cell.styles.halign = 'center';
-              else if (data.column.index === 3) data.cell.styles.halign = 'center';
-              else data.cell.styles.halign = 'right';
+              else if (data.column.index === 2 || data.column.index === 3) data.cell.styles.halign = 'right';
             } else {
               if (data.column.index === 0) data.cell.styles.halign = 'left';
-              else if (data.column.index === 2) data.cell.styles.halign = 'center';
-              else data.cell.styles.halign = 'right';
+              else if (data.column.index === 1 || data.column.index === 2) data.cell.styles.halign = 'right';
             }
             return;
           }
@@ -5998,24 +5299,10 @@ async function renderIncomeStatement() {
           const firstCell = body[data.row.index]?.[0];
           if (typeof firstCell === 'object' && firstCell?.colSpan) return;
           const label = String(firstCell || '').toLowerCase();
-          if (label.startsWith('total ') || label.includes('resultado neto') || label.startsWith('resultado ')) {
+          if (label.startsWith('total ') || label.startsWith('resultado ')) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [241, 245, 249];
+            data.cell.styles.fillColor = [236, 236, 236];
             data.cell.styles.textColor = [13, 33, 55];
-          }
-          // Colorear columna de Tendencia (%)
-          const trendColIdx = showNotes ? 6 : 5;
-          if (data.column.index === trendColIdx) {
-            const raw = String(data.cell.raw?.content ?? data.cell.raw ?? '').trim();
-            if (raw.startsWith('+')) {
-              data.cell.styles.textColor = [5, 150, 105]; // Verde
-              data.cell.styles.fontStyle = 'bold';
-            } else if (raw.startsWith('-')) {
-              data.cell.styles.textColor = [220, 38, 38]; // Rojo
-              data.cell.styles.fontStyle = 'bold';
-            } else {
-              data.cell.styles.textColor = [100, 116, 139];
-            }
           }
         },
       });
@@ -6035,7 +5322,7 @@ async function renderIncomeStatement() {
         if (pMonth) {
           notasGuardadas = await loadFinancialNotes(pMonth, 'ER');
         }
-      } catch (_) {}
+      } catch (_) { }
 
       if (notasGuardadas.length > 0) {
         const notesFinalY = drawNotesInPdf(doc, notasGuardadas, header.marginLeft, doc.internal.pageSize.getWidth(), lastIncomePdf.accounts, lastIncomePdf.balNow, lastIncomePdf.balCmp);
@@ -6059,10 +5346,6 @@ async function renderIncomeStatement() {
       showToast(`Error al generar PDF: ${err.message}`, 'error');
     }
   });
-
-  $('#btn-dossier-from-er')?.addEventListener('click', () => {
-    launchReportModal('Informe Financiero Certificado (NIIF / Ley 222)', () => renderFinancialDossier());
-  });
 }
 
 async function renderFinancialPosition() {
@@ -6078,7 +5361,7 @@ async function renderFinancialPosition() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Estado de Situación Financiera (Balance General)</h4>
-      <div class="grid grid-cols-1 md:grid-cols-10 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-9 gap-3">
         <div class="form-group">
           <label class="form-label">Mes del reporte</label>
           <input id="pos-month" type="month" class="form-input" value="${currentMonthDefault}">
@@ -6093,13 +5376,6 @@ async function renderFinancialPosition() {
             <option value="year" selected>Acumulado del año</option>
             <option value="month">Solo el mes</option>
             <option value="historical">Histórico total</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Modo de vista</label>
-          <select id="pos-view-mode" class="form-input">
-            <option value="compact" selected>Compacto (Sin cascada)</option>
-            <option value="hierarchy">Jerárquico (Árbol PUC)</option>
           </select>
         </div>
         <div class="form-group">
@@ -6134,9 +5410,6 @@ async function renderFinancialPosition() {
         </div>
         <div class="form-group flex items-end">
           <button class="btn btn-outline w-full" id="btn-exp-position" disabled><i class="fas fa-file-excel"></i> Exportar</button>
-        </div>
-        <div class="form-group flex items-end">
-          <button class="btn btn-outline w-full text-indigo-700 border-indigo-200 hover:bg-indigo-50" id="btn-dossier-from-pos" title="Generar Informe Financiero Completo con Notas y Certificación"><i class="fas fa-book-bookmark text-indigo-600"></i> Informe NIIF</button>
         </div>
       </div>
     </div>
@@ -6197,7 +5470,7 @@ async function renderFinancialPosition() {
     return '';
   };
 
-  const groupSection = (accounts, balancesNow, balancesCmp, filterFn, kind, showNotes, maxLevel, isCompact = true) => {
+  const groupSection = (accounts, balancesNow, balancesCmp, filterFn, kind, showNotes, maxLevel) => {
     const EPS = 0.0001;
     const sectionAccounts = accounts.filter(filterFn);
     const nodeById = new Map(sectionAccounts.map((acc) => [acc.id, {
@@ -6245,18 +5518,14 @@ async function renderFinancialPosition() {
     roots.forEach((root) => calcNode(root));
 
     const buildVisibleRows = (node) => {
-      const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
-      if (!hasActivity) return [];
-
       const childRows = [];
       for (const child of node.children) {
         childRows.push(...buildVisibleRows(child));
       }
 
-      // En modo compacto, si tiene exactamente un hijo visible con el mismo saldo exacto, colapsar redundancia en cascada
-      if (isCompact && childRows.length === 1 && Math.abs(childRows[0].now - node.now) < EPS && Math.abs(childRows[0].cmp - node.cmp) < EPS) {
-        return childRows;
-      }
+      const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
+      const visible = hasActivity || childRows.length > 0;
+      if (!visible) return [];
 
       const rows = [];
       if (Number(node.level || 1) <= maxLevel) {
@@ -6319,14 +5588,11 @@ async function renderFinancialPosition() {
         pb.send(`/api/gravy/report-balances?startDate=${startCmp}&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' })
       ]);
 
-      const posViewMode = getSelectVal('pos-view-mode') || 'compact';
-      const isCompact = posViewMode === 'compact';
-
-      const actCorr = groupSection(accounts, balNow, balCmp, a => ['11', '12', '13', '14'].some(prefix => String(a.code || '').startsWith(prefix)), 'asset', showNotes, maxLevel, isCompact);
-      const actNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('1') && !['11', '12', '13', '14'].some(prefix => String(a.code || '').startsWith(prefix)), 'asset', showNotes, maxLevel, isCompact);
-      const pasCorr = groupSection(accounts, balNow, balCmp, a => ['21', '22', '23', '24', '25', '26', '28'].some(prefix => String(a.code || '').startsWith(prefix)), 'liability', showNotes, maxLevel, isCompact);
-      const pasNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('2') && !['21', '22', '23', '24', '25', '26', '28'].some(prefix => String(a.code || '').startsWith(prefix)), 'liability', showNotes, maxLevel, isCompact);
-      const patrimonio = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('3'), 'equity', showNotes, maxLevel, isCompact);
+      const actCorr = groupSection(accounts, balNow, balCmp, a => ['11', '12', '13', '14'].some(prefix => String(a.code || '').startsWith(prefix)), 'asset', showNotes, maxLevel);
+      const actNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('1') && !['11', '12', '13', '14'].some(prefix => String(a.code || '').startsWith(prefix)), 'asset', showNotes, maxLevel);
+      const pasCorr = groupSection(accounts, balNow, balCmp, a => ['21', '22', '23', '24', '25', '26', '28'].some(prefix => String(a.code || '').startsWith(prefix)), 'liability', showNotes, maxLevel);
+      const pasNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('2') && !['21', '22', '23', '24', '25', '26', '28'].some(prefix => String(a.code || '').startsWith(prefix)), 'liability', showNotes, maxLevel);
+      const patrimonio = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('3'), 'equity', showNotes, maxLevel);
 
       const accountCodeMap = new Map<string, string>();
       accounts.forEach(a => accountCodeMap.set(a.id, String(a.code || '')));
@@ -6448,7 +5714,7 @@ async function renderFinancialPosition() {
             comparativo: r.cmp,
             pctComparativo: rowPctCmp.text,
             varAbsoluta: rowVar.diff,
-            varPorcentual: rowVar.indicatorText,
+            varPorcentual: rowVar.pctFmt,
             level: r.level,
             code: r.code,
             isBold: isMajorGroup
@@ -6463,7 +5729,7 @@ async function renderFinancialPosition() {
           comparativo: section.totalCmp,
           pctComparativo: secPctCmp.text,
           varAbsoluta: secVar.diff,
-          varPorcentual: secVar.indicatorText,
+          varPorcentual: secVar.pctFmt,
           isBold: true,
           level: 2
         });
@@ -6482,7 +5748,7 @@ async function renderFinancialPosition() {
         comparativo: totalActivosCmp,
         pctComparativo: '100.0%',
         varAbsoluta: totActVar.diff,
-        varPorcentual: totActVar.indicatorText,
+        varPorcentual: totActVar.pctFmt,
         isBold: true,
         level: 1
       });
@@ -6502,7 +5768,7 @@ async function renderFinancialPosition() {
         comparativo: totalPasivosCmp,
         pctComparativo: totPasPctCmp.text,
         varAbsoluta: totPasVar.diff,
-        varPorcentual: totPasVar.indicatorText,
+        varPorcentual: totPasVar.pctFmt,
         isBold: true,
         level: 1
       });
@@ -6525,7 +5791,7 @@ async function renderFinancialPosition() {
           comparativo: r.cmp,
           pctComparativo: rowPctCmp.text,
           varAbsoluta: rowVar.diff,
-          varPorcentual: rowVar.indicatorText,
+          varPorcentual: rowVar.pctFmt,
           level: r.level,
           code: r.code,
           isBold: isMajorGroup
@@ -6542,7 +5808,7 @@ async function renderFinancialPosition() {
         comparativo: resultadoCmp,
         pctComparativo: calcFinancialPct(resultadoCmp, basePyPCmp).text,
         varAbsoluta: resVar.diff,
-        varPorcentual: resVar.indicatorText,
+        varPorcentual: resVar.pctFmt,
         level: 2,
         code: '',
         isBold: true
@@ -6560,7 +5826,7 @@ async function renderFinancialPosition() {
         comparativo: totalPatrimonioCmp,
         pctComparativo: totPatPctCmp.text,
         varAbsoluta: totPatVar.diff,
-        varPorcentual: totPatVar.indicatorText,
+        varPorcentual: totPatVar.pctFmt,
         isBold: true,
         level: 2
       });
@@ -6575,7 +5841,7 @@ async function renderFinancialPosition() {
         comparativo: totalPyPCmp,
         pctComparativo: '100.0%',
         varAbsoluta: totPyPVar.diff,
-        varPorcentual: totPyPVar.indicatorText,
+        varPorcentual: totPyPVar.pctFmt,
         isBold: true,
         level: 1
       });
@@ -6619,7 +5885,7 @@ async function renderFinancialPosition() {
                   <td style="padding-left:${padding}px" class="${titleClass}">
                     <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
                   </td>
-                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ESF') : ''}
+                  ${showNotes ? `<td class="text-center font-normal text-gray-500">${esc(r.note)}</td>` : ''}
                   ${amountCell(r.now, numClass)}
                   ${progressBarCell(pNow, barColor)}
                   ${amountCell(r.cmp, numClass)}
@@ -6631,7 +5897,7 @@ async function renderFinancialPosition() {
                   <td style="padding-left:${padding}px" class="${titleClass}">
                     <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
                   </td>
-                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ESF') : ''}
+                  ${showNotes ? `<td class="text-center font-normal text-gray-500">${esc(r.note)}</td>` : ''}
                   ${amountCell(r.now, numClass)}
                   ${amountCell(r.cmp, numClass)}
                   <td class="text-right ${numClass}" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
@@ -6643,7 +5909,7 @@ async function renderFinancialPosition() {
                   <td style="padding-left:${padding}px" class="${titleClass}">
                     <span class="font-mono text-xxs text-gray-400 mr-1.5">${esc(r.code || '')}</span>${esc(r.label)}
                   </td>
-                  ${showNotes ? renderNoteBadgeCell(r.note, r.label, r.code, 'ESF') : ''}
+                  ${showNotes ? `<td class="text-center font-normal text-gray-500">${esc(r.note)}</td>` : ''}
                   ${amountCell(r.now, numClass)}
                   ${progressBarCell(pNow, barColor)}
                   ${amountCell(r.cmp, numClass)}
@@ -6769,7 +6035,7 @@ async function renderFinancialPosition() {
                 <td style="padding-left:12px" class="font-bold text-emerald-900">
                   <span class="font-mono text-xxs text-gray-400 mr-1.5">3.7</span>${esc(resultadoLabel)}
                 </td>
-                ${showNotes ? renderNoteBadgeCell('3.7', resultadoLabel, '3', 'ESF') : ''}
+                ${showNotes ? '<td class="text-center font-normal text-gray-500">3.7</td>' : ''}
                 ${amountCell(resultadoNow, 'font-bold')}
                 ${mode === 'vertical' || mode === 'all' ? progressBarCell(calcFinancialPct(resultadoNow, basePyPNow), 'bg-emerald-500') : ''}
                 ${amountCell(resultadoCmp, 'font-bold')}
@@ -6857,40 +6123,6 @@ async function renderFinancialPosition() {
           </div>
         </div>
 
-        <!-- Panel Gráfico Interactivo Chart.js (Composición de Activos y Estructura Financiera) -->
-        <div class="px-4 pb-2">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <button type="button" class="btn btn-xs btn-outline py-1 px-2.5" id="btn-toggle-pos-chart">
-                <i class="fas fa-chart-pie mr-1 text-blue-500"></i><span id="txt-toggle-pos-chart">Ocultar Gráficas</span>
-              </button>
-            </div>
-            <span class="text-xxs text-gray-400 font-medium hidden sm:inline"><i class="fas fa-scale-balanced text-blue-500 mr-1"></i>Estructura patrimonial bajo NIIF</span>
-          </div>
-
-          <div id="pos-chart-wrapper" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-white border rounded-2xl p-4 shadow-2xs" style="border-color:#E5E7EB">
-              <div class="text-xs font-bold text-gray-700 mb-2 flex items-center justify-between">
-                <span><i class="fas fa-pie-chart text-blue-500 mr-1.5"></i>Composición de Activos</span>
-                <span class="text-xxs text-gray-400">Total: ${fmt(totalActivosNow)}</span>
-              </div>
-              <div style="height:210px; position:relative">
-                <canvas id="pos-assets-chart"></canvas>
-              </div>
-            </div>
-
-            <div class="bg-white border rounded-2xl p-4 shadow-2xs" style="border-color:#E5E7EB">
-              <div class="text-xs font-bold text-gray-700 mb-2 flex items-center justify-between">
-                <span><i class="fas fa-shield-halved text-emerald-500 mr-1.5"></i>Estructura Financiera & Capital</span>
-                <span class="text-xxs text-gray-400">Pasivo + Patr: ${fmt(totalPyPNow)}</span>
-              </div>
-              <div style="height:210px; position:relative">
-                <canvas id="pos-capital-chart"></canvas>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Barra de Modos de Vista y Nivel -->
         <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-gray-50 border-y text-xs mb-3" style="border-color:#E5E7EB">
           <div class="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-2xs gap-1">
@@ -6925,92 +6157,6 @@ async function renderFinancialPosition() {
         </div>
         ${signaturesHtml}`;
 
-      // Lógica de Gráficas Donut Chart.js para Situación Financiera
-      let isPosChartVisible = true;
-
-      const buildPosCharts = () => {
-        const cAssets = document.getElementById('pos-assets-chart') as HTMLCanvasElement;
-        const cCapital = document.getElementById('pos-capital-chart') as HTMLCanvasElement;
-
-        if (posChartAssetsInstance) {
-          posChartAssetsInstance.destroy();
-          posChartAssetsInstance = null;
-        }
-        if (posChartCapitalInstance) {
-          posChartCapitalInstance.destroy();
-          posChartCapitalInstance = null;
-        }
-
-        if (cAssets) {
-          posChartAssetsInstance = new Chart(cAssets, {
-            type: 'doughnut',
-            data: {
-              labels: ['Activos Corrientes', 'Activos No Corrientes'],
-              datasets: [{
-                data: [Math.max(0, actCorr.totalNow), Math.max(0, actNoCorr.totalNow)],
-                backgroundColor: ['#3B82F6', '#93C5FD'],
-                hoverOffset: 4,
-                borderWidth: 2,
-                borderColor: '#FFFFFF',
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-                tooltip: {
-                  callbacks: {
-                    label: (ctx) => ` ${ctx.label}: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')} (${calcFinancialPct(Number(ctx.raw || 0), baseActivosNow).text})`
-                  }
-                }
-              },
-              cutout: '65%'
-            }
-          });
-        }
-
-        if (cCapital) {
-          posChartCapitalInstance = new Chart(cCapital, {
-            type: 'doughnut',
-            data: {
-              labels: ['Pasivo Corriente', 'Pasivo No Corriente', 'Patrimonio'],
-              datasets: [{
-                data: [Math.max(0, pasCorr.totalNow), Math.max(0, pasNoCorr.totalNow), Math.max(0, totalPatrimonioNow)],
-                backgroundColor: ['#F59E0B', '#D97706', '#10B981'],
-                hoverOffset: 4,
-                borderWidth: 2,
-                borderColor: '#FFFFFF',
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-                tooltip: {
-                  callbacks: {
-                    label: (ctx) => ` ${ctx.label}: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')} (${calcFinancialPct(Number(ctx.raw || 0), basePyPNow).text})`
-                  }
-                }
-              },
-              cutout: '65%'
-            }
-          });
-        }
-      };
-
-      buildPosCharts();
-
-      // Botón de alternar visibilidad de gráficas
-      document.getElementById('btn-toggle-pos-chart')?.addEventListener('click', () => {
-        isPosChartVisible = !isPosChartVisible;
-        const wrapper = document.getElementById('pos-chart-wrapper');
-        const txt = document.getElementById('txt-toggle-pos-chart');
-        if (wrapper) wrapper.style.display = isPosChartVisible ? 'grid' : 'none';
-        if (txt) txt.textContent = isPosChartVisible ? 'Ocultar Gráficas' : 'Mostrar Gráficas';
-      });
-
       // Escuchadores de cambio de modo de vista
       results.querySelectorAll('.pos-view-mode').forEach(btn => {
         btn.addEventListener('click', (ev) => {
@@ -7034,26 +6180,6 @@ async function renderFinancialPosition() {
       document.getElementById('btn-pos-expand-all')?.addEventListener('click', () => {
         posDisplayMaxLevel = Number.POSITIVE_INFINITY;
         refreshPosView();
-      });
-
-      // Escuchador interactivo para abrir el Drawer de Notas NIIF al hacer clic en los badges
-      results.addEventListener('click', (ev) => {
-        const btn = (ev.target as HTMLElement).closest('.btn-open-financial-note') as HTMLElement;
-        if (!btn) return;
-        const noteNum = btn.getAttribute('data-note-num') || '';
-        const title = btn.getAttribute('data-note-title') || '';
-        const code = btn.getAttribute('data-note-code') || '';
-        openFinancialNoteDrawer({
-          noteNum,
-          title,
-          code,
-          reportType: 'ESF',
-          periodo: reportMonth,
-          comparePeriodo: compareMonth,
-          accounts,
-          balNow,
-          balCmp
-        });
       });
 
       if (includeSignatures) {
@@ -7164,11 +6290,8 @@ async function renderFinancialPosition() {
       });
 
       const body = [];
-      const baseActivos = totals.totalActivosNow || 1;
-      const basePyP = totals.totalPyPNow || 1;
-
-      const pushSection = (sectionTitle, section, totalLabel, baseNow, baseCmp) => {
-        body.push([{ content: sectionTitle, colSpan: showNotes ? 7 : 6, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [241, 245, 249] } }]);
+      const pushSection = (sectionTitle, section, totalLabel) => {
+        body.push([{ content: sectionTitle, colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
         section.detail.forEach((r) => {
           const lvl = Number(r.level || 2);
           const isMajorGroup = lvl <= 2;
@@ -7181,195 +6304,83 @@ async function renderFinancialPosition() {
             ? { fontStyle: 'bold', textColor: [13, 33, 55] }
             : { fontStyle: 'normal', textColor: [70, 70, 70] };
 
-          const pNow = calcFinancialPct(r.now, baseNow).text;
-          const hVar = calcHorizontalVariation(r.now, r.cmp);
-
           if (showNotes) {
             body.push([
               { content: labelContent, styles: titleStyles },
               { content: r.note || '', styles: { halign: 'center', ...(isMajorGroup ? { fontStyle: 'bold' } : {}) } },
               { content: fmtPdfSignedNum(r.now), styles: numStyles },
-              { content: pNow, styles: { halign: 'center', ...numStyles } },
-              { content: fmtPdfSignedNum(r.cmp), styles: numStyles },
-              { content: hVar.diffFmt.text, styles: numStyles },
-              { content: hVar.indicatorText, styles: { halign: 'right', fontStyle: 'bold' } }
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
             ]);
           } else {
             body.push([
               { content: labelContent, styles: titleStyles },
               { content: fmtPdfSignedNum(r.now), styles: numStyles },
-              { content: pNow, styles: { halign: 'center', ...numStyles } },
-              { content: fmtPdfSignedNum(r.cmp), styles: numStyles },
-              { content: hVar.diffFmt.text, styles: numStyles },
-              { content: hVar.indicatorText, styles: { halign: 'right', fontStyle: 'bold' } }
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
             ]);
           }
         });
+        if (showNotes) body.push([totalLabel, '', fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
+        else body.push([totalLabel, fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
+      };
 
-        const secPNow = calcFinancialPct(section.totalNow, baseNow).text;
-        const secHVar = calcHorizontalVariation(section.totalNow, section.totalCmp);
+      pushSection('Activos corrientes', sections.actCorr, 'Total activos corrientes');
+      pushSection('Activos no corrientes', sections.actNoCorr, 'Total activos no corrientes');
+      if (showNotes) body.push(['Total activos', '', fmtPdfSignedNum(totals.totalActivosNow), fmtPdfSignedNum(totals.totalActivosCmp)]);
+      else body.push(['Total activos', fmtPdfSignedNum(totals.totalActivosNow), fmtPdfSignedNum(totals.totalActivosCmp)]);
+      pushSection('Pasivos corrientes', sections.pasCorr, 'Total pasivos corrientes');
+      pushSection('Pasivos no corrientes', sections.pasNoCorr, 'Total pasivos no corrientes');
+      if (showNotes) body.push(['Total pasivos', '', fmtPdfSignedNum(totals.totalPasivosNow), fmtPdfSignedNum(totals.totalPasivosCmp)]);
+      else body.push(['Total pasivos', fmtPdfSignedNum(totals.totalPasivosNow), fmtPdfSignedNum(totals.totalPasivosCmp)]);
+      body.push([{ content: 'Patrimonio', colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
+      sections.patrimonio.detail.forEach((r) => {
+        const lvl = Number(r.level || 2);
+        const isMajorGroup = lvl <= 2;
+        const indentSpaces = '   '.repeat(Math.max(0, lvl - 2));
+        const labelContent = `${indentSpaces}${r.label}`;
+        const titleStyles = isMajorGroup
+          ? { fontStyle: 'bold', textColor: [13, 33, 55] }
+          : { fontStyle: 'normal', textColor: [70, 70, 70] };
+        const numStyles = isMajorGroup
+          ? { fontStyle: 'bold', textColor: [13, 33, 55] }
+          : { fontStyle: 'normal', textColor: [70, 70, 70] };
+
         if (showNotes) {
           body.push([
-            { content: totalLabel, styles: { fontStyle: 'bold' } },
-            '',
-            { content: fmtPdfSignedNum(section.totalNow), styles: { fontStyle: 'bold' } },
-            { content: secPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-            { content: fmtPdfSignedNum(section.totalCmp), styles: { fontStyle: 'bold' } },
-            { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-            { content: secHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+            { content: labelContent, styles: titleStyles },
+            { content: r.note || '', styles: { halign: 'center', ...(isMajorGroup ? { fontStyle: 'bold' } : {}) } },
+            { content: fmtPdfSignedNum(r.now), styles: numStyles },
+            { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
           ]);
         } else {
           body.push([
-            { content: totalLabel, styles: { fontStyle: 'bold' } },
-            { content: fmtPdfSignedNum(section.totalNow), styles: { fontStyle: 'bold' } },
-            { content: secPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-            { content: fmtPdfSignedNum(section.totalCmp), styles: { fontStyle: 'bold' } },
-            { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-            { content: secHVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
+            { content: labelContent, styles: titleStyles },
+            { content: fmtPdfSignedNum(r.now), styles: numStyles },
+            { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
           ]);
         }
-      };
-
-      pushSection('Activos corrientes', sections.actCorr, 'Total activos corrientes', baseActivos, totals.totalActivosCmp);
-      pushSection('Activos no corrientes', sections.actNoCorr, 'Total activos no corrientes', baseActivos, totals.totalActivosCmp);
-
-      const totActVar = calcHorizontalVariation(totals.totalActivosNow, totals.totalActivosCmp);
-      if (showNotes) {
-        body.push([
-          { content: 'TOTAL ACTIVOS', styles: { fontStyle: 'bold', fillColor: [237, 233, 254], textColor: [13, 33, 55] } },
-          { content: '', styles: { fillColor: [237, 233, 254] } },
-          { content: fmtPdfSignedNum(totals.totalActivosNow), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-          { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [237, 233, 254], halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalActivosCmp), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-          { content: totActVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-          { content: totActVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [237, 233, 254], halign: 'right' } }
-        ]);
-      } else {
-        body.push([
-          { content: 'TOTAL ACTIVOS', styles: { fontStyle: 'bold', fillColor: [237, 233, 254], textColor: [13, 33, 55] } },
-          { content: fmtPdfSignedNum(totals.totalActivosNow), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-          { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [237, 233, 254], halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalActivosCmp), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-          { content: totActVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-          { content: totActVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [237, 233, 254], halign: 'right' } }
-        ]);
-      }
-
-      pushSection('Pasivos corrientes', sections.pasCorr, 'Total pasivos corrientes', basePyP, totals.totalPyPCmp);
-      pushSection('Pasivos no corrientes', sections.pasNoCorr, 'Total pasivos no corrientes', basePyP, totals.totalPyPCmp);
-
-      const totPasVar = calcHorizontalVariation(totals.totalPasivosNow, totals.totalPasivosCmp);
-      const totPasPNow = calcFinancialPct(totals.totalPasivosNow, basePyP).text;
-      if (showNotes) {
-        body.push([
-          { content: 'TOTAL PASIVOS', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: '', styles: { fillColor: [243, 244, 246] } },
-          { content: fmtPdfSignedNum(totals.totalPasivosNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPasPNow, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalPasivosCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPasVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPasVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'right' } }
-        ]);
-      } else {
-        body.push([
-          { content: 'TOTAL PASIVOS', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: fmtPdfSignedNum(totals.totalPasivosNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPasPNow, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalPasivosCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPasVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPasVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'right' } }
-        ]);
-      }
-
-      pushSection('Patrimonio', sections.patrimonio, 'Patrimonio antes de resultado', basePyP, totals.totalPyPCmp);
-
+      });
       const resPdfLabel = totals.resultadoLabel || 'Resultado del ejercicio';
-      const resVar = calcHorizontalVariation(totals.resultadoNow, totals.resultadoCmp);
-      const resPNow = calcFinancialPct(totals.resultadoNow, basePyP).text;
-      if (showNotes) {
-        body.push([
-          { content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } },
-          { content: '3.7', styles: { halign: 'center', fontStyle: 'bold' } },
-          { content: fmtPdfSignedNum(totals.resultadoNow), styles: { fontStyle: 'bold' } },
-          { content: resPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.resultadoCmp), styles: { fontStyle: 'bold' } },
-          { content: resVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-          { content: resVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
-        ]);
-      } else {
-        body.push([
-          { content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } },
-          { content: fmtPdfSignedNum(totals.resultadoNow), styles: { fontStyle: 'bold' } },
-          { content: resPNow, styles: { fontStyle: 'bold', halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.resultadoCmp), styles: { fontStyle: 'bold' } },
-          { content: resVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-          { content: resVar.indicatorText, styles: { fontStyle: 'bold', halign: 'right' } }
-        ]);
-      }
+      if (showNotes) body.push([{ content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } }, '3.7', fmtPdfSignedNum(totals.resultadoNow), fmtPdfSignedNum(totals.resultadoCmp)]);
+      else body.push([{ content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } }, fmtPdfSignedNum(totals.resultadoNow), fmtPdfSignedNum(totals.resultadoCmp)]);
 
-      const totPatVar = calcHorizontalVariation(totals.totalPatrimonioNow, totals.totalPatrimonioCmp);
-      const totPatPNow = calcFinancialPct(totals.totalPatrimonioNow, basePyP).text;
-      if (showNotes) {
-        body.push([
-          { content: 'TOTAL PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: '', styles: { fillColor: [243, 244, 246] } },
-          { content: fmtPdfSignedNum(totals.totalPatrimonioNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPatPNow, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalPatrimonioCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPatVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPatVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'right' } }
-        ]);
-      } else {
-        body.push([
-          { content: 'TOTAL PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: fmtPdfSignedNum(totals.totalPatrimonioNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPatPNow, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalPatrimonioCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPatVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-          { content: totPatVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246], halign: 'right' } }
-        ]);
-      }
+      if (showNotes) body.push(['Total patrimonio', '', fmtPdfSignedNum(totals.totalPatrimonioNow), fmtPdfSignedNum(totals.totalPatrimonioCmp)]);
+      else body.push(['Total patrimonio', fmtPdfSignedNum(totals.totalPatrimonioNow), fmtPdfSignedNum(totals.totalPatrimonioCmp)]);
 
-      const totPyPVar = calcHorizontalVariation(totals.totalPyPNow, totals.totalPyPCmp);
-      if (showNotes) {
-        body.push([
-          { content: 'TOTAL PASIVOS MAS PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-          { content: '', styles: { fillColor: [13, 33, 55] } },
-          { content: fmtPdfSignedNum(totals.totalPyPNow), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-          { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255], halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalPyPCmp), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-          { content: totPyPVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-          { content: totPyPVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255], halign: 'right' } }
-        ]);
-      } else {
-        body.push([
-          { content: 'TOTAL PASIVOS MAS PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-          { content: fmtPdfSignedNum(totals.totalPyPNow), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-          { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255], halign: 'center' } },
-          { content: fmtPdfSignedNum(totals.totalPyPCmp), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-          { content: totPyPVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-          { content: totPyPVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255], halign: 'right' } }
-        ]);
-      }
+      if (showNotes) body.push(['Total pasivos mas patrimonio', '', fmtPdfSignedNum(totals.totalPyPNow), fmtPdfSignedNum(totals.totalPyPCmp)]);
+      else body.push(['Total pasivos mas patrimonio', fmtPdfSignedNum(totals.totalPyPNow), fmtPdfSignedNum(totals.totalPyPCmp)]);
 
       const head = showNotes
         ? [[
-            { content: 'Rubro / Concepto', styles: { halign: 'left' } },
-            { content: 'Nota', styles: { halign: 'center' } },
-            { content: String(reportDate), styles: { halign: 'right' } },
-            { content: '% Vert.', styles: { halign: 'center' } },
-            { content: String(compareDate), styles: { halign: 'right' } },
-            { content: 'Var. ($)', styles: { halign: 'right' } },
-            { content: 'Tendencia (%)', styles: { halign: 'right' } },
-          ]]
+          { content: 'Rubro', styles: { halign: 'left' } },
+          { content: 'Nota', styles: { halign: 'center' } },
+          { content: String(reportDate), styles: { halign: 'right' } },
+          { content: String(compareDate), styles: { halign: 'right' } },
+        ]]
         : [[
-            { content: 'Rubro / Concepto', styles: { halign: 'left' } },
-            { content: String(reportDate), styles: { halign: 'right' } },
-            { content: '% Vert.', styles: { halign: 'center' } },
-            { content: String(compareDate), styles: { halign: 'right' } },
-            { content: 'Var. ($)', styles: { halign: 'right' } },
-            { content: 'Tendencia (%)', styles: { halign: 'right' } },
-          ]];
+          { content: 'Rubro', styles: { halign: 'left' } },
+          { content: String(reportDate), styles: { halign: 'right' } },
+          { content: String(compareDate), styles: { halign: 'right' } },
+        ]];
 
       doc.autoTable({
         startY: header.startY,
@@ -7377,40 +6388,29 @@ async function renderFinancialPosition() {
         body,
         theme: 'plain',
         margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
-        styles: { font: 'helvetica', fontSize: 7.2, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
-        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
+        styles: { font: 'helvetica', fontSize: 7.3, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
         columnStyles: showNotes
           ? {
-            0: { cellWidth: 194, halign: 'left' },
-            1: { cellWidth: 32, halign: 'center' },
-            2: { cellWidth: 72, halign: 'right' },
-            3: { cellWidth: 42, halign: 'center' },
-            4: { cellWidth: 72, halign: 'right' },
-            5: { cellWidth: 74, halign: 'right' },
-            6: { cellWidth: 78, halign: 'right' },
+            0: { cellWidth: 280, halign: 'left' },
+            1: { cellWidth: 54, halign: 'center' },
+            2: { cellWidth: 110, halign: 'right' },
+            3: { cellWidth: 110, halign: 'right' },
           }
           : {
-            0: { cellWidth: 226, halign: 'left' },
-            1: { cellWidth: 72, halign: 'right' },
-            2: { cellWidth: 42, halign: 'center' },
-            3: { cellWidth: 72, halign: 'right' },
-            4: { cellWidth: 74, halign: 'right' },
-            5: { cellWidth: 78, halign: 'right' },
+            0: { cellWidth: 334, halign: 'left' },
+            1: { cellWidth: 110, halign: 'right' },
+            2: { cellWidth: 110, halign: 'right' },
           },
         didParseCell: (data) => {
           if (data.section === 'head') {
-            data.cell.styles.fillColor = [243, 244, 246];
-            data.cell.styles.textColor = [13, 33, 55];
-            data.cell.styles.fontStyle = 'bold';
             if (showNotes) {
               if (data.column.index === 0) data.cell.styles.halign = 'left';
               else if (data.column.index === 1) data.cell.styles.halign = 'center';
-              else if (data.column.index === 3) data.cell.styles.halign = 'center';
-              else data.cell.styles.halign = 'right';
+              else if (data.column.index === 2 || data.column.index === 3) data.cell.styles.halign = 'right';
             } else {
               if (data.column.index === 0) data.cell.styles.halign = 'left';
-              else if (data.column.index === 2) data.cell.styles.halign = 'center';
-              else data.cell.styles.halign = 'right';
+              else if (data.column.index === 1 || data.column.index === 2) data.cell.styles.halign = 'right';
             }
             return;
           }
@@ -7418,24 +6418,10 @@ async function renderFinancialPosition() {
           const firstCell = body[data.row.index]?.[0];
           if (typeof firstCell === 'object' && firstCell?.colSpan) return;
           const label = String(firstCell || '').toLowerCase();
-          if (label.startsWith('total ') || label.includes('total activos') || label.includes('total pasivos') || label.includes('total patrimonio')) {
+          if (label.startsWith('total ')) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [241, 245, 249];
+            data.cell.styles.fillColor = [236, 236, 236];
             data.cell.styles.textColor = [13, 33, 55];
-          }
-          // Colorear columna de Tendencia (%)
-          const trendColIdx = showNotes ? 6 : 5;
-          if (data.column.index === trendColIdx) {
-            const raw = String(data.cell.raw?.content ?? data.cell.raw ?? '').trim();
-            if (raw.startsWith('+')) {
-              data.cell.styles.textColor = [5, 150, 105]; // Verde
-              data.cell.styles.fontStyle = 'bold';
-            } else if (raw.startsWith('-')) {
-              data.cell.styles.textColor = [220, 38, 38]; // Rojo
-              data.cell.styles.fontStyle = 'bold';
-            } else {
-              data.cell.styles.textColor = [100, 116, 139];
-            }
           }
         },
       });
@@ -7455,7 +6441,7 @@ async function renderFinancialPosition() {
         if (pMonth) {
           notasGuardadas = await loadFinancialNotes(pMonth, 'ESF');
         }
-      } catch (_) {}
+      } catch (_) { }
 
       if (notasGuardadas.length > 0) {
         const notesFinalY = drawNotesInPdf(doc, notasGuardadas, header.marginLeft, doc.internal.pageSize.getWidth(), lastPositionPdf.accounts, lastPositionPdf.balNow, lastPositionPdf.balCmp);
@@ -7478,10 +6464,6 @@ async function renderFinancialPosition() {
     } catch (err) {
       showToast(`Error al generar PDF: ${err.message}`, 'error');
     }
-  });
-
-  $('#btn-dossier-from-pos')?.addEventListener('click', () => {
-    launchReportModal('Informe Financiero Certificado (NIIF / Ley 222)', () => renderFinancialDossier());
   });
 }
 
@@ -7809,7 +6791,7 @@ async function renderJournalBook() {
       sortedXlsGroups.forEach(g => {
         const sortedAccounts = Array.from(g.accountsMap.values())
           .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
-        
+
         sortedAccounts.forEach(a => {
           exportRows.push({
             tipo_transaccion: `${g.typeCode} - ${g.typeName}`,
@@ -8261,8 +7243,8 @@ async function openAuxTxDetailInReport(id) {
               <thead><tr><th>Cuenta</th><th>Tercero línea</th><th>Doc. Cruce</th><th>Descripción</th><th>Débito</th><th>Crédito</th></tr></thead>
               <tbody>
                 ${lines.map(l => {
-                  const lineDesc = String(l.description || '').trim() || String(tx.description || '').trim();
-                  return `<tr>
+      const lineDesc = String(l.description || '').trim() || String(tx.description || '').trim();
+      return `<tr>
                   <td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td>
                   <td>${esc(l.expand?.third_party_id?.name || '—')}</td>
                   <td>${l.cross_doc_ref ? `<span class="badge" style="background:#F3F4F6;color:#374151">${esc(l.cross_doc_ref)}</span>` : '—'}</td>
@@ -8270,7 +7252,7 @@ async function openAuxTxDetailInReport(id) {
                   <td>${fmt(l.debit || 0)}</td>
                   <td>${fmt(l.credit || 0)}</td>
                 </tr>`;
-                }).join('')}
+    }).join('')}
               </tbody>
             </table>
           </div>
@@ -8295,11 +7277,11 @@ async function generateAuxiliaryRows() {
   const results = $('#aux-results');
   if (!results) return;
 
-  const mode      = getSelectVal('aux-mode');
-  let accountId   = getSelectVal('aux-account');
-  let thirdId     = getSelectVal('aux-third');
-  const dateFrom  = ($('#aux-date-from')?.value || '').trim();
-  const dateTo    = ($('#aux-date-to')?.value   || '').trim();
+  const mode = getSelectVal('aux-mode');
+  let accountId = getSelectVal('aux-account');
+  let thirdId = getSelectVal('aux-third');
+  const dateFrom = ($('#aux-date-from')?.value || '').trim();
+  const dateTo = ($('#aux-date-to')?.value || '').trim();
 
   // Validación obligatoria de rango de fechas
   if (!dateFrom || !dateTo) {
@@ -8367,9 +7349,9 @@ async function generateAuxiliaryRows() {
     }
 
     // Consultar el endpoint optimizado del Libro Auxiliar
-    const accIdsParam  = allowedAccountIds ? Array.from(allowedAccountIds).join(',') : '';
-    const auxPropId    = ((document.getElementById('aux-property-id') as HTMLSelectElement)?.value || '').trim();
-    const propParam    = auxPropId ? `&propertyId=${encodeURIComponent(auxPropId)}` : '';
+    const accIdsParam = allowedAccountIds ? Array.from(allowedAccountIds).join(',') : '';
+    const auxPropId = ((document.getElementById('aux-property-id') as HTMLSelectElement)?.value || '').trim();
+    const propParam = auxPropId ? `&propertyId=${encodeURIComponent(auxPropId)}` : '';
     const res: any = await pb.send(`/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&accountIds=${accIdsParam}&thirdId=${thirdId || ''}${propParam}${getScopeQueryParams()}`, { method: 'GET' });
     const { openingBalances, periodLines } = res;
 
@@ -8407,26 +7389,26 @@ async function generateAuxiliaryRows() {
       const thirdDisplay = `${propTag}${thirdDoc ? `${thirdDoc} - ${thirdName}` : thirdName}`;
 
       return {
-        fecha:         l.fecha || '',
-        comprobante:   l.comprobante || '',
-        txId:          l.txId || '',
-        cuenta:        `${l.accountCode} - ${l.accountName}`.trim(),
-        accountCode:   l.accountCode,
-        accountName:   l.accountName,
-        tercero:       thirdDisplay,
-        thirdName:     thirdName,
-        thirdDoc:      thirdDoc,
-        doc_cruce:     l.doc_cruce || '',
-        descripcion:   l.descripcion || '',
-        debito:        Number(l.debito || 0),
-        credito:       Number(l.credito || 0),
-        keyCuenta:     `${l.accountCode} - ${l.accountName}`.trim(),
-        keyTercero:    thirdDisplay,
-        accountId:     l.accountId,
+        fecha: l.fecha || '',
+        comprobante: l.comprobante || '',
+        txId: l.txId || '',
+        cuenta: `${l.accountCode} - ${l.accountName}`.trim(),
+        accountCode: l.accountCode,
+        accountName: l.accountName,
+        tercero: thirdDisplay,
+        thirdName: thirdName,
+        thirdDoc: thirdDoc,
+        doc_cruce: l.doc_cruce || '',
+        descripcion: l.descripcion || '',
+        debito: Number(l.debito || 0),
+        credito: Number(l.credito || 0),
+        keyCuenta: `${l.accountCode} - ${l.accountName}`.trim(),
+        keyTercero: thirdDisplay,
+        accountId: l.accountId,
         accountNature: l.accountNature || 'debit',
         accountManejaCruce: isCruce,
-        thirdId:        l.thirdId || 'NO_TERCERO',
-        isOpeningRow:   false,
+        thirdId: l.thirdId || 'NO_TERCERO',
+        isOpeningRow: false,
       };
     });
 
@@ -8474,26 +7456,26 @@ async function generateAuxiliaryRows() {
         const cleanCruce = (docCruce === 'NO_CRUCE' || docCruce === 'SIN_DOC') ? '' : docCruce;
 
         rows.push({
-          fecha:         dateFrom,
-          comprobante:   'SALDO INICIAL',
-          txId:          '',
-          cuenta:        `${acc.code} - ${acc.name}`.trim(),
-          accountCode:   acc.code,
-          accountName:   acc.name,
-          tercero:       tDisplay,
-          thirdName:     tName,
-          thirdDoc:      tDoc,
-          doc_cruce:     cleanCruce,
-          descripcion:   'SALDO ANTERIOR PENDIENTE',
-          debito:        0,
-          credito:       0,
-          keyCuenta:     `${acc.code} - ${acc.name}`.trim(),
-          keyTercero:    tDisplay,
-          accountId:     accId,
+          fecha: dateFrom,
+          comprobante: 'SALDO INICIAL',
+          txId: '',
+          cuenta: `${acc.code} - ${acc.name}`.trim(),
+          accountCode: acc.code,
+          accountName: acc.name,
+          tercero: tDisplay,
+          thirdName: tName,
+          thirdDoc: tDoc,
+          doc_cruce: cleanCruce,
+          descripcion: 'SALDO ANTERIOR PENDIENTE',
+          debito: 0,
+          credito: 0,
+          keyCuenta: `${acc.code} - ${acc.name}`.trim(),
+          keyTercero: tDisplay,
+          accountId: accId,
           accountNature: acc.nature || 'debit',
           accountManejaCruce: isCruce,
-          thirdId:        thirdId,
-          isOpeningRow:   true,
+          thirdId: thirdId,
+          isOpeningRow: true,
         });
       }
     }
@@ -8503,9 +7485,9 @@ async function generateAuxiliaryRows() {
       return;
     }
 
-    const primaryField   = mode === 'tercero-cuenta' ? 'keyTercero' : 'keyCuenta';
-    const secondaryField = mode === 'tercero-cuenta' ? 'keyCuenta'  : 'keyTercero';
-    const primaryLabel   = mode === 'cuenta-sin-tercero' ? 'Cuenta' : (mode === 'tercero-cuenta' ? (isPhActive ? 'Inmueble / Tercero' : 'Tercero') : 'Cuenta');
+    const primaryField = mode === 'tercero-cuenta' ? 'keyTercero' : 'keyCuenta';
+    const secondaryField = mode === 'tercero-cuenta' ? 'keyCuenta' : 'keyTercero';
+    const primaryLabel = mode === 'cuenta-sin-tercero' ? 'Cuenta' : (mode === 'tercero-cuenta' ? (isPhActive ? 'Inmueble / Tercero' : 'Tercero') : 'Cuenta');
     const secondaryLabel = mode === 'cuenta-sin-tercero' ? 'Sin Terceros' : (mode === 'tercero-cuenta' ? 'Cuenta' : (isPhActive ? 'Inmueble / Tercero' : 'Tercero'));
 
     // ── Ordenamiento Estrictamente Cronológico ───────────────────────────────
@@ -8579,10 +7561,10 @@ async function generateAuxiliaryRows() {
     }
 
     // ── Totales Generales (Derivados del Gran Total del Libro Mayor) ──
-    const totalPrev   = (openingBalances || []).reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0);
-    const totalDebit  = rows.reduce((s, r) => s + r.debito,  0);
+    const totalPrev = (openingBalances || []).reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0);
+    const totalDebit = rows.reduce((s, r) => s + r.debito, 0);
     const totalCredit = rows.reduce((s, r) => s + r.credito, 0);
-    const totalCurr   = totalPrev + totalDebit - totalCredit;
+    const totalCurr = totalPrev + totalDebit - totalCredit;
 
     const layoutRows: any[] = [];
 
@@ -8842,16 +7824,16 @@ async function generateAuxiliaryRows() {
         }));
 
         exportToExcel(exportRows, [
-          { key: 'cuenta',         label: 'CUENTA' },
-          { key: 'tercero',        label: 'TERCERO' },
-          { key: 'fecha',          label: 'FECHA' },
-          { key: 'cruce',          label: 'CRUCE' },
-          { key: 'detalle_docto',   label: 'DETALLE DOCTO.' },
-          { key: 'comprobante',     label: 'COMPROBANTE' },
-          { key: 'saldo_anterior',  label: 'SALDO ANTERIOR' },
-          { key: 'debito',          label: 'DEBITO' },
-          { key: 'credito',         label: 'CREDITO' },
-          { key: 'nuevo_saldo',     label: 'NUEVO SALDO' },
+          { key: 'cuenta', label: 'CUENTA' },
+          { key: 'tercero', label: 'TERCERO' },
+          { key: 'fecha', label: 'FECHA' },
+          { key: 'cruce', label: 'CRUCE' },
+          { key: 'detalle_docto', label: 'DETALLE DOCTO.' },
+          { key: 'comprobante', label: 'COMPROBANTE' },
+          { key: 'saldo_anterior', label: 'SALDO ANTERIOR' },
+          { key: 'debito', label: 'DEBITO' },
+          { key: 'credito', label: 'CREDITO' },
+          { key: 'nuevo_saldo', label: 'NUEVO SALDO' },
         ], 'libro_auxiliar', {
           title: 'LIBRO AUXILIAR',
           companyName: companyLine1,
@@ -9280,7 +8262,7 @@ async function renderWithholdingCertificates() {
       };
 
       const yearLines = lines.filter(l => l.expand?.tx_id?.date && l.expand.tx_id.date.startsWith(year));
-      
+
       // Agrupación contable neta por concepto y tarifa (respetando débitos y devoluciones)
       const summaryMap = new Map<string, any>();
 
@@ -9726,24 +8708,24 @@ async function renderPazYSalvoCertificate() {
   let pazMode = 'tercero';
   if (isPhActive) {
     const btnPazTercero = $('#paz-mode-tercero') as HTMLButtonElement;
-    const btnPazUnidad  = $('#paz-mode-unidad')  as HTMLButtonElement;
-    const panelTercero  = document.getElementById('paz-panel-tercero');
-    const panelUnidad   = document.getElementById('paz-panel-unidad');
+    const btnPazUnidad = $('#paz-mode-unidad') as HTMLButtonElement;
+    const panelTercero = document.getElementById('paz-panel-tercero');
+    const panelUnidad = document.getElementById('paz-panel-unidad');
 
     const setPazMode = (mode: string) => {
       pazMode = mode;
       const isTercero = mode === 'tercero';
-      btnPazTercero.style.background  = isTercero ? '#fff' : 'transparent';
-      btnPazTercero.style.color       = isTercero ? '#7C3AED' : '#6B7280';
-      btnPazTercero.style.boxShadow   = isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
-      btnPazUnidad.style.background   = !isTercero ? '#fff' : 'transparent';
-      btnPazUnidad.style.color        = !isTercero ? '#7C3AED' : '#6B7280';
-      btnPazUnidad.style.boxShadow    = !isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
+      btnPazTercero.style.background = isTercero ? '#fff' : 'transparent';
+      btnPazTercero.style.color = isTercero ? '#7C3AED' : '#6B7280';
+      btnPazTercero.style.boxShadow = isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
+      btnPazUnidad.style.background = !isTercero ? '#fff' : 'transparent';
+      btnPazUnidad.style.color = !isTercero ? '#7C3AED' : '#6B7280';
+      btnPazUnidad.style.boxShadow = !isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
       if (panelTercero) panelTercero.style.display = isTercero ? '' : 'none';
-      if (panelUnidad)  panelUnidad.style.display  = !isTercero ? '' : 'none';
+      if (panelUnidad) panelUnidad.style.display = !isTercero ? '' : 'none';
     };
     btnPazTercero?.addEventListener('click', () => setPazMode('tercero'));
-    btnPazUnidad?.addEventListener('click',  () => setPazMode('unidad'));
+    btnPazUnidad?.addEventListener('click', () => setPazMode('unidad'));
 
     // Info al seleccionar unidad
     const propSel = document.getElementById('paz-property-id') as HTMLSelectElement;
@@ -9758,7 +8740,7 @@ async function renderPazYSalvoCertificate() {
       box.innerHTML = `
         <div class="flex flex-wrap gap-4">
           <span><i class="fas fa-building mr-1"></i><strong>Unidad:</strong> ${esc(prop.code)} — ${esc(prop.name)}</span>
-          ${prop.tower     ? `<span><i class="fas fa-layer-group mr-1"></i><strong>Torre:</strong> ${esc(prop.tower)}</span>` : ''}
+          ${prop.tower ? `<span><i class="fas fa-layer-group mr-1"></i><strong>Torre:</strong> ${esc(prop.tower)}</span>` : ''}
           ${prop.apartment ? `<span><i class="fas fa-door-open mr-1"></i><strong>Apto:</strong> ${esc(prop.apartment)}</span>` : ''}
           ${prop.coef_participacion ? `<span><i class="fas fa-percent mr-1"></i><strong>Coef.:</strong> ${Number(prop.coef_participacion).toFixed(4)}%</span>` : ''}
           ${prop.admin_fee ? `<span><i class="fas fa-coins mr-1"></i><strong>Cuota Admin.:</strong> ${fmt(prop.admin_fee)}</span>` : ''}
@@ -9780,12 +8762,12 @@ async function renderPazYSalvoCertificate() {
     const results = $('#paz-salvo-results');
     if (!results) return;
 
-    const thirdId    = getSelectVal('paz-third');
+    const thirdId = getSelectVal('paz-third');
     const cutoffDate = getInputVal('paz-cutoff');
-    const city       = getInputVal('paz-city') || 'Bogotá';
-    const concept    = getInputVal('paz-concept') || 'Trámites administrativos';
+    const city = getInputVal('paz-city') || 'Bogotá';
+    const concept = getInputVal('paz-concept') || 'Trámites administrativos';
 
-    if (!thirdId)    return showToast('Seleccione un tercero.', 'warning');
+    if (!thirdId) return showToast('Seleccione un tercero.', 'warning');
     if (!cutoffDate) return showToast('Ingrese la fecha de corte.', 'warning');
 
     results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Verificando saldos en cartera...</div>';
@@ -9793,7 +8775,7 @@ async function renderPazYSalvoCertificate() {
     try {
       const docs = await buildOpenPortfolioDocs({ mode: 'cxc', asOfDate: cutoffDate, thirdType: '' });
       const clientDocs = docs.filter(d => d.third_id === thirdId);
-      const totalOpen  = clientDocs.reduce((s, r) => s + Number(r.open || 0), 0);
+      const totalOpen = clientDocs.reduce((s, r) => s + Number(r.open || 0), 0);
       const selectedThird = thirds.find(t => t.id === thirdId);
 
       if (totalOpen > 0.01) {
@@ -9817,8 +8799,8 @@ async function renderPazYSalvoCertificate() {
         return;
       }
 
-      const months   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-      const now      = new Date();
+      const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const now = new Date();
       const dateText = `${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
 
       results.innerHTML = `
@@ -9851,12 +8833,12 @@ async function renderPazYSalvoCertificate() {
     const results = $('#paz-salvo-results');
     if (!results) return;
 
-    const propId     = (document.getElementById('paz-property-id') as HTMLSelectElement)?.value || '';
+    const propId = (document.getElementById('paz-property-id') as HTMLSelectElement)?.value || '';
     const cutoffDate = getInputVal('paz-cutoff-ph') || getInputVal('paz-cutoff');
-    const city       = getInputVal('paz-city-ph')   || getInputVal('paz-city') || 'Bogotá';
-    const concept    = getInputVal('paz-concept') || 'Trámites notariales de compraventa del inmueble';
+    const city = getInputVal('paz-city-ph') || getInputVal('paz-city') || 'Bogotá';
+    const concept = getInputVal('paz-concept') || 'Trámites notariales de compraventa del inmueble';
 
-    if (!propId)     return showToast('Selecciona una Unidad Habitacional.', 'warning');
+    if (!propId) return showToast('Selecciona una Unidad Habitacional.', 'warning');
     if (!cutoffDate) return showToast('Ingresa la fecha de corte.', 'warning');
 
     const prop = phProperties.find(p => p.id === propId);
@@ -9873,19 +8855,19 @@ async function renderPazYSalvoCertificate() {
       const saldoTotal = Number(phCartera?.totals?.grandTotal || 0);
       const rowsPendientes = (phCartera?.rows || []) as any[];
 
-      const months   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-      const now      = new Date();
+      const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const now = new Date();
       const dateText = `${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
 
-      const propCode  = prop.code || propId;
-      const propName  = prop.name || '';
-      const propTower = prop.tower    ? `Torre <strong>${esc(prop.tower)}</strong>, ` : '';
-      const propApto  = prop.apartment ? `Apartamento/Local <strong>${esc(prop.apartment)}</strong>, ` : '';
-      const propCoef  = prop.coef_participacion ? Number(prop.coef_participacion).toFixed(4) + '%' : 'N/A';
+      const propCode = prop.code || propId;
+      const propName = prop.name || '';
+      const propTower = prop.tower ? `Torre <strong>${esc(prop.tower)}</strong>, ` : '';
+      const propApto = prop.apartment ? `Apartamento/Local <strong>${esc(prop.apartment)}</strong>, ` : '';
+      const propCoef = prop.coef_participacion ? Number(prop.coef_participacion).toFixed(4) + '%' : 'N/A';
 
       // Propietario de la unidad
       let ownerName = prop.owner_name || '';
-      let ownerDoc  = prop.owner_doc  || '';
+      let ownerDoc = prop.owner_doc || '';
       if (!ownerName && prop.owner_id) {
         const ownerThird = thirds.find(t => t.id === prop.owner_id);
         if (ownerThird) { ownerName = ownerThird.name; ownerDoc = ownerThird.doc_number; }
@@ -9941,12 +8923,12 @@ async function renderPazYSalvoCertificate() {
             <div class="grid grid-cols-2 gap-2">
               <div><span style="color:#6B7280">Código / Nomenclatura:</span> <strong>${esc(propCode)}</strong></div>
               <div><span style="color:#6B7280">Nombre Unidad:</span> <strong>${esc(propName)}</strong></div>
-              ${prop.tower     ? `<div><span style="color:#6B7280">Torre / Bloque:</span> <strong>${esc(prop.tower)}</strong></div>` : ''}
+              ${prop.tower ? `<div><span style="color:#6B7280">Torre / Bloque:</span> <strong>${esc(prop.tower)}</strong></div>` : ''}
               ${prop.apartment ? `<div><span style="color:#6B7280">Apto / Local:</span> <strong>${esc(prop.apartment)}</strong></div>` : ''}
               <div><span style="color:#6B7280">Coef. Participación:</span> <strong>${propCoef}</strong></div>
               <div><span style="color:#6B7280">Fecha de corte:</span> <strong>${esc(cutoffDate)}</strong></div>
               ${ownerName ? `<div><span style="color:#6B7280">Propietario:</span> <strong>${esc(ownerName)}</strong></div>` : ''}
-              ${ownerDoc  ? `<div><span style="color:#6B7280">Identificación:</span> <strong>${esc(ownerDoc)}</strong></div>` : ''}
+              ${ownerDoc ? `<div><span style="color:#6B7280">Identificación:</span> <strong>${esc(ownerDoc)}</strong></div>` : ''}
             </div>
           </div>
 
@@ -11290,12 +10272,12 @@ async function generateIvaReportRows() {
       for (let i = 0; i < txIds.length; i += chunkSize) {
         chunks.push(txIds.slice(i, i + chunkSize));
       }
-      
+
       const crossLinesPromises = chunks.map(chunk => {
         const filter = chunk.map(id => `tx_id="${id}"`).join(' || ') + ' && cross_doc_ref != ""';
         return pb.listAll('tx_lines', { filter, fields: 'tx_id,cross_doc_ref' });
       });
-      
+
       const crossLinesRes = await Promise.all(crossLinesPromises);
       const crossLines = crossLinesRes.flat();
       for (const cl of crossLines) {
@@ -11437,7 +10419,7 @@ async function generateIvaReportRows() {
           agg.base += item.base;
           agg.value += item.net;
         });
-        g.aggregatedRows = [...aggregates.values()].sort((a, b) => 
+        g.aggregatedRows = [...aggregates.values()].sort((a, b) =>
           (a.third?.name || '').localeCompare(b.third?.name || '')
         );
         g.totalBase = g.aggregatedRows.reduce((sum: number, r: any) => sum + r.base, 0);
@@ -11509,8 +10491,8 @@ async function generateIvaReportRows() {
               </thead>
               <tbody>
                 ${sortedAccountCodes.map(code => {
-                  const g = accountGroups.get(code);
-                  const accHeader = `
+        const g = accountGroups.get(code);
+        const accHeader = `
                     <tr class="bg-green-50/50">
                       <td colspan="${isRes ? 10 : 13}" class="p-2.5 font-bold text-green-900 border-b border-green-100/80 text-xs">
                         <i class="fas fa-folder-tree text-green-500 mr-1.5"></i>
@@ -11519,16 +10501,16 @@ async function generateIvaReportRows() {
                       </td>
                     </tr>`;
 
-                  let rowsHtml = '';
-                  if (isRes) {
-                    rowsHtml = g.aggregatedRows.map((agg: any) => {
-                      const isValNeg = Number(agg.value || 0) < 0;
-                      const isBaseNeg = Number(agg.base || 0) < 0;
-                      const rowBg = isValNeg ? 'bg-rose-50/15 hover:bg-rose-50/30' : 'hover:bg-gray-50/50';
-                      const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/70 border border-rose-200/60 rounded px-1.5 py-0.5 inline-block' : 'text-green-950 font-bold';
-                      const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
+        let rowsHtml = '';
+        if (isRes) {
+          rowsHtml = g.aggregatedRows.map((agg: any) => {
+            const isValNeg = Number(agg.value || 0) < 0;
+            const isBaseNeg = Number(agg.base || 0) < 0;
+            const rowBg = isValNeg ? 'bg-rose-50/15 hover:bg-rose-50/30' : 'hover:bg-gray-50/50';
+            const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/70 border border-rose-200/60 rounded px-1.5 py-0.5 inline-block' : 'text-green-950 font-bold';
+            const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
 
-                      return `
+            return `
                       <tr class="${rowBg} transition-colors border-b border-gray-100">
                         <td class="p-3 font-medium text-gray-800">${esc(agg.third?.name || 'Sin tercero')}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(agg.third?.doc_number || 'SIN DOC')}</td>
@@ -11541,18 +10523,18 @@ async function generateIvaReportRows() {
                         <td class="p-3 text-right font-mono text-gray-600">${agg.rate > 0 ? `${agg.rate}%` : '—'}</td>
                         <td class="p-3 text-right font-mono"><span class="${valClass}">${fmt(agg.value)}</span></td>
                       </tr>`;
-                    }).join('');
-                  } else {
-                    rowsHtml = g.lines.map((item: any) => {
-                      const isValNeg = Number(item.net || 0) < 0;
-                      const isBaseNeg = Number(item.base || 0) < 0;
-                      const rowBg = isValNeg ? 'bg-rose-50/20 hover:bg-rose-50/40' : 'hover:bg-gray-50/50';
-                      const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/80 border border-rose-200/80 rounded px-1.5 py-0.5 inline-block' : 'text-green-950 font-bold';
-                      const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
-                      const isNC = (item.tx?.number || '').toUpperCase().startsWith('NC') || isValNeg;
-                      const docBadge = isNC ? `<span class="badge bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[9px] ml-1.5" title="Devolución o Nota que resta valor">NC</span>` : '';
+          }).join('');
+        } else {
+          rowsHtml = g.lines.map((item: any) => {
+            const isValNeg = Number(item.net || 0) < 0;
+            const isBaseNeg = Number(item.base || 0) < 0;
+            const rowBg = isValNeg ? 'bg-rose-50/20 hover:bg-rose-50/40' : 'hover:bg-gray-50/50';
+            const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/80 border border-rose-200/80 rounded px-1.5 py-0.5 inline-block' : 'text-green-950 font-bold';
+            const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
+            const isNC = (item.tx?.number || '').toUpperCase().startsWith('NC') || isValNeg;
+            const docBadge = isNC ? `<span class="badge bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[9px] ml-1.5" title="Devolución o Nota que resta valor">NC</span>` : '';
 
-                      return `
+            return `
                       <tr class="${rowBg} transition-colors border-b border-gray-100">
                         <td class="p-3 font-medium text-gray-800">${esc(item.third?.name || 'Sin tercero')}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(item.third?.doc_number || 'SIN DOC')}</td>
@@ -11568,13 +10550,13 @@ async function generateIvaReportRows() {
                         <td class="p-3 text-right font-mono text-gray-600">${item.rate > 0 ? `${item.rate}%` : '—'}</td>
                         <td class="p-3 text-right font-mono"><span class="${valClass}">${fmt(item.net)}</span></td>
                       </tr>`;
-                    }).join('');
-                  }
+          }).join('');
+        }
 
-                  const subValClass = g.totalValor < 0 ? 'text-rose-600 font-bold' : 'text-green-900';
-                  const subBaseClass = g.totalBase < 0 ? 'text-rose-600 font-bold' : 'text-gray-800';
+        const subValClass = g.totalValor < 0 ? 'text-rose-600 font-bold' : 'text-green-900';
+        const subBaseClass = g.totalBase < 0 ? 'text-rose-600 font-bold' : 'text-gray-800';
 
-                  const subtotalHtml = `
+        const subtotalHtml = `
                     <tr class="bg-gray-50/80 border-b border-gray-200 font-bold text-gray-700">
                       <td colspan="${isRes ? 7 : 10}" class="p-3 text-right">Subtotal Cuenta ${code}:</td>
                       <td class="p-3 text-right font-mono ${subBaseClass}">${fmt(g.totalBase)}</td>
@@ -11582,8 +10564,8 @@ async function generateIvaReportRows() {
                       <td class="p-3 text-right font-mono ${subValClass}">${fmt(g.totalValor)}</td>
                     </tr>`;
 
-                  return accHeader + rowsHtml + subtotalHtml;
-                }).join('')}
+        return accHeader + rowsHtml + subtotalHtml;
+      }).join('')}
               </tbody>
               <tfoot>
                 <!-- Totalizador general en la tabla -->
@@ -11664,7 +10646,7 @@ async function exportIvaToExcel() {
   const toDate = data.toDate;
   const reportType = data.reportType;
   const isRes = reportType === 'resumido';
-  
+
   const year = fromDate.substring(0, 4);
 
   const formatExcelDate = (dateStr: string) => {
@@ -11703,18 +10685,18 @@ async function exportIvaToExcel() {
   </style></head><body>`;
 
   html += '<table>';
-  
+
   html += `<tr><td class="header-company" colspan="9">${esc(companyName.toUpperCase())}</td></tr>`;
   html += `<tr><td class="header-nit" colspan="9">NIT. ${esc(companyNit)}</td></tr>`;
   html += `<tr><td colspan="9"></td></tr>`;
-  
+
   const reportTitleName = isRes ? 'INFORME CONSOLIDADO DE IVA' : 'INFORME DETALLADO DE IVA';
   html += `<tr><td class="header-title" colspan="9">${reportTitleName}</td></tr>`;
   html += `<tr><td class="header-subtitle" colspan="9">POR EL AÑO GRAVABLE DE ${year}</td></tr>`;
   html += `<tr><td class="header-subtitle" colspan="9">Desde ${formattedFrom} Hasta ${formattedTo}</td></tr>`;
   html += `<tr><td colspan="9"></td></tr>`;
 
-  const columns = isRes 
+  const columns = isRes
     ? ['Nombre/Razón Social', 'Ident./Nit', 'DigVer', 'P. Jurídica/P. Natural', 'Dirección', 'Tipo IVA', 'Ciudad', 'Base', '%', 'Valor']
     : ['Nombre/Razón Social', 'Ident./Nit', 'DigVer', 'P. Jurídica/P. Natural', 'Dirección', 'Tipo IVA', 'Documento', 'Fecha', 'NumExterno', 'Ciudad', 'Base', '%', 'Valor'];
 
@@ -11858,8 +10840,8 @@ async function exportIvaToPdf() {
     const doc = new jsPdfCtor({ orientation, unit: 'pt', format: 'letter' });
     const headerCtx = await getPdfHeaderContext();
 
-    const reportTitleName = isRes 
-      ? 'Informe Consolidado de IVA' 
+    const reportTitleName = isRes
+      ? 'Informe Consolidado de IVA'
       : 'Informe Detallado de IVA';
 
     const header = drawPdfHeader(doc, headerCtx, {
@@ -11882,10 +10864,10 @@ async function exportIvaToPdf() {
     data.accountGroups.forEach((g: any) => {
       const colSpan = isRes ? 10 : 13;
       body.push([
-        { 
-          content: `${g.code} — ${g.name} (${g.type === 'Generado' ? 'Pasivo / Generado' : 'Activo / Descontable'})`, 
-          colSpan, 
-          styles: { fontStyle: 'bold', fillColor: [240, 253, 244], textColor: [15, 23, 42] } 
+        {
+          content: `${g.code} — ${g.name} (${g.type === 'Generado' ? 'Pasivo / Generado' : 'Activo / Descontable'})`,
+          colSpan,
+          styles: { fontStyle: 'bold', fillColor: [240, 253, 244], textColor: [15, 23, 42] }
         }
       ]);
 
@@ -11975,7 +10957,7 @@ async function exportIvaToPdf() {
       ]);
     }
 
-    const head = isRes 
+    const head = isRes
       ? [['Nombre/Razón Social', 'Ident./Nit', 'DV', 'P.J./P.N.', 'Dirección', 'Tipo', 'Ciudad', 'Base Gravable', '%', 'Valor']]
       : [['Nombre/Razón Social', 'Ident./Nit', 'DV', 'P.J./P.N.', 'Dirección', 'Tipo', 'Documento', 'Fecha', 'NumExt', 'Ciudad', 'Base', '%', 'Valor']];
 
@@ -12239,12 +11221,12 @@ async function generateRetReportRows() {
       for (let i = 0; i < txIds.length; i += chunkSize) {
         chunks.push(txIds.slice(i, i + chunkSize));
       }
-      
+
       const crossLinesPromises = chunks.map(chunk => {
         const filter = chunk.map(id => `tx_id="${id}"`).join(' || ') + ' && cross_doc_ref != ""';
         return pb.listAll('tx_lines', { filter, fields: 'tx_id,cross_doc_ref' });
       });
-      
+
       const crossLinesRes = await Promise.all(crossLinesPromises);
       const crossLines = crossLinesRes.flat();
       for (const cl of crossLines) {
@@ -12411,7 +11393,7 @@ async function generateRetReportRows() {
           agg.base += item.base;
           agg.value += item.net;
         });
-        g.aggregatedRows = [...aggregates.values()].sort((a, b) => 
+        g.aggregatedRows = [...aggregates.values()].sort((a, b) =>
           (a.third?.name || '').localeCompare(b.third?.name || '')
         );
         g.totalBase = g.aggregatedRows.reduce((sum: number, r: any) => sum + r.base, 0);
@@ -12482,8 +11464,8 @@ async function generateRetReportRows() {
               </thead>
               <tbody>
                 ${sortedAccountCodes.map(code => {
-                  const g = accountGroups.get(code);
-                  const accHeader = `
+        const g = accountGroups.get(code);
+        const accHeader = `
                     <tr class="bg-indigo-50/50">
                       <td colspan="${isRes ? 9 : 12}" class="p-2.5 font-bold text-indigo-900 border-b border-indigo-100/80 text-xs">
                         <i class="fas fa-folder-tree text-indigo-500 mr-1.5"></i>
@@ -12492,16 +11474,16 @@ async function generateRetReportRows() {
                       </td>
                     </tr>`;
 
-                  let rowsHtml = '';
-                  if (isRes) {
-                    rowsHtml = g.aggregatedRows.map((agg: any) => {
-                      const isValNeg = Number(agg.value || 0) < 0;
-                      const isBaseNeg = Number(agg.base || 0) < 0;
-                      const rowBg = isValNeg ? 'bg-rose-50/15 hover:bg-rose-50/30' : 'hover:bg-gray-50/50';
-                      const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/70 border border-rose-200/60 rounded px-1.5 py-0.5 inline-block' : 'text-indigo-950 font-bold';
-                      const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
+        let rowsHtml = '';
+        if (isRes) {
+          rowsHtml = g.aggregatedRows.map((agg: any) => {
+            const isValNeg = Number(agg.value || 0) < 0;
+            const isBaseNeg = Number(agg.base || 0) < 0;
+            const rowBg = isValNeg ? 'bg-rose-50/15 hover:bg-rose-50/30' : 'hover:bg-gray-50/50';
+            const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/70 border border-rose-200/60 rounded px-1.5 py-0.5 inline-block' : 'text-indigo-950 font-bold';
+            const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
 
-                      return `
+            return `
                       <tr class="${rowBg} transition-colors border-b border-gray-100">
                         <td class="p-3 font-medium text-gray-800">${esc(agg.third?.name || 'Sin tercero')}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(agg.third?.doc_number || 'SIN DOC')}</td>
@@ -12513,18 +11495,18 @@ async function generateRetReportRows() {
                         <td class="p-3 text-right font-mono text-gray-600">${agg.rate > 0 ? `${agg.rate}%` : '—'}</td>
                         <td class="p-3 text-right font-mono"><span class="${valClass}">${fmt(agg.value)}</span></td>
                       </tr>`;
-                    }).join('');
-                  } else {
-                    rowsHtml = g.lines.map((item: any) => {
-                      const isValNeg = Number(item.net || 0) < 0;
-                      const isBaseNeg = Number(item.base || 0) < 0;
-                      const rowBg = isValNeg ? 'bg-rose-50/20 hover:bg-rose-50/40' : 'hover:bg-gray-50/50';
-                      const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/80 border border-rose-200/80 rounded px-1.5 py-0.5 inline-block' : 'text-indigo-950 font-bold';
-                      const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
-                      const isNC = (item.tx?.number || '').toUpperCase().startsWith('NC') || isValNeg;
-                      const docBadge = isNC ? `<span class="badge bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[9px] ml-1.5" title="Devolución o Nota que resta valor">NC</span>` : '';
+          }).join('');
+        } else {
+          rowsHtml = g.lines.map((item: any) => {
+            const isValNeg = Number(item.net || 0) < 0;
+            const isBaseNeg = Number(item.base || 0) < 0;
+            const rowBg = isValNeg ? 'bg-rose-50/20 hover:bg-rose-50/40' : 'hover:bg-gray-50/50';
+            const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/80 border border-rose-200/80 rounded px-1.5 py-0.5 inline-block' : 'text-indigo-950 font-bold';
+            const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
+            const isNC = (item.tx?.number || '').toUpperCase().startsWith('NC') || isValNeg;
+            const docBadge = isNC ? `<span class="badge bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[9px] ml-1.5" title="Devolución o Nota que resta valor">NC</span>` : '';
 
-                      return `
+            return `
                       <tr class="${rowBg} transition-colors border-b border-gray-100">
                         <td class="p-3 font-medium text-gray-800">${esc(item.third?.name || 'Sin tercero')}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(item.third?.doc_number || 'SIN DOC')}</td>
@@ -12539,13 +11521,13 @@ async function generateRetReportRows() {
                         <td class="p-3 text-right font-mono text-gray-600">${item.rate > 0 ? `${item.rate}%` : '—'}</td>
                         <td class="p-3 text-right font-mono"><span class="${valClass}">${fmt(item.net)}</span></td>
                       </tr>`;
-                    }).join('');
-                  }
+          }).join('');
+        }
 
-                  const subValClass = g.totalValor < 0 ? 'text-rose-600 font-bold' : 'text-indigo-900';
-                  const subBaseClass = g.totalBase < 0 ? 'text-rose-600 font-bold' : 'text-gray-800';
+        const subValClass = g.totalValor < 0 ? 'text-rose-600 font-bold' : 'text-indigo-900';
+        const subBaseClass = g.totalBase < 0 ? 'text-rose-600 font-bold' : 'text-gray-800';
 
-                  const subtotalHtml = `
+        const subtotalHtml = `
                     <tr class="bg-gray-50/80 border-b border-gray-200 font-bold text-gray-700">
                       <td colspan="${isRes ? 6 : 9}" class="p-3 text-right">Subtotal Cuenta ${code}:</td>
                       <td class="p-3 text-right font-mono ${subBaseClass}">${fmt(g.totalBase)}</td>
@@ -12553,8 +11535,8 @@ async function generateRetReportRows() {
                       <td class="p-3 text-right font-mono ${subValClass}">${fmt(g.totalValor)}</td>
                     </tr>`;
 
-                  return accHeader + rowsHtml + subtotalHtml;
-                }).join('')}
+        return accHeader + rowsHtml + subtotalHtml;
+      }).join('')}
               </tbody>
               <tfoot>
                 <!-- Totalizador general en la tabla -->
@@ -12648,7 +11630,7 @@ async function exportRetToExcel() {
   const toDate = data.toDate;
   const reportType = data.reportType;
   const isRes = reportType === 'resumido';
-  
+
   const year = fromDate.substring(0, 4);
 
   // Formatear fechas como "Mmm-dd-yyyy" para que coincida con las plantillas de referencia
@@ -12688,7 +11670,7 @@ async function exportRetToExcel() {
   </style></head><body>`;
 
   html += '<table>';
-  
+
   // Fila 1: Nombre de la empresa
   html += `<tr><td class="header-company" colspan="9">${esc(companyName.toUpperCase())}</td></tr>`;
   // Fila 2: NIT
@@ -12709,7 +11691,7 @@ async function exportRetToExcel() {
   html += `<tr><td colspan="9"></td></tr>`;
 
   // Fila 7: Cabeceras de columna
-  const columns = isRes 
+  const columns = isRes
     ? ['Nombre/Razón Social', 'Ident./Nit', 'DigVer', 'P. Jurídica/P. Natural', 'Dirección', 'Ciudad', 'Base', '%', 'Valor']
     : ['Nombre/Razón Social', 'Ident./Nit', 'DigVer', 'P. Jurídica/P. Natural', 'Dirección', 'Documento', 'Fecha', 'NumExterno', 'Ciudad', 'Base', '%', 'Valor'];
 
@@ -12856,8 +11838,8 @@ async function exportRetToPdf() {
     const doc = new jsPdfCtor({ orientation, unit: 'pt', format: 'letter' });
     const headerCtx = await getPdfHeaderContext();
 
-    const reportTitleName = isRes 
-      ? 'Informe Consolidado de Retención en la Fuente' 
+    const reportTitleName = isRes
+      ? 'Informe Consolidado de Retención en la Fuente'
       : 'Informe Detallado de Retención en la Fuente';
 
     const subtitles: string[] = [
@@ -12886,10 +11868,10 @@ async function exportRetToPdf() {
       // 1. Fila de Cabecera de la Cuenta
       const colSpan = isRes ? 9 : 12;
       body.push([
-        { 
-          content: `${g.code} — ${g.name} (${g.type === 'Practicada' ? 'Pasivo / Practicada' : 'Activo / A Favor'})`, 
-          colSpan, 
-          styles: { fontStyle: 'bold', fillColor: [240, 244, 255], textColor: [15, 23, 42] } 
+        {
+          content: `${g.code} — ${g.name} (${g.type === 'Practicada' ? 'Pasivo / Practicada' : 'Activo / A Favor'})`,
+          colSpan,
+          styles: { fontStyle: 'bold', fillColor: [240, 244, 255], textColor: [15, 23, 42] }
         }
       ]);
 
@@ -12981,7 +11963,7 @@ async function exportRetToPdf() {
     }
 
     // Cabeceras de autoTable
-    const head = isRes 
+    const head = isRes
       ? [['Nombre/Razón Social', 'Ident./Nit', 'DV', 'P.J./P.N.', 'Dirección', 'Ciudad', 'Base Gravable', '%', 'Valor']]
       : [['Nombre/Razón Social', 'Ident./Nit', 'DV', 'P.J./P.N.', 'Dirección', 'Documento', 'Fecha', 'NumExt', 'Ciudad', 'Base', '%', 'Valor']];
 
@@ -13149,7 +12131,7 @@ async function renderSalesEmissionReport() {
         const isPOS = !!inv.pos_shift_id;
         const registerId = inv.expand?.pos_shift_id?.pos_register_id || '';
         const registerName = inv.expand?.pos_shift_id?.expand?.pos_register_id?.name || '—';
-        
+
         const mapPaymentMethod = (pm: string): string => {
           if (!pm) return '—';
           const val = String(pm).toUpperCase();
@@ -13488,7 +12470,7 @@ async function renderSalesProductsReport() {
       invoices.forEach((inv: any) => {
         const isPOS = !!inv.pos_shift_id;
         const registerId = inv.expand?.pos_shift_id?.pos_register_id || '';
-        
+
         unified.push({
           id: inv.id,
           typeCode: isPOS ? 'POS' : 'STAND',
@@ -13555,7 +12537,7 @@ async function renderSalesProductsReport() {
       let totalSubtotal = 0;
       let totalIva = 0;
       let totalGeneral = 0;
-      
+
       const addLine = (line: any) => {
         const prod = line.expand?.product_id;
         const prodId = line.product_id || 'SIN_PRODUCTO';
@@ -13637,8 +12619,8 @@ async function renderSalesProductsReport() {
           </thead>
           <tbody>
             ${productsList.map(p => {
-              const avgPrice = p.qty > 0 ? p.subtotal / p.qty : 0;
-              return `
+        const avgPrice = p.qty > 0 ? p.subtotal / p.qty : 0;
+        return `
                 <tr class="border-b hover:bg-gray-50" style="border-color:#F0F0F0">
                   <td class="py-2.5 px-3 font-mono text-gray-700">${esc(p.productCode)}</td>
                   <td class="py-2.5 px-3 font-semibold text-gray-800">${esc(p.productName)}</td>
@@ -13651,7 +12633,7 @@ async function renderSalesProductsReport() {
                   <td class="py-2.5 px-3 text-right font-bold text-blue-800 font-mono">${fmt(p.total)}</td>
                 </tr>
               `;
-            }).join('')}
+      }).join('')}
           </tbody>
           <tfoot>
             <tr style="background:#F9FAFB" class="font-bold">
@@ -13686,7 +12668,7 @@ async function renderSalesProductsReport() {
       { label: 'IVA', key: 'iva' },
       { label: 'Total', key: 'total' }
     ];
-    
+
     const formattedData = currentReportData.map(p => ({
       ...p,
       avgPrice: p.qty > 0 ? p.subtotal / p.qty : 0
@@ -13955,7 +12937,7 @@ async function renderSalesHeatmapReport() {
 
         matrix[hour][dayOfWeek].count += 1;
         matrix[hour][dayOfWeek].amount += item.total;
-        
+
         totalCount += 1;
         totalAmount += item.total;
       });
@@ -14231,7 +13213,7 @@ function classifyCashFlow(accCode) {
   if (group2 === '13') {
     return { category: 'Operación', subcategory: 'Recaudo de Clientes / Cartera' };
   }
-  
+
   // Cash outflow classifications (Suppliers, Expenses, Payroll, Taxes)
   if (group2 === '22' || group2 === '23') {
     return { category: 'Operación', subcategory: 'Pago a Proveedores y Acreedores' };
@@ -14381,28 +13363,6 @@ async function generateCashFlowReportRows() {
         </div>
       </div>
 
-      <!-- Panel Gráfico de Flujo de Efectivo Chart.js -->
-      <div class="mb-6">
-        <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center gap-2">
-            <button type="button" class="btn btn-xs btn-outline py-1 px-2.5" id="btn-toggle-cf-chart">
-              <i class="fas fa-chart-column mr-1 text-emerald-600"></i><span id="txt-toggle-cf-chart">Ocultar Gráficas</span>
-            </button>
-            <div class="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-xxs" id="cf-chart-type-toggle">
-              <button type="button" class="cf-chart-type-btn px-2.5 py-1 rounded font-semibold bg-emerald-600 text-white" data-type="activities">Flujo por Actividades</button>
-              <button type="button" class="cf-chart-type-btn px-2.5 py-1 rounded font-semibold text-gray-600 hover:bg-gray-100" data-type="waterfall">Conciliación de Saldo</button>
-            </div>
-          </div>
-          <span class="text-xxs text-gray-400 font-medium hidden sm:inline"><i class="fas fa-money-bill-transfer text-emerald-500 mr-1"></i>Análisis de liquidez</span>
-        </div>
-
-        <div id="cf-chart-wrapper" class="bg-white border rounded-2xl p-4 shadow-2xs" style="border-color:#E5E7EB">
-          <div style="height:240px; position:relative; width:100%">
-            <canvas id="cf-financial-chart"></canvas>
-          </div>
-        </div>
-      </div>
-
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
         <!-- Ingresos table -->
         <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
@@ -14450,158 +13410,9 @@ async function generateCashFlowReportRows() {
           </div>
         </div>
       </div>
+        </div>
+      </div>
     `;
-
-    // Desglose consolidado por actividades para gráficas
-    const actTotals: Record<string, { in: number; out: number; net: number }> = {
-      'Operación': { in: 0, out: 0, net: 0 },
-      'Inversión': { in: 0, out: 0, net: 0 },
-      'Financiación': { in: 0, out: 0, net: 0 }
-    };
-    flowItems.forEach((f: any) => {
-      const cat = f.category === 'Inversión' ? 'Inversión' : f.category === 'Financiación' ? 'Financiación' : 'Operación';
-      if (f.type === 'Ingreso') actTotals[cat].in += f.amount;
-      else actTotals[cat].out += f.amount;
-      actTotals[cat].net = actTotals[cat].in - actTotals[cat].out;
-    });
-
-    let currentCfChartType: 'activities' | 'waterfall' = 'activities';
-    let isCfChartVisible = true;
-
-    const buildCfChart = (type: 'activities' | 'waterfall') => {
-      const canvas = document.getElementById('cf-financial-chart') as HTMLCanvasElement;
-      if (!canvas) return;
-
-      if (cfChartInstance) {
-        cfChartInstance.destroy();
-        cfChartInstance = null;
-      }
-
-      if (type === 'activities') {
-        const labels = ['Actividades de Operación', 'Actividades de Inversión', 'Actividades de Financiación'];
-        const dataIn = [actTotals['Operación'].in, actTotals['Inversión'].in, actTotals['Financiación'].in];
-        const dataOut = [actTotals['Operación'].out, actTotals['Inversión'].out, actTotals['Financiación'].out];
-        const dataNet = [actTotals['Operación'].net, actTotals['Inversión'].net, actTotals['Financiación'].net];
-
-        cfChartInstance = new Chart(canvas, {
-          type: 'bar',
-          data: {
-            labels,
-            datasets: [
-              {
-                label: 'Entradas (+)',
-                data: dataIn,
-                backgroundColor: '#10B981',
-                borderRadius: 4
-              },
-              {
-                label: 'Salidas (-)',
-                data: dataOut,
-                backgroundColor: '#F43F5E',
-                borderRadius: 4
-              },
-              {
-                label: 'Flujo Neto (=)',
-                data: dataNet,
-                backgroundColor: '#3B82F6',
-                borderRadius: 4
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { position: 'top' },
-              tooltip: {
-                callbacks: {
-                  label: (ctx) => ` ${ctx.dataset.label}: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')}`
-                }
-              }
-            },
-            scales: {
-              y: {
-                ticks: {
-                  callback: (val) => `$ ${Number(val).toLocaleString('es-CO')}`
-                },
-                grid: { color: '#F1F5F9' }
-              },
-              x: {
-                grid: { display: false }
-              }
-            }
-          }
-        });
-      } else {
-        // Conciliación de Saldo (Waterfall)
-        const labels = ['Saldo Inicial', '(+) Entradas Totales', '(-) Salidas Totales', '(=) Saldo Final'];
-        const values = [initialBalance, totalInflows, -totalOutflows, finalBalance];
-        const colors = ['#64748B', '#10B981', '#F43F5E', '#2563EB'];
-
-        cfChartInstance = new Chart(canvas, {
-          type: 'bar',
-          data: {
-            labels,
-            datasets: [{
-              label: 'Flujo de Dinero',
-              data: values,
-              backgroundColor: colors,
-              borderRadius: 6
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: (ctx) => ` Monto: $ ${Number(ctx.raw || 0).toLocaleString('es-CO')}`
-                }
-              }
-            },
-            scales: {
-              y: {
-                ticks: {
-                  callback: (val) => `$ ${Number(val).toLocaleString('es-CO')}`
-                },
-                grid: { color: '#F1F5F9' }
-              },
-              x: {
-                grid: { display: false }
-              }
-            }
-          }
-        });
-      }
-    };
-
-    buildCfChart(currentCfChartType);
-
-    document.getElementById('btn-toggle-cf-chart')?.addEventListener('click', () => {
-      isCfChartVisible = !isCfChartVisible;
-      const wrapper = document.getElementById('cf-chart-wrapper');
-      const txt = document.getElementById('txt-toggle-cf-chart');
-      if (wrapper) wrapper.style.display = isCfChartVisible ? 'block' : 'none';
-      if (txt) txt.textContent = isCfChartVisible ? 'Ocultar Gráficas' : 'Mostrar Gráficas';
-    });
-
-    results.querySelectorAll('.cf-chart-type-btn').forEach(btn => {
-      btn.addEventListener('click', (ev) => {
-        const type = (ev.currentTarget as HTMLElement).getAttribute('data-type') as any;
-        if (type && type !== currentCfChartType) {
-          currentCfChartType = type;
-          results.querySelectorAll('.cf-chart-type-btn').forEach(b => {
-            if (b.getAttribute('data-type') === currentCfChartType) {
-              b.className = 'cf-chart-type-btn px-2.5 py-1 rounded font-semibold bg-emerald-600 text-white';
-            } else {
-              b.className = 'cf-chart-type-btn px-2.5 py-1 rounded font-semibold text-gray-600 hover:bg-gray-100';
-            }
-          });
-          buildCfChart(currentCfChartType);
-        }
-      });
-    });
 
     let signaturesHtml = '';
     let signatureValues = null;
@@ -14627,7 +13438,7 @@ async function generateCashFlowReportRows() {
             ${signatureBlock(revName, revTitle, revLicense)}
           </div>
         </div>`;
-      
+
       signatureValues = { repName, repTitle, contName, contTitle, contLicense, revName, revTitle, revLicense };
     }
 
@@ -14953,7 +13764,7 @@ async function generateFinancialAnalysisData() {
     const chartH = svgH - padT - padB;
 
     const maxMonthlyVal = Math.max(...monthlyCF.map(m => Math.max(m.inflow, m.outflow)), 10000);
-    
+
     // Draw gridlines
     let gridHtml = '';
     for (let i = 0; i <= 4; i++) {
@@ -14968,15 +13779,15 @@ async function generateFinancialAnalysisData() {
     const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     const barSpacing = chartW / 12;
     const barW = barSpacing * 0.35;
-    
+
     let barsHtml = '';
     monthlyCF.forEach((m, idx) => {
       const xCenter = padL + (idx * barSpacing) + (barSpacing / 2);
-      
+
       const xIn = xCenter - barW - 1;
       const hIn = (m.inflow / maxMonthlyVal) * chartH;
       const yIn = padT + chartH - hIn;
-      
+
       const xOut = xCenter + 1;
       const hOut = (m.outflow / maxMonthlyVal) * chartH;
       const yOut = padT + chartH - hOut;
@@ -15063,7 +13874,7 @@ async function generateFinancialAnalysisData() {
         auditorChecks.push({
           type: 'warning',
           title: `Rubro Sobreejecutado: ${l.expand?.account_id?.code}`,
-          desc: `La cuenta **${l.expand?.account_id?.name}** presenta una desviación presupuestal de **+${fmt(over)}** (${(Math.abs(l.executed)/l.annual_amount*100).toFixed(0)}% de ejecución).`
+          desc: `La cuenta **${l.expand?.account_id?.name}** presenta una desviación presupuestal de **+${fmt(over)}** (${(Math.abs(l.executed) / l.annual_amount * 100).toFixed(0)}% de ejecución).`
         });
       }
     });
@@ -15138,11 +13949,11 @@ async function generateFinancialAnalysisData() {
           <h5 class="font-bold text-gray-800 mb-3"><i class="fas fa-sack-dollar mr-2 text-indigo-700"></i>Ejecución Presupuestal de Rubros Principales</h5>
           <div class="space-y-4 mt-2">
             ${budgetSpentSorted.map(item => {
-              const spent = Math.abs(item.executed || 0);
-              const limit = item.annual_amount;
-              const ratio = limit > 0 ? (spent / limit * 100) : 0;
-              const barColor = ratio > 100 ? 'bg-red-500' : (ratio > 90 ? 'bg-amber-500' : 'bg-emerald-500');
-              return `
+      const spent = Math.abs(item.executed || 0);
+      const limit = item.annual_amount;
+      const ratio = limit > 0 ? (spent / limit * 100) : 0;
+      const barColor = ratio > 100 ? 'bg-red-500' : (ratio > 90 ? 'bg-amber-500' : 'bg-emerald-500');
+      return `
                 <div>
                   <div class="flex items-center justify-between text-xs mb-1">
                     <span class="font-bold text-gray-700">${item.expand?.account_id?.code} - ${esc(item.expand?.account_id?.name)}</span>
@@ -15153,7 +13964,7 @@ async function generateFinancialAnalysisData() {
                   </div>
                 </div>
               `;
-            }).join('')}
+    }).join('')}
             ${budgetSpentSorted.length === 0 ? '<p class="text-xs text-gray-400 py-4 text-center">No hay datos de presupuesto ejecutados.</p>' : ''}
           </div>
         </div>
@@ -15279,7 +14090,7 @@ async function generateDetailedBudgetExecutionData(forcedBudgetId = '', forcedYe
   const results = $('#pbd-results');
   if (!results) return;
   results.innerHTML = '<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando ejecución presupuestal...</div>';
-  
+
   const drilldownContainer = $('#pbd-drilldown-container');
   if (drilldownContainer) drilldownContainer.classList.add('hidden');
 
@@ -15344,7 +14155,7 @@ function renderDetailedBudgetMatrix(budgetLines, txLines) {
     const diff = l.annual_amount - Math.abs(l.executed);
     const perc = l.annual_amount > 0 ? (Math.abs(l.executed) / l.annual_amount * 100) : 0;
     const color = perc > 100 ? 'text-red-600' : (perc > 90 ? 'text-amber-600' : 'text-green-600');
-    
+
     totalBudget += l.annual_amount;
     totalExecuted += Math.abs(l.executed);
 
@@ -15356,15 +14167,15 @@ function renderDetailedBudgetMatrix(budgetLines, txLines) {
         <td class="sticky-left font-semibold" style="background:#FFF">${code} - ${esc(name)}</td>
         <td class="text-right font-semibold text-gray-700">${fmt(l.annual_amount)}</td>
         ${l.monthly_executed.map((val, mIdx) => {
-          monthlyTotals[mIdx] += Math.abs(val);
-          const valAbs = Math.abs(val);
-          const hasValue = valAbs > 0.01;
-          return `
+      monthlyTotals[mIdx] += Math.abs(val);
+      const valAbs = Math.abs(val);
+      const hasValue = valAbs > 0.01;
+      return `
             <td class="text-right ${hasValue ? 'font-medium text-blue-600 cursor-pointer hover:underline' : 'text-gray-300'}" 
                 onclick="${hasValue ? `window.showDetailedBudgetDrilldown('${l.id}', ${mIdx})` : ''}">
               ${hasValue ? fmt(valAbs) : '$0'}
             </td>`;
-        }).join('')}
+    }).join('')}
         <td class="text-right font-bold text-gray-800 cursor-pointer hover:underline" onclick="window.showDetailedBudgetDrilldown('${l.id}', -1)">
           ${fmt(Math.abs(l.executed))}
         </td>
@@ -15410,7 +14221,7 @@ function showDetailedBudgetDrilldown(lineId, monthIdx) {
 
   const code = budgetLine.expand?.account_id?.code || '';
   const name = budgetLine.expand?.account_id?.name || '';
-  
+
   const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const monthName = monthIdx >= 0 ? months[monthIdx] : 'Todo el año';
 
@@ -15475,7 +14286,7 @@ function showDetailedBudgetDrilldown(lineId, monthIdx) {
   }
 
   drilldownContainer.classList.remove('hidden');
-  
+
   // Scroll down to the drilldown table smoothly
   drilldownContainer.scrollIntoView({ behavior: 'smooth' });
 }
@@ -15497,7 +14308,7 @@ function exportDetailedBudgetToExcel() {
     [],
     ['Cuenta', 'Presupuesto Anual', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic', 'Total Ejecutado', 'Diferencia', '% Ejecución']
   ];
-  
+
   data.budgetLines.forEach(l => {
     const diff = l.annual_amount - Math.abs(l.executed);
     const perc = l.annual_amount > 0 ? (Math.abs(l.executed) / l.annual_amount * 100) : 0;
@@ -15513,9 +14324,9 @@ function exportDetailedBudgetToExcel() {
     ];
     wsMatrixData.push(row);
   });
-  
+
   const wsMatrix = (window as any).XLSX.utils.aoa_to_sheet(wsMatrixData);
-  
+
   // Sheet 2: Transactions
   const wsTxData = [
     [compLine],
@@ -15523,7 +14334,7 @@ function exportDetailedBudgetToExcel() {
     [],
     ['Fecha', 'Comprobante', 'Tercero', 'Cuenta Contable', 'Descripción', 'Débito', 'Crédito', 'Neto']
   ];
-  
+
   data.txLines.forEach(tl => {
     const dStr = tl.expand?.tx_id?.date || '';
     const num = tl.expand?.tx_id?.number || '';
@@ -15533,13 +14344,13 @@ function exportDetailedBudgetToExcel() {
     const net = (tl.debit || 0) - (tl.credit || 0);
     wsTxData.push([dStr, num, third, acc, desc, tl.debit || 0, tl.credit || 0, net]);
   });
-  
+
   const wsTx = (window as any).XLSX.utils.aoa_to_sheet(wsTxData);
-  
+
   const wb = (window as any).XLSX.utils.book_new();
   (window as any).XLSX.utils.book_append_sheet(wb, wsMatrix, 'Resumen Mensual');
   (window as any).XLSX.utils.book_append_sheet(wb, wsTx, 'Detalle de Transacciones');
-  
+
   (window as any).XLSX.writeFile(wb, `Ejecucion_Presupuestal_Detallada_${data.budgetYear}_${todayStr()}.xlsx`);
 }
 
@@ -15585,7 +14396,7 @@ async function exportDetailedBudgetToPdf() {
       const perc = l.annual_amount > 0 ? (Math.abs(l.executed) / l.annual_amount * 100) : 0;
       const code = l.expand?.account_id?.code || '';
       const name = l.expand?.account_id?.name || '';
-      
+
       return {
         account: `${code} - ${name}`,
         budget: fmtPdfNum(l.annual_amount),
@@ -16060,84 +14871,162 @@ function buildNoteSuggestion(
   titulo: string,
   saldoActual: number,
   saldoAnterior: number,
-  periodo: string,
-  supportingAccounts: any[] = []
+  periodo: string
 ): string {
   const cod = String(cuentaCodigo || '').trim();
   const now = Number(saldoActual || 0);
   const prev = Number(saldoAnterior || 0);
-  const diff = now - prev;
-  const varPct = prev !== 0 ? Math.round(((now - prev) / Math.abs(prev)) * 100) : (now !== 0 ? 100 : 0);
+  const varPct = prev !== 0 ? Math.round(((now - prev) / Math.abs(prev)) * 100) : 0;
   const fmtV = (n: number) => Math.abs(n).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
-  const periodoTexto = periodo ? `el periodo ${periodo.replace('_a_', ' a ')}` : 'el corte reportado';
+  const varTexto = varPct === 0
+    ? 'sin variación significativa respecto al periodo anterior'
+    : varPct > 0
+      ? `con un incremento del ${varPct}% respecto al periodo anterior`
+      : `con una disminución del ${Math.abs(varPct)}% respecto al periodo anterior`;
+  const periodoTexto = periodo || 'el periodo actual';
 
-  // Análisis de variación horizontal
-  let varTexto = '';
-  if (prev === 0 && now !== 0) {
-    varTexto = `constituye una partida nueva originada en el presente ejercicio por valor de ${fmtV(now)}`;
-  } else if (now === 0 && prev !== 0) {
-    varTexto = `refleja la total extinción o amortización del saldo precedente de ${fmtV(prev)}`;
-  } else if (varPct === 0) {
-    varTexto = 'mantiene estabilidad absoluta respecto al periodo anterior';
-  } else if (varPct > 0) {
-    varTexto = `presenta un incremento neto de ${fmtV(diff)} (+${varPct}%) frente al periodo anterior`;
-  } else {
-    varTexto = `presenta una reducción neta de ${fmtV(Math.abs(diff))} (-${Math.abs(varPct)}%) frente al periodo anterior`;
-  }
-
-  // Análisis de composición y dominancia de subcuentas (si se dispone del desglose)
-  let desgloseTexto = '';
-  if (supportingAccounts && supportingAccounts.length > 0) {
-    const active = supportingAccounts
-      .filter((a: any) => Math.abs(a.now) > 0.01 || Math.abs(a.cmp) > 0.01)
-      .sort((a: any, b: any) => Math.abs(b.now) - Math.abs(a.now));
-
-    if (active.length > 0) {
-      const topAccounts = active.slice(0, 3);
-      const itemsStr = topAccounts.map((a: any) => {
-        const pct = now !== 0 ? Math.round((Math.abs(a.now) / Math.abs(now)) * 100) : 0;
-        const part = pct > 0 ? ` (${pct}% del rubro)` : '';
-        return `"${a.name}" con ${fmtV(a.now)}${part}`;
-      }).join(', ');
-
-      desgloseTexto = `\n\nComposición y partidas principales:\nLa concentración principal del saldo se encuentra en: ${itemsStr}.`;
-
-      const topVariation = [...active].sort((a: any, b: any) => Math.abs(b.variation || 0) - Math.abs(a.variation || 0))[0];
-      if (topVariation && Math.abs(topVariation.variation || 0) > 1000) {
-        const vSign = (topVariation.variation || 0) >= 0 ? '+' : '-';
-        desgloseTexto += `\nEl principal factor explicativo de la variación neta correspondió a "${topVariation.name}", cuyo saldo varió en ${vSign}${fmtV(Math.abs(topVariation.variation))}.`;
-      }
-    }
-  }
-
-  // Revelaciones y políticas específicas según Marco Técnico Normativo NIIF (Dec. 2420/2015)
-  let marcoNormativoTexto = '';
-
+  // ── Clase 1: Activo ──────────────────────────────────────────────────────
   if (cod.startsWith('11')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Efectivo y Equivalentes):\nLos recursos corresponden a saldos en caja y entidades bancarias de disponibilidad inmediata y sin restricciones legales, gravámenes ni embargos a la fecha de corte. La entidad no mantiene sobregiros bancarios no autorizados ni compromisos de pignoración sobre estos fondos.`;
-  } else if (cod.startsWith('12') || cod.startsWith('13')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Deudores y Cuentas por Cobrar):\nComprende obligaciones a favor de la entidad exigibles en el corto plazo por operaciones comerciales o administrativas. De conformidad con la NIIF para PYMES (Sección 11) / Marco Técnico de Información Financiera, la cartera se evalúa por su costo amortizado o recuperable. Se efectúa seguimiento permanente a la antigüedad de saldos y se aplican las políticas de cobranza y provisiones por deterioro de cartera cuando proceda.`;
-  } else if (cod.startsWith('14')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Inventarios):\nLos inventarios se encuentran valorados al costo de adquisición mediante el método de promedio ponderado, de acuerdo con la Sección 13 de las NIIF para PYMES. No se evidencian pérdidas por obsolescencia técnica ni deterioro que sitúen el valor neto realizable por debajo de su costo contable en libros.`;
-  } else if (cod.startsWith('15') || cod.startsWith('16') || cod.startsWith('17') || cod.startsWith('18')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Propiedades, Planta y Equipo):\nLos bienes se registran al costo histórico de adquisición menos depreciación acumulada y pérdidas por deterioro acumuladas. La depreciación se reconoce en el resultado del ejercicio por el método de línea recta atendiendo las vidas útiles estimadas. A la fecha de balance no existen indicios de deterioro físico o económico de los activos fijos.`;
-  } else if (cod.startsWith('19')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Otros Activos y Gastos Anticipados):\nComprende activos diferidos, pólizas de seguros y pagos anticipados que se amortizan con cargo a los resultados del ejercicio a medida que se devenga el servicio o se transfiere el beneficio económico.`;
-  } else if (cod.startsWith('21') || cod.startsWith('22') || cod.startsWith('23')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Cuentas por Pagar y Obligaciones Financieras):\nRepresentan compromisos contractuales vigentes con acreedores y proveedores con plazos de cancelación mayoritariamente menores a un año (pasivo corriente). Los saldos han sido reconocidos a su valor de liquidación exigible, sin intereses de mora devengados a la fecha de corte.`;
-  } else if (cod.startsWith('24') || cod.startsWith('25') || cod.startsWith('26')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Obligaciones Fiscales y Laborales):\nLos pasivos tributarios corresponden a retenciones en la fuente, gravámenes y contribuciones causadas según el calendario fiscal vigente ante la DIAN y autoridades distritales/municipales. Los pasivos laborales reflejan la provisión de prestaciones sociales, cesantías e intereses acordes a la legislación laboral colombiana.`;
-  } else if (cod.startsWith('27') || cod.startsWith('28') || cod.startsWith('29')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Anticipos y Otros Pasivos):\nComprende ingresos recibidos por anticipado o depósitos recibidos en custodia que se amortizan o reconocen en el estado de resultados a medida que se ejecutan los servicios o se cumplen las condiciones contractuales.`;
-  } else if (cod.startsWith('3')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Patrimonio Institucional):\nRefleja el patrimonio neto conformado por aportes de capital, reservas legales/estatutarias y el resultado del ejercicio actual y ejercicios anteriores. En caso de propiedad horizontal o entidades sin ánimo de lucro, se incluye el fondo de imprevistos conforme al mandato de la Ley 675 de 2001.`;
-  } else if (cod.startsWith('4')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Ingresos de Actividades Ordinarias):\nLos ingresos se reconocen por el principio del devengo conforme se prestan los servicios o se expiden las facturaciones / cuentas de cobro institucionales, satisfaciendo la obligación de desempeño estipulada en las políticas contables.`;
-  } else if (cod.startsWith('5') || cod.startsWith('6') || cod.startsWith('7')) {
-    marcoNormativoTexto = `\n\nRevelación normativa (Costos y Gastos Operacionales):\nLos egresos operacionales fueron causados en el periodo de acuerdo con la asignación presupuestal y los contratos suscritos para la operación, mantenimiento, administración y seguridad institucional, soportados con comprobantes debidamente autorizados.`;
+    return `Al cierre de ${periodoTexto}, el rubro "${titulo}" presenta un saldo de ${fmtV(now)}, ` +
+      `${varTexto}. Corresponde a recursos disponibles en caja y cuentas bancarias de la empresa, ` +
+      `valorados al costo histórico. Los recursos en moneda extranjera, de existir, han sido ` +
+      `reexpresados a la tasa de cambio representativa del mercado vigente al cierre del periodo.`;
+  }
+  if (cod.startsWith('12')) {
+    return `El rubro "${titulo}" asciende a ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}. Comprende inversiones en títulos valores y participaciones en otras entidades, ` +
+      `registradas al costo de adquisición ajustado por el método de participación o al valor razonable ` +
+      `según la política contable vigente.`;
+  }
+  if (cod.startsWith('13')) {
+    const alertaMora = now > 0 && prev > 0 && varPct > 20
+      ? ' Se recomienda revisar la política de provisiones de cartera dado el incremento observado.'
+      : '';
+    return `La cartera de "${titulo}" al cierre de ${periodoTexto} asciende a ${fmtV(now)}, ` +
+      `${varTexto}. Comprende las obligaciones de clientes y deudores por operaciones comerciales ` +
+      `normales. La empresa aplica una política de provisión individual y/o general conforme a las ` +
+      `normas contables vigentes.${alertaMora}`;
+  }
+  if (cod.startsWith('14')) {
+    return `Los inventarios de "${titulo}" presentan un saldo de ${fmtV(now)} al cierre de ` +
+      `${periodoTexto}, ${varTexto}. El costo se determina por el método de ` +
+      `promedio ponderado. El inventario se ha valorado al costo o al valor neto de realización, ` +
+      `el que resulte menor, conforme a las políticas contables de la empresa.`;
+  }
+  if (cod.startsWith('15') || cod.startsWith('16') || cod.startsWith('17')) {
+    return `El rubro "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}. Los activos se contabilizan al costo histórico menos la depreciación acumulada ` +
+      `y las pérdidas por deterioro. La depreciación se calcula por el método de línea recta ` +
+      `sobre la vida útil estimada de cada activo.`;
+  }
+  if (cod.startsWith('19')) {
+    return `El saldo de "${titulo}" al cierre de ${periodoTexto} asciende a ${fmtV(now)}, ` +
+      `${varTexto}. Comprende activos diferidos, cargos diferidos u otros activos no clasificados ` +
+      `en las partidas anteriores. Se amortizan con cargo a resultados durante su vida útil estimada.`;
+  }
+  if (cod.startsWith('1')) {
+    return `El rubro de activos "${titulo}" presenta un saldo de ${fmtV(now)} ` +
+      `al cierre de ${periodoTexto}, ${varTexto}.`;
   }
 
-  return `Al cierre de ${periodoTexto}, el rubro "${titulo}" presenta un saldo neto de ${fmtV(now)}, el cual ${varTexto}.${desgloseTexto}${marcoNormativoTexto}`;
+  // ── Clase 2: Pasivo ──────────────────────────────────────────────────────
+  if (cod.startsWith('21')) {
+    return `Las obligaciones financieras de "${titulo}" ascienden a ${fmtV(now)} al cierre de ` +
+      `${periodoTexto}, ${varTexto}. Corresponden a créditos contratados con entidades financieras ` +
+      `para capital de trabajo y/o adquisición de activos. Las tasas de interés y vencimientos ` +
+      `están detallados en los documentos soporte de cada obligación.`;
+  }
+  if (cod.startsWith('22') || cod.startsWith('23')) {
+    return `Las obligaciones con proveedores y cuentas por pagar de "${titulo}" ascienden a ` +
+      `${fmtV(now)} al cierre de ${periodoTexto}, ${varTexto}. Corresponden a compromisos ` +
+      `con proveedores de bienes y servicios por operaciones normales de la empresa, ` +
+      `contabilizados al valor histórico de la obligación.`;
+  }
+  if (cod.startsWith('24') || cod.startsWith('25')) {
+    return `El rubro "${titulo}" presenta un pasivo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}. Comprende impuestos, contribuciones y obligaciones laborales causadas ` +
+      `y pendientes de pago conforme a la normativa vigente.`;
+  }
+  if (cod.startsWith('27')) {
+    return `Las diferidas e ingresos anticipados de "${titulo}" ascienden a ${fmtV(now)} ` +
+      `al cierre de ${periodoTexto}, ${varTexto}. Corresponden a ingresos recibidos por anticipado ` +
+      `que se reconocerán en resultados en los periodos futuros conforme se presten los servicios ` +
+      `o se entreguen los bienes contratados.`;
+  }
+  if (cod.startsWith('2')) {
+    return `El pasivo "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}.`;
+  }
+
+  // ── Clase 3: Patrimonio ───────────────────────────────────────────────────
+  if (cod.startsWith('31')) {
+    return `El capital social suscrito y pagado de la empresa asciende a ${fmtV(now)} ` +
+      `al cierre de ${periodoTexto}, ${varTexto}. ` +
+      `Representa los aportes efectuados por los socios conforme a los estatutos sociales vigentes.`;
+  }
+  if (cod.startsWith('33')) {
+    return `Las reservas de "${titulo}" ascienden a ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}. Se constituyen conforme a disposiciones legales y estatutarias, ` +
+      `y representan recursos apropiados de las utilidades para fines específicos.`;
+  }
+  if (cod.startsWith('36') || cod.startsWith('37')) {
+    return `Los resultados acumulados de "${titulo}" presentan un saldo de ${fmtV(now)} ` +
+      `al cierre de ${periodoTexto}, ${varTexto}. ` +
+      `Corresponden a utilidades o pérdidas de ejercicios anteriores pendientes de distribución o aplicación.`;
+  }
+  if (cod.startsWith('3')) {
+    return `El patrimonio "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}.`;
+  }
+
+  // ── Clase 4: Ingresos ─────────────────────────────────────────────────────
+  if (cod.startsWith('41')) {
+    return `Los ingresos operacionales de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(Math.abs(now))}, ` +
+      `${varTexto}. Provienen de la actividad principal del objeto social de la empresa ` +
+      `y se reconocen cuando es probable que los beneficios económicos fluyan hacia la entidad ` +
+      `y el importe puede medirse con fiabilidad.`;
+  }
+  if (cod.startsWith('42')) {
+    return `Los ingresos no operacionales de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(Math.abs(now))}, ` +
+      `${varTexto}. Corresponden a ingresos obtenidos fuera de la actividad principal, ` +
+      `tales como rendimientos financieros, arrendamientos u otros conceptos.`;
+  }
+  if (cod.startsWith('4')) {
+    return `El ingreso "${titulo}" en ${periodoTexto} ascendió a ${fmtV(Math.abs(now))}, ${varTexto}.`;
+  }
+
+  // ── Clase 5: Gastos ───────────────────────────────────────────────────────
+  if (cod.startsWith('51')) {
+    return `Los gastos de administración de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(now)}, ` +
+      `${varTexto}. Comprenden todos los desembolsos necesarios para la administración y ` +
+      `operación general de la empresa, incluyendo personal, arrendamientos y servicios.`;
+  }
+  if (cod.startsWith('52')) {
+    return `Los gastos de ventas de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(now)}, ` +
+      `${varTexto}. Corresponden a los costos directamente relacionados con la ` +
+      `comercialización de los productos o servicios de la empresa.`;
+  }
+  if (cod.startsWith('5')) {
+    return `El gasto "${titulo}" en ${periodoTexto} ascendió a ${fmtV(now)}, ${varTexto}.`;
+  }
+
+  // ── Clase 6: Costos ───────────────────────────────────────────────────────
+  if (cod.startsWith('6')) {
+    return `El costo de ventas de "${titulo}" en ${periodoTexto} ascendió a ${fmtV(now)}, ` +
+      `${varTexto}. Comprende el valor de los inventarios vendidos y los costos directos ` +
+      `de producción o prestación del servicio durante el periodo.`;
+  }
+
+  // ── Clase 7: Otros gastos ─────────────────────────────────────────────────
+  if (cod.startsWith('7')) {
+    return `Los otros gastos de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(now)}, ` +
+      `${varTexto}. Corresponden a gastos no operacionales o de naturaleza especial ` +
+      `no clasificados en las categorías anteriores.`;
+  }
+
+  // ── Genérico ──────────────────────────────────────────────────────────────
+  return `El rubro "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+    `${varTexto}. Ver detalle en los soportes contables del periodo.`;
 }
 
 /**
@@ -16481,6 +15370,7 @@ async function renderFinancialNotesManager(): Promise<void> {
 
     try {
       const { accounts } = await ensureAccountsSaldos();
+      const { transactions, txLines: allTxLines } = await ensureLedgerData();
 
       // Calcular saldos al cierre del periodo (mes de fin)
       const yearHasta = Number(hasta.slice(0, 4));
@@ -16495,26 +15385,21 @@ async function renderFinancialNotesManager(): Promise<void> {
       const lastDayPrev = new Date(Number(prevMonth.slice(0, 4)), Number(prevMonth.slice(5, 7)), 0);
       const compareDate = `${lastDayPrev.getFullYear()}-${String(lastDayPrev.getMonth() + 1).padStart(2, '0')}-${String(lastDayPrev.getDate()).padStart(2, '0')}`;
 
-      // Consultas directas ultrarrápidas al backend (/api/gravy/report-balances)
-      const [resNowEsf, resCmpEsf, resNowEr, resCmpEr] = await Promise.all([
-        pb.send(`/api/gravy/report-balances?startDate=&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=${yearHasta}-01-01&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=${yearDesde}-01-01&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
-      ]);
-
-      const balNow: Record<string, number> = {};
-      const balCmp: Record<string, number> = {};
-      for (const a of accounts) {
-        const cls = String(a.code || '').charAt(0);
-        if (cls === '4' || cls === '5' || cls === '6' || cls === '7') {
-          balNow[a.id] = Number(resNowEr?.[a.id] || 0);
-          balCmp[a.id] = Number(resCmpEr?.[a.id] || 0);
-        } else {
-          balNow[a.id] = Number(resNowEsf?.[a.id] || 0);
-          balCmp[a.id] = Number(resCmpEsf?.[a.id] || 0);
+      // buildBalancesAt está definida dentro de renderFinancialPosition — re-implementamos aquí
+      const computeBalances = (cutoff: string): Record<string, number> => {
+        const txById: Record<string, any> = Object.fromEntries(transactions.map((t: any) => [t.id, t]));
+        const byAcc: Record<string, number> = Object.fromEntries(accounts.map((a: any) => [a.id, 0]));
+        for (const line of allTxLines) {
+          const tx = txById[line.tx_id];
+          if (!tx || tx.status !== 'active' || !tx.date) continue;
+          if (String(tx.date) > cutoff) continue;
+          byAcc[line.account_id] = Number(byAcc[line.account_id] || 0) + Number(line.debit || 0) - Number(line.credit || 0);
         }
-      }
+        return byAcc;
+      };
+
+      const balNow = computeBalances(reportDate);
+      const balCmp = computeBalances(compareDate);
 
       currentAccounts = accounts;
       currentBalNow = balNow;
@@ -16584,7 +15469,7 @@ async function renderFinancialNotesManager(): Promise<void> {
       for (const mapItem of ALL_MAPPING) {
         let sumNow = 0;
         let sumCmp = 0;
-        
+
         // Sumar todos los descendientes que empiecen por los prefijos mapeados
         for (const child of accounts) {
           const childCode = String(child.code || '');
@@ -16605,10 +15490,9 @@ async function renderFinancialNotesManager(): Promise<void> {
           adjustedCmp = -sumCmp;
         }
 
-        const supporting = getNoteSupportingData(accounts, balNow, balCmp, mapItem.prefixes);
         const ext = existentesByNum.get(mapItem.notaNum);
-        const autoSugg = ext ? ext.sugerido : buildNoteSuggestion(mapItem.prefixes[0], mapItem.titulo, adjustedNow, adjustedCmp, periodo, supporting);
-        
+        const autoSugg = ext ? ext.sugerido : buildNoteSuggestion(mapItem.prefixes[0], mapItem.titulo, adjustedNow, adjustedCmp, periodo);
+
         tempNotas.push({
           nota_num: mapItem.notaNum,
           titulo: mapItem.titulo,
@@ -16693,15 +15577,12 @@ async function renderFinancialNotesManager(): Promise<void> {
     const nota = notasLocales[idx];
     if (!nota) return;
     const periodo = getPeriodoVal();
-    const prefixes = (nota.cuenta_codigo || '').split(',').map((p: string) => p.trim()).filter(Boolean);
-    const supporting = prefixes.length ? getNoteSupportingData(currentAccounts, currentBalNow, currentBalCmp, prefixes) : [];
     const sugerido = buildNoteSuggestion(
-      prefixes[0] || '',
+      nota.cuenta_codigo || '',
       nota.titulo,
       nota.saldoNow || 0,
       nota.saldoCmp || 0,
-      periodo,
-      supporting
+      periodo
     );
     notasLocales[idx].sugerido = sugerido;
     // Refrescar solo ese card
@@ -16713,15 +15594,12 @@ async function renderFinancialNotesManager(): Promise<void> {
     const periodo = getPeriodoVal();
     for (let i = 0; i < notasLocales.length; i++) {
       const n = notasLocales[i];
-      const prefixes = (n.cuenta_codigo || '').split(',').map((p: string) => p.trim()).filter(Boolean);
-      const supporting = prefixes.length ? getNoteSupportingData(currentAccounts, currentBalNow, currentBalCmp, prefixes) : [];
       notasLocales[i].sugerido = buildNoteSuggestion(
-        prefixes[0] || '',
+        n.cuenta_codigo || '',
         n.titulo,
         n.saldoNow || 0,
         n.saldoCmp || 0,
-        periodo,
-        supporting
+        periodo
       );
       // Si el contador aún no ha redactado nada, pre-rellenar el campo de texto
       if (!notasLocales[i].contenido) {
@@ -16729,7 +15607,7 @@ async function renderFinancialNotesManager(): Promise<void> {
       }
     }
     renderNotesList(notasLocales);
-    setStatus('Sugerencias generadas con análisis de composición y normativa NIIF. Revise y ajuste antes de guardar.', '#059669');
+    setStatus('Sugerencias generadas. Revise y ajuste cada nota antes de guardar.', '#D97706');
   };
 
   /** Guardar TODAS las notas de una vez */
@@ -16785,7 +15663,8 @@ async function renderFinancialNotesManager(): Promise<void> {
     // Cargar y calcular balances en caliente si no están en memoria
     if (!currentAccounts.length || !Object.keys(currentBalNow).length) {
       const { accounts } = await ensureAccountsSaldos();
-      
+      const { transactions, txLines: allTxLines } = await ensureLedgerData();
+
       const yearHasta = Number(hasta.slice(0, 4));
       const monthHasta = Number(hasta.slice(5, 7));
       const lastDayCurrent = new Date(yearHasta, monthHasta, 0);
@@ -16797,29 +15676,21 @@ async function renderFinancialNotesManager(): Promise<void> {
       const lastDayPrev = new Date(Number(prevMonth.slice(0, 4)), Number(prevMonth.slice(5, 7)), 0);
       const compareDate = `${lastDayPrev.getFullYear()}-${String(lastDayPrev.getMonth() + 1).padStart(2, '0')}-${String(lastDayPrev.getDate()).padStart(2, '0')}`;
 
-      const [resNowEsf, resCmpEsf, resNowEr, resCmpEr] = await Promise.all([
-        pb.send(`/api/gravy/report-balances?startDate=&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=${yearHasta}-01-01&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=${yearDesde}-01-01&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
-      ]);
-
-      const balNow: Record<string, number> = {};
-      const balCmp: Record<string, number> = {};
-      for (const a of accounts) {
-        const cls = String(a.code || '').charAt(0);
-        if (cls === '4' || cls === '5' || cls === '6' || cls === '7') {
-          balNow[a.id] = Number(resNowEr?.[a.id] || 0);
-          balCmp[a.id] = Number(resCmpEr?.[a.id] || 0);
-        } else {
-          balNow[a.id] = Number(resNowEsf?.[a.id] || 0);
-          balCmp[a.id] = Number(resCmpEsf?.[a.id] || 0);
+      const computeBalances = (cutoff: string): Record<string, number> => {
+        const txById = Object.fromEntries(transactions.map((t: any) => [t.id, t]));
+        const byAcc = Object.fromEntries(accounts.map((a: any) => [a.id, 0]));
+        for (const line of allTxLines) {
+          const tx = txById[line.tx_id];
+          if (!tx || tx.status !== 'active' || !tx.date) continue;
+          if (String(tx.date) > cutoff) continue;
+          byAcc[line.account_id] = Number(byAcc[line.account_id] || 0) + Number(line.debit || 0) - Number(line.credit || 0);
         }
-      }
+        return byAcc;
+      };
 
       currentAccounts = accounts;
-      currentBalNow = balNow;
-      currentBalCmp = balCmp;
+      currentBalNow = computeBalances(reportDate);
+      currentBalCmp = computeBalances(compareDate);
     }
 
     // Empezamos las notas desde la primera página ya con el encabezado
@@ -16934,7 +15805,7 @@ async function renderFinancialNotesManager(): Promise<void> {
     showToast('Sugerencia aceptada. Recuerda guardar.', 'info');
   };
   (window as any)._fnSuggestOne = (idx: number) => suggestOne(idx);
-  (window as any)._fnSaveOne   = (idx: number) => saveOneNote(idx);
+  (window as any)._fnSaveOne = (idx: number) => saveOneNote(idx);
 
   // ── Event listeners principales ───────────────────────────────────────────
   $('#btn-fn-sync')?.addEventListener('click', syncFromReport);
@@ -16948,1487 +15819,8 @@ async function renderFinancialNotesManager(): Promise<void> {
 (window as any)._loadFinancialNotes = loadFinancialNotes;
 
 // =============================================================================
-// INFORME FINANCIERO COMPLETO Y CERTIFICACIÓN LEGAL (ART. 37 LEY 222 DE 1995)
+// AUDITORÍA DE CONSECUTIVOS DE COMPROBANTES
 // =============================================================================
-
-async function renderFinancialDossier(): Promise<void> {
-  const view = getReportViewHost();
-  if (!view) return;
-
-  const today = todayStr();
-  const currentMonthDefault = today.slice(0, 7);
-  const currentYear = Number(today.slice(0, 4));
-  const currentMonthNum = Number(today.slice(5, 7));
-  const prevYearMonth = `${currentYear - 1}-${String(currentMonthNum).padStart(2, '0')}`;
-  const defaultSignaturesSetting = await getSettingFirst(['trial_show_signatures_default', 'show_signatures_default'], '1');
-  const signaturesChecked = String(defaultSignaturesSetting).trim() === '1' || String(defaultSignaturesSetting).toLowerCase() === 'true';
-
-  view.innerHTML = `
-    <div class="p-4 border-b bg-white rounded-t-xl" style="border-color:#E2E8F0">
-      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-2">
-        <div>
-          <h3 class="text-base font-bold flex items-center gap-2" style="color:#0D2137">
-            <i class="fas fa-book-bookmark text-primary" style="color:#7C3AED"></i> Informe de Estados Financieros y Revelaciones NIIF
-          </h3>
-          <p class="text-xs mt-0.5" style="color:#6B7280">
-            Juego completo oficial: Balance General, Estado de Resultados, Flujo de Efectivo, Certificación de Administradores (Ley 222 / Art. 37) y Revelaciones.
-          </p>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xxs font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200">
-            <i class="fas fa-shield-halved text-purple-600"></i> Decreto 2420 / 2015
-          </span>
-        </div>
-      </div>
-
-      <!-- Filtros del Informe -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-4 text-gray-800">
-        <div class="form-group">
-          <label class="form-label text-xs font-semibold" style="color:#374151">
-            <i class="fas fa-calendar-day mr-1" style="color:#7C3AED"></i>Período de Corte
-          </label>
-          <input id="dossier-report-month" type="month" class="form-input text-xs w-full font-medium" value="${currentMonthDefault}">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label text-xs font-semibold" style="color:#374151">
-            <i class="fas fa-calendar-minus mr-1 text-blue-600"></i>Período Comparativo
-          </label>
-          <input id="dossier-compare-month" type="month" class="form-input text-xs w-full font-medium" value="${prevYearMonth}">
-        </div>
-
-        <div class="form-group lg:col-span-2">
-          <label class="form-label text-xs font-semibold" style="color:#374151">
-            <i class="fas fa-scale-balanced mr-1 text-emerald-600"></i>Marco Técnico Normativo
-          </label>
-          <select id="dossier-framework" class="form-input text-xs w-full font-medium">
-            <option value="pymes" selected>Grupo 2 — NIIF para las PYMES (Decreto 2420 de 2015)</option>
-            <option value="micro">Grupo 3 — Contabilidad Simplificada Microempresas (Dec. 2706 / 2420)</option>
-            <option value="plenas">Grupo 1 — NIIF Plenas / NIC 1 (Decreto 2420 de 2015)</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label text-xs font-semibold" style="color:#374151">
-            <i class="fas fa-layer-group mr-1 text-indigo-600"></i>Formato de Vista
-          </label>
-          <select id="dossier-view-mode" class="form-input text-xs w-full font-medium">
-            <option value="compact" selected>Compacto (Sin cascada)</option>
-            <option value="hierarchy">Jerárquico (Árbol PUC)</option>
-          </select>
-        </div>
-
-        <div class="form-group flex items-end">
-          <button class="btn btn-primary w-full text-xs font-bold py-2 shadow-sm flex items-center justify-center gap-1.5" id="btn-gen-dossier">
-            <i class="fas fa-filter"></i> Generar Informe
-          </button>
-        </div>
-      </div>
-
-      <!-- Opciones y Acciones de Exportación -->
-      <div class="flex flex-wrap items-center justify-between gap-3 mt-3 pt-3 border-t text-xs" style="border-color:#F1F5F9">
-        <div class="flex flex-wrap items-center gap-4 text-gray-700">
-          <label class="inline-flex items-center gap-1.5 cursor-pointer">
-            <input id="dossier-chk-cert" type="checkbox" checked class="rounded text-purple-600"> Certificación Art. 37
-          </label>
-          <label class="inline-flex items-center gap-1.5 cursor-pointer">
-            <input id="dossier-chk-dictamen" type="checkbox" checked class="rounded text-purple-600"> Dictamen Revisor Fiscal
-          </label>
-          <label class="inline-flex items-center gap-1.5 cursor-pointer">
-            <input id="dossier-chk-notes" type="checkbox" checked class="rounded text-purple-600"> Revelaciones NIIF
-          </label>
-          <label class="inline-flex items-center gap-1.5 cursor-pointer">
-            <input id="dossier-chk-signatures" type="checkbox" ${signaturesChecked ? 'checked' : ''} class="rounded text-purple-600"> Firmas Legales y T.P.
-          </label>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <button class="btn btn-outline btn-sm font-semibold" id="btn-pdf-dossier" disabled>
-            <i class="fas fa-file-pdf mr-1 text-rose-600"></i> Descargar PDF Oficial
-          </button>
-          <button class="btn btn-outline btn-sm font-semibold" id="btn-xls-dossier" disabled>
-            <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Libro Excel Multi-Hoja
-          </button>
-          <button class="btn btn-outline btn-sm font-semibold" id="btn-print-dossier" disabled>
-            <i class="fas fa-print mr-1 text-blue-600"></i> Imprimir
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Contenedor Principal de Resultados -->
-    <div id="dossier-results" class="p-6">
-      <div class="p-12 text-center text-gray-400">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-50 text-purple-600 mb-3 text-2xl shadow-inner">
-          <i class="fas fa-book-open-reader"></i>
-        </div>
-        <h4 class="text-sm font-bold text-gray-700">Informe Financiero Listo para Generación</h4>
-        <p class="text-xs text-gray-500 max-w-md mx-auto mt-1">
-          Haga clic en <strong>Generar Informe</strong> para compilar el juego completo de Estados Financieros, verificar las afirmaciones del Art. 37 de la Ley 222 y consolidar las notas contables.
-        </p>
-      </div>
-    </div>
-  `;
-
-  // Estado interno del informe generado
-  let dossierData: any = null;
-
-  const endOfMonth = (monthStr: string) => {
-    const year = Number(String(monthStr || '').slice(0, 4));
-    const month = Number(String(monthStr || '').slice(5, 7));
-    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return '';
-    const dt = new Date(year, month, 0);
-    const yv = dt.getFullYear();
-    const mv = String(dt.getMonth() + 1).padStart(2, '0');
-    const dv = String(dt.getDate()).padStart(2, '0');
-    return `${yv}-${mv}-${dv}`;
-  };
-
-  const fmtLongDate = (dateStr: string) => {
-    if (!dateStr) return '—';
-    const dt = new Date(`${dateStr.slice(0, 10)}T00:00:00`);
-    if (Number.isNaN(dt.getTime())) return dateStr;
-    return dt.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
-  };
-
-  // Función principal de compilación y cálculo del Informe
-  const generateDossier = async () => {
-    const results = $('#dossier-results');
-    if (!results) return;
-
-    const reportMonth = getInputVal('dossier-report-month');
-    const compareMonth = getInputVal('dossier-compare-month');
-    const frameworkKey = getSelectVal('dossier-framework');
-    const dossierViewMode = getSelectVal('dossier-view-mode') || 'compact';
-    const isCompact = dossierViewMode === 'compact';
-    const incCert = getCheckVal('dossier-chk-cert');
-    const incDictamen = getCheckVal('dossier-chk-dictamen');
-    const incNotes = getCheckVal('dossier-chk-notes');
-    const incSignatures = getCheckVal('dossier-chk-signatures');
-
-    if (!reportMonth || !compareMonth) {
-      results.innerHTML = `<div class="p-6 text-center text-amber-600 bg-amber-50 rounded-xl border border-amber-200"><i class="fas fa-triangle-exclamation mr-2"></i>Seleccione ambos períodos para la generación comparativa.</div>`;
-      return;
-    }
-
-    results.innerHTML = `
-      <div class="p-16 text-center text-gray-500">
-        <i class="fas fa-spinner fa-spin text-3xl mb-3" style="color:#7C3AED"></i>
-        <h4 class="text-sm font-bold text-gray-800">Compilando Informe Financiero Certificado...</h4>
-        <p class="text-xs text-gray-500 mt-1">Calculando balances comparativos, analizando variaciones verticales/horizontales y sincronizando notas NIIF.</p>
-      </div>`;
-
-    try {
-      const reportDate = endOfMonth(reportMonth) + ' 23:59:59';
-      const compareDate = endOfMonth(compareMonth) + ' 23:59:59';
-      const reportDateShort = endOfMonth(reportMonth);
-      const compareDateShort = endOfMonth(compareMonth);
-      const reportStartYear = `${reportMonth.slice(0, 4)}-01-01 00:00:00`;
-      const compareStartYear = `${compareMonth.slice(0, 4)}-01-01 00:00:00`;
-
-      const [
-        { accounts },
-        headerCtx,
-        [repName, repTitle, contName, contTitle, contLicense, revName, revTitle, revLicense],
-        balNow,
-        balCmp,
-        balErNow,
-        balErCmp
-      ] = await Promise.all([
-        ensureAccountsSaldos(),
-        getPdfHeaderContext(),
-        Promise.all([
-          getSettingFirst(['representante_legal_name', 'legal_representative_name', 'rep_legal_name']),
-          getSettingFirst(['representante_legal_title', 'legal_representative_title', 'rep_legal_title'], 'Representante Legal'),
-          getSettingFirst(['contador_name', 'accountant_name']),
-          getSettingFirst(['contador_title', 'accountant_title'], 'Contador'),
-          getSettingFirst(['contador_license', 'accountant_license']),
-          getSettingFirst(['revisor_fiscal_name', 'fiscal_reviewer_name']),
-          getSettingFirst(['revisor_fiscal_title', 'fiscal_reviewer_title'], 'Revisor Fiscal'),
-          getSettingFirst(['revisor_fiscal_license', 'fiscal_reviewer_license']),
-        ]),
-        pb.send(`/api/gravy/report-balances?startDate=&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=${reportStartYear}&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=${compareStartYear}&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' })
-      ]);
-
-      const frameworkLabels: Record<string, string> = {
-        pymes: 'Grupo 2 — NIIF para las PYMES (Decreto Único Reglamentario 2420 de 2015)',
-        micro: 'Grupo 3 — Contabilidad Simplificada para Microempresas (Decreto 2420 de 2015)',
-        plenas: 'Grupo 1 — NIIF Plenas / NIC 1 (Decreto Único Reglamentario 2420 de 2015)',
-      };
-      const frameworkLabel = frameworkLabels[frameworkKey] || frameworkLabels.pymes;
-
-      // ── Mapeo y agrupamiento contable estándar ───────────────────────────
-      const toPosAmt = (raw: any, kind: string) => {
-        const n = Number(raw || 0);
-        return kind === 'asset' ? n : -n;
-      };
-
-      const groupSectionData = (
-        filterFn: (a: any) => boolean,
-        kind: string,
-        noteNum: string,
-        balSourceNow: Record<string, number>,
-        balSourceCmp: Record<string, number>
-      ) => {
-        const secAccs = (accounts || []).filter(filterFn);
-        const nodeById = new Map(secAccs.map((acc: any) => [acc.id, {
-          id: acc.id,
-          code: String(acc.code || ''),
-          name: String(acc.name || ''),
-          level: Number(acc.level || 1),
-          parentCode: String(acc.parent_code || ''),
-          ownNow: toPosAmt(balSourceNow[acc.id], kind),
-          ownCmp: toPosAmt(balSourceCmp[acc.id], kind),
-          now: 0,
-          cmp: 0,
-          children: [] as any[],
-        }]));
-
-        const nodeByCode = new Map();
-        nodeById.forEach((node) => {
-          if (node.code) nodeByCode.set(node.code, node);
-        });
-
-        const roots: any[] = [];
-        nodeById.forEach((node) => {
-          const parent = node.parentCode ? nodeByCode.get(node.parentCode) : null;
-          if (parent) parent.children.push(node);
-          else roots.push(node);
-        });
-
-        const sortByCode = (a: any, b: any) => a.code.localeCompare(b.code);
-        roots.sort(sortByCode);
-        nodeById.forEach((node) => node.children.sort(sortByCode));
-
-        const calcNode = (node: any) => {
-          let now = node.ownNow;
-          let cmp = node.ownCmp;
-          for (const child of node.children) {
-            const c = calcNode(child);
-            now += c.now;
-            cmp += c.cmp;
-          }
-          node.now = now;
-          node.cmp = cmp;
-          return { now, cmp };
-        };
-        roots.forEach((root) => calcNode(root));
-
-        const EPS = 0.0001;
-        const visibleRows: any[] = [];
-        const traverse = (node: any): any[] => {
-          const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
-          if (!hasActivity) return [];
-
-          const childRows: any[] = [];
-          for (const child of node.children) {
-            childRows.push(...traverse(child));
-          }
-
-          // En modo compacto, si tiene exactamente un hijo visible con idéntico saldo, colapsar redundancia en cascada
-          if (isCompact && childRows.length === 1 && Math.abs(childRows[0].now - node.now) < EPS && Math.abs(childRows[0].cmp - node.cmp) < EPS) {
-            return childRows;
-          }
-
-          const rows: any[] = [];
-          if (Number(node.level || 1) <= 3) {
-            rows.push({
-              code: node.code,
-              name: node.name,
-              level: Number(node.level || 1),
-              note: noteNum,
-              now: node.now,
-              cmp: node.cmp,
-            });
-          }
-          rows.push(...childRows);
-          return rows;
-        };
-        roots.forEach((root) => visibleRows.push(...traverse(root)));
-
-        let totalNow = 0;
-        let totalCmp = 0;
-        roots.forEach(r => {
-          totalNow += r.now;
-          totalCmp += r.cmp;
-        });
-
-        return { detail: visibleRows, totalNow, totalCmp };
-      };
-
-      // Secciones ESF
-      const actCorr = groupSectionData(a => ['11', '12', '13', '14'].some(p => String(a.code || '').startsWith(p)), 'asset', '3.1', balNow, balCmp);
-      const actNoCorr = groupSectionData(a => String(a.code || '').startsWith('1') && !['11', '12', '13', '14'].some(p => String(a.code || '').startsWith(p)), 'asset', '3.4', balNow, balCmp);
-      const pasCorr = groupSectionData(a => ['21', '22', '23', '24', '25', '26', '28'].some(p => String(a.code || '').startsWith(p)), 'liability', '3.5', balNow, balCmp);
-      const pasNoCorr = groupSectionData(a => String(a.code || '').startsWith('2') && !['21', '22', '23', '24', '25', '26', '28'].some(p => String(a.code || '').startsWith(p)), 'liability', '3.6', balNow, balCmp);
-      const patrimonio = groupSectionData(a => String(a.code || '').startsWith('3'), 'equity', '3.7', balNow, balCmp);
-
-      const totalActivosNow = actCorr.totalNow + actNoCorr.totalNow;
-      const totalActivosCmp = actCorr.totalCmp + actNoCorr.totalCmp;
-      const totalPasivosNow = pasCorr.totalNow + pasNoCorr.totalNow;
-      const totalPasivosCmp = pasCorr.totalCmp + pasNoCorr.totalCmp;
-
-      // Cálculo de resultado neto del ejercicio
-      const accountCodeMap = new Map<string, string>();
-      accounts.forEach((a: any) => accountCodeMap.set(a.id, String(a.code || '')));
-
-      const calcResultadoPeriodo = (balObj: Record<string, number>) => {
-        let res = 0;
-        for (const [accId, balance] of Object.entries(balObj || {})) {
-          const code = accountCodeMap.get(accId);
-          if (code && ['4', '5', '6', '7'].some(p => code.startsWith(p))) {
-            res -= Number(balance || 0);
-          }
-        }
-        return res;
-      };
-      const resErNow = calcResultadoPeriodo(balNow);
-      const resErCmp = calcResultadoPeriodo(balCmp);
-
-      const totalPatrimonioNow = patrimonio.totalNow + resErNow;
-      const totalPatrimonioCmp = patrimonio.totalCmp + resErCmp;
-      const totalPyPNow = totalPasivosNow + totalPatrimonioNow;
-      const totalPyPCmp = totalPasivosCmp + totalPatrimonioCmp;
-
-      // Secciones ER
-      const ingresos = groupSectionData(a => String(a.code || '').startsWith('4'), 'liability', '4.1', balErNow, balErCmp);
-      const costos = groupSectionData(a => String(a.code || '').startsWith('6'), 'asset', '4.2', balErNow, balErCmp);
-      const gastos = groupSectionData(a => String(a.code || '').startsWith('5'), 'asset', '4.3', balErNow, balErCmp);
-
-      const baseIngresosNow = ingresos.totalNow || 1;
-      const baseIngresosCmp = ingresos.totalCmp || 1;
-      const margenBrutoNow = ingresos.totalNow - costos.totalNow;
-      const margenBrutoCmp = ingresos.totalCmp - costos.totalCmp;
-      const utilidadOpNow = margenBrutoNow - gastos.totalNow;
-      const utilidadOpCmp = margenBrutoCmp - gastos.totalCmp;
-      const utilidadNetaNow = resErNow;
-      const utilidadNetaCmp = resErCmp;
-
-      // Flujo de Efectivo
-      const cfInflows = ingresos.totalNow * 0.95;
-      const cfOutflows = (costos.totalNow + gastos.totalNow) * 0.92;
-      const cfNetOp = cfInflows - cfOutflows;
-      const cfCoverage = cfOutflows > 0 ? (cfInflows / cfOutflows) : 1;
-
-      // Carga de notas
-      const [nota1Populated, notasDb] = await Promise.all([
-        getPopulatedTemplate(TEMPLATE_NOTE_1, reportMonth),
-        loadFinancialNotes(reportMonth).catch(() => []),
-      ]);
-
-      const notasFinales: any[] = [];
-      notasFinales.push({
-        nota_num: '1',
-        titulo: 'Entidad que Reporta y Objeto Social',
-        contenido: nota1Populated,
-        cuenta_codigo: '',
-      });
-      notasFinales.push({
-        nota_num: '2',
-        titulo: 'Bases de Preparación y Principales Políticas Contables',
-        contenido: TEMPLATE_NOTE_2,
-        cuenta_codigo: '',
-      });
-
-      const rubrosBase = [
-        { num: '3.1', titulo: 'Efectivo y Equivalentes de Efectivo', code: '11' },
-        { num: '3.2', titulo: 'Inversiones e Instrumentos Financieros y Deudores', code: '12,13' },
-        { num: '3.3', titulo: 'Inventarios y Activos Biológicos', code: '14' },
-        { num: '3.4', titulo: 'Propiedades, Planta y Equipo e Intangibles', code: '15,16,17,18,19' },
-        { num: '3.5', titulo: 'Obligaciones Financieras y Cuentas Comerciales por Pagar', code: '21,22,23' },
-        { num: '3.6', titulo: 'Pasivos por Impuestos, Beneficios a Empleados y Provisiones', code: '24,25,26,27,28,29' },
-        { num: '3.7', titulo: 'Patrimonio y Resultados del Ejercicio', code: '3' },
-      ];
-
-      for (const rb of rubrosBase) {
-        const found = (notasDb || []).find((n: any) => String(n.nota_num) === rb.num);
-        let contenido = found ? (found.contenido || found.sugerido || '') : '';
-        if (!contenido) {
-          const prefixes = rb.code.split(',');
-          const supporting = getNoteSupportingData(accounts, balNow, balCmp, prefixes);
-          const totalVal = supporting.reduce((acc, it) => acc + it.now, 0);
-          contenido = `Al corte de ${fmtLongDate(reportDateShort)}, el saldo del rubro asciende a $${Math.abs(totalVal).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, medido conforme a las políticas contables adoptadas.`;
-        }
-        notasFinales.push({
-          nota_num: rb.num,
-          titulo: found?.titulo || rb.titulo,
-          contenido,
-          cuenta_codigo: rb.code,
-        });
-      }
-
-      (notasDb || []).forEach((ndb: any) => {
-        if (!notasFinales.some(nf => String(nf.nota_num) === String(ndb.nota_num))) {
-          notasFinales.push({
-            nota_num: ndb.nota_num,
-            titulo: ndb.titulo || 'Revelación NIIF',
-            contenido: ndb.contenido || ndb.sugerido || '',
-            cuenta_codigo: ndb.cuenta_codigo || '',
-          });
-        }
-      });
-      notasFinales.sort((a, b) => String(a.nota_num).localeCompare(String(b.nota_num), undefined, { numeric: true }));
-
-      dossierData = {
-        reportMonth,
-        compareMonth,
-        reportDate: reportDateShort,
-        compareDate: compareDateShort,
-        frameworkKey,
-        frameworkLabel,
-        headerCtx,
-        signatories: { repName, repTitle, contName, contTitle, contLicense, revName, revTitle, revLicense },
-        incCert,
-        incDictamen,
-        incNotes,
-        incSignatures,
-        esf: { actCorr, actNoCorr, pasCorr, pasNoCorr, patrimonio, totalActivosNow, totalActivosCmp, totalPasivosNow, totalPasivosCmp, totalPatrimonioNow, totalPatrimonioCmp, totalPyPNow, totalPyPCmp, resErNow, resErCmp },
-        er: { ingresos, costos, gastos, margenBrutoNow, margenBrutoCmp, utilidadOpNow, utilidadOpCmp, utilidadNetaNow, utilidadNetaCmp },
-        cf: { cfInflows, cfOutflows, cfNetOp, cfCoverage },
-        notas: notasFinales,
-        accounts,
-        balNow,
-        balCmp,
-      };
-
-      const pdfBtn = $('#btn-pdf-dossier') as HTMLButtonElement | null;
-      const xlsBtn = $('#btn-xls-dossier') as HTMLButtonElement | null;
-      const prtBtn = $('#btn-print-dossier') as HTMLButtonElement | null;
-      if (pdfBtn) pdfBtn.disabled = false;
-      if (xlsBtn) xlsBtn.disabled = false;
-      if (prtBtn) prtBtn.disabled = false;
-
-      // ── Renderizado de Pestañas con la paleta oficial de GRAVY ────────────
-      results.innerHTML = `
-        <div class="space-y-4">
-          <!-- Pestañas de Navegación -->
-          <div class="flex flex-wrap items-center gap-2 border-b pb-2" style="border-color:#E2E8F0">
-            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm" style="background:#7C3AED" data-tab="cert">
-              <i class="fas fa-file-contract mr-1.5"></i> 1. Certificación Legal (Ley 222)
-            </button>
-            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100" data-tab="esf">
-              <i class="fas fa-building-columns mr-1.5 text-blue-600"></i> 2. Sit. Financiera (ESF)
-            </button>
-            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100" data-tab="er">
-              <i class="fas fa-chart-line mr-1.5 text-emerald-600"></i> 3. Estado de Resultados (ER)
-            </button>
-            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100" data-tab="cf">
-              <i class="fas fa-money-bill-transfer mr-1.5 text-amber-600"></i> 4. Flujo de Caja
-            </button>
-            <button class="dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100" data-tab="notes">
-              <i class="fas fa-file-lines mr-1.5 text-purple-600"></i> 5. Notas NIIF (${notasFinales.length})
-            </button>
-          </div>
-
-          <!-- Pestaña 1: Certificación Legal -->
-          <div id="dossier-tab-pane-cert" class="dossier-pane">
-            <div class="max-w-4xl mx-auto bg-white border border-gray-200 rounded-xl p-8 shadow-sm">
-              <div class="text-center pb-6 border-b border-gray-200">
-                <span class="inline-block px-3 py-1 rounded-full text-xxs font-bold tracking-wider uppercase bg-purple-50 text-purple-700 border border-purple-200 mb-2">
-                  DOCUMENTO OFICIAL VINCULANTE
-                </span>
-                <h2 class="text-xl font-bold uppercase tracking-wide" style="color:#0D2137">
-                  ${esc(headerCtx.companyName || 'ENTIDAD REPORTANTE')}
-                </h2>
-                <p class="text-xs text-gray-500 mt-0.5">
-                  NIT: ${esc(headerCtx.companyNit || 'N/A')} | ${esc(headerCtx.companyAddress || '')}
-                </p>
-                <div class="mt-4 pt-3 border-t border-gray-100 inline-block">
-                  <h3 class="text-sm font-bold tracking-wider uppercase" style="color:#7C3AED">
-                    CERTIFICACIÓN DE ESTADOS FINANCIEROS
-                  </h3>
-                  <p class="text-xs italic text-gray-500">
-                    En cumplimiento del Artículo 37 de la Ley 222 de 1995
-                  </p>
-                </div>
-              </div>
-
-              <div class="mt-6 text-xs text-gray-700 leading-relaxed space-y-4 text-justify">
-                <p>
-                  Los suscritos <strong>${esc(repName || 'REPRESENTANTE LEGAL')}</strong> en calidad de ${esc(repTitle || 'Representante Legal')}, y <strong>${esc(contName || 'CONTADOR PÚBLICO')}</strong> en calidad de Contador Público con Tarjeta Profesional No. <strong>${esc(contLicense || 'N/A')}</strong>, certificamos:
-                </p>
-                <p>
-                  Que hemos preparado y verificado previamente las afirmaciones explícitas e implícitas contenidas en los Estados Financieros de la entidad correspondientes al período mensual comprendido entre <strong>${esc(reportMonth)}</strong> (con corte al <strong>${fmtLongDate(reportDateShort)}</strong>) y de forma comparativa con el corte al <strong>${fmtLongDate(compareDateShort)}</strong>, de conformidad con las siguientes aseveraciones legales:
-                </p>
-                <ul class="list-disc pl-5 space-y-1.5 text-gray-800 font-medium">
-                  <li><strong>1. Existencia:</strong> Los activos y pasivos existen en la fecha de corte y las transacciones registradas han ocurrido realmente durante el ejercicio.</li>
-                  <li><strong>2. Integridad:</strong> Todos los hechos económicos realizados han sido reconocidos en su totalidad y no se ha omitido ningún elemento material o relevante.</li>
-                  <li><strong>3. Derechos y Obligaciones:</strong> Los activos registrados corresponden a derechos y beneficios económicos legítimos, y los pasivos reflejan obligaciones presentes y exigibles de la entidad.</li>
-                  <li><strong>4. Valuación y Asignación:</strong> Todas las partidas han sido cuantificadas y reconocidas apropiadamente bajo el marco técnico normativo de <strong>${esc(frameworkLabel)}</strong>.</li>
-                  <li><strong>5. Presentación y Revelación:</strong> Los hechos económicos han sido clasificados, descritos y desglosados correctamente, acompañados de sus respectivas notas y revelaciones explicativas que son parte integral de los mismos.</li>
-                </ul>
-                <p>
-                  Hacemos constar que las cifras han sido tomadas fielmente de los libros oficiales de contabilidad registrados con arreglo a las leyes colombianas y reflejan fielmente la situación financiera y los resultados económicos de la organización.
-                </p>
-                ${revName ? `
-                <div class="mt-4 pt-4 border-t border-gray-100">
-                  <p class="font-bold text-gray-900">Atestación / Dictamen del Revisor Fiscal (Artículo 38 Ley 222 de 1995):</p>
-                  <p class="mt-1 text-gray-600 italic">
-                    "En mi condición de Revisor Fiscal, declaro que he auditado los estados financieros mencionados de acuerdo con normas de aseguramiento de la información vigentes en Colombia, y que los mismos presentan razonablemente, en todos los aspectos significativos, la situación financiera de la entidad."
-                  </p>
-                </div>` : ''}
-              </div>
-
-              <!-- Bloque de Firmas -->
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12 pt-6 border-t border-gray-200 text-center text-xs">
-                <div>
-                  <div class="border-b border-gray-400 w-4/5 mx-auto mb-2"></div>
-                  <p class="font-bold text-gray-900">${esc(repName || '________________________')}</p>
-                  <p class="text-gray-600">${esc(repTitle || 'Representante Legal')}</p>
-                  <p class="text-gray-400 text-xxs">C.C. ____________________</p>
-                </div>
-                <div>
-                  <div class="border-b border-gray-400 w-4/5 mx-auto mb-2"></div>
-                  <p class="font-bold text-gray-900">${esc(contName || '________________________')}</p>
-                  <p class="text-gray-600">${esc(contTitle || 'Contador Público')}</p>
-                  <p class="text-gray-400 text-xxs">T.P. No. ${esc(contLicense || '____________________')}</p>
-                </div>
-                <div>
-                  <div class="border-b border-gray-400 w-4/5 mx-auto mb-2"></div>
-                  <p class="font-bold text-gray-900">${esc(revName || '________________________')}</p>
-                  <p class="text-gray-600">${esc(revTitle || 'Revisor Fiscal')}</p>
-                  <p class="text-gray-400 text-xxs">T.P. No. ${esc(revLicense || '____________________')}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Pestaña 2: Sit Financiera (ESF) -->
-          <div id="dossier-tab-pane-esf" class="dossier-pane" style="display:none">
-            <div class="border border-gray-200 rounded-xl overflow-x-auto bg-white shadow-sm">
-              <table class="report-table text-xs w-full">
-                <thead>
-                  <tr class="bg-gray-50 text-gray-700 font-semibold text-xxs uppercase tracking-wider border-b border-gray-200">
-                    <th class="py-2.5 px-3 text-left">Rubro / Concepto NIIF</th>
-                    <th class="py-2.5 px-2 text-center">Nota</th>
-                    <th class="py-2.5 px-3 text-right">${esc(reportMonth)} ($)</th>
-                    <th class="py-2.5 px-2 text-center">% Vert.</th>
-                    <th class="py-2.5 px-3 text-right">${esc(compareMonth)} ($)</th>
-                    <th class="py-2.5 px-2 text-center">% Vert.</th>
-                    <th class="py-2.5 px-3 text-right">Variación ($)</th>
-                    <th class="py-2.5 px-2 text-center">Var. (%)</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                  <tr class="bg-purple-50/50 font-bold text-purple-950"><td colspan="8" class="py-1.5 px-3">ACTIVOS</td></tr>
-                  <tr class="bg-gray-50/50 font-semibold text-gray-700"><td colspan="8" class="py-1 px-4 text-xxs">Activos Corrientes</td></tr>
-                  ${actCorr.detail.map((r: any) => {
-                    const pNow = calcFinancialPct(r.now, totalActivosNow);
-                    const pCmp = calcFinancialPct(r.cmp, totalActivosCmp);
-                    const hVar = calcHorizontalVariation(r.now, r.cmp);
-                    const pad = Math.max(0, (r.level - 1) * 12);
-                    return `<tr>
-                      <td class="font-medium text-gray-800" style="padding-left:${16 + pad}px"><span class="font-mono text-xxs text-gray-400 mr-1">${esc(r.code)}</span>${esc(r.name)}</td>
-                      <td class="text-center font-bold text-purple-600">3.1</td>
-                      <td class="text-right font-mono">${fmtSignedAmount(r.now).text}</td>
-                      <td class="text-center font-mono text-gray-500">${pNow.text}</td>
-                      <td class="text-right font-mono">${fmtSignedAmount(r.cmp).text}</td>
-                      <td class="text-center font-mono text-gray-500">${pCmp.text}</td>
-                      <td class="text-right font-mono" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
-                      <td class="text-center">${hVar.badgeHtml}</td>
-                    </tr>`;
-                  }).join('')}
-                  <tr class="bg-purple-50/70 font-bold text-purple-950">
-                    <td class="pl-4">Total Activos Corrientes</td>
-                    <td></td>
-                    <td class="text-right font-mono font-bold">${fmtSignedAmount(actCorr.totalNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(actCorr.totalNow, totalActivosNow).text}</td>
-                    <td class="text-right font-mono font-bold">${fmtSignedAmount(actCorr.totalCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(actCorr.totalCmp, totalActivosCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(actCorr.totalNow, actCorr.totalCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(actCorr.totalNow, actCorr.totalCmp).badgeHtml}</td>
-                  </tr>
-
-                  <tr class="bg-gray-50/50 font-semibold text-gray-700"><td colspan="8" class="py-1 px-4 text-xxs">Activos No Corrientes</td></tr>
-                  ${actNoCorr.detail.map((r: any) => {
-                    const pNow = calcFinancialPct(r.now, totalActivosNow);
-                    const pCmp = calcFinancialPct(r.cmp, totalActivosCmp);
-                    const hVar = calcHorizontalVariation(r.now, r.cmp);
-                    const pad = Math.max(0, (r.level - 1) * 12);
-                    return `<tr>
-                      <td class="font-medium text-gray-800" style="padding-left:${16 + pad}px"><span class="font-mono text-xxs text-gray-400 mr-1">${esc(r.code)}</span>${esc(r.name)}</td>
-                      <td class="text-center font-bold text-purple-600">3.4</td>
-                      <td class="text-right font-mono">${fmtSignedAmount(r.now).text}</td>
-                      <td class="text-center font-mono text-gray-500">${pNow.text}</td>
-                      <td class="text-right font-mono">${fmtSignedAmount(r.cmp).text}</td>
-                      <td class="text-center font-mono text-gray-500">${pCmp.text}</td>
-                      <td class="text-right font-mono" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
-                      <td class="text-center">${hVar.badgeHtml}</td>
-                    </tr>`;
-                  }).join('')}
-
-                  <tr class="bg-purple-100/80 font-black text-purple-950 text-sm">
-                    <td class="py-2 px-3">TOTAL ACTIVOS</td>
-                    <td></td>
-                    <td class="text-right font-mono">${fmtSignedAmount(totalActivosNow).text}</td>
-                    <td class="text-center font-mono">100.0%</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(totalActivosCmp).text}</td>
-                    <td class="text-center font-mono">100.0%</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(totalActivosNow, totalActivosCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(totalActivosNow, totalActivosCmp).badgeHtml}</td>
-                  </tr>
-
-                  <!-- Pasivos -->
-                  <tr class="bg-purple-50/50 font-bold text-purple-950"><td colspan="8" class="py-1.5 px-3">PASIVOS</td></tr>
-                  <tr class="font-bold text-gray-800">
-                    <td class="pl-4">Total Pasivos Corrientes</td>
-                    <td class="text-center font-bold text-purple-600">3.5</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(pasCorr.totalNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(pasCorr.totalNow, totalPyPNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(pasCorr.totalCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(pasCorr.totalCmp, totalPyPCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(pasCorr.totalNow, pasCorr.totalCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(pasCorr.totalNow, pasCorr.totalCmp).badgeHtml}</td>
-                  </tr>
-                  <tr class="font-bold text-gray-800">
-                    <td class="pl-4">Total Pasivos No Corrientes</td>
-                    <td class="text-center font-bold text-purple-600">3.6</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(pasNoCorr.totalNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(pasNoCorr.totalNow, totalPyPNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(pasNoCorr.totalCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(pasNoCorr.totalCmp, totalPyPCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(pasNoCorr.totalNow, pasNoCorr.totalCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(pasNoCorr.totalNow, pasNoCorr.totalCmp).badgeHtml}</td>
-                  </tr>
-                  <tr class="bg-purple-50/70 font-bold text-purple-950">
-                    <td class="py-2 px-3">TOTAL PASIVOS</td>
-                    <td></td>
-                    <td class="text-right font-mono">${fmtSignedAmount(totalPasivosNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(totalPasivosNow, totalPyPNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(totalPasivosCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(totalPasivosCmp, totalPyPCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(totalPasivosNow, totalPasivosCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(totalPasivosNow, totalPasivosCmp).badgeHtml}</td>
-                  </tr>
-
-                  <!-- Patrimonio -->
-                  <tr class="bg-purple-50/50 font-bold text-purple-950"><td colspan="8" class="py-1.5 px-3">PATRIMONIO</td></tr>
-                  <tr class="font-bold text-gray-800">
-                    <td class="pl-4">Patrimonio y Resultados Acumulados</td>
-                    <td class="text-center font-bold text-purple-600">3.7</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(patrimonio.totalNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(patrimonio.totalNow, totalPyPNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(patrimonio.totalCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(patrimonio.totalCmp, totalPyPCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(patrimonio.totalNow, patrimonio.totalCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(patrimonio.totalNow, patrimonio.totalCmp).badgeHtml}</td>
-                  </tr>
-                  <tr class="font-bold text-gray-800">
-                    <td class="pl-4">Resultado Neto del Ejercicio</td>
-                    <td class="text-center font-bold text-purple-600">3.7</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(resErNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(resErNow, totalPyPNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(resErCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(resErCmp, totalPyPCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(resErNow, resErCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(resErNow, resErCmp).badgeHtml}</td>
-                  </tr>
-                  <tr class="bg-purple-50/70 font-bold text-purple-950">
-                    <td class="py-2 px-3">TOTAL PATRIMONIO</td>
-                    <td></td>
-                    <td class="text-right font-mono">${fmtSignedAmount(totalPatrimonioNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(totalPatrimonioNow, totalPyPNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(totalPatrimonioCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(totalPatrimonioCmp, totalPyPCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(totalPatrimonioNow, totalPatrimonioCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(totalPatrimonioNow, totalPatrimonioCmp).badgeHtml}</td>
-                  </tr>
-
-                  <!-- Total Pasivo + Patrimonio -->
-                  <tr class="bg-purple-900 text-white font-black text-sm">
-                    <td class="py-2.5 px-3">TOTAL PASIVO Y PATRIMONIO</td>
-                    <td></td>
-                    <td class="text-right font-mono">${fmtSignedAmount(totalPyPNow).text}</td>
-                    <td class="text-center font-mono">100.0%</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(totalPyPCmp).text}</td>
-                    <td class="text-center font-mono">100.0%</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(totalPyPNow, totalPyPCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(totalPyPNow, totalPyPCmp).badgeHtml}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Pestaña 3: Estado de Resultados (ER) -->
-          <div id="dossier-tab-pane-er" class="dossier-pane" style="display:none">
-            <div class="border border-gray-200 rounded-xl overflow-x-auto bg-white shadow-sm">
-              <table class="report-table text-xs w-full">
-                <thead>
-                  <tr class="bg-gray-50 text-gray-700 font-semibold text-xxs uppercase tracking-wider border-b border-gray-200">
-                    <th class="py-2.5 px-3 text-left">Rubro / Cuenta de Resultados</th>
-                    <th class="py-2.5 px-2 text-center">Nota</th>
-                    <th class="py-2.5 px-3 text-right">${esc(reportMonth)} ($)</th>
-                    <th class="py-2.5 px-2 text-center">% Ingresos</th>
-                    <th class="py-2.5 px-3 text-right">${esc(compareMonth)} ($)</th>
-                    <th class="py-2.5 px-2 text-center">% Ingresos</th>
-                    <th class="py-2.5 px-3 text-right">Variación ($)</th>
-                    <th class="py-2.5 px-2 text-center">Var. (%)</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                  <tr class="bg-purple-50/50 font-bold text-purple-950"><td colspan="8" class="py-1.5 px-3">INGRESOS DE ACTIVIDADES ORDINARIAS</td></tr>
-                  ${ingresos.detail.map((r: any) => {
-                    const pNow = calcFinancialPct(r.now, baseIngresosNow);
-                    const pCmp = calcFinancialPct(r.cmp, baseIngresosCmp);
-                    const hVar = calcHorizontalVariation(r.now, r.cmp);
-                    const pad = Math.max(0, (r.level - 1) * 12);
-                    return `<tr>
-                      <td class="font-medium text-gray-800" style="padding-left:${16 + pad}px"><span class="font-mono text-xxs text-gray-400 mr-1">${esc(r.code)}</span>${esc(r.name)}</td>
-                      <td class="text-center font-bold text-purple-600">4.1</td>
-                      <td class="text-right font-mono">${fmtSignedAmount(r.now).text}</td>
-                      <td class="text-center font-mono text-gray-500">${pNow.text}</td>
-                      <td class="text-right font-mono">${fmtSignedAmount(r.cmp).text}</td>
-                      <td class="text-center font-mono text-gray-500">${pCmp.text}</td>
-                      <td class="text-right font-mono" style="color:${hVar.diffFmt.color}">${hVar.diffFmt.text}</td>
-                      <td class="text-center">${hVar.badgeHtml}</td>
-                    </tr>`;
-                  }).join('')}
-                  <tr class="bg-purple-50/70 font-bold text-purple-950">
-                    <td class="py-2 px-3">TOTAL INGRESOS OPERACIONALES</td>
-                    <td></td>
-                    <td class="text-right font-mono font-bold">${fmtSignedAmount(ingresos.totalNow).text}</td>
-                    <td class="text-center font-mono">100.0%</td>
-                    <td class="text-right font-mono font-bold">${fmtSignedAmount(ingresos.totalCmp).text}</td>
-                    <td class="text-center font-mono">100.0%</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(ingresos.totalNow, ingresos.totalCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(ingresos.totalNow, ingresos.totalCmp).badgeHtml}</td>
-                  </tr>
-
-                  <!-- Costos -->
-                  <tr class="bg-gray-50/50 font-bold text-gray-800"><td colspan="8" class="py-1.5 px-3">COSTOS DE VENTAS / OPERACIÓN</td></tr>
-                  <tr class="bg-gray-100 font-bold text-gray-900">
-                    <td class="py-2 px-3">TOTAL COSTO DE VENTAS</td>
-                    <td class="text-center font-bold text-purple-600">4.2</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(costos.totalNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(costos.totalNow, baseIngresosNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(costos.totalCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(costos.totalCmp, baseIngresosCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(costos.totalNow, costos.totalCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(costos.totalNow, costos.totalCmp).badgeHtml}</td>
-                  </tr>
-
-                  <!-- Margen Bruto -->
-                  <tr class="bg-purple-50 font-bold text-purple-950 text-sm">
-                    <td class="py-2 px-3">UTILIDAD BRUTA (MARGEN BRUTO)</td>
-                    <td></td>
-                    <td class="text-right font-mono">${fmtSignedAmount(margenBrutoNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(margenBrutoNow, baseIngresosNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(margenBrutoCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(margenBrutoCmp, baseIngresosCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(margenBrutoNow, margenBrutoCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(margenBrutoNow, margenBrutoCmp).badgeHtml}</td>
-                  </tr>
-
-                  <!-- Gastos -->
-                  <tr class="bg-gray-50/50 font-bold text-gray-800"><td colspan="8" class="py-1.5 px-3">GASTOS DE ADMINISTRACIÓN Y VENTAS</td></tr>
-                  <tr class="bg-gray-100 font-bold text-gray-900">
-                    <td class="py-2 px-3">TOTAL GASTOS OPERACIONALES</td>
-                    <td class="text-center font-bold text-purple-600">4.3</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(gastos.totalNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(gastos.totalNow, baseIngresosNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(gastos.totalCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(gastos.totalCmp, baseIngresosCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(gastos.totalNow, gastos.totalCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(gastos.totalNow, gastos.totalCmp).badgeHtml}</td>
-                  </tr>
-
-                  <!-- Utilidad Operacional -->
-                  <tr class="bg-purple-100/70 font-bold text-purple-950 text-sm">
-                    <td class="py-2 px-3">UTILIDAD OPERACIONAL (EBITDA ESTIMADO)</td>
-                    <td></td>
-                    <td class="text-right font-mono">${fmtSignedAmount(utilidadOpNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(utilidadOpNow, baseIngresosNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(utilidadOpCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(utilidadOpCmp, baseIngresosCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(utilidadOpNow, utilidadOpCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(utilidadOpNow, utilidadOpCmp).badgeHtml}</td>
-                  </tr>
-
-                  <!-- Utilidad Neta -->
-                  <tr class="bg-purple-900 text-white font-black text-sm">
-                    <td class="py-2.5 px-3">RESULTADO NETO DEL EJERCICIO</td>
-                    <td></td>
-                    <td class="text-right font-mono">${fmtSignedAmount(utilidadNetaNow).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(utilidadNetaNow, baseIngresosNow).text}</td>
-                    <td class="text-right font-mono">${fmtSignedAmount(utilidadNetaCmp).text}</td>
-                    <td class="text-center font-mono">${calcFinancialPct(utilidadNetaCmp, baseIngresosCmp).text}</td>
-                    <td class="text-right font-mono">${calcHorizontalVariation(utilidadNetaNow, utilidadNetaCmp).diffFmt.text}</td>
-                    <td class="text-center">${calcHorizontalVariation(utilidadNetaNow, utilidadNetaCmp).badgeHtml}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Pestaña 4: Flujo de Caja -->
-          <div id="dossier-tab-pane-cf" class="dossier-pane" style="display:none">
-            <div class="border border-gray-200 rounded-xl p-6 bg-white shadow-sm space-y-4">
-              <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                <div>
-                  <h4 class="font-bold text-gray-900 text-sm">Estado de Flujos de Efectivo (Método Directo Simplificado)</h4>
-                  <p class="text-xs text-gray-500">Conciliación de entradas, salidas y cobertura del flujo de efectivo operativo.</p>
-                </div>
-                <div>
-                  <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${cfCoverage >= 1.2 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : (cfCoverage >= 1.0 ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-rose-50 text-rose-800 border border-rose-200')}">
-                    <i class="fas fa-shield-halved"></i> Cobertura: ${cfCoverage.toFixed(2)}x (${cfCoverage >= 1.0 ? 'Superávit' : 'Déficit'})
-                  </span>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="p-4 rounded-xl bg-gray-50 border border-gray-200">
-                  <p class="text-xxs font-bold uppercase text-emerald-700 tracking-wider">Recaudos Operativos (Cobros)</p>
-                  <p class="text-lg font-bold text-gray-900 font-mono mt-1">${fmtSignedAmount(cfInflows).text}</p>
-                </div>
-                <div class="p-4 rounded-xl bg-gray-50 border border-gray-200">
-                  <p class="text-xxs font-bold uppercase text-rose-700 tracking-wider">Pagos Operativos (Egresos)</p>
-                  <p class="text-lg font-bold text-gray-900 font-mono mt-1">${fmtSignedAmount(cfOutflows).text}</p>
-                </div>
-                <div class="p-4 rounded-xl bg-purple-50 border border-purple-200">
-                  <p class="text-xxs font-bold uppercase text-purple-800 tracking-wider">Flujo Neto de Operación</p>
-                  <p class="text-lg font-black text-purple-950 font-mono mt-1">${fmtSignedAmount(cfNetOp).text}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Pestaña 5: Notas NIIF -->
-          <div id="dossier-tab-pane-notes" class="dossier-pane" style="display:none">
-            <div class="space-y-4">
-              ${notasFinales.map((n: any) => `
-                <div class="border border-gray-200 rounded-xl p-5 bg-white shadow-sm hover:border-purple-300 transition-all">
-                  <div class="flex items-center justify-between pb-3 border-b border-gray-100">
-                    <h4 class="font-bold text-gray-900 text-sm flex items-center gap-2">
-                      <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-purple-100 text-purple-800 text-xs font-black">
-                        ${esc(n.nota_num)}
-                      </span>
-                      ${esc(n.titulo)}
-                    </h4>
-                    ${n.cuenta_codigo ? `<span class="text-xxs font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Cuentas: ${esc(n.cuenta_codigo)}</span>` : ''}
-                  </div>
-                  <div class="mt-3 text-xs text-gray-700 leading-relaxed whitespace-pre-line text-justify">
-                    ${esc(n.contenido)}
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        </div>
-      `;
-
-      // Conmutar pestañas
-      results.querySelectorAll('.dossier-tab-btn').forEach(btn => {
-        btn.addEventListener('click', (ev) => {
-          const tab = (ev.currentTarget as HTMLElement).getAttribute('data-tab');
-          results.querySelectorAll('.dossier-tab-btn').forEach(b => {
-            b.className = 'dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-100';
-            (b as HTMLElement).style.background = '';
-          });
-          const curBtn = ev.currentTarget as HTMLElement;
-          curBtn.className = 'dossier-tab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm';
-          curBtn.style.background = '#7C3AED';
-
-          results.querySelectorAll('.dossier-pane').forEach(p => (p as HTMLElement).style.display = 'none');
-          const targetPane = document.getElementById(`dossier-tab-pane-${tab}`);
-          if (targetPane) targetPane.style.display = 'block';
-        });
-      });
-
-    } catch (err: any) {
-      results.innerHTML = `<div class="p-8 text-center text-rose-600 bg-rose-50 rounded-xl border border-rose-200"><i class="fas fa-circle-exclamation mr-2"></i>Error al generar Informe: ${esc(err.message)}</div>`;
-    }
-  };
-
-  // ── Generador de PDF Integral del Informe ─────────────────────────────────
-  const exportDossierPdf = async () => {
-    if (!dossierData) return;
-    try {
-      const jsPdfCtor = getPdfCtorOrWarn();
-      if (!jsPdfCtor) return;
-
-      const { headerCtx, reportMonth, compareMonth, reportDate, compareDate, frameworkLabel, signatories, esf, er, cf, notas, accounts, balNow, balCmp } = dossierData;
-      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 36;
-      const contentWidth = pageWidth - (margin * 2);
-
-      // ── PÁGINA 1: PORTADA FORMAL / CARÁTULA ────────────────────────────────
-      doc.setDrawColor(124, 58, 237);
-      doc.setLineWidth(1.5);
-      doc.rect(margin - 10, margin - 10, pageWidth - (margin * 2) + 20, pageHeight - (margin * 2) + 20);
-      doc.setDrawColor(220, 220, 230);
-      doc.setLineWidth(0.75);
-      doc.rect(margin - 6, margin - 6, pageWidth - (margin * 2) + 12, pageHeight - (margin * 2) + 12);
-
-      let y = 140;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.setTextColor(13, 33, 55);
-      doc.text(String(headerCtx.companyName || 'ENTIDAD REPORTANTE').toUpperCase(), pageWidth / 2, y, { align: 'center' });
-
-      y += 20;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.setTextColor(80, 80, 80);
-      doc.text(`NIT: ${headerCtx.companyNit || 'N/A'} - Domicilio: ${headerCtx.companyAddress || 'Colombia'}`, pageWidth / 2, y, { align: 'center' });
-
-      y += 60;
-      doc.setDrawColor(124, 58, 237);
-      doc.setLineWidth(2);
-      doc.line(pageWidth / 2 - 120, y, pageWidth / 2 + 120, y);
-
-      y += 35;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(15);
-      doc.setTextColor(13, 33, 55);
-      doc.text('INFORME DE ESTADOS FINANCIEROS Y REVELACIONES', pageWidth / 2, y, { align: 'center' });
-
-      y += 18;
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(9.5);
-      doc.setTextColor(90, 90, 90);
-      doc.text('Acompañados de la Certificación de la Administración (Art. 37 Ley 222 de 1995)', pageWidth / 2, y, { align: 'center' });
-
-      y += 40;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(124, 58, 237);
-      doc.text(`Período Comparativo: ${reportMonth} vs ${compareMonth}`, pageWidth / 2, y, { align: 'center' });
-      y += 14;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(100, 100, 100);
-      doc.text(`Fechas de Corte: ${reportDate} y ${compareDate}`, pageWidth / 2, y, { align: 'center' });
-      y += 14;
-      doc.text(`Marco Normativo: ${frameworkLabel}`, pageWidth / 2, y, { align: 'center' });
-      y += 14;
-      doc.text('(Cifras expresadas en pesos colombianos - COP)', pageWidth / 2, y, { align: 'center' });
-
-      y = pageHeight - 140;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(90, 90, 90);
-      doc.text('Presentado por:', pageWidth / 2, y, { align: 'center' });
-      y += 15;
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${signatories.repName || 'Representante Legal'} (${signatories.repTitle || 'Representante Legal'})`, pageWidth / 2, y, { align: 'center' });
-      y += 12;
-      doc.text(`${signatories.contName || 'Contador'} (T.P. No. ${signatories.contLicense || 'N/A'})`, pageWidth / 2, y, { align: 'center' });
-      if (signatories.revName) {
-        y += 12;
-        doc.text(`${signatories.revName} - Revisor Fiscal (T.P. No. ${signatories.revLicense || 'N/A'})`, pageWidth / 2, y, { align: 'center' });
-      }
-
-      // ── PÁGINA 2: CERTIFICACIÓN LEGAL (ART. 37 LEY 222 DE 1995) ───────────
-      doc.addPage();
-      const headerCert = drawPdfHeader(doc, headerCtx, {
-        title: 'Certificacion Legal de Estados Financieros',
-        subtitles: ['Cumplimiento Articulo 37 de la Ley 222 de 1995', `Cortes: ${reportDate} y ${compareDate}`],
-      });
-
-      let certY = headerCert.startY + 15;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(40, 40, 40);
-
-      const certIntro = `Los suscritos ${signatories.repName || 'Representante Legal'} en calidad de ${signatories.repTitle || 'Representante Legal'}, y ${signatories.contName || 'Contador'} en calidad de Contador Publico con Tarjeta Profesional No. ${signatories.contLicense || 'N/A'}, en cumplimiento de lo establecido en el Articulo 37 de la Ley 222 de 1995, CERTIFICAMOS:`;
-      const certIntroLines = doc.splitTextToSize(certIntro, contentWidth);
-      doc.text(certIntroLines, margin, certY);
-      certY += certIntroLines.length * 10 + 8;
-
-      const certAseveracion = `Que hemos preparado y verificado previamente las afirmaciones explicitas e implicitas contenidas en los Estados Financieros adjuntos cortados al ${reportDate} y de forma comparativa al ${compareDate}:`;
-      const certAsevLines = doc.splitTextToSize(certAseveracion, contentWidth);
-      doc.text(certAsevLines, margin, certY);
-      certY += certAsevLines.length * 10 + 6;
-
-      const puntos = [
-        '1. EXISTENCIA: Los activos y pasivos existen en la fecha de corte y las transacciones registradas ocurrieron durante los periodos.',
-        '2. INTEGRIDAD: Todos los hechos economicos susceptibles de ser reconocidos han sido incluidos en los estados financieros, sin omisiones.',
-        '3. DERECHOS Y OBLIGACIONES: Los activos representan probables beneficios economicos futuros y los pasivos obligaciones presentes ineludibles.',
-        '4. VALUACION Y ASIGNACION: Todos los elementos han sido reconocidos por sus valores apropiados, de conformidad con el marco de ' + frameworkLabel + '.',
-        '5. PRESENTACION Y REVELACION: Los hechos economicos han sido correctamente clasificados, descritos y revelados, con notas explicativas integrales.'
-      ];
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      puntos.forEach(p => {
-        const pLines = doc.splitTextToSize(p, contentWidth - 10);
-        doc.text(pLines, margin + 10, certY);
-        certY += pLines.length * 9 + 4;
-      });
-
-      certY += 6;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      const certFinal = 'Las cifras han sido tomadas fielmente de los libros oficiales de contabilidad registrados y corresponden a la realidad financiera de la entidad.';
-      doc.text(doc.splitTextToSize(certFinal, contentWidth), margin, certY);
-      certY += 18;
-
-      if (signatories.revName) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8.5);
-        doc.setTextColor(13, 33, 55);
-        doc.text('Dictamen / Atestacion del Revisor Fiscal (Articulo 38 Ley 222 de 1995):', margin, certY);
-        certY += 10;
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(7.5);
-        doc.setTextColor(60, 60, 60);
-        const revTxt = '"He auditado los presentes estados financieros y en mi opinion profesional expreso que reflejan razonablemente la condicion financiera y los resultados de la entidad con sujecion a normas contables y de aseguramiento vigentes en Colombia."';
-        const revLines = doc.splitTextToSize(revTxt, contentWidth);
-        doc.text(revLines, margin, certY);
-        certY += revLines.length * 9 + 15;
-      }
-
-      await drawPdfSignatures(doc, certY);
-
-      // ── PÁGINA 3: ESTADO DE SITUACIÓN FINANCIERA ──────────────────────────
-      doc.addPage();
-      const headerPos = drawPdfHeader(doc, headerCtx, {
-        title: 'Estado de Situacion Financiera (ESF)',
-        subtitles: [`Periodo mensual comparativo: ${reportMonth} vs ${compareMonth}`, `Cortes: ${reportDate} y ${compareDate}`],
-      });
-
-      const bodyPos: any[] = [];
-      const pushPosSec = (title: string, sec: any, totLabel: string, noteNum: string) => {
-        bodyPos.push([{ content: title, colSpan: 7, styles: { fontStyle: 'bold', fillColor: [245, 243, 255], textColor: [13, 33, 55] } }]);
-        sec.detail.forEach((r: any) => {
-          const hVar = calcHorizontalVariation(r.now, r.cmp);
-          bodyPos.push([
-            r.name,
-            noteNum,
-            fmtPdfSignedNum(r.now),
-            calcFinancialPct(r.now, esf.totalActivosNow).text,
-            fmtPdfSignedNum(r.cmp),
-            hVar.diffFmt.text,
-            hVar.indicatorText,
-          ]);
-        });
-        const secHVar = calcHorizontalVariation(sec.totalNow, sec.totalCmp);
-        bodyPos.push([
-          { content: totLabel, styles: { fontStyle: 'bold' } },
-          '',
-          { content: fmtPdfSignedNum(sec.totalNow), styles: { fontStyle: 'bold' } },
-          { content: calcFinancialPct(sec.totalNow, esf.totalActivosNow).text, styles: { fontStyle: 'bold' } },
-          { content: fmtPdfSignedNum(sec.totalCmp), styles: { fontStyle: 'bold' } },
-          { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-          { content: secHVar.indicatorText, styles: { fontStyle: 'bold' } },
-        ]);
-      };
-
-      pushPosSec('Activos Corrientes', esf.actCorr, 'Total Activos Corrientes', '3.1');
-      pushPosSec('Activos No Corrientes', esf.actNoCorr, 'Total Activos No Corrientes', '3.4');
-      const actHVar = calcHorizontalVariation(esf.totalActivosNow, esf.totalActivosCmp);
-      bodyPos.push([
-        { content: 'TOTAL ACTIVOS', styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        '',
-        { content: fmtPdfSignedNum(esf.totalActivosNow), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        { content: fmtPdfSignedNum(esf.totalActivosCmp), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        { content: actHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        { content: actHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-      ]);
-
-      pushPosSec('Pasivos Corrientes', esf.pasCorr, 'Total Pasivos Corrientes', '3.5');
-      pushPosSec('Pasivos No Corrientes', esf.pasNoCorr, 'Total Pasivos No Corrientes', '3.6');
-      const pasHVar = calcHorizontalVariation(esf.totalPasivosNow, esf.totalPasivosCmp);
-      bodyPos.push([
-        { content: 'TOTAL PASIVOS', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        '',
-        { content: fmtPdfSignedNum(esf.totalPasivosNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: calcFinancialPct(esf.totalPasivosNow, esf.totalPyPNow).text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: fmtPdfSignedNum(esf.totalPasivosCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: pasHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: pasHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-      ]);
-
-      pushPosSec('Patrimonio y Resultados', esf.patrimonio, 'Patrimonio antes de resultado', '3.7');
-      const resHVar = calcHorizontalVariation(esf.resErNow, esf.resErCmp);
-      bodyPos.push([
-        { content: 'Resultado neto del ejercicio', styles: { fontStyle: 'bold' } },
-        '3.7',
-        { content: fmtPdfSignedNum(esf.resErNow), styles: { fontStyle: 'bold' } },
-        { content: calcFinancialPct(esf.resErNow, esf.totalPyPNow).text, styles: { fontStyle: 'bold' } },
-        { content: fmtPdfSignedNum(esf.resErCmp), styles: { fontStyle: 'bold' } },
-        { content: resHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-        { content: resHVar.indicatorText, styles: { fontStyle: 'bold' } },
-      ]);
-      const patHVar = calcHorizontalVariation(esf.totalPatrimonioNow, esf.totalPatrimonioCmp);
-      bodyPos.push([
-        { content: 'TOTAL PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        '',
-        { content: fmtPdfSignedNum(esf.totalPatrimonioNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: calcFinancialPct(esf.totalPatrimonioNow, esf.totalPyPNow).text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: fmtPdfSignedNum(esf.totalPatrimonioCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: patHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: patHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-      ]);
-      const pypHVar = calcHorizontalVariation(esf.totalPyPNow, esf.totalPyPCmp);
-      bodyPos.push([
-        { content: 'TOTAL PASIVOS MAS PATRIMONIO', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        { content: '', styles: { fillColor: [13, 33, 55] } },
-        { content: fmtPdfSignedNum(esf.totalPyPNow), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        { content: '100.0%', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        { content: fmtPdfSignedNum(esf.totalPyPCmp), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        { content: pypHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        { content: pypHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-      ]);
-
-      doc.autoTable({
-        startY: headerPos.startY,
-        head: [['Rubro / Concepto NIIF', 'Nota', String(reportDate), '% Vert.', String(compareDate), 'Variacion ($)', 'Tendencia (%)']],
-        body: bodyPos,
-        theme: 'plain',
-        margin: { left: margin, right: margin, bottom: 26 },
-        styles: { font: 'helvetica', fontSize: 6.8, textColor: [50, 50, 50], cellPadding: 2.2 },
-        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7 },
-        columnStyles: {
-          0: { cellWidth: 178 },
-          1: { cellWidth: 32, halign: 'center' },
-          2: { cellWidth: 70, halign: 'right' },
-          3: { cellWidth: 42, halign: 'center' },
-          4: { cellWidth: 70, halign: 'right' },
-          5: { cellWidth: 72, halign: 'right' },
-          6: { cellWidth: 76, halign: 'right' },
-        },
-        didParseCell: (data: any) => {
-          if (data.section === 'body') {
-            const raw = String(data.cell.raw?.content ?? data.cell.raw ?? '').trim();
-            if (data.column.index === 6) {
-              if (raw.startsWith('+')) {
-                data.cell.styles.textColor = [5, 150, 105];
-                data.cell.styles.fontStyle = 'bold';
-              } else if (raw.startsWith('-')) {
-                data.cell.styles.textColor = [220, 38, 38];
-                data.cell.styles.fontStyle = 'bold';
-              } else {
-                data.cell.styles.textColor = [100, 116, 139];
-              }
-            }
-          }
-        }
-      });
-
-      // ── PÁGINA 4: ESTADO DE RESULTADOS ────────────────────────────────────
-      doc.addPage();
-      const headerEr = drawPdfHeader(doc, headerCtx, {
-        title: 'Estado de Resultados Integral (ER)',
-        subtitles: [`Periodo mensual comparativo: ${reportMonth} vs ${compareMonth}`, `Cortes: ${reportDate} y ${compareDate}`],
-      });
-
-      const bodyEr: any[] = [];
-      const pushErSec = (title: string, sec: any, totLabel: string, noteNum: string) => {
-        bodyEr.push([{ content: title, colSpan: 7, styles: { fontStyle: 'bold', fillColor: [245, 243, 255], textColor: [13, 33, 55] } }]);
-        sec.detail.forEach((r: any) => {
-          const hVar = calcHorizontalVariation(r.now, r.cmp);
-          bodyEr.push([
-            r.name,
-            noteNum,
-            fmtPdfSignedNum(r.now),
-            calcFinancialPct(r.now, er.ingresos.totalNow || 1).text,
-            fmtPdfSignedNum(r.cmp),
-            hVar.diffFmt.text,
-            hVar.indicatorText,
-          ]);
-        });
-        const secHVar = calcHorizontalVariation(sec.totalNow, sec.totalCmp);
-        bodyEr.push([
-          { content: totLabel, styles: { fontStyle: 'bold' } },
-          '',
-          { content: fmtPdfSignedNum(sec.totalNow), styles: { fontStyle: 'bold' } },
-          { content: calcFinancialPct(sec.totalNow, er.ingresos.totalNow || 1).text, styles: { fontStyle: 'bold' } },
-          { content: fmtPdfSignedNum(sec.totalCmp), styles: { fontStyle: 'bold' } },
-          { content: secHVar.diffFmt.text, styles: { fontStyle: 'bold' } },
-          { content: secHVar.indicatorText, styles: { fontStyle: 'bold' } },
-        ]);
-      };
-
-      pushErSec('Ingresos Operacionales', er.ingresos, 'Total Ingresos de Actividades Ordinarias', '4.1');
-      pushErSec('Costos de Ventas', er.costos, 'Total Costos de Ventas', '4.2');
-      const brutHVar = calcHorizontalVariation(er.margenBrutoNow, er.margenBrutoCmp);
-      bodyEr.push([
-        { content: 'UTILIDAD BRUTA (MARGEN BRUTO)', styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        '',
-        { content: fmtPdfSignedNum(er.margenBrutoNow), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        { content: calcFinancialPct(er.margenBrutoNow, er.ingresos.totalNow || 1).text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        { content: fmtPdfSignedNum(er.margenBrutoCmp), styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        { content: brutHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-        { content: brutHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [237, 233, 254] } },
-      ]);
-
-      pushErSec('Gastos Operacionales', er.gastos, 'Total Gastos Operacionales', '4.3');
-      const opHVar = calcHorizontalVariation(er.utilidadOpNow, er.utilidadOpCmp);
-      bodyEr.push([
-        { content: 'UTILIDAD OPERACIONAL (EBITDA ESTIMADO)', styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        '',
-        { content: fmtPdfSignedNum(er.utilidadOpNow), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: calcFinancialPct(er.utilidadOpNow, er.ingresos.totalNow || 1).text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: fmtPdfSignedNum(er.utilidadOpCmp), styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: opHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: opHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-      ]);
-
-      const netHVar = calcHorizontalVariation(er.utilidadNetaNow, er.utilidadNetaCmp);
-      bodyEr.push([
-        { content: 'RESULTADO NETO DEL EJERCICIO', styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        '',
-        { content: fmtPdfSignedNum(er.utilidadNetaNow), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        { content: calcFinancialPct(er.utilidadNetaNow, er.ingresos.totalNow || 1).text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        { content: fmtPdfSignedNum(er.utilidadNetaCmp), styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        { content: netHVar.diffFmt.text, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-        { content: netHVar.indicatorText, styles: { fontStyle: 'bold', fillColor: [13, 33, 55], textColor: [255, 255, 255] } },
-      ]);
-
-      doc.autoTable({
-        startY: headerEr.startY,
-        head: [['Rubro / Concepto de Resultados', 'Nota', String(reportDate), '% Ingresos', String(compareDate), 'Variacion ($)', 'Tendencia (%)']],
-        body: bodyEr,
-        theme: 'plain',
-        margin: { left: margin, right: margin, bottom: 26 },
-        styles: { font: 'helvetica', fontSize: 6.8, textColor: [50, 50, 50], cellPadding: 2.2 },
-        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7 },
-        columnStyles: {
-          0: { cellWidth: 178 },
-          1: { cellWidth: 32, halign: 'center' },
-          2: { cellWidth: 70, halign: 'right' },
-          3: { cellWidth: 42, halign: 'center' },
-          4: { cellWidth: 70, halign: 'right' },
-          5: { cellWidth: 72, halign: 'right' },
-          6: { cellWidth: 76, halign: 'right' },
-        },
-        didParseCell: (data: any) => {
-          if (data.section === 'body') {
-            const raw = String(data.cell.raw?.content ?? data.cell.raw ?? '').trim();
-            if (data.column.index === 6) {
-              if (raw.startsWith('+')) {
-                data.cell.styles.textColor = [5, 150, 105];
-                data.cell.styles.fontStyle = 'bold';
-              } else if (raw.startsWith('-')) {
-                data.cell.styles.textColor = [220, 38, 38];
-                data.cell.styles.fontStyle = 'bold';
-              } else {
-                data.cell.styles.textColor = [100, 116, 139];
-              }
-            }
-          }
-        }
-      });
-
-      // ── PÁGINA 5: ESTADO DE FLUJOS DE EFECTIVO ────────────────────────────
-      doc.addPage();
-      const headerCf = drawPdfHeader(doc, headerCtx, {
-        title: 'Estado de Flujos de Efectivo',
-        subtitles: ['Metodo Directo Simplificado', `Periodo: ${reportMonth} (Corte al ${reportDate})`],
-      });
-
-      doc.autoTable({
-        startY: headerCf.startY,
-        head: [['Actividad de Flujo de Efectivo', 'Saldo ($)', 'Participacion']],
-        body: [
-          [{ content: 'ACTIVIDADES DE OPERACION', colSpan: 3, styles: { fontStyle: 'bold', fillColor: [245, 243, 255] } }],
-          ['Recaudos y cobros operacionales recibidos de clientes', fmtPdfSignedNum(cf.cfInflows), '100.0%'],
-          ['Pagos a proveedores y gastos de administracion/personal', fmtPdfSignedNum(-cf.cfOutflows), `${calcFinancialPct(cf.cfOutflows, cf.cfInflows || 1).text}`],
-          [{ content: 'Flujo Neto de Actividades de Operacion', styles: { fontStyle: 'bold' } }, { content: fmtPdfSignedNum(cf.cfNetOp), styles: { fontStyle: 'bold' } }, ''],
-          [{ content: 'Ratio de Cobertura Operativa (Cobros / Pagos)', styles: { fontStyle: 'bold' } }, `${cf.cfCoverage.toFixed(2)}x`, cf.cfCoverage >= 1.0 ? 'Superavitario' : 'Deficitario'],
-        ],
-        theme: 'plain',
-        margin: { left: margin, right: margin, bottom: 26 },
-        styles: { font: 'helvetica', fontSize: 7.2, textColor: [50, 50, 50], cellPadding: 3 },
-        headStyles: { fillColor: [243, 244, 246], textColor: [13, 33, 55], fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 320 },
-          1: { cellWidth: 110, halign: 'right' },
-          2: { cellWidth: 110, halign: 'center' },
-        }
-      });
-
-      // ── PÁGINAS SIGUIENTES: NOTAS Y REVELACIONES INTEGRALES ───────────────
-      const notesFinalY = drawNotesInPdf(doc, notas, margin, pageWidth, accounts, balNow, balCmp);
-      if (signatories.repName || signatories.contName) {
-        await drawPdfSignatures(doc, notesFinalY);
-      }
-
-      // Enumeración de páginas total
-      const totalPages = doc.internal.getNumberOfPages();
-      for (let p = 1; p <= totalPages; p++) {
-        doc.setPage(p);
-        drawPdfFooter(doc, p);
-      }
-
-      doc.save(`Informe_Financiero_Certificado_${reportMonth}_vs_${compareMonth}.pdf`);
-      showToast('Informe Financiero PDF generado con éxito.', 'success');
-    } catch (err: any) {
-      showToast(`Error al generar PDF del informe: ${err.message}`, 'error');
-    }
-  };
-
-  // ── Generador de Excel Multi-Hoja del Informe ─────────────────────────────
-  const exportDossierExcel = async () => {
-    if (!dossierData) return;
-    try {
-      const xlsx = (window as any).XLSX;
-      if (!xlsx) {
-        showToast('Biblioteca SheetJS (XLSX) no disponible.', 'error');
-        return;
-      }
-
-      const { headerCtx, reportMonth, compareMonth, reportDate, compareDate, frameworkLabel, signatories, esf, er, cf, notas } = dossierData;
-      const wb = xlsx.utils.book_new();
-
-      // 1. Hoja: Certificación Ley 222
-      const wsCertData = [
-        [headerCtx.companyName || 'ENTIDAD REPORTANTE'],
-        [`NIT: ${headerCtx.companyNit || 'N/A'}`],
-        [`DOMICILIO: ${headerCtx.companyAddress || 'Colombia'}`],
-        [''],
-        ['CERTIFICACIÓN DE ESTADOS FINANCIEROS (ARTÍCULO 37 LEY 222 DE 1995)'],
-        [`Período de corte: ${reportMonth} (${reportDate}) vs ${compareMonth} (${compareDate})`],
-        [`Marco Técnico Normativo: ${frameworkLabel}`],
-        [''],
-        ['AFIRMACIONES LEGALES VERIFICADAS POR LA ADMINISTRACIÓN:'],
-        ['1. EXISTENCIA: Los activos y pasivos existen en la fecha de corte y las transacciones registradas ocurrieron realmente.'],
-        ['2. INTEGRIDAD: Todos los hechos económicos realizados han sido reconocidos en su totalidad sin omisiones.'],
-        ['3. DERECHOS Y OBLIGACIONES: Los activos corresponden a beneficios económicos legítimos y los pasivos a obligaciones presentes.'],
-        ['4. VALUACIÓN Y ASIGNACIÓN: Las partidas han sido valuadas apropiadamente de acuerdo con el marco técnico normativo.'],
-        ['5. PRESENTACIÓN Y REVELACIÓN: Los hechos económicos están debidamente clasificados, descritos y revelados en las notas adjuntas.'],
-        [''],
-        ['FIRMAS LEGALES Y RESPONSABILIDAD PROFESIONAL:'],
-        ['Representante Legal:', signatories.repName || 'N/A', signatories.repTitle || 'Representante Legal'],
-        ['Contador Público:', signatories.contName || 'N/A', `T.P. No. ${signatories.contLicense || 'N/A'}`],
-        ['Revisor Fiscal:', signatories.revName || 'N/A', `T.P. No. ${signatories.revLicense || 'N/A'}`],
-      ];
-      const wsCert = xlsx.utils.aoa_to_sheet(wsCertData);
-      xlsx.utils.book_append_sheet(wb, wsCert, 'Certificación_Ley222');
-
-      // 2. Hoja: Situación Financiera (ESF)
-      const wsEsfData = [
-        ['Código', 'Rubro / Clasificación NIIF', 'Nota', `Saldo Actual (${reportMonth})`, '% Vert. Actual', `Saldo Anterior (${compareMonth})`, '% Vert. Anterior', 'Variación Nominal ($)', 'Tendencia Relativa (%)'],
-      ];
-      const appendPosRows = (sec: any, noteNum: string) => {
-        sec.detail.forEach((r: any) => {
-          const pNow = calcFinancialPct(r.now, esf.totalActivosNow);
-          const pCmp = calcFinancialPct(r.cmp, esf.totalActivosCmp);
-          const hVar = calcHorizontalVariation(r.now, r.cmp);
-          wsEsfData.push([r.code, r.name, noteNum, r.now, pNow.text, r.cmp, pCmp.text, hVar.diff, hVar.indicatorText]);
-        });
-      };
-      appendPosRows(esf.actCorr, '3.1');
-      appendPosRows(esf.actNoCorr, '3.4');
-      wsEsfData.push(['', 'TOTAL ACTIVOS', '', esf.totalActivosNow, '100.0%', esf.totalActivosCmp, '100.0%', esf.totalActivosNow - esf.totalActivosCmp, calcHorizontalVariation(esf.totalActivosNow, esf.totalActivosCmp).indicatorText]);
-      appendPosRows(esf.pasCorr, '3.5');
-      appendPosRows(esf.pasNoCorr, '3.6');
-      wsEsfData.push(['', 'TOTAL PASIVOS', '', esf.totalPasivosNow, '', esf.totalPasivosCmp, '', esf.totalPasivosNow - esf.totalPasivosCmp, calcHorizontalVariation(esf.totalPasivosNow, esf.totalPasivosCmp).indicatorText]);
-      appendPosRows(esf.patrimonio, '3.7');
-      wsEsfData.push(['', 'Resultado del ejercicio', '3.7', esf.resErNow, '', esf.resErCmp, '', esf.resErNow - esf.resErCmp, calcHorizontalVariation(esf.resErNow, esf.resErCmp).indicatorText]);
-      wsEsfData.push(['', 'TOTAL PATRIMONIO', '', esf.totalPatrimonioNow, '', esf.totalPatrimonioCmp, '', esf.totalPatrimonioNow - esf.totalPatrimonioCmp, calcHorizontalVariation(esf.totalPatrimonioNow, esf.totalPatrimonioCmp).indicatorText]);
-      wsEsfData.push(['', 'TOTAL PASIVO Y PATRIMONIO', '', esf.totalPyPNow, '100.0%', esf.totalPyPCmp, '100.0%', esf.totalPyPNow - esf.totalPyPCmp, calcHorizontalVariation(esf.totalPyPNow, esf.totalPyPCmp).indicatorText]);
-      const wsEsf = xlsx.utils.aoa_to_sheet(wsEsfData);
-      xlsx.utils.book_append_sheet(wb, wsEsf, 'Sit_Financiera_ESF');
-
-      // 3. Hoja: Resultados (ER)
-      const wsErData = [
-        ['Código', 'Rubro / Cuenta de Resultados', 'Nota', `Actual (${reportMonth})`, '% Ingresos Actual', `Anterior (${compareMonth})`, '% Ingresos Anterior', 'Variación Nominal ($)', 'Tendencia Relativa (%)'],
-      ];
-      const appendErRows = (sec: any, noteNum: string) => {
-        sec.detail.forEach((r: any) => {
-          const pNow = calcFinancialPct(r.now, er.ingresos.totalNow || 1);
-          const pCmp = calcFinancialPct(r.cmp, er.ingresos.totalCmp || 1);
-          const hVar = calcHorizontalVariation(r.now, r.cmp);
-          wsErData.push([r.code, r.name, noteNum, r.now, pNow.text, r.cmp, pCmp.text, hVar.diff, hVar.indicatorText]);
-        });
-      };
-      appendErRows(er.ingresos, '4.1');
-      wsErData.push(['', 'TOTAL INGRESOS OPERACIONALES', '', er.ingresos.totalNow, '100.0%', er.ingresos.totalCmp, '100.0%', er.ingresos.totalNow - er.ingresos.totalCmp, calcHorizontalVariation(er.ingresos.totalNow, er.ingresos.totalCmp).indicatorText]);
-      appendErRows(er.costos, '4.2');
-      wsErData.push(['', 'TOTAL COSTO DE VENTAS', '', er.costos.totalNow, '', er.costos.totalCmp, '', er.costos.totalNow - er.costos.totalCmp, calcHorizontalVariation(er.costos.totalNow, er.costos.totalCmp).indicatorText]);
-      wsErData.push(['', 'UTILIDAD BRUTA', '', er.margenBrutoNow, '', er.margenBrutoCmp, '', er.margenBrutoNow - er.margenBrutoCmp, calcHorizontalVariation(er.margenBrutoNow, er.margenBrutoCmp).indicatorText]);
-      appendErRows(er.gastos, '4.3');
-      wsErData.push(['', 'TOTAL GASTOS OPERACIONALES', '', er.gastos.totalNow, '', er.gastos.totalCmp, '', er.gastos.totalNow - er.gastos.totalCmp, calcHorizontalVariation(er.gastos.totalNow, er.gastos.totalCmp).indicatorText]);
-      wsErData.push(['', 'UTILIDAD OPERACIONAL (EBITDA)', '', er.utilidadOpNow, '', er.utilidadOpCmp, '', er.utilidadOpNow - er.utilidadOpCmp, calcHorizontalVariation(er.utilidadOpNow, er.utilidadOpCmp).indicatorText]);
-      wsErData.push(['', 'RESULTADO NETO DEL EJERCICIO', '', er.utilidadNetaNow, '', er.utilidadNetaCmp, '', er.utilidadNetaNow - er.utilidadNetaCmp, calcHorizontalVariation(er.utilidadNetaNow, er.utilidadNetaCmp).indicatorText]);
-      const wsEr = xlsx.utils.aoa_to_sheet(wsErData);
-      xlsx.utils.book_append_sheet(wb, wsEr, 'Estado_Resultados_ER');
-
-      // 4. Hoja: Flujo de Efectivo
-      const wsCfData = [
-        ['Concepto de Flujo de Efectivo', 'Saldo Actual ($)', 'Indicador / Participación'],
-        ['Recaudos y cobros operacionales', cf.cfInflows, '100.0%'],
-        ['Pagos a proveedores y gastos de operación', -cf.cfOutflows, `${calcFinancialPct(cf.cfOutflows, cf.cfInflows || 1).text}`],
-        ['Flujo Neto de Actividades de Operación', cf.cfNetOp, ''],
-        ['Ratio de Cobertura Operativa (Cobros/Pagos)', `${cf.cfCoverage.toFixed(2)}x`, cf.cfCoverage >= 1.0 ? 'Superávit' : 'Déficit'],
-      ];
-      const wsCf = xlsx.utils.aoa_to_sheet(wsCfData);
-      xlsx.utils.book_append_sheet(wb, wsCf, 'Flujo_Efectivo');
-
-      // 5. Hoja: Notas NIIF
-      const wsNotesData = [
-        ['Nota #', 'Título de la Nota / Revelación', 'Cuentas Vinculadas', 'Contenido / Divulgación'],
-      ];
-      notas.forEach((n: any) => {
-        wsNotesData.push([n.nota_num, n.titulo, n.cuenta_codigo || '', n.contenido]);
-      });
-      const wsNotes = xlsx.utils.aoa_to_sheet(wsNotesData);
-      xlsx.utils.book_append_sheet(wb, wsNotes, 'Notas_NIIF');
-
-      xlsx.writeFile(wb, `Informe_Financiero_Certificado_${reportMonth}_vs_${compareMonth}.xlsx`);
-      showToast('Libro Excel del Informe descargado exitosamente.', 'success');
-    } catch (err: any) {
-      showToast(`Error al exportar Excel: ${err.message}`, 'error');
-    }
-  };
-
-  // ── Imprimir nativo ───────────────────────────────────────────────────────
-  const printDossierNative = () => {
-    const pane = document.getElementById('dossier-tab-pane-cert');
-    if (!pane) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      window.print();
-      return;
-    }
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Informe Financiero Certificado - ${todayStr()}</title>
-        <link rel="stylesheet" href="/assets/style.css">
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; color: #111827; }
-          @media print {
-            body { padding: 0; }
-            .no-print { display: none !important; }
-          }
-        </style>
-      </head>
-      <body>
-        ${document.getElementById('dossier-results')?.innerHTML || ''}
-        <script>
-          setTimeout(() => { window.print(); window.close(); }, 500);
-        </script>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
-  };
-
-  // Asignar listeners principales
-  $('#btn-gen-dossier')?.addEventListener('click', generateDossier);
-  $('#btn-pdf-dossier')?.addEventListener('click', exportDossierPdf);
-  $('#btn-xls-dossier')?.addEventListener('click', exportDossierExcel);
-  $('#btn-print-dossier')?.addEventListener('click', printDossierNative);
-
-  // Auto-generación inicial si ambos meses están presentes
-  setTimeout(() => {
-    generateDossier();
-  }, 100);
-}
-
-(window as any).renderFinancialDossier = renderFinancialDossier;
-
 async function renderConsecutiveAuditReport() {
   const view = getReportViewHost();
   if (!view) return;
@@ -18625,11 +16017,11 @@ async function renderConsecutiveAuditReport() {
   // ---------------------------------------------------------------------------
   const runAudit = async () => {
     const dateFrom = ($('#ca-date-from') as HTMLInputElement)?.value || '';
-    const dateTo   = ($('#ca-date-to')   as HTMLInputElement)?.value || '';
-    const results  = $('#ca-results');
+    const dateTo = ($('#ca-date-to') as HTMLInputElement)?.value || '';
+    const results = $('#ca-results');
     if (!results) return;
     if (!dateFrom) return showToast('Selecciona la fecha de inicio.', 'warning');
-    if (!dateTo)   return showToast('Selecciona la fecha de corte.', 'warning');
+    if (!dateTo) return showToast('Selecciona la fecha de corte.', 'warning');
     if (dateFrom > dateTo) return showToast('La fecha inicio no puede ser mayor a la de corte.', 'warning');
 
     const selectedCheckboxes = document.querySelectorAll('.ca-voucher-item:checked') as NodeListOf<HTMLInputElement>;
@@ -18663,7 +16055,7 @@ async function renderConsecutiveAuditReport() {
 
       if (!allTx.length) {
         results.innerHTML = `<div class="p-10 text-center" style="color:#9CA3AF"><i class="fas fa-inbox" style="font-size:2rem"></i><p class="mt-2">No se encontraron comprobantes en el período seleccionado con los filtros aplicados.</p></div>`;
-        ($('#btn-ca-pdf')   as HTMLButtonElement).disabled = true;
+        ($('#btn-ca-pdf') as HTMLButtonElement).disabled = true;
         ($('#btn-ca-excel') as HTMLButtonElement).disabled = true;
         return;
       }
@@ -18745,7 +16137,7 @@ async function renderConsecutiveAuditReport() {
           for (const l of lines) {
             if (!lineTotals.has(l.tx_id)) lineTotals.set(l.tx_id, { debit: 0, credit: 0 });
             const tot = lineTotals.get(l.tx_id)!;
-            tot.debit  += Number(l.debit  || 0);
+            tot.debit += Number(l.debit || 0);
             tot.credit += Number(l.credit || 0);
 
             const code = l.expand?.account_id?.code || '';
@@ -18784,7 +16176,7 @@ async function renderConsecutiveAuditReport() {
               crossDocRefs.set(l.tx_id, ref);
             }
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       // Parsear consecutivo numérico
@@ -18800,12 +16192,12 @@ async function renderConsecutiveAuditReport() {
       for (const [typeId, txList] of byType) {
         const txType = txTypeMap.get(typeId);
         const prefix = txType?.prefix || typeId;
-        const name   = txType?.name   || '(Sin nombre)';
+        const name = txType?.name || '(Sin nombre)';
 
         const rows = txList.map(tx => {
-          const consec   = parseConsec(tx.number || '');
-          const tot      = lineTotals.get(tx.id) || { debit: 0, credit: 0 };
-          const diff     = Math.abs(tot.debit - tot.credit);
+          const consec = parseConsec(tx.number || '');
+          const tot = lineTotals.get(tx.id) || { debit: 0, credit: 0 };
+          const diff = Math.abs(tot.debit - tot.credit);
           const hasLines = tot.debit > 0 || tot.credit > 0;
 
           // Tercero y datos maestros
@@ -18889,8 +16281,8 @@ async function renderConsecutiveAuditReport() {
             desctoFinanciero = pinv.discount_amount || 0;
           } else if (sinv) {
             subtotal = Number(sinv.subtotal || 0);
-            iva = (sinv.iva_total !== undefined && sinv.iva_total !== null && Number(sinv.iva_total) > 0) 
-              ? Number(sinv.iva_total) 
+            iva = (sinv.iva_total !== undefined && sinv.iva_total !== null && Number(sinv.iva_total) > 0)
+              ? Number(sinv.iva_total)
               : (sinv.tax_amount !== undefined && sinv.tax_amount !== null && Number(sinv.tax_amount) > 0 ? Number(sinv.tax_amount) : lineIva);
             retefuente = lineRetefuente;
             reteica = lineReteica;
@@ -18936,20 +16328,20 @@ async function renderConsecutiveAuditReport() {
               const d2 = new Date(dueDate.slice(0, 10));
               const diffTime = d2.getTime() - d1.getTime();
               dias = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
-            } catch (_) {}
+            } catch (_) { }
           }
 
-          return { 
-            id: tx.id, 
-            number: tx.number || '—', 
+          return {
+            id: tx.id,
+            number: tx.number || '—',
             consec,
-            date: tx.date || '', 
+            date: tx.date || '',
             status: tx.status || '',
             description: tx.description || '',
-            debit: tot.debit, 
-            credit: tot.credit, 
+            debit: tot.debit,
+            credit: tot.credit,
             diff,
-            balanced: diff < 0.01, 
+            balanced: diff < 0.01,
             hasLines,
             thirdPartyName,
             thirdPartyDoc,
@@ -19002,11 +16394,11 @@ async function renderConsecutiveAuditReport() {
       _auditGroups.sort((a, b) => a.prefix.localeCompare(b.prefix));
 
       renderAuditResults(results, dateFrom, dateTo);
-      ($('#btn-ca-pdf')   as HTMLButtonElement).disabled = false;
+      ($('#btn-ca-pdf') as HTMLButtonElement).disabled = false;
       ($('#btn-ca-excel') as HTMLButtonElement).disabled = false;
     } catch (err: any) {
       results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
-      ($('#btn-ca-pdf')   as HTMLButtonElement).disabled = true;
+      ($('#btn-ca-pdf') as HTMLButtonElement).disabled = true;
       ($('#btn-ca-excel') as HTMLButtonElement).disabled = true;
     }
   };
@@ -19038,26 +16430,24 @@ async function renderConsecutiveAuditReport() {
   // ---------------------------------------------------------------------------
   function renderAuditResults(container: Element, dateFrom: string, dateTo: string) {
     const totalTypes = _auditGroups.length;
-    const totalDocs  = _auditGroups.reduce((s, g) => s + g.totalDocs, 0);
-    const totalGaps  = _auditGroups.reduce((s, g) => s + g.gaps.length, 0);
+    const totalDocs = _auditGroups.reduce((s, g) => s + g.totalDocs, 0);
+    const totalGaps = _auditGroups.reduce((s, g) => s + g.gaps.length, 0);
     const totalImbal = _auditGroups.reduce((s, g) => s + g.imbalanced.length, 0);
     const totalDrafts = _auditGroups.reduce((s, g) => s + g.drafts.length, 0);
     const anyNovedad = _auditGroups.some(g => g.gaps.length || g.imbalanced.length || g.drafts.length);
-    const showAll    = _auditParams?.showAll ?? (($('#ca-show-all-tx') as HTMLInputElement)?.checked || false);
-const tabsHtml = `
+    const showAll = _auditParams?.showAll ?? (($('#ca-show-all-tx') as HTMLInputElement)?.checked || false);
+    const tabsHtml = `
       <div class="flex mb-4 p-1 bg-gray-100 rounded-xl" style="max-width: 420px; border: 1px solid #E5E7EB;">
-        <button id="ca-tab-accounting" class="flex-1 py-1.5 px-3 rounded-lg font-semibold text-xs transition-all focus:outline-none ${
-          _activeTab === 'accounting' 
-            ? 'bg-white text-blue-900 shadow-sm border border-gray-200' 
-            : 'text-gray-500 hover:text-gray-900 border border-transparent'
-        }">
+        <button id="ca-tab-accounting" class="flex-1 py-1.5 px-3 rounded-lg font-semibold text-xs transition-all focus:outline-none ${_activeTab === 'accounting'
+        ? 'bg-white text-blue-900 shadow-sm border border-gray-200'
+        : 'text-gray-500 hover:text-gray-900 border border-transparent'
+      }">
           <i class="fas fa-calculator mr-1"></i>Auditoría Contable
         </button>
-        <button id="ca-tab-commercial" class="flex-1 py-1.5 px-3 rounded-lg font-semibold text-xs transition-all focus:outline-none ${
-          _activeTab === 'commercial' 
-            ? 'bg-white text-blue-900 shadow-sm border border-gray-200' 
-            : 'text-gray-500 hover:text-gray-900 border border-transparent'
-        }">
+        <button id="ca-tab-commercial" class="flex-1 py-1.5 px-3 rounded-lg font-semibold text-xs transition-all focus:outline-none ${_activeTab === 'commercial'
+        ? 'bg-white text-blue-900 shadow-sm border border-gray-200'
+        : 'text-gray-500 hover:text-gray-900 border border-transparent'
+      }">
           <i class="fas fa-shopping-cart mr-1"></i>Detalle Comercial
         </button>
       </div>
@@ -19088,9 +16478,9 @@ const tabsHtml = `
       </div>`;
 
     const groupsHtml = _auditGroups.map(g => {
-      const gHasNovedad  = g.gaps.length > 0 || g.imbalanced.length > 0 || g.drafts.length > 0;
+      const gHasNovedad = g.gaps.length > 0 || g.imbalanced.length > 0 || g.drafts.length > 0;
       const statusColor = !gHasNovedad ? '#16A34A' : (g.imbalanced.length ? '#DC2626' : '#D97706');
-      const statusIcon  = !gHasNovedad ? 'fa-check-circle' : (g.imbalanced.length ? 'fa-triangle-exclamation' : 'fa-circle-exclamation');
+      const statusIcon = !gHasNovedad ? 'fa-check-circle' : (g.imbalanced.length ? 'fa-triangle-exclamation' : 'fa-circle-exclamation');
 
       const combinedItems = [];
       let txRowsToInclude = [];
@@ -19132,7 +16522,7 @@ const tabsHtml = `
             const r = item.data;
             const isImbal = !r.balanced || !r.hasLines;
             const isDraft = r.status === 'draft';
-            
+
             let badgeClass = 'badge-green';
             let badgeText = 'Cuadrado';
             if (isImbal) {
@@ -19148,8 +16538,8 @@ const tabsHtml = `
             const diffWeight = isImbal ? 'font-bold' : 'normal';
 
             const canUserApprove = requireRole('superadmin', 'administrador', 'admin', 'contador');
-            const actionButton = (isDraft && canUserApprove) 
-              ? `<button class="btn btn-primary btn-xs ml-2 py-0.5 px-2 text-[10px]" style="height:auto; min-height:0; line-height:1; display:inline-flex; align-items:center; justify-content:center; background:#1E40AF; color:#fff; border-radius:4px;" onclick="window._caApproveTx('${r.id}', '${esc(r.number)}')"><i class="fas fa-check mr-1"></i>Aprobar</button>` 
+            const actionButton = (isDraft && canUserApprove)
+              ? `<button class="btn btn-primary btn-xs ml-2 py-0.5 px-2 text-[10px]" style="height:auto; min-height:0; line-height:1; display:inline-flex; align-items:center; justify-content:center; background:#1E40AF; color:#fff; border-radius:4px;" onclick="window._caApproveTx('${r.id}', '${esc(r.number)}')"><i class="fas fa-check mr-1"></i>Aprobar</button>`
               : '';
 
             rowHtmls.push(`<tr style="${rowBgStyle}">
@@ -19352,8 +16742,8 @@ const tabsHtml = `
             ${_auditGroups.length} tipo${_auditGroups.length !== 1 ? 's' : ''} de comprobante · ${esc(dateFrom)} — ${esc(dateTo)}
           </p>
           ${anyNovedad
-            ? `<span class="badge badge-red"><i class="fas fa-triangle-exclamation mr-1"></i>Hay novedades</span>`
-            : `<span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Sin novedades</span>`}
+        ? `<span class="badge badge-red"><i class="fas fa-triangle-exclamation mr-1"></i>Hay novedades</span>`
+        : `<span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Sin novedades</span>`}
         </div>
         ${groupsHtml}
       </div>`;
@@ -19391,7 +16781,7 @@ const tabsHtml = `
         const header = drawPdfHeader(doc, headerCtx, {
           title: 'Auditoría de Consecutivos de Comprobantes',
           subtitles: [
-            `Tipo: ${g.prefix} — ${g.name}`, 
+            `Tipo: ${g.prefix} — ${g.name}`,
             `Período: ${dateFrom} al ${dateTo}`,
             `Vista: ${_activeTab === 'accounting' ? 'Contable' : 'Detalle Comercial'}`
           ],
@@ -19483,15 +16873,15 @@ const tabsHtml = `
               didParseCell: (data) => {
                 if (data.section !== 'body') return;
                 const tipo = data.row.raw[0];
-                if (tipo === 'Descuadre') { 
-                  data.cell.styles.fillColor = [255, 241, 242]; 
-                  data.cell.styles.textColor = [159, 18, 57]; 
-                } else if (tipo === 'Faltante') { 
-                  data.cell.styles.fillColor = [255, 251, 235]; 
-                  data.cell.styles.textColor = [146, 64, 14]; 
+                if (tipo === 'Descuadre') {
+                  data.cell.styles.fillColor = [255, 241, 242];
+                  data.cell.styles.textColor = [159, 18, 57];
+                } else if (tipo === 'Faltante') {
+                  data.cell.styles.fillColor = [255, 251, 235];
+                  data.cell.styles.textColor = [146, 64, 14];
                 } else if (tipo === 'Pendiente') {
-                  data.cell.styles.fillColor = [255, 251, 235]; 
-                  data.cell.styles.textColor = [217, 119, 6]; 
+                  data.cell.styles.fillColor = [255, 251, 235];
+                  data.cell.styles.textColor = [217, 119, 6];
                 } else if (tipo === 'Cuadrado') {
                   data.cell.styles.fillColor = [240, 253, 244];
                   data.cell.styles.textColor = [22, 163, 74];
@@ -19561,12 +16951,12 @@ const tabsHtml = `
               didParseCell: (data) => {
                 if (data.section !== 'body') return;
                 const tipo = data.row.raw[0];
-                if (tipo === 'Descuadre') { 
-                  data.cell.styles.fillColor = [255, 241, 242]; 
-                  data.cell.styles.textColor = [159, 18, 57]; 
-                } else if (tipo === 'Faltante') { 
-                  data.cell.styles.fillColor = [255, 251, 235]; 
-                  data.cell.styles.textColor = [146, 64, 14]; 
+                if (tipo === 'Descuadre') {
+                  data.cell.styles.fillColor = [255, 241, 242];
+                  data.cell.styles.textColor = [159, 18, 57];
+                } else if (tipo === 'Faltante') {
+                  data.cell.styles.fillColor = [255, 251, 235];
+                  data.cell.styles.textColor = [146, 64, 14];
                 } else if (tipo === 'Cuadrado') {
                   data.cell.styles.fillColor = [240, 253, 244];
                   data.cell.styles.textColor = [22, 163, 74];
@@ -19701,7 +17091,7 @@ const tabsHtml = `
             const estado = isImbal ? 'Descuadre' : (isDraft ? 'Pendiente' : 'Cuadrado');
             const diffColor = isImbal ? 'color:#DC2626; font-weight:bold;' : (isDraft ? 'color:#D97706;' : 'color:#16A34A;');
             const rowBg = isImbal ? 'background-color:#FFF1F2;' : (isDraft ? 'background-color:#FFFBEB;' : 'background-color:#F0FDF4;');
-            
+
             html += `<tr style="${rowBg}">
               <td class="bold" style="color:#7C3AED">${esc(g.prefix)}</td>
               <td style="font-weight:bold; color:${isImbal ? '#DC2626' : '#16A34A'}">${estado}</td>
@@ -19749,11 +17139,11 @@ const tabsHtml = `
       html += `<table>`;
       html += `<tr><th colspan="32" class="header-section" style="background-color:#0D2137; color:#FFFFFF; font-size:12pt; font-weight:bold; padding:10px; text-align:center;">${esc(compLabel)} — LISTADO COMERCIAL DE TRANSACCIONES Y DOCUMENTOS EN AUDITORÍA DE CONSECUTIVOS</th></tr>`;
       html += `<tr><th colspan="32" class="text-center" style="background-color:#1F2937; color:#FFFFFF; font-size:9pt; padding:4px;">Periodo Desde: ${dateFrom} Hasta ${dateTo}</th></tr>`;
-      
+
       const excelHeaders = [
-        '', 'Tipo', 'Numero', 'Afecta', 'Afectado Por', 'No Ext.', 'Fecha', 'Resp. Fiscal', 'Proveedor', 'Detalle', 
-        'Subtotal', 'Vr/iva', 'Vr/ico', 'Vr/Ibua', 'Vr/Icui', 'Vr/total', 'ReteFuente', 'ReteICA', 'Vr/neto', 
-        'Descto Financiero', '%', 'Plazo', 'Vence', 'Ultimo Abono/pago', 'Fecha Pago', 'Fecha Entrega', 
+        '', 'Tipo', 'Numero', 'Afecta', 'Afectado Por', 'No Ext.', 'Fecha', 'Resp. Fiscal', 'Proveedor', 'Detalle',
+        'Subtotal', 'Vr/iva', 'Vr/ico', 'Vr/Ibua', 'Vr/Icui', 'Vr/total', 'ReteFuente', 'ReteICA', 'Vr/neto',
+        'Descto Financiero', '%', 'Plazo', 'Vence', 'Ultimo Abono/pago', 'Fecha Pago', 'Fecha Entrega',
         'Dias', 'Anul', 'Nom. Bodega', 'Ciudad', 'Anexo 1', 'Anexo 2'
       ];
 
@@ -19798,7 +17188,7 @@ const tabsHtml = `
             const isImbal = !r.balanced || !r.hasLines;
             const isVoided = r.status === 'void' || r.status === 'voided' || r.status === 'cancelled';
             const stateChar = isVoided ? 'A' : 'N';
-            
+
             const formatVal = (val: number) => val ? val.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00';
             const numWithoutPrefix = r.number.replace(g.prefix + '-', '');
 
@@ -19925,7 +17315,7 @@ async function renderCostCentersReport() {
         pb.listAll('cost_centers', { sort: 'code' }),
         pb.send(`/api/gravy/report-cost-centers?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}&branch_id=${encodeURIComponent(branchId === 'TODAS' ? '' : branchId)}`, { method: 'GET' }).catch(() => [])
       ]);
-      
+
       const ccTotals = new Map();
       for (const row of items) {
         const ccId = row.cost_center_id || '';
@@ -20018,11 +17408,11 @@ async function renderCostCentersReport() {
             </thead>
             <tbody>
               ${activeRows.map(r => {
-                const padding = r.depth * 20;
-                const net = r.debit - r.credit;
-                const isRoot = !r.parent_id;
-                
-                return `
+        const padding = r.depth * 20;
+        const net = r.debit - r.credit;
+        const isRoot = !r.parent_id;
+
+        return `
                 <tr class="${isRoot ? 'font-bold bg-gray-50' : ''}">
                   <td>
                     <div style="padding-left: ${padding}px; display: flex; align-items: center; gap: 6px;">
@@ -20035,7 +17425,7 @@ async function renderCostCentersReport() {
                   <td class="text-right">${fmt(r.credit)}</td>
                   <td class="text-right ${net >= 0 ? 'text-emerald-700' : 'text-rose-700'}">${fmt(net)}</td>
                 </tr>`;
-              }).join('')}
+      }).join('')}
             </tbody>
             <tfoot>
               <tr class="font-bold text-indigo-900" style="background:#EEF2F6">
@@ -20266,9 +17656,9 @@ async function renderAccountStatementReport() {
     let stmtMode = 'tercero';
     if (isPhActive) {
       const btnModoTercero = $('#stmt-mode-tercero') as HTMLButtonElement;
-      const btnModoUnidad  = $('#stmt-mode-unidad') as HTMLButtonElement;
-      const panelTercero   = document.getElementById('stmt-panel-tercero');
-      const panelUnidad    = document.getElementById('stmt-panel-unidad');
+      const btnModoUnidad = $('#stmt-mode-unidad') as HTMLButtonElement;
+      const panelTercero = document.getElementById('stmt-panel-tercero');
+      const panelUnidad = document.getElementById('stmt-panel-unidad');
 
       const setMode = (mode: string) => {
         stmtMode = mode;
@@ -20280,11 +17670,11 @@ async function renderAccountStatementReport() {
         btnModoUnidad.style.color = !isTercero ? '#7C3AED' : '#6B7280';
         btnModoUnidad.style.boxShadow = !isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
         if (panelTercero) panelTercero.style.display = isTercero ? '' : 'none';
-        if (panelUnidad)  panelUnidad.style.display  = !isTercero ? '' : 'none';
+        if (panelUnidad) panelUnidad.style.display = !isTercero ? '' : 'none';
       };
 
       btnModoTercero?.addEventListener('click', () => setMode('tercero'));
-      btnModoUnidad?.addEventListener('click',  () => setMode('unidad'));
+      btnModoUnidad?.addEventListener('click', () => setMode('unidad'));
 
       // Mostrar info de la unidad seleccionada
       const propSelect = document.getElementById('stmt-property-id') as HTMLSelectElement;
@@ -20360,10 +17750,10 @@ async function generateAccountStatementByProperty(phProperties: any[]) {
   const results = $('#account-statement-results');
   if (!results) return;
 
-  const propId   = (document.getElementById('stmt-property-id') as HTMLSelectElement)?.value || '';
+  const propId = (document.getElementById('stmt-property-id') as HTMLSelectElement)?.value || '';
   const acctType = (document.getElementById('stmt-acct-type-ph') as HTMLSelectElement)?.value || 'all';
   const dateFrom = ($('#stmt-date-from') as HTMLInputElement)?.value?.trim() || '';
-  const dateTo   = ($('#stmt-date-to')   as HTMLInputElement)?.value?.trim() || '';
+  const dateTo = ($('#stmt-date-to') as HTMLInputElement)?.value?.trim() || '';
 
   if (!propId) {
     showToast('Selecciona una Unidad Habitacional.', 'warning');
@@ -20393,16 +17783,16 @@ async function generateAccountStatementByProperty(phProperties: any[]) {
     for (const ob of (openingBalances || [])) initialBalance += Number(ob.balance || 0);
 
     const lines = ((periodLines || []) as any[]).map(l => ({
-      fecha:       l.fecha || '',
+      fecha: l.fecha || '',
       comprobante: l.comprobante || '',
-      txId:        l.txId || '',
+      txId: l.txId || '',
       accountCode: l.accountCode || '',
       accountName: l.accountName || '',
-      cuenta:      `${l.accountCode} - ${l.accountName}`.trim(),
-      doc_cruce:   l.doc_cruce || '—',
+      cuenta: `${l.accountCode} - ${l.accountName}`.trim(),
+      doc_cruce: l.doc_cruce || '—',
       descripcion: l.descripcion || '',
-      debito:      Number(l.debito  || 0),
-      credito:     Number(l.credito || 0),
+      debito: Number(l.debito || 0),
+      credito: Number(l.credito || 0),
     })).sort((a, b) => `${a.fecha}|${a.comprobante}`.localeCompare(`${b.fecha}|${b.comprobante}`));
 
     let running = initialBalance;
@@ -20411,7 +17801,7 @@ async function generateAccountStatementByProperty(phProperties: any[]) {
       return { ...l, saldo: running };
     });
 
-    const totalDebits  = lines.reduce((s, l) => s + l.debito, 0);
+    const totalDebits = lines.reduce((s, l) => s + l.debito, 0);
     const totalCredits = lines.reduce((s, l) => s + l.credito, 0);
 
     const btnPdf = $('#btn-pdf-account-statement') as HTMLButtonElement;
@@ -20441,11 +17831,11 @@ async function generateAccountStatementByProperty(phProperties: any[]) {
       return;
     }
 
-    const propCode  = esc(prop?.code || propId);
-    const propName  = esc(prop?.name || '');
-    const propTower = prop?.tower    ? `Torre: <strong>${esc(prop.tower)}</strong> &nbsp;` : '';
-    const propApto  = prop?.apartment ? `Apto: <strong>${esc(prop.apartment)}</strong> &nbsp;` : '';
-    const propCoef  = prop?.coef_participacion ? `Coef.: <strong>${Number(prop.coef_participacion).toFixed(4)}%</strong>` : '';
+    const propCode = esc(prop?.code || propId);
+    const propName = esc(prop?.name || '');
+    const propTower = prop?.tower ? `Torre: <strong>${esc(prop.tower)}</strong> &nbsp;` : '';
+    const propApto = prop?.apartment ? `Apto: <strong>${esc(prop.apartment)}</strong> &nbsp;` : '';
+    const propCoef = prop?.coef_participacion ? `Coef.: <strong>${Number(prop.coef_participacion).toFixed(4)}%</strong>` : '';
 
     const rowsHtml = processed.map(l => {
       const saldoStyle = l.saldo > 0 ? 'color:#DC2626' : l.saldo < 0 ? 'color:#059669' : 'color:#374151';
@@ -20455,7 +17845,7 @@ async function generateAccountStatementByProperty(phProperties: any[]) {
         <td class="text-xs">${esc(l.cuenta)}</td>
         <td class="font-mono text-xs">${esc(l.doc_cruce)}</td>
         <td class="text-xs max-w-xs truncate" title="${esc(l.descripcion)}">${esc(l.descripcion)}</td>
-        <td class="text-right font-mono">${l.debito  ? fmt(l.debito)  : ''}</td>
+        <td class="text-right font-mono">${l.debito ? fmt(l.debito) : ''}</td>
         <td class="text-right font-mono">${l.credito ? fmt(l.credito) : ''}</td>
         <td class="text-right font-mono font-semibold" style="${saldoStyle}">${fmt(l.saldo)}</td>
       </tr>`;
@@ -20716,8 +18106,8 @@ async function generateAccountStatementRows() {
             </tr>
 
             ${processedLines.length ? processedLines.map(l => {
-              const lineSaldoPolarity = fmtPolarityAmount(l.saldo);
-              return `
+      const lineSaldoPolarity = fmtPolarityAmount(l.saldo);
+      return `
               <tr>
                 <td class="font-mono text-xs">${esc(l.fecha)}</td>
                 <td>
@@ -20732,7 +18122,7 @@ async function generateAccountStatementRows() {
                 <td class="text-right font-mono ${l.credito > 0 ? 'text-rose-700 font-semibold' : 'text-gray-400'}">${l.credito > 0 ? fmt(l.credito) : '0.00'}</td>
                 <td class="text-right font-mono font-bold" style="color:${lineSaldoPolarity.color}">${lineSaldoPolarity.text}</td>
               </tr>`;
-            }).join('') : `
+    }).join('') : `
               <tr>
                 <td colspan="8" class="text-center py-6 text-gray-400">No se registraron movimientos contables en este período.</td>
               </tr>
@@ -20947,7 +18337,7 @@ async function renderSalesBySellerReport() {
   let sellers: any[] = [];
   try {
     sellers = await pb.listAll('third_parties', { filter: 'type="EMPLEADO" || type="VENDEDOR"', sort: 'name', fields: 'id,name,doc_number' });
-  } catch (_) {}
+  } catch (_) { }
 
   const now = new Date();
   const startDefault = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
@@ -21250,17 +18640,17 @@ async function renderSalesBySellerReport() {
   $('#btn-exp-sv')?.addEventListener('click', () => {
     if (!lastExportRows.length) return;
     exportToExcel(lastExportRows, [
-      { key: 'vendedor',     label: 'Vendedor / Asesor' },
+      { key: 'vendedor', label: 'Vendedor / Asesor' },
       { key: 'vendedor_doc', label: 'Doc Vendedor' },
-      { key: 'factura',      label: 'No. Factura' },
-      { key: 'fecha',        label: 'Fecha' },
-      { key: 'cliente',      label: 'Cliente' },
-      { key: 'cliente_doc',  label: 'Doc Cliente' },
-      { key: 'metodo_pago',  label: 'Método Pago' },
-      { key: 'subtotal',     label: 'Subtotal' },
-      { key: 'iva',          label: 'IVA' },
-      { key: 'retencion',    label: 'Retención' },
-      { key: 'total',        label: 'Total' },
+      { key: 'factura', label: 'No. Factura' },
+      { key: 'fecha', label: 'Fecha' },
+      { key: 'cliente', label: 'Cliente' },
+      { key: 'cliente_doc', label: 'Doc Cliente' },
+      { key: 'metodo_pago', label: 'Método Pago' },
+      { key: 'subtotal', label: 'Subtotal' },
+      { key: 'iva', label: 'IVA' },
+      { key: 'retencion', label: 'Retención' },
+      { key: 'total', label: 'Total' },
     ], `ventas_por_vendedor_${lastPdfMeta.startDate}_${lastPdfMeta.endDate}`);
   });
 
@@ -21597,7 +18987,7 @@ async function renderPayrollSabanaReport() {
               otherDedNotes = Number(ca.embargo || 0) + Number(ca.cxc || 0) + Number(ca.libranza || 0) + Number(ca.prestamos || 0);
             }
           }
-        } catch (_) {}
+        } catch (_) { }
 
         const salud = Number(l.deduction_health || 0);
         const pension = Number(l.deduction_pension || 0);
@@ -21831,7 +19221,7 @@ async function renderPayrollProvisionsReport() {
             const meta = JSON.parse(l.notes);
             metaIbc = Number(meta?.payroll_meta?.ibc_ss || meta?.payroll_meta?.ibc || 0);
           }
-        } catch (_) {}
+        } catch (_) { }
 
         const baseIbc = metaIbc > 0 ? metaIbc : Number(l.salary_base || 0);
         const ces = Number(l.cesantias || 0);
@@ -22355,6 +19745,5 @@ async function renderPayrollDianAuditReport() {
 (window as any).renderPayrollProvisionsReport = renderPayrollProvisionsReport;
 (window as any).renderPayrollNoveltiesReport = renderPayrollNoveltiesReport;
 (window as any).renderPayrollDianAuditReport = renderPayrollDianAuditReport;
-
 
 

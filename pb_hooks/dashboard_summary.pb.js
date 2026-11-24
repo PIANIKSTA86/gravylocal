@@ -32,7 +32,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         if (q && q.branch_id) {
           branchId = Array.isArray(q.branch_id) ? q.branch_id[0] : q.branch_id;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
   }
   if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null") branchId = "";
@@ -51,7 +51,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
           const val = q.cost_center_id || q.cost_center;
           costCenterId = Array.isArray(val) ? val[0] : val;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
   }
   if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null") costCenterId = "";
@@ -69,7 +69,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         if (q && q.advisor_id) {
           advisorId = Array.isArray(q.advisor_id) ? q.advisor_id[0] : q.advisor_id;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
   }
 
@@ -84,7 +84,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         const val = q.book_type || q.bookType;
         bookType = (Array.isArray(val) ? val[0] : val).toLowerCase().trim();
       }
-    } catch (_) {}
+    } catch (_) { }
   }
   if (!bookType) bookType = "niif";
   let bBook = " ";
@@ -109,7 +109,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       const yyyymm = d.toISOString().slice(0, 7);
       months12.push(yyyymm);
     }
-    const currentMonthStr  = months[5];
+    const currentMonthStr = months[5];
     const previousMonthStr = months[4];
 
     // Fecha de hoy (YYYY-MM-DD) — formato ISO compatible con SQLite
@@ -118,12 +118,12 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       + String(now.getDate()).padStart(2, "0");
 
     // Rangos de fecha normalizados para SQLite (evitan truncar registros sin hora en el día 1)
-    const startDate        = months[0] + "-01";
-    const startDate12      = months12[0] + "-01";
-    const endDate          = currentMonthStr + "-31 23:59:59";
-    const currentMonthStart= currentMonthStr + "-01";
-    const currentMonthEnd  = currentMonthStr + "-31 23:59:59";
-    const prevMonthEnd     = previousMonthStr + "-31 23:59:59";
+    const startDate = months[0] + "-01";
+    const startDate12 = months12[0] + "-01";
+    const endDate = currentMonthStr + "-31 23:59:59";
+    const currentMonthStart = currentMonthStr + "-01";
+    const currentMonthEnd = currentMonthStr + "-31 23:59:59";
+    const prevMonthEnd = previousMonthStr + "-31 23:59:59";
 
     // Condición de branch
     const bBranch = branchId ? " AND t.branch_id = {:branchId} " : "";
@@ -181,7 +181,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       SELECT strftime('%Y-%m', date) AS month, COUNT(*) AS txCount
       FROM transactions
       WHERE status = 'active' AND date >= {:startDate} AND date <= {:endDate}`
-        + bBranchNoAlias + `
+      + bBranchNoAlias + `
       GROUP BY strftime('%Y-%m', date)
     `;
     const mTxCountQuery = $app.db().newQuery(mTxCountSql);
@@ -259,7 +259,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
 
     // 4. Calcular Activos (Clase 1) y Pasivos (Clase 2)
     const currentDateLimit = currentMonthStr + "-31 23:59:59";
-    const prevDateLimit    = previousMonthStr + "-31 23:59:59";
+    const prevDateLimit = previousMonthStr + "-31 23:59:59";
 
     const balanceSql = `
       SELECT
@@ -280,7 +280,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
     });
     try {
       balanceQuery.bind(bindBalance).one(balanceResult);
-    } catch (_) {}
+    } catch (_) { }
 
     // 5. Flujos mensuales: Ingresos (4), Costos de Venta (6, 7), Gastos Operacionales (5) — últimos 12 meses
     const bAdvisorJoin = advisorId ? " LEFT JOIN third_parties tp_adv ON tp_adv.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) " : "";
@@ -309,40 +309,40 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
     monthlyQuery.bind(bindMonthly).all(monthlyData);
 
     const monthlyRevenues = new Array(6).fill(0);
-    const monthlyCosts    = new Array(6).fill(0);
+    const monthlyCosts = new Array(6).fill(0);
     const monthlyOpExpenses = new Array(6).fill(0);
     const monthlyExpenses = new Array(6).fill(0);
     for (let i = 0; i < 6; i++) {
-      const mStr  = months[i];
+      const mStr = months[i];
       const found = monthlyData.find(d => d.month === mStr);
       if (found) {
-        monthlyRevenues[i]   = Number(found.revenue) || 0;
-        monthlyCosts[i]      = Number(found.costs) || 0;
+        monthlyRevenues[i] = Number(found.revenue) || 0;
+        monthlyCosts[i] = Number(found.costs) || 0;
         monthlyOpExpenses[i] = Number(found.expenses) || 0;
-        monthlyExpenses[i]   = Number(found.expense) || (monthlyCosts[i] + monthlyOpExpenses[i]);
+        monthlyExpenses[i] = Number(found.expense) || (monthlyCosts[i] + monthlyOpExpenses[i]);
       }
     }
 
-    const monthlyRevenues12      = new Array(12).fill(0);
-    const monthlyCosts12         = new Array(12).fill(0);
-    const monthlyOpExpenses12    = new Array(12).fill(0);
-    const monthlyExpenses12      = new Array(12).fill(0);
-    const monthlyProfits12       = new Array(12).fill(0);
-    const monthlyGrossMargins12  = new Array(12).fill(0);
+    const monthlyRevenues12 = new Array(12).fill(0);
+    const monthlyCosts12 = new Array(12).fill(0);
+    const monthlyOpExpenses12 = new Array(12).fill(0);
+    const monthlyExpenses12 = new Array(12).fill(0);
+    const monthlyProfits12 = new Array(12).fill(0);
+    const monthlyGrossMargins12 = new Array(12).fill(0);
 
     for (let i = 0; i < 12; i++) {
-      const mStr  = months12[i];
+      const mStr = months12[i];
       const found = monthlyData.find(d => d.month === mStr);
       if (found) {
         const rev = Number(found.revenue) || 0;
         const cos = Number(found.costs) || 0;
         const exp = Number(found.expenses) || 0;
         const tot = Number(found.expense) || (cos + exp);
-        monthlyRevenues12[i]     = rev;
-        monthlyCosts12[i]        = cos;
-        monthlyOpExpenses12[i]   = exp;
-        monthlyExpenses12[i]     = tot;
-        monthlyProfits12[i]      = rev - tot;
+        monthlyRevenues12[i] = rev;
+        monthlyCosts12[i] = cos;
+        monthlyOpExpenses12[i] = exp;
+        monthlyExpenses12[i] = tot;
+        monthlyProfits12[i] = rev - tot;
         monthlyGrossMargins12[i] = rev - cos;
       }
     }
@@ -402,14 +402,14 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
 
     for (const row of categoryData) {
       const code = row.code;
-      const bal  = Number(row.balance) || 0;
+      const bal = Number(row.balance) || 0;
       let cat = 'Otros Gastos';
-      if      (code.startsWith('5105') || code.startsWith('5205')) cat = 'Nómina y Personal';
+      if (code.startsWith('5105') || code.startsWith('5205')) cat = 'Nómina y Personal';
       else if (code.startsWith('5135') || code.startsWith('5235') || code.startsWith('5110') || code.startsWith('5230')) cat = 'Servicios y Honorarios';
       else if (code.startsWith('5115') || code.startsWith('5215')) cat = 'Impuestos';
-      else if (code.startsWith('61'))  cat = 'Costos de Ventas';
-      else if (code.startsWith('62'))  cat = 'Compras y Materia Prima';
-      else if (code.startsWith('53'))  cat = 'Gastos Financieros';
+      else if (code.startsWith('61')) cat = 'Costos de Ventas';
+      else if (code.startsWith('62')) cat = 'Compras y Materia Prima';
+      else if (code.startsWith('53')) cat = 'Gastos Financieros';
       expensesByCategory[cat] += bal;
     }
 
@@ -486,9 +486,9 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         WHERE t.status = 'active'
           AND t.date <= {:asOfLimit}
           AND (a.code LIKE '1305%' OR (a.code LIKE '13%' AND (a.requires_third_party = 1 OR a.requires_third_party = 'true') AND (a.maneja_cruce = 1 OR a.maneja_cruce = 'true')))`
-          + bBranch
-          + (advisorId ? " AND tp.advisor = {:advisorId} " : "")
-          + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
+        + bBranch
+        + (advisorId ? " AND tp.advisor = {:advisorId} " : "")
+        + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
         GROUP BY l.account_id, l.third_party_id, crossDocRef
       `;
       const cxcQuery = $app.db().newQuery(cxcSql);
@@ -539,14 +539,14 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
           carteraPorVencer += openBal;
         } else {
           carteraVencida += openBal;
-          if (expiredDays <= 30)      cartera0_30 += openBal;
+          if (expiredDays <= 30) cartera0_30 += openBal;
           else if (expiredDays <= 60) cartera31_60 += openBal;
           else if (expiredDays <= 90) cartera61_90 += openBal;
-          else                        carteraMayor90 += openBal;
+          else carteraMayor90 += openBal;
         }
       }
       carteraTotal = Math.max(0, carteraBruta - carteraAnticipos);
-    } catch (_) {}
+    } catch (_) { }
 
     // 8b. Cuentas por Pagar (CxP) — Alineado exactamente con PUC cuentas 22%, 23%, 25%
     let cxpTotal = 0;
@@ -574,8 +574,8 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         WHERE t.status = 'active'
           AND t.date <= {:asOfLimit}
           AND (a.code LIKE '2205%' OR ((a.code LIKE '22%' OR a.code LIKE '23%' OR a.code LIKE '25%') AND (a.requires_third_party = 1 OR a.requires_third_party = 'true') AND (a.maneja_cruce = 1 OR a.maneja_cruce = 'true')))`
-          + bBranch
-          + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
+        + bBranch
+        + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
         GROUP BY l.account_id, l.third_party_id, crossDocRef
       `;
       const cxpQuery = $app.db().newQuery(cxpSql);
@@ -632,7 +632,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       }
       // Compensar neto con saldo a favor de proveedores en 7 días
       cxpWeek = Math.min(cxpTotal, Math.max(0, cxpWeekBruto + saldoAFavorCxp));
-    } catch (_) {}
+    } catch (_) { }
 
     // 8c. Liquidez disponible en Caja y Bancos (Cuentas 11%)
     let totalLiquidez = 0;
@@ -648,7 +648,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       const liqRes = new DynamicModel({ totalLiquidez: -0 });
       liqQuery.one(liqRes);
       totalLiquidez = Number(liqRes.totalLiquidez) || 0;
-    } catch (_) {}
+    } catch (_) { }
 
     // 8d. Métricas Fiscales: Estimación de IVA (2408/2335) y Retenciones (2365/2367/2368)
     let ivaGenerado = 0;
@@ -677,7 +677,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       ivaGenerado = Number(impRes.ivaGen) || 0;
       ivaDescontable = Number(impRes.ivaDesc) || 0;
       retencionesMes = Number(impRes.retMes) || 0;
-    } catch (_) {}
+    } catch (_) { }
 
     // 8e. Métricas de Inventario: Quiebres de stock, stock negativo y movimientos
     let criticalStockCount = 0;
@@ -729,7 +729,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
           qtyOnHand: Number(p.qtyOnHand) || 0
         });
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // 8f. Auditoría y Comprobantes en Borrador
     let draftTxCount = 0;
@@ -740,7 +740,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       const draftRes = new DynamicModel({ draftCount: 0 });
       draftQuery.one(draftRes);
       draftTxCount = Number(draftRes.draftCount) || 0;
-    } catch (_) {}
+    } catch (_) { }
 
     // 8g. MÓDULO A: Nómina y Recursos Humanos
     let activeEmployeesCount = 0;
@@ -772,13 +772,13 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
           $app.db().newQuery(linesSql).bind({ pid: payPerRes.id }).one(linesRes);
           payrollCostMonth = Number(linesRes.totalCost) || 0;
         }
-      } catch (_) {}
+      } catch (_) { }
 
       const pendDianSql = `SELECT COUNT(*) AS cnt FROM payroll_periods WHERE status = 'approved' AND (tx_id = '' OR tx_id IS NULL)`;
       const pendDianRes = new DynamicModel({ cnt: 0 });
       $app.db().newQuery(pendDianSql).one(pendDianRes);
       payrollPendingDian = Number(pendDianRes.cnt) || 0;
-    } catch (_) {}
+    } catch (_) { }
 
     // 8h. MÓDULO B: Facturación Electrónica y Resoluciones DIAN
     let dianResolutionsExpiring = 0;
@@ -799,14 +799,14 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       try {
         resQuery.one(resModel);
         dianResolutionsExpiring = Number(resModel.cnt) || 0;
-      } catch (_) {}
+      } catch (_) { }
 
       const rejSql = `SELECT COUNT(*) AS cnt FROM einvoice_docs WHERE status IN ('rechazada', 'error')`;
       const rejRes = new DynamicModel({ cnt: 0 });
       try {
         $app.db().newQuery(rejSql).one(rejRes);
         dianDocsRejected = Number(rejRes.cnt) || 0;
-      } catch (_) {}
+      } catch (_) { }
 
       const totalDocsSql = `
         SELECT
@@ -822,7 +822,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         if (totDian > 0) {
           dianSuccessRate = Math.round((accDian / totDian) * 100);
         }
-      } catch (_) {}
+      } catch (_) { }
 
       const docSopSql = `
         SELECT COALESCE(SUM(total), 0) AS totalVal
@@ -835,8 +835,8 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       try {
         docSopQuery.bind(docSopBind).one(docSopRes);
         dianDocSoporteMonth = Number(docSopRes.totalVal) || 0;
-      } catch (_) {}
-    } catch (_) {}
+      } catch (_) { }
+    } catch (_) { }
 
     // 8i. MÓDULO C: Punto de Venta (POS)
     let posSalesToday = 0;
@@ -849,7 +849,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       try {
         $app.db().newQuery(shiftsSql).one(shiftsRes);
         posOpenShiftsCount = Number(shiftsRes.cnt) || 0;
-      } catch (_) {}
+      } catch (_) { }
 
       const posTodaySql = `
         SELECT
@@ -875,8 +875,8 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         posPaymentMethods['Tarjeta / Datáfono'] = Number(posRes.mCard) || 0;
         posPaymentMethods['Transferencia'] = Number(posRes.mTransfer) || 0;
         posPaymentMethods['Crédito'] = Number(posRes.mCredit) || 0;
-      } catch (_) {}
-    } catch (_) {}
+      } catch (_) { }
+    } catch (_) { }
     const posAvgTicket = posTicketsCount > 0 ? (posSalesToday / posTicketsCount) : 0;
 
     // 8j. MÓDULO D: Compras y Órdenes de Compra
@@ -899,7 +899,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         purPeriodQuery.bind(purBind).one(purRes);
         purchasesThisMonth = Number(purRes.pThisMonth) || 0;
         purchasesPrevMonth = Number(purRes.pPrevMonth) || 0;
-      } catch (_) {}
+      } catch (_) { }
 
       const poSql = `SELECT COUNT(*) AS cnt FROM purchase_orders WHERE status IN ('approved', 'pending', 'abierta')` + (branchId ? " AND branch_id = {:branchId}" : "");
       const poQuery = $app.db().newQuery(poSql);
@@ -908,7 +908,7 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       try {
         poQuery.one(poRes);
         pendingPurchaseOrders = Number(poRes.cnt) || 0;
-      } catch (_) {}
+      } catch (_) { }
 
       const topSuppSql = `
         SELECT
@@ -933,8 +933,8 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
             total: Number(s.totalBought) || 0
           });
         }
-      } catch (_) {}
-    } catch (_) {}
+      } catch (_) { }
+    } catch (_) { }
 
     // 8k. MÓDULO G: Comercio Exterior e Importaciones
     let importsInTransitCount = 0;
@@ -953,15 +953,15 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         $app.db().newQuery(impTransitSql).one(impRes);
         importsInTransitCount = Number(impRes.cnt) || 0;
         importsValueTransit = Number(impRes.valFob) || 0;
-      } catch (_) {}
+      } catch (_) { }
 
       const impKardexSql = `SELECT COUNT(*) AS cnt FROM imports WHERE status = 'nacionalizado'`;
       const impKardexRes = new DynamicModel({ cnt: 0 });
       try {
         $app.db().newQuery(impKardexSql).one(impKardexRes);
         importsPendingKardex = Number(impKardexRes.cnt) || 0;
-      } catch (_) {}
-    } catch (_) {}
+      } catch (_) { }
+    } catch (_) { }
 
     // Razón corriente, Costos y Utilidad del mes
     const currentRev = monthlyRevenues[5] || 0;
@@ -985,90 +985,90 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
     return e.json(200, {
       // ── CORE: operacional ────────────────────────────────────────
       kpis: {
-        totalTx:        Number(counts.totalTx)             || 0,
-        totalTp:        Number(counts.totalTp)             || 0,
-        totalAc:        Number(counts.totalAc)             || 0,
-        txToday:        Number(txPeriodResult.txToday)     || 0,
-        txThisMonth:    Number(txPeriodResult.txThisMonth) || 0,
-        txPrevMonth:    Number(txPeriodResult.txPrevMonth) || 0,
+        totalTx: Number(counts.totalTx) || 0,
+        totalTp: Number(counts.totalTp) || 0,
+        totalAc: Number(counts.totalAc) || 0,
+        txToday: Number(txPeriodResult.txToday) || 0,
+        txThisMonth: Number(txPeriodResult.txThisMonth) || 0,
+        txPrevMonth: Number(txPeriodResult.txPrevMonth) || 0,
         newTpThisMonth: _newTpCount,
         // Métricas extendidas para perfiles
-        totalLiquidez:       totalLiquidez,
-        cxpTotal:            cxpTotal,
-        cxpProveedores:      cxpProveedores,
-        cxpLaborales:        cxpLaborales,
-        cxpCostos:           cxpCostos,
-        cxpWeek:             cxpWeek,
-        carteraTotal:        carteraTotal, // Cartera Neta
-        carteraBruta:        carteraBruta,
-        carteraAnticipos:    carteraAnticipos,
-        carteraCount:        carteraCount,
-        carteraVencida:      carteraVencida,
-        ventasMes:           currentRev,
-        ventasMesPrev:       prevRev,
-        costosMes:           currentCosts,
-        gastosMes:           currentOpExp,
-        margenBrutoMes:      currentGrossMargin,
-        utilidadMes:         utilidadMes,
-        razonCorriente:      razonCorriente,
-        ivaGenerado:         ivaGenerado,
-        ivaDescontable:      ivaDescontable,
-        ivaEstimadoAPagar:   (ivaGenerado - ivaDescontable),
-        retencionesMes:      retencionesMes,
-        totalStockVal:       totalStockVal,
-        criticalStockCount:  criticalStockCount,
-        negativeStockCount:  negativeStockCount,
-        totalInvMovs:        totalInvMovs,
-        draftTxCount:        draftTxCount,
+        totalLiquidez: totalLiquidez,
+        cxpTotal: cxpTotal,
+        cxpProveedores: cxpProveedores,
+        cxpLaborales: cxpLaborales,
+        cxpCostos: cxpCostos,
+        cxpWeek: cxpWeek,
+        carteraTotal: carteraTotal, // Cartera Neta
+        carteraBruta: carteraBruta,
+        carteraAnticipos: carteraAnticipos,
+        carteraCount: carteraCount,
+        carteraVencida: carteraVencida,
+        ventasMes: currentRev,
+        ventasMesPrev: prevRev,
+        costosMes: currentCosts,
+        gastosMes: currentOpExp,
+        margenBrutoMes: currentGrossMargin,
+        utilidadMes: utilidadMes,
+        razonCorriente: razonCorriente,
+        ivaGenerado: ivaGenerado,
+        ivaDescontable: ivaDescontable,
+        ivaEstimadoAPagar: (ivaGenerado - ivaDescontable),
+        retencionesMes: retencionesMes,
+        totalStockVal: totalStockVal,
+        criticalStockCount: criticalStockCount,
+        negativeStockCount: negativeStockCount,
+        totalInvMovs: totalInvMovs,
+        draftTxCount: draftTxCount,
 
         // Módulo A: Nómina
         activeEmployeesCount: activeEmployeesCount,
-        payrollCostMonth:     payrollCostMonth,
-        payrollPendingDian:   payrollPendingDian,
+        payrollCostMonth: payrollCostMonth,
+        payrollPendingDian: payrollPendingDian,
         currentPayrollStatus: currentPayrollStatus,
 
         // Módulo B: DIAN
         dianResolutionsExpiring: dianResolutionsExpiring,
-        dianDocsRejected:        dianDocsRejected,
-        dianDocSoporteMonth:     dianDocSoporteMonth,
-        dianSuccessRate:         dianSuccessRate,
+        dianDocsRejected: dianDocsRejected,
+        dianDocSoporteMonth: dianDocSoporteMonth,
+        dianSuccessRate: dianSuccessRate,
 
         // Módulo C: POS
-        posSalesToday:      posSalesToday,
-        posAvgTicket:       posAvgTicket,
-        posTicketsCount:    posTicketsCount,
+        posSalesToday: posSalesToday,
+        posAvgTicket: posAvgTicket,
+        posTicketsCount: posTicketsCount,
         posOpenShiftsCount: posOpenShiftsCount,
 
         // Módulo D: Compras
-        purchasesThisMonth:    purchasesThisMonth,
-        purchasesPrevMonth:    purchasesPrevMonth,
+        purchasesThisMonth: purchasesThisMonth,
+        purchasesPrevMonth: purchasesPrevMonth,
         pendingPurchaseOrders: pendingPurchaseOrders,
 
         // Módulo G: Importaciones
         importsInTransitCount: importsInTransitCount,
-        importsValueTransit:   importsValueTransit,
-        importsPendingKardex:  importsPendingKardex,
+        importsValueTransit: importsValueTransit,
+        importsPendingKardex: importsPendingKardex,
       },
-      posPaymentMethods:   posPaymentMethods,
-      topSuppliers:        topSuppliers,
+      posPaymentMethods: posPaymentMethods,
+      topSuppliers: topSuppliers,
       monthlyTxCounts: monthlyTxCounts,
-      txByType:        txByTypeData.map(d => ({ typeName: d.typeName, txCount: Number(d.txCount) || 0 })),
-      recentActivity:  recentData.map(d => ({
+      txByType: txByTypeData.map(d => ({ typeName: d.typeName, txCount: Number(d.txCount) || 0 })),
+      recentActivity: recentData.map(d => ({
         id: d.id, date: d.date, consecutive: d.consecutive,
         typeName: d.typeName, thirdParty: d.thirdParty,
       })),
       topCriticalProducts: topCriticalProds,
       monthsLabels: months,
       months12Labels: months12,
-      monthlyRevenues12:     monthlyRevenues12,
-      monthlyCosts12:        monthlyCosts12,
-      monthlyOpExpenses12:   monthlyOpExpenses12,
-      monthlyExpenses12:     monthlyExpenses12,
-      monthlyProfits12:      monthlyProfits12,
+      monthlyRevenues12: monthlyRevenues12,
+      monthlyCosts12: monthlyCosts12,
+      monthlyOpExpenses12: monthlyOpExpenses12,
+      monthlyExpenses12: monthlyExpenses12,
+      monthlyProfits12: monthlyProfits12,
       monthlyGrossMargins12: monthlyGrossMargins12,
       dailyRevenues: dailyRevenues,
       dailyExpenses: dailyExpenses,
-      sellers:      sellersData.map(s => ({ id: s.id, name: s.name })),
+      sellers: sellersData.map(s => ({ id: s.id, name: s.name })),
       stockDetails: stockDetailsData.map(r => ({
         category: r.category,
         line: r.line,
@@ -1078,22 +1078,22 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       })),
 
       // ── CONTABILIDAD: financiero ─────────────────────────────────
-      currentMonthActivos:  activosVal,
-      prevMonthActivos:     Number(balanceResult.prevActivos)    || 0,
-      currentMonthPasivos:  pasivosVal,
-      prevMonthPasivos:     Number(balanceResult.prevPasivos)    || 0,
-      monthlyRevenues:      monthlyRevenues,
-      monthlyCosts:         monthlyCosts,
-      monthlyOpExpenses:    monthlyOpExpenses,
-      monthlyExpenses:      monthlyExpenses,
-      expensesByCategory:   expensesByCategory,
-      invByCategory:        invByCategory,
+      currentMonthActivos: activosVal,
+      prevMonthActivos: Number(balanceResult.prevActivos) || 0,
+      currentMonthPasivos: pasivosVal,
+      prevMonthPasivos: Number(balanceResult.prevPasivos) || 0,
+      monthlyRevenues: monthlyRevenues,
+      monthlyCosts: monthlyCosts,
+      monthlyOpExpenses: monthlyOpExpenses,
+      monthlyExpenses: monthlyExpenses,
+      expensesByCategory: expensesByCategory,
+      invByCategory: invByCategory,
       carteraBuckets: {
         porVencer: carteraPorVencer,
-        c0_30:     cartera0_30,
-        c31_60:    cartera31_60,
-        c61_90:    cartera61_90,
-        cMayor90:  carteraMayor90,
+        c0_30: cartera0_30,
+        c31_60: cartera31_60,
+        c61_90: cartera61_90,
+        cMayor90: carteraMayor90,
       },
     });
 
@@ -1108,35 +1108,47 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
  * directamente por SQLite, reduciendo la transferencia de datos en reportes.
  */
 routerAdd("GET", "/api/gravy/account-saldos", (e) => {
-  const authRecord = e.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(e).authRecord : null);
+  let authRecord = null;
+  try {
+    if (e && e.auth) authRecord = e.auth;
+    else if (e && typeof e.requestInfo === "function") {
+      const ri = e.requestInfo();
+      authRecord = ri ? (ri.auth || ri.authRecord) : null;
+    } else if (typeof $apis !== "undefined") {
+      authRecord = $apis.requestInfo(e).authRecord;
+    }
+  } catch (_) { }
   if (!authRecord) {
     return e.json(401, { error: "No autorizado" });
   }
 
-  // Obtener period de forma robusta y compatible en Echo/Goja
-  let period = "";
-  let bookType = "";
+  let queryParams = {};
   try {
-    period = e.queryParam("period") || "";
-    bookType = e.queryParam("book_type") || e.queryParam("bookType") || "";
-  } catch (_) {
-    try {
-      period = e.QueryParam("period") || "";
-      bookType = e.QueryParam("book_type") || e.QueryParam("bookType") || "";
-    } catch (_) {
-      try {
-        const q = e.requestInfo().query;
-        if (q) {
-          if (q.period) period = Array.isArray(q.period) ? q.period[0] : q.period;
-          if (q.book_type) bookType = Array.isArray(q.book_type) ? q.book_type[0] : q.book_type;
-          else if (q.bookType) bookType = Array.isArray(q.bookType) ? q.bookType[0] : q.bookType;
-        }
-      } catch (_) {}
+    if (e && typeof e.requestInfo === "function") {
+      queryParams = e.requestInfo().query || {};
     }
+  } catch (_) { }
+  if (!queryParams) queryParams = {};
+
+  let period = String(queryParams.period || e.queryParam?.("period") || "").trim();
+  let bookType = String(queryParams.book_type || queryParams.bookType || e.queryParam?.("book_type") || e.queryParam?.("bookType") || "").toLowerCase().trim();
+  if (Array.isArray(bookType)) bookType = String(bookType[0] || "").toLowerCase().trim();
+  if (!bookType) bookType = "niif";
+
+  let bookCond = " ";
+  if (bookType === "niif") {
+    bookCond = " AND (t.book_type != 'local' OR t.book_type IS NULL OR t.book_type = '') ";
+  } else if (bookType === "local") {
+    bookCond = " AND (t.book_type != 'niif' OR t.book_type IS NULL OR t.book_type = '') ";
   }
 
-  bookType = String(bookType || "").toLowerCase().trim();
-  if (!bookType) bookType = "niif"; // Por defecto estándar oficial NIIF
+  let branchId = String(queryParams.branch_id || queryParams.branch || e.queryParam?.("branch_id") || "").trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || "").trim();
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || e.queryParam?.("cost_center_id") || "").trim();
+  if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || "").trim();
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
 
   try {
     let sql = `
@@ -1147,34 +1159,34 @@ routerAdd("GET", "/api/gravy/account-saldos", (e) => {
       INNER JOIN transactions t ON t.id = l.tx_id
       WHERE t.status = 'active'
     `;
+    const binds = {};
 
-    if (bookType === "niif") {
-      sql += " AND (t.book_type != 'local' OR t.book_type IS NULL OR t.book_type = '')";
-    } else if (bookType === "local") {
-      sql += " AND (t.book_type != 'niif' OR t.book_type IS NULL OR t.book_type = '')";
-    }
-
-    const bindParams = {};
     if (period && /^\d{4}-\d{2}$/.test(period)) {
-      const [yearStr, monthStr] = period.split('-');
-      const year  = parseInt(yearStr, 10);
-      const month = parseInt(monthStr, 10);
-      const startDate = `${year}-${String(month).padStart(2, '0')}-01 00:00:00`;
-      let nextYear  = year;
-      let nextMonth = month + 1;
-      if (nextMonth > 12) { nextMonth = 1; nextYear += 1; }
-      const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01 00:00:00`;
-      sql += " AND t.date >= {:start} AND t.date < {:end}";
-      bindParams.start = startDate;
-      bindParams.end   = endDate;
+      const pYear = parseInt(period.split("-")[0], 10);
+      const pMonth = parseInt(period.split("-")[1], 10);
+      const startPeriod = `${period}-01`;
+      const lastDay = new Date(pYear, pMonth, 0).getDate();
+      const endPeriodLimit = `${period}-${String(lastDay).padStart(2, "0")} 23:59:59`;
+
+      sql += " AND t.date >= {:startPeriod} AND t.date <= {:endPeriodLimit}";
+      binds.startPeriod = startPeriod;
+      binds.endPeriodLimit = endPeriodLimit;
     }
 
+    if (branchId) {
+      sql += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId}";
+      binds.branchId = branchId;
+    }
+    if (costCenterId) {
+      sql += " AND l.cost_center_id = {:costCenterId}";
+      binds.costCenterId = costCenterId;
+    }
+    sql += bookCond;
     sql += " GROUP BY l.account_id";
 
     const query = $app.db().newQuery(sql);
-    if (period && /^\d{4}-\d{2}$/.test(period)) {
-      query.bind(bindParams);
-    }
+    query.bind(binds);
+
     const data = arrayOf(new DynamicModel({ accountId: "", balance: -0 }));
     query.all(data);
 

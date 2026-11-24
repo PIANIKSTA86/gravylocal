@@ -15,7 +15,9 @@ onBootstrap((e) => {
     hasSettings = true;
   } catch (_) {}
 
-  const authRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'superadmin')";
+  const authRuleWrite = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
+  const authRuleDelete = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador')";
+  const authRule = authRuleWrite;
 
   if (!hasSettings) {
     console.log("[GRAVY-NIIF] Creando colección niif_settings...");

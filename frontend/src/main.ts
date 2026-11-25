@@ -19,6 +19,7 @@ import './modules/auditoria.ts';
 import './modules/usuarios.ts';
 import './modules/conciliacion.ts';
 import './modules/nomina.ts';
+import './modules/asistencia.ts';
 import './modules/facturacion-dian.ts';
 import './modules/documentos-electronicos.ts';
 import './modules/doc-soporte.ts';

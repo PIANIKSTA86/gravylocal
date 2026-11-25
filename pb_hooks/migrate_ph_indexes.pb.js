@@ -33,7 +33,13 @@ onBootstrap((e) => {
     'CREATE INDEX IF NOT EXISTS idx_transactions_type_status ON transactions (tx_type_id, status)',
 
     // ── accounts ──
-    'CREATE INDEX IF NOT EXISTS idx_accounts_code ON accounts (code)'
+    'CREATE INDEX IF NOT EXISTS idx_accounts_code ON accounts (code)',
+
+    // ── ph_reservations & ph_pqrs ──
+    'CREATE INDEX IF NOT EXISTS idx_ph_res_area_date ON ph_reservations (area_id, date, status)',
+    'CREATE INDEX IF NOT EXISTS idx_ph_res_prop_status ON ph_reservations (property_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_ph_pqrs_prop_status ON ph_pqrs (property_id, status)',
+    'CREATE INDEX IF NOT EXISTS idx_ph_pqrs_due ON ph_pqrs (due_date, status)'
   ];
 
   for (const q of queries) {

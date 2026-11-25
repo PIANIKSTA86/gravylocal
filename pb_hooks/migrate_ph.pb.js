@@ -150,6 +150,40 @@ onBootstrap((e) => {
     console.log('[GRAVY-PH] Colección ph_common_areas creada.');
   }
 
+  // Normalizar campos operativos y financieros en ph_common_areas.
+  try {
+    const areasCol = $app.findCollectionByNameOrId('ph_common_areas');
+    const areaFields = new Set(areasCol.fields.fieldNames());
+    let areaChanged = false;
+    const areaTextFields = ['open_time', 'close_time', 'income_account_code', 'deposit_account_code'];
+    for (const fn of areaTextFields) {
+      if (!areaFields.has(fn)) {
+        areasCol.fields.add(new TextField({ name: fn, required: false }));
+        areaChanged = true;
+      }
+    }
+    const areaNumFields = ['hourly_rate', 'deposit_amount', 'max_monthly_per_unit'];
+    for (const fn of areaNumFields) {
+      if (!areaFields.has(fn)) {
+        areasCol.fields.add(new NumberField({ name: fn, required: false, min: 0 }));
+        areaChanged = true;
+      }
+    }
+    const areaBoolFields = ['is_paid', 'require_approval', 'block_if_delinquent'];
+    for (const fn of areaBoolFields) {
+      if (!areaFields.has(fn)) {
+        areasCol.fields.add(new BoolField({ name: fn, required: false }));
+        areaChanged = true;
+      }
+    }
+    if (areaChanged) {
+      $app.save(areasCol);
+      console.log('[GRAVY-PH] ph_common_areas actualizada con campos de tarifa, depósito y horarios.');
+    }
+  } catch (err) {
+    console.log('[GRAVY-PH] Aviso al normalizar ph_common_areas: ' + err);
+  }
+
   // ──────────────────────────────────────────────────────────
   // COLECCIÓN: ph_billing_concepts — Conceptos de facturación
   // ──────────────────────────────────────────────────────────
@@ -630,6 +664,18 @@ onBootstrap((e) => {
       }));
       pqrsChanged = true;
     }
+    if (!pqrsFields.has('due_date')) {
+      pqrsCol.fields.add(new TextField({ name: 'due_date', required: false }));
+      pqrsChanged = true;
+    }
+    if (!pqrsFields.has('history_json')) {
+      pqrsCol.fields.add(new TextField({ name: 'history_json', required: false }));
+      pqrsChanged = true;
+    }
+    if (!pqrsFields.has('satisfaction_rating')) {
+      pqrsCol.fields.add(new NumberField({ name: 'satisfaction_rating', required: false, min: 0, max: 5 }));
+      pqrsChanged = true;
+    }
 
     const pqrsCreateRule = "@request.auth.collectionName = 'users' && @request.auth.id != ''";
     const pqrsUpdateRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')";
@@ -656,14 +702,48 @@ onBootstrap((e) => {
     console.log('[GRAVY-PH] Aviso al normalizar ph_pqrs: ' + err);
   }
 
-  // Normalizar permisos de reservas para app móvil de propietarios.
+  // Normalizar esquema y permisos de reservas para app móvil de propietarios y control financiero.
   try {
     const reservationsCol = $app.findCollectionByNameOrId('ph_reservations');
+    const resFields = new Set(reservationsCol.fields.fieldNames());
     const reservationsCreateRule = "@request.auth.collectionName = 'users' && @request.auth.id != ''";
-    const reservationsUpdateRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')";
+    const reservationsUpdateRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || property_id.owner_id = @request.auth.owner_id)";
     const reservationsDeleteRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')";
 
     let changedReservations = false;
+    if (!resFields.has('rental_fee')) {
+      reservationsCol.fields.add(new NumberField({ name: 'rental_fee', required: false, min: 0 }));
+      changedReservations = true;
+    }
+    if (!resFields.has('deposit_amount')) {
+      reservationsCol.fields.add(new NumberField({ name: 'deposit_amount', required: false, min: 0 }));
+      changedReservations = true;
+    }
+    if (!resFields.has('deposit_status')) {
+      reservationsCol.fields.add(new SelectField({
+        name: 'deposit_status',
+        required: false,
+        values: ['none', 'pending', 'held', 'released', 'forfeited'],
+      }));
+      changedReservations = true;
+    }
+    if (!resFields.has('charge_status')) {
+      reservationsCol.fields.add(new SelectField({
+        name: 'charge_status',
+        required: false,
+        values: ['none', 'pending', 'billed', 'paid'],
+      }));
+      changedReservations = true;
+    }
+    if (!resFields.has('invoice_id')) {
+      reservationsCol.fields.add(new TextField({ name: 'invoice_id', required: false }));
+      changedReservations = true;
+    }
+    if (!resFields.has('cancel_reason')) {
+      reservationsCol.fields.add(new TextField({ name: 'cancel_reason', required: false }));
+      changedReservations = true;
+    }
+
     if (reservationsCol.createRule !== reservationsCreateRule) {
       reservationsCol.createRule = reservationsCreateRule;
       changedReservations = true;
@@ -679,7 +759,7 @@ onBootstrap((e) => {
 
     if (changedReservations) {
       $app.save(reservationsCol);
-      console.log('[GRAVY-PH] Reglas sincronizadas para ph_reservations (create habilitado para usuarios autenticados).');
+      console.log('[GRAVY-PH] Esquema y reglas sincronizadas para ph_reservations.');
     }
   } catch (err) {
     console.log('[GRAVY-PH] Aviso al normalizar permisos de reservas PH: ' + err);

@@ -90,6 +90,7 @@ function _renderPhPage(c, activeTab) {
     { id: 'unidades',    label: 'Unidades',       icon: 'fa-building'            },
     { id: 'reservas',    label: 'Reservas',       icon: 'fa-calendar-check'      },
     { id: 'pqrs',        label: 'PQRs',           icon: 'fa-comments'            },
+    { id: 'votaciones',  label: 'Votaciones PH',  icon: 'fa-check-to-slot'       },
     { id: 'config',      label: 'Configuración',  icon: 'fa-sliders'             },
   ];
 
@@ -120,6 +121,7 @@ function _renderPhPage(c, activeTab) {
     if (tabId === 'unidades')    renderPhUnidades(tabContent);
     if (tabId === 'reservas')    renderPhReservas(tabContent);
     if (tabId === 'pqrs')        renderPhPqrs(tabContent);
+    if (tabId === 'votaciones')  renderPhVotaciones(tabContent);
     if (tabId === 'config')      renderPhConfig(tabContent);
   }
 
@@ -2828,6 +2830,14 @@ async function togglePhUnit(unitId, currentActive, container) {
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB: RESERVAS
 // ══════════════════════════════════════════════════════════════════════════════
+const PH_DEPOSIT_STATUS = {
+  none:      { label: 'N/A',         badge: 'badge-gray'   },
+  pending:   { label: 'Por cobrar',  badge: 'badge-orange' },
+  held:      { label: 'En custodia', badge: 'badge-blue'   },
+  released:  { label: 'Devuelto',    badge: 'badge-green'  },
+  forfeited: { label: 'Retenido',    badge: 'badge-red'    },
+};
+
 async function renderPhReservas(c) {
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</div>`;
   try {
@@ -2837,32 +2847,51 @@ async function renderPhReservas(c) {
       API.getPhCommonAreas(true),
     ]);
     const reservations = resRes.items || [];
+    const heldDeposits = reservations.filter(r => r.deposit_status === 'held').reduce((s, r) => s + Number(r.deposit_amount || 0), 0);
+    const pendingFees = reservations.filter(r => r.status !== 'cancelled' && r.charge_status === 'pending').reduce((s, r) => s + Number(r.rental_fee || 0), 0);
 
     c.innerHTML = `
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
-        ${phKpi('Zonas comunes',    areas.length,       'fas fa-map-marked-alt','#7C3AED','#EDE9FE')}
-        ${phKpi('Próximas reservas',reservations.length,'fas fa-calendar-check','#059669','#DCFCE7')}
-        ${phKpi('Confirmadas',      reservations.filter(r => r.status === 'confirmed').length,
-                                    'fas fa-circle-check','#7C3AED','#EDE9FE')}
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-5">
+        <div class="lg:col-span-7 bg-white rounded-2xl border p-4 flex items-center justify-between" style="border-color:#E5E7EB;background:#FBF9F5">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wider" style="color:#6B7280">Control Operativo de Reservas</p>
+            <p class="text-2xl font-extrabold mt-1" style="color:#1B4332">${reservations.length} <span class="text-sm font-medium" style="color:#6B7280">activas/próximas</span></p>
+            <p class="text-xs mt-1" style="color:#6B7280">${areas.length} zonas comunes habilitadas · ${reservations.filter(r => r.status === 'confirmed').length} confirmadas</p>
+          </div>
+          <button class="btn btn-primary" id="ph-res-add-btn" style="background:#1B4332;border-color:#1B4332">
+            <i class="fas fa-plus mr-1"></i>Nueva Reserva
+          </button>
+        </div>
+        <div class="lg:col-span-5 grid grid-cols-2 gap-3">
+          ${phKpi('Depósitos en custodia', _fmt(heldDeposits), 'fas fa-shield-halved', '#1B4332', '#E8F3EE')}
+          ${phKpi('Tarifas por facturar',  _fmt(pendingFees),  'fas fa-file-invoice',   '#C85A32', '#FDF0EB')}
+        </div>
       </div>
-      <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
-        <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:#F0F0F0">
-          <span class="font-bold text-sm" style="color:#0D2137">Reservas Próximas (desde hoy)</span>
-          <div class="flex gap-2">
-            <select id="ph-res-area-filter" class="form-input text-sm" style="max-width:200px">
+      <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
+        <div class="px-5 py-3 border-b flex items-center justify-between flex-wrap gap-2" style="border-color:#E5E7EB">
+          <span class="font-bold text-sm" style="color:#0D2137">Agenda de Zonas Comunes</span>
+          <div class="flex gap-2 flex-wrap">
+            <select id="ph-res-scope-filter" class="form-input text-sm" style="max-width:150px">
+              <option value="upcoming">Desde hoy</option>
+              <option value="all">Histórico completo</option>
+            </select>
+            <select id="ph-res-status-filter" class="form-input text-sm" style="max-width:150px">
+              <option value="">Todos los estados</option>
+              <option value="pending">Pendiente</option>
+              <option value="confirmed">Confirmada</option>
+              <option value="cancelled">Cancelada</option>
+            </select>
+            <select id="ph-res-area-filter" class="form-input text-sm" style="max-width:190px">
               <option value="">Todas las zonas</option>
               ${areas.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}
             </select>
-            <button class="btn btn-primary btn-sm" id="ph-res-add-btn">
-              <i class="fas fa-plus mr-1"></i>Nueva Reserva
-            </button>
           </div>
         </div>
         <div class="overflow-x-auto">
           <table class="data-table" id="ph-reservas-table">
             <thead><tr>
-              <th>Zona</th><th>Unidad</th><th>Fecha</th><th>Horario</th>
-              <th>Asistentes</th><th>Estado</th><th>Acciones</th>
+              <th>Zona</th><th>Unidad</th><th>Fecha / Horario</th>
+              <th>Asist.</th><th>Tarifa / Depósito</th><th>Estado</th><th>Acciones</th>
             </tr></thead>
             <tbody id="ph-res-tbody">
               ${renderPhResRows(reservations)}
@@ -2871,17 +2900,24 @@ async function renderPhReservas(c) {
         </div>
       </div>`;
 
-    document.getElementById('ph-res-area-filter')?.addEventListener('change', async (e) => {
-      const areaId = e.target.value;
-      let filter   = `date>="${pb.escapeFilterValue(today)}"`;
-      if (areaId) filter += ` && area_id="${pb.escapeFilterValue(areaId)}"`;
-      const res = await API.getPhReservations({ filter, sort: 'date,time_from', perPage: 100 });
+    async function reloadReservas() {
+      const areaId = (document.getElementById('ph-res-area-filter') as HTMLSelectElement)?.value || '';
+      const status = (document.getElementById('ph-res-status-filter') as HTMLSelectElement)?.value || '';
+      const scope  = (document.getElementById('ph-res-scope-filter') as HTMLSelectElement)?.value || 'upcoming';
+      const parts = [];
+      if (scope === 'upcoming') parts.push(`date>="${pb.escapeFilterValue(today)}"`);
+      if (areaId) parts.push(`area_id="${pb.escapeFilterValue(areaId)}"`);
+      if (status) parts.push(`status="${pb.escapeFilterValue(status)}"`);
+      const res = await API.getPhReservations({ filter: parts.join(' && '), sort: scope === 'upcoming' ? 'date,time_from' : '-date,-time_from', perPage: 100 });
       document.getElementById('ph-res-tbody').innerHTML = renderPhResRows(res.items || []);
       attachPhResActions(c, areas);
       const tbl = document.getElementById('ph-reservas-table') as HTMLTableElement;
       if (tbl) (window as any).reapplyTableSort(tbl);
-    });
+    }
 
+    document.getElementById('ph-res-area-filter')?.addEventListener('change', reloadReservas);
+    document.getElementById('ph-res-status-filter')?.addEventListener('change', reloadReservas);
+    document.getElementById('ph-res-scope-filter')?.addEventListener('change', reloadReservas);
     document.getElementById('ph-res-add-btn')?.addEventListener('click', () => openPhResModal(null, c, areas));
     attachPhResActions(c, areas);
     const tbl = document.getElementById('ph-reservas-table') as HTMLTableElement;
@@ -2893,30 +2929,48 @@ async function renderPhReservas(c) {
 
 function renderPhResRows(reservations) {
   if (!reservations.length) {
-    return `<tr><td colspan="7" class="text-center py-10" style="color:#9CA3AF">No hay reservas próximas.</td></tr>`;
+    return `<tr><td colspan="7" class="text-center py-10" style="color:#9CA3AF">No hay reservas que coincidan con los filtros seleccionados.</td></tr>`;
   }
   return reservations.map(r => {
     const area = r.expand?.area_id;
     const prop = r.expand?.property_id;
     const meta = PH_RES_STATUS[r.status] || PH_RES_STATUS.pending;
+    const depMeta = PH_DEPOSIT_STATUS[r.deposit_status || 'none'] || PH_DEPOSIT_STATUS.none;
+    const fee = Number(r.rental_fee || 0);
+    const dep = Number(r.deposit_amount || 0);
+    const canBill = r.status !== 'cancelled' && ((fee > 0 && r.charge_status !== 'billed' && r.charge_status !== 'paid') || (dep > 0 && r.deposit_status === 'pending'));
+    const canRelease = r.status !== 'cancelled' && r.deposit_status === 'held';
     return `<tr data-res-id="${esc(r.id)}">
       <td class="font-semibold" style="color:#0D2137">${esc(area?.name || '—')}</td>
       <td>${esc(prop?.name || prop?.code || '—')}</td>
-      <td>${esc(r.date)}</td>
-      <td class="text-sm">${esc(r.time_from)} – ${esc(r.time_to)}</td>
+      <td>
+        <div class="font-medium text-sm">${esc(r.date)}</div>
+        <div class="text-xs" style="color:#6B7280">${esc(r.time_from)} – ${esc(r.time_to)}</div>
+      </td>
       <td class="text-center">${r.attendees || '—'}</td>
+      <td class="text-xs">
+        ${fee > 0 ? `<div>Alq: <strong>${_fmt(fee)}</strong> <span class="badge ${r.charge_status === 'billed' || r.charge_status === 'paid' ? 'badge-green' : 'badge-orange'}">${r.charge_status === 'billed' ? 'Facturado' : r.charge_status === 'paid' ? 'Pagado' : 'Pend.'}</span></div>` : ''}
+        ${dep > 0 ? `<div class="mt-0.5">Dep: <strong>${_fmt(dep)}</strong> <span class="badge ${depMeta.badge}">${depMeta.label}</span></div>` : ''}
+        ${fee <= 0 && dep <= 0 ? '<span style="color:#9CA3AF">Gratuita</span>' : ''}
+      </td>
       <td><span class="badge ${meta.badge}">${meta.label}</span></td>
       <td>
-        <div class="flex gap-1">
+        <div class="flex gap-1 flex-wrap">
+          <button class="btn btn-outline btn-sm ph-res-edit" data-id="${esc(r.id)}" title="Ver / Editar"><i class="fas fa-pen"></i></button>
           ${r.status === 'pending' ? `
             <button class="btn btn-sm ph-res-confirm" data-id="${esc(r.id)}" title="Confirmar"
-              style="background:#ECFDF5;color:#059669;border:1.5px solid #6EE7B7">
-              <i class="fas fa-check"></i>
-            </button>
+              style="background:#ECFDF5;color:#059669;border:1.5px solid #6EE7B7"><i class="fas fa-check"></i></button>` : ''}
+          ${canBill ? `
+            <button class="btn btn-sm ph-res-bill" data-id="${esc(r.id)}" title="Cargar tarifa/depósito a borrador"
+              style="background:#EFF6FF;color:#1D4ED8;border:1.5px solid #BFDBFE"><i class="fas fa-file-invoice-dollar"></i></button>` : ''}
+          ${canRelease ? `
+            <button class="btn btn-sm ph-res-release" data-id="${esc(r.id)}" title="Devolver depósito"
+              style="background:#ECFDF5;color:#059669;border:1.5px solid #6EE7B7"><i class="fas fa-hand-holding-dollar"></i></button>
+            <button class="btn btn-sm ph-res-forfeit" data-id="${esc(r.id)}" title="Retener depósito por daños"
+              style="background:#FEF2F2;color:#DC2626;border:1.5px solid #FECACA"><i class="fas fa-gavel"></i></button>` : ''}
+          ${r.status !== 'cancelled' ? `
             <button class="btn btn-sm ph-res-cancel" data-id="${esc(r.id)}" title="Cancelar"
-              style="background:#FEF2F2;color:#DC2626;border:1.5px solid #FECACA">
-              <i class="fas fa-xmark"></i>
-            </button>` : ''}
+              style="background:#FEF2F2;color:#DC2626;border:1.5px solid #FECACA"><i class="fas fa-xmark"></i></button>` : ''}
         </div>
       </td>
     </tr>`;
@@ -2924,23 +2978,59 @@ function renderPhResRows(reservations) {
 }
 
 function attachPhResActions(c, areas) {
+  c.querySelectorAll('.ph-res-edit').forEach(btn => {
+    btn.addEventListener('click', () => openPhResModal((btn as HTMLElement).dataset.id, c, areas));
+  });
   c.querySelectorAll('.ph-res-confirm').forEach(btn => {
     btn.addEventListener('click', async () => {
       try {
-        await pb.update('ph_reservations', btn.dataset.id, { status: 'confirmed' });
+        await pb.update('ph_reservations', (btn as HTMLElement).dataset.id, { status: 'confirmed' });
         showToast('Reserva confirmada.', 'success');
         renderPhReservas(c);
-      } catch (err) { showToast(err.message || 'Error.', 'error'); }
+      } catch (err) { showToast(err.message || 'No se pudo confirmar.', 'error'); }
+    });
+  });
+  c.querySelectorAll('.ph-res-bill').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        const out = await API.billPhReservationDeposit((btn as HTMLElement).dataset.id);
+        showToast(`Cargado ${_fmt(out.addedAmount)} a factura borrador ${out.invoiceNumber}.`, 'success');
+        renderPhReservas(c);
+      } catch (err) { showToast(err.message || 'No se pudo cargar a borrador.', 'error'); }
+    });
+  });
+  c.querySelectorAll('.ph-res-release').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('¿Confirmas que la zona fue entregada sin novedades y deseas marcar el depósito como Devuelto?')) return;
+      try {
+        await pb.update('ph_reservations', (btn as HTMLElement).dataset.id, { deposit_status: 'released' });
+        showToast('Depósito marcado como devuelto.', 'success');
+        renderPhReservas(c);
+      } catch (err) { showToast(err.message || 'Error al liberar depósito.', 'error'); }
+    });
+  });
+  c.querySelectorAll('.ph-res-forfeit').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const reason = prompt('Motivo de retención del depósito por daños o incumplimiento:');
+      if (reason === null) return;
+      try {
+        await pb.update('ph_reservations', (btn as HTMLElement).dataset.id, {
+          deposit_status: 'forfeited',
+          notes: reason ? `[Depósito retenido: ${reason}]` : '[Depósito retenido]',
+        });
+        showToast('Depósito marcado como retenido.', 'warning');
+        renderPhReservas(c);
+      } catch (err) { showToast(err.message || 'Error al retener depósito.', 'error'); }
     });
   });
   c.querySelectorAll('.ph-res-cancel').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('¿Cancelar esta reserva?')) return;
+      if (!confirm('¿Cancelar esta reserva? Esta acción liberará el horario en la agenda.')) return;
       try {
-        await pb.update('ph_reservations', btn.dataset.id, { status: 'cancelled' });
+        await pb.update('ph_reservations', (btn as HTMLElement).dataset.id, { status: 'cancelled' });
         showToast('Reserva cancelada.', 'success');
         renderPhReservas(c);
-      } catch (err) { showToast(err.message || 'Error.', 'error'); }
+      } catch (err) { showToast(err.message || 'No se pudo cancelar.', 'error'); }
     });
   });
 }
@@ -2956,7 +3046,7 @@ async function openPhResModal(resId, container, areasPreloaded) {
     ]);
     if (!areas.length) areas = await API.getPhCommonAreas(true);
   } catch (err) {
-    showToast('Error al cargar datos.', 'error');
+    showToast('Error al cargar datos de reserva.', 'error');
     return;
   }
 
@@ -2969,7 +3059,7 @@ async function openPhResModal(resId, container, areasPreloaded) {
         <select id="pr-area" class="form-input">
           <option value="">Seleccionar zona...</option>
           ${areas.map(a => `<option value="${esc(a.id)}" ${res?.area_id === a.id ? 'selected' : ''}>
-            ${esc(a.name)}${a.capacity ? ` (cap: ${a.capacity})` : ''}
+            ${esc(a.name)}${a.capacity ? ` (cap: ${a.capacity})` : ''}${a.is_paid && a.hourly_rate ? ` · ${_fmt(a.hourly_rate)}/h` : ''}
           </option>`).join('')}
         </select>
       </div>
@@ -2982,7 +3072,7 @@ async function openPhResModal(resId, container, areasPreloaded) {
       </div>
       <div class="form-group">
         <label class="form-label">Fecha <span class="text-red-500">*</span></label>
-        <input id="pr-date" type="date" class="form-input" min="${today}" value="${esc(res?.date || today)}">
+        <input id="pr-date" type="date" class="form-input" ${res ? '' : `min="${today}"`} value="${esc(res?.date || today)}">
       </div>
       <div class="form-group">
         <label class="form-label">Número de asistentes</label>
@@ -2996,9 +3086,17 @@ async function openPhResModal(resId, container, areasPreloaded) {
         <label class="form-label">Hora fin <span class="text-red-500">*</span></label>
         <input id="pr-to" type="time" class="form-input" value="${esc(res?.time_to || '10:00')}">
       </div>
+      <div class="form-group">
+        <label class="form-label">Tarifa alquiler (COP)</label>
+        <input id="pr-fee" type="number" min="0" step="100" class="form-input" value="${esc(res?.rental_fee ?? 0)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Depósito garantía (COP)</label>
+        <input id="pr-dep" type="number" min="0" step="100" class="form-input" value="${esc(res?.deposit_amount ?? 0)}">
+      </div>
       <div class="form-group col-span-2">
         <label class="form-label">Notas / Observaciones</label>
-        <textarea id="pr-notes" class="form-input" rows="2" placeholder="Ej: Reunión de copropietarios...">${esc(res?.notes || '')}</textarea>
+        <textarea id="pr-notes" class="form-input" rows="2" placeholder="Ej: Reunión familiar...">${esc(res?.notes || '')}</textarea>
       </div>
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
@@ -3007,46 +3105,33 @@ async function openPhResModal(resId, container, areasPreloaded) {
 
   setTimeout(() => {
     document.getElementById('pr-save-btn')?.addEventListener('click', async () => {
-      const areaId = document.getElementById('pr-area')?.value;
-      const propId = document.getElementById('pr-prop')?.value;
-      const date   = document.getElementById('pr-date')?.value;
-      const tFrom  = document.getElementById('pr-from')?.value;
-      const tTo    = document.getElementById('pr-to')?.value;
+      const areaId = (document.getElementById('pr-area') as HTMLSelectElement)?.value;
+      const propId = (document.getElementById('pr-prop') as HTMLSelectElement)?.value;
+      const date   = (document.getElementById('pr-date') as HTMLInputElement)?.value;
+      const tFrom  = (document.getElementById('pr-from') as HTMLInputElement)?.value;
+      const tTo    = (document.getElementById('pr-to') as HTMLInputElement)?.value;
       if (!areaId || !propId || !date || !tFrom || !tTo) {
         showToast('Completa los campos obligatorios.', 'warning');
         return;
       }
       if (tTo <= tFrom) { showToast('La hora fin debe ser posterior a la hora inicio.', 'warning'); return; }
 
-      // Validar solapamiento / conflicto horario con otras reservas activas para la misma zona y fecha
-      try {
-        const safeArea = pb.escapeFilterValue(areaId);
-        const safeDate = pb.escapeFilterValue(date);
-        const existing = await pb.listAll('ph_reservations', {
-          filter: `area_id="${safeArea}" && date="${safeDate}" && (status="confirmed" || status="pending" || status="")`,
-        });
-        const conflict = existing.find((ex: any) => {
-          if (res && ex.id === res.id) return false;
-          if (ex.status === 'cancelled') return false;
-          const exFrom = ex.time_from || '00:00';
-          const exTo = ex.time_to || '23:59';
-          return tFrom < exTo && tTo > exFrom;
-        });
-        if (conflict) {
-          showToast(`Conflicto de horario: La zona ya está reservada de ${conflict.time_from} a ${conflict.time_to}.`, 'error');
-          return;
-        }
-      } catch (checkErr) {
-        console.warn('No se pudo verificar disponibilidad previa de zona común:', checkErr);
+      const feeVal = parseFloat((document.getElementById('pr-fee') as HTMLInputElement)?.value || '0') || 0;
+      const depVal = parseFloat((document.getElementById('pr-dep') as HTMLInputElement)?.value || '0') || 0;
+      const data: any = {
+        area_id: areaId, property_id: propId, date, time_from: tFrom, time_to: tTo,
+        attendees: parseInt((document.getElementById('pr-att') as HTMLInputElement)?.value || '0', 10) || 0,
+        notes:     (document.getElementById('pr-notes') as HTMLTextAreaElement)?.value || '',
+        rental_fee: feeVal,
+        deposit_amount: depVal,
+        status:    res ? (res.status || 'pending') : 'pending',
+      };
+      if (!res) {
+        data.charge_status = feeVal > 0 ? 'pending' : 'none';
+        data.deposit_status = depVal > 0 ? 'pending' : 'none';
       }
 
-      const data = {
-        area_id: areaId, property_id: propId, date, time_from: tFrom, time_to: tTo,
-        attendees: parseInt(document.getElementById('pr-att')?.value || 0) || 0,
-        notes:     document.getElementById('pr-notes')?.value || '',
-        status:    'pending',
-      };
-      const btn = document.getElementById('pr-save-btn');
+      const btn = document.getElementById('pr-save-btn') as HTMLButtonElement;
       if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
       try {
         if (res) {
@@ -3059,7 +3144,7 @@ async function openPhResModal(resId, container, areasPreloaded) {
         closeModal();
         renderPhReservas(container);
       } catch (err) {
-        showToast(err.message || 'Error.', 'error');
+        showToast(err.message || 'No se pudo guardar la reserva.', 'error');
         if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
       }
     }, { once: true });
@@ -3110,7 +3195,7 @@ async function renderPhPqrs(c) {
           <table class="data-table" id="ph-pqrs-table">
             <thead><tr>
               <th>N°</th><th>Tipo</th><th>Asunto</th><th>Unidad</th>
-              <th>Prioridad</th><th>Estado</th><th>Fecha</th><th>Acciones</th>
+              <th>Prioridad</th><th>Estado</th><th>Venc. Ley 1755</th><th>Fecha</th><th>Acciones</th>
             </tr></thead>
             <tbody id="ph-pqrs-tbody">
               ${renderPhPqrRows(pqrs)}
@@ -3147,9 +3232,23 @@ async function renderPhPqrs(c) {
   }
 }
 
+function phPqrDueBadge(p) {
+  if (p.status === 'resolved' || p.status === 'closed') {
+    return '<span class="badge badge-green">Atendida</span>';
+  }
+  if (!p.due_date) return '<span class="text-xs" style="color:#9CA3AF">—</span>';
+  const today = (window as any).todayStr();
+  const diffMs = new Date(`${p.due_date}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime();
+  const daysLeft = Math.ceil(diffMs / 86400000);
+  if (daysLeft < 0) return `<span class="badge badge-red">Vencida (${Math.abs(daysLeft)}d)</span>`;
+  if (daysLeft <= 2) return `<span class="badge badge-red">Vence ${p.due_date}</span>`;
+  if (daysLeft <= 5) return `<span class="badge badge-orange">${daysLeft}d (${p.due_date})</span>`;
+  return `<span class="badge badge-green">${daysLeft}d (${p.due_date})</span>`;
+}
+
 function renderPhPqrRows(pqrs) {
   if (!pqrs.length) {
-    return `<tr><td colspan="8" class="text-center py-10" style="color:#9CA3AF">No hay PQRs activas.</td></tr>`;
+    return `<tr><td colspan="9" class="text-center py-10" style="color:#9CA3AF">No hay PQRs activas.</td></tr>`;
   }
   return pqrs.map(p => {
     const prop     = p.expand?.property_id;
@@ -3157,14 +3256,16 @@ function renderPhPqrRows(pqrs) {
     const priMeta  = PH_PQRS_PRIORITY[p.priority] || PH_PQRS_PRIORITY.media;
     const typeLabel= PH_PQRS_TYPES.find(t => t.value === p.pqrs_type)?.label || p.pqrs_type || '—';
     const dateStr  = p.created ? new Date(p.created).toLocaleDateString('es-CO') : '—';
+    const evCount  = Array.isArray(p.evidences) ? p.evidences.length : (p.evidences ? 1 : 0);
     return `<tr>
       <td class="font-mono text-xs font-bold">${esc(p.number)}</td>
       <td><span class="badge badge-gray">${esc(typeLabel)}</span></td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-          title="${esc(p.subject)}">${esc(p.subject)}</td>
+          title="${esc(p.subject)}">${esc(p.subject)}${evCount ? ` <i class="fas fa-paperclip text-xs ml-1" style="color:#6B7280" title="${evCount} adjunto(s)"></i>` : ''}</td>
       <td class="text-sm">${esc(prop?.name || prop?.code || '—')}</td>
       <td><span class="badge ${priMeta.badge}">${priMeta.label}</span></td>
       <td><span class="badge ${sttMeta.badge}">${sttMeta.label}</span></td>
+      <td class="text-xs">${phPqrDueBadge(p)}</td>
       <td class="text-xs">${dateStr}</td>
       <td>
         <div class="flex gap-1">
@@ -3202,13 +3303,20 @@ async function openPhPqrModal(pqrId, container, propsPreloaded) {
     .map(([k, v]) => `<option value="${k}" ${pqr?.status === k ? 'selected' : ''}>${v.label}</option>`)
     .join('');
 
+  const evList = pqr ? (Array.isArray(pqr.evidences) ? pqr.evidences : (pqr.evidences ? [pqr.evidences] : [])) : [];
+  let historyList: any[] = [];
+  if (pqr?.history_json) {
+    try { historyList = JSON.parse(pqr.history_json); } catch (_) {}
+  }
+
   openModal(
     title,
     `<div class="space-y-4">
       ${pqr ? `
-        <div class="grid grid-cols-3 gap-3 p-3 rounded-xl text-sm" style="background:#F8FAFF">
+        <div class="grid grid-cols-4 gap-3 p-3 rounded-xl text-sm" style="background:#FBF9F5;border:1px solid #E5E7EB">
           <div><p class="text-xs" style="color:#6B7280">Número</p><p class="font-bold font-mono">${esc(pqr.number)}</p></div>
           <div><p class="text-xs" style="color:#6B7280">Tipo</p><p class="font-semibold">${esc(PH_PQRS_TYPES.find(t=>t.value===pqr.pqrs_type)?.label || pqr.pqrs_type)}</p></div>
+          <div><p class="text-xs" style="color:#6B7280">Venc. Ley 1755</p>${phPqrDueBadge(pqr)}</div>
           <div><p class="text-xs" style="color:#6B7280">Prioridad</p>
             <span class="badge ${PH_PQRS_PRIORITY[pqr.priority]?.badge || 'badge-gray'}">${PH_PQRS_PRIORITY[pqr.priority]?.label || pqr.priority || '—'}</span>
           </div>
@@ -3243,6 +3351,20 @@ async function openPhPqrModal(pqrId, container, propsPreloaded) {
           <label class="form-label">Descripción <span class="text-red-500">*</span></label>
           <textarea id="pq-desc" class="form-input" rows="3" placeholder="Detalle completo de la solicitud..." ${pqr ? 'readonly' : ''}>${esc(pqr?.description || '')}</textarea>
         </div>
+        ${evList.length ? `
+          <div class="form-group col-span-2">
+            <label class="form-label">Evidencias adjuntas (${evList.length})</label>
+            <div class="flex flex-wrap gap-2">
+              ${evList.map((fname: string) => {
+                const fileUrl = `${pb.baseUrl || ''}/api/files/ph_pqrs/${encodeURIComponent(pqr.id)}/${encodeURIComponent(fname)}`;
+                const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(fname);
+                return `<a href="${fileUrl}" target="_blank" rel="noopener" class="flex items-center gap-2 p-2 rounded-lg border text-xs hover:bg-gray-50" style="border-color:#E5E7EB">
+                  ${isImg ? `<img src="${fileUrl}?thumb=80x80" alt="${esc(fname)}" class="w-10 h-10 object-cover rounded">` : '<i class="fas fa-file-pdf text-red-500 text-lg"></i>'}
+                  <span class="truncate max-w-[140px]">${esc(fname)}</span>
+                </a>`;
+              }).join('')}
+            </div>
+          </div>` : ''}
         ${pqr ? `
           <div class="form-group">
             <label class="form-label">Estado</label>
@@ -3255,7 +3377,26 @@ async function openPhPqrModal(pqrId, container, propsPreloaded) {
           <div class="form-group col-span-2">
             <label class="form-label">Respuesta / Gestión</label>
             <textarea id="pq-response" class="form-input" rows="3" placeholder="Describe las acciones tomadas...">${esc(pqr.response || '')}</textarea>
-          </div>` : ''}
+            <label class="flex items-center gap-2 text-xs mt-1.5 cursor-pointer" style="color:#6B7280">
+              <input id="pq-internal" type="checkbox">
+              <span>Registrar en bitácora como nota interna (no visible al residente)</span>
+            </label>
+          </div>
+          ${historyList.length ? `
+            <div class="form-group col-span-2">
+              <label class="form-label">Bitácora de trazabilidad</label>
+              <div class="max-h-36 overflow-y-auto space-y-1.5 p-2.5 rounded-xl border text-xs" style="background:#FBF9F5;border-color:#E5E7EB">
+                ${historyList.map(h => `
+                  <div class="flex justify-between gap-2 border-b pb-1 last:border-b-0" style="border-color:#E5E7EB">
+                    <div>
+                      <span class="font-bold" style="color:#1B4332">${esc(h.action || 'GESTIÓN')}</span>
+                      ${h.internal ? '<span class="badge badge-gray ml-1">Interna</span>' : ''}
+                      <span class="ml-1" style="color:#374151">${esc(h.note || '')}</span>
+                    </div>
+                    <span class="whitespace-nowrap" style="color:#9CA3AF">${esc(h.by || '')} · ${esc(String(h.at || '').slice(0, 16))}</span>
+                  </div>`).join('')}
+              </div>
+            </div>` : ''}` : ''}
       </div>
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
@@ -3266,19 +3407,33 @@ async function openPhPqrModal(pqrId, container, propsPreloaded) {
 
   setTimeout(() => {
     document.getElementById('pq-save-btn')?.addEventListener('click', async () => {
-      const btn = document.getElementById('pq-save-btn');
+      const btn = document.getElementById('pq-save-btn') as HTMLButtonElement;
       if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
 
       try {
         if (pqr) {
-          // Actualizar estado y respuesta
-          const newStatus   = document.getElementById('pq-status')?.value;
-          const newResponse = document.getElementById('pq-response')?.value || '';
-          const assigned    = document.getElementById('pq-assigned')?.value || '';
-          const priority    = document.getElementById('pq-priority')?.value || 'media';
-          const updateData  = { status: newStatus, response: newResponse, assigned_to: assigned, priority };
+          const newStatus   = (document.getElementById('pq-status') as HTMLSelectElement)?.value;
+          const newResponse = (document.getElementById('pq-response') as HTMLTextAreaElement)?.value || '';
+          const assigned    = (document.getElementById('pq-assigned') as HTMLInputElement)?.value || '';
+          const priority    = (document.getElementById('pq-priority') as HTMLSelectElement)?.value || 'media';
+          const isInternal  = !!(document.getElementById('pq-internal') as HTMLInputElement)?.checked;
+          const nowStr      = (window as any).nowStr();
+          const nextHistory = historyList.concat([{
+            at: nowStr,
+            by: (window as any).currentUser?.name || (window as any).currentUser?.email || 'Admin',
+            action: `${pqr.status || 'open'} → ${newStatus}`,
+            note: newResponse || 'Actualización de estado/asignación.',
+            internal: isInternal,
+          }]);
+          const updateData: any = {
+            status: newStatus,
+            response: isInternal ? (pqr.response || '') : newResponse,
+            assigned_to: assigned,
+            priority,
+            history_json: JSON.stringify(nextHistory),
+          };
           if (newStatus === 'closed' || newStatus === 'resolved') {
-            updateData.closed_at = (window as any).nowStr();
+            updateData.closed_at = nowStr;
           }
           await pb.update('ph_pqrs', pqr.id, updateData);
           await API.logAudit('UPDATE', 'PhPqr', pqr.id, `PQR ${pqr.number} → ${newStatus}`);
@@ -3823,13 +3978,24 @@ function renderPhAreasList(areas, c) {
     return `<p class="text-sm text-center py-4" style="color:#9CA3AF">No hay zonas comunes registradas.</p>`;
   }
   return `<div class="space-y-2">
-    ${areas.map(a => `
-      <div class="flex items-center justify-between p-3 rounded-xl" style="background:#F8FAFF">
+    ${areas.map(a => {
+      const metaParts = [];
+      if (a.capacity) metaParts.push(`Cap: ${a.capacity} pers.`);
+      if (a.open_time || a.close_time) metaParts.push(`${a.open_time || '00:00'}–${a.close_time || '23:59'}`);
+      if (a.is_paid && a.hourly_rate) metaParts.push(`Tarifa: ${_fmt(a.hourly_rate)}/h`);
+      if (a.deposit_amount) metaParts.push(`Depósito: ${_fmt(a.deposit_amount)}`);
+      if (a.block_if_delinquent) metaParts.push('Restringe mora');
+      if (a.description) metaParts.push(esc(a.description));
+      return `
+      <div class="flex items-center justify-between p-3 rounded-xl border" style="background:#FBF9F5;border-color:#E5E7EB">
         <div>
-          <p class="font-semibold text-sm" style="color:#0D2137">${esc(a.name)}</p>
-          <p class="text-xs" style="color:#6B7280">${a.capacity ? `Cap: ${a.capacity} pers.` : ''}${a.description ? ` · ${esc(a.description)}` : ''}</p>
+          <p class="font-semibold text-sm" style="color:#0D2137">
+            <span class="font-mono text-xs px-1.5 py-0.5 rounded mr-1.5" style="background:#E5E7EB;color:#374151">${esc(a.code)}</span>
+            ${esc(a.name)}
+          </p>
+          <p class="text-xs mt-0.5" style="color:#6B7280">${metaParts.join(' · ') || 'Sin reglas adicionales'}</p>
         </div>
-        <div class="flex gap-1">
+        <div class="flex gap-1 items-center">
           <span class="badge ${a.active !== false ? 'badge-green' : 'badge-gray'} mr-2">
             ${a.active !== false ? 'Activa' : 'Inactiva'}
           </span>
@@ -3840,7 +4006,8 @@ function renderPhAreasList(areas, c) {
             <i class="fas ${a.active !== false ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>
           </button>
         </div>
-      </div>`).join('')}
+      </div>`;
+    }).join('')}
   </div>`;
 }
 
@@ -3945,8 +4112,53 @@ async function openPhAreaModal(areaId, container) {
         <input id="pa-cap" type="number" min="0" class="form-input" value="${esc(area?.capacity ?? '')}">
       </div>
       <div class="form-group">
-        <label class="form-label">Horas mín. de reserva</label>
+        <label class="form-label">Máx. reservas / mes por unidad</label>
+        <input id="pa-maxmonth" type="number" min="0" class="form-input" value="${esc(area?.max_monthly_per_unit ?? '')}" placeholder="0 = sin límite">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Horas mín. reserva</label>
         <input id="pa-minhrs" type="number" min="0" step="0.5" class="form-input" value="${esc(area?.min_hours ?? '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Horas máx. reserva</label>
+        <input id="pa-maxhrs" type="number" min="0" step="0.5" class="form-input" value="${esc(area?.max_hours ?? '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hora apertura</label>
+        <input id="pa-open" type="time" class="form-input" value="${esc(area?.open_time || '07:00')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hora cierre</label>
+        <input id="pa-close" type="time" class="form-input" value="${esc(area?.close_time || '22:00')}">
+      </div>
+      <div class="form-group col-span-2 p-3 rounded-xl border" style="background:#FBF9F5;border-color:#E5E7EB">
+        <p class="text-xs font-bold mb-2" style="color:#1B4332">Tarifas, Depósito en Garantía y Normativa PH</p>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="pa-ispaid" type="checkbox" ${area?.is_paid ? 'checked' : ''}>
+            <span>Zona con tarifa de alquiler</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input id="pa-blockmora" type="checkbox" ${area?.block_if_delinquent ? 'checked' : ''}>
+            <span>Restringir a unidades en mora</span>
+          </label>
+          <div class="form-group">
+            <label class="form-label">Tarifa por hora (COP)</label>
+            <input id="pa-rate" type="number" min="0" step="100" class="form-input" value="${esc(area?.hourly_rate ?? 0)}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Depósito reembolsable (Pasivo 28xx)</label>
+            <input id="pa-deposit" type="number" min="0" step="100" class="form-input" value="${esc(area?.deposit_amount ?? 0)}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cuenta ingreso alquiler (PUC)</label>
+            <input id="pa-incacc" class="form-input font-mono text-sm" value="${esc(area?.income_account_code || '')}" placeholder="Ej: 413595">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cuenta depósito garantía (PUC)</label>
+            <input id="pa-depacc" class="form-input font-mono text-sm" value="${esc(area?.deposit_account_code || '280505')}" placeholder="280505">
+          </div>
+        </div>
       </div>
       <div class="form-group col-span-2">
         <label class="form-label">Descripción</label>
@@ -3971,11 +4183,21 @@ async function openPhAreaModal(areaId, container) {
       try {
         const data = {
           code, name,
-          capacity:    parseInt(document.getElementById('pa-cap')?.value   || 0) || 0,
-          min_hours:   parseFloat(document.getElementById('pa-minhrs')?.value || 0) || 0,
-          description: document.getElementById('pa-desc')?.value  || '',
-          rules:       document.getElementById('pa-rules')?.value || '',
-          active:      true,
+          capacity:             parseInt(document.getElementById('pa-cap')?.value   || 0) || 0,
+          max_monthly_per_unit: parseInt(document.getElementById('pa-maxmonth')?.value || 0) || 0,
+          min_hours:            parseFloat(document.getElementById('pa-minhrs')?.value || 0) || 0,
+          max_hours:            parseFloat(document.getElementById('pa-maxhrs')?.value || 0) || 0,
+          open_time:            document.getElementById('pa-open')?.value  || '',
+          close_time:           document.getElementById('pa-close')?.value || '',
+          is_paid:              !!(document.getElementById('pa-ispaid') as HTMLInputElement)?.checked,
+          block_if_delinquent:  !!(document.getElementById('pa-blockmora') as HTMLInputElement)?.checked,
+          hourly_rate:          parseFloat(document.getElementById('pa-rate')?.value || 0) || 0,
+          deposit_amount:       parseFloat(document.getElementById('pa-deposit')?.value || 0) || 0,
+          income_account_code:  (document.getElementById('pa-incacc')?.value || '').trim(),
+          deposit_account_code: (document.getElementById('pa-depacc')?.value || '').trim(),
+          description:          document.getElementById('pa-desc')?.value  || '',
+          rules:                document.getElementById('pa-rules')?.value || '',
+          active:               area ? area.active !== false : true,
         };
         if (area) {
           await pb.update('ph_common_areas', area.id, data);
@@ -4399,7 +4621,380 @@ async function renderPhPqrsPage(c) {
   renderPhPqrs(c.querySelector('#ph-pqrs-inner'));
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB: VOTACIONES PH (LEY 675 DE 2001 — ASAMBLEAS Y CONSULTAS MÓVILES)
+// ══════════════════════════════════════════════════════════════════════════════
+const PH_ASM_STATUS = {
+  scheduled:    { label: 'Programada',        badge: 'badge-gray'   },
+  checkin_open: { label: 'Registro Abierto',  badge: 'badge-blue'   },
+  in_session:   { label: 'En Sesión',         badge: 'badge-green'  },
+  closed:       { label: 'Cerrada',           badge: 'badge-red'    },
+};
+
+async function renderPhVotacionesPage(c) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-check-to-slot mr-2" style="color:#1B4332"></i>Votaciones PH
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Asambleas con quórum por coeficiente (Ley 675), poderes digitales y consultas móviles.</p>
+      </div>
+    </div>
+    <div id="ph-votaciones-inner"></div>`;
+  renderPhVotaciones(c.querySelector('#ph-votaciones-inner'));
+}
+
+async function renderPhVotaciones(c, selectedAsmId = null) {
+  c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando asambleas y votaciones...</div>`;
+  try {
+    const asmRes = await API.getPhAssemblies({ perPage: 50 });
+    const assemblies = asmRes.items || [];
+    const activeAsm = (selectedAsmId && assemblies.find(a => a.id === selectedAsmId)) || assemblies[0] || null;
+
+    let summary: any = null;
+    let proxies: any[] = [];
+    let attendees: any[] = [];
+    if (activeAsm) {
+      [summary, proxies, attendees] = await Promise.all([
+        API.getPhAssemblySummary(activeAsm.id).catch(() => null),
+        API.getPhProxies(activeAsm.id).catch(() => []),
+        API.getPhAssemblyAttendees(activeAsm.id).catch(() => []),
+      ]);
+    }
+
+    const q = summary?.quorum || { presentUnits: 0, totalUnits: 0, presentCoef: 0, totalCoef: 100, quorumPct: 0, quorumReached: false };
+    const polls = summary?.polls || [];
+
+    c.innerHTML = `
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div class="lg:col-span-4 space-y-4">
+          <div class="bg-white rounded-2xl border p-4" style="border-color:#E5E7EB;background:#FBF9F5">
+            <div class="flex items-center justify-between mb-3">
+              <span class="font-bold text-sm" style="color:#0D2137">Asambleas y Consultas</span>
+              <button class="btn btn-primary btn-sm" id="ph-asm-add-btn" style="background:#1B4332;border-color:#1B4332">
+                <i class="fas fa-plus mr-1"></i>Nueva
+              </button>
+            </div>
+            ${!assemblies.length ? `<p class="text-sm py-6 text-center" style="color:#6B7280">No hay asambleas ni consultas creadas.</p>` : `
+              <div class="space-y-2">
+                ${assemblies.map(a => {
+                  const st = PH_ASM_STATUS[a.status] || PH_ASM_STATUS.scheduled;
+                  const isSel = activeAsm && a.id === activeAsm.id;
+                  return `
+                    <div class="p-3 rounded-xl border cursor-pointer ph-asm-select ${isSel ? 'ring-2' : ''}" data-id="${esc(a.id)}"
+                      style="background:${isSel ? '#FFFFFF' : '#F7F9F8'};border-color:${isSel ? '#1B4332' : '#E5E7EB'}">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="font-mono text-xs font-bold" style="color:#1B4332">${esc(a.code)}</span>
+                        <span class="badge ${st.badge}">${st.label}</span>
+                      </div>
+                      <p class="font-semibold text-sm mt-1" style="color:#0D2137">${esc(a.title)}</p>
+                      <p class="text-xs mt-0.5" style="color:#6B7280">${esc(a.assembly_type)} · ${esc(a.scheduled_at)}</p>
+                    </div>`;
+                }).join('')}
+              </div>`}
+          </div>
+        </div>
+
+        <div class="lg:col-span-8 space-y-4">
+          ${!activeAsm ? `
+            <div class="bg-white rounded-2xl border p-8 text-center" style="border-color:#E5E7EB">
+              <i class="fas fa-check-to-slot text-3xl mb-2" style="color:#9CA3AF"></i>
+              <p class="font-semibold" style="color:#0D2137">Crea tu primera Asamblea o Consulta Móvil</p>
+              <p class="text-sm mt-1" style="color:#6B7280">Los copropietarios podrán registrar asistencia, poderes y votar desde la app móvil.</p>
+            </div>` : `
+            <div class="bg-white rounded-2xl border p-5" style="border-color:#E5E7EB">
+              <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono text-xs px-2 py-0.5 rounded font-bold" style="background:#E8F3EE;color:#1B4332">${esc(activeAsm.code)}</span>
+                    <span class="badge ${(PH_ASM_STATUS[activeAsm.status] || PH_ASM_STATUS.scheduled).badge}">${(PH_ASM_STATUS[activeAsm.status] || PH_ASM_STATUS.scheduled).label}</span>
+                  </div>
+                  <h4 class="text-base font-bold mt-1" style="color:#0D2137">${esc(activeAsm.title)}</h4>
+                  <p class="text-xs" style="color:#6B7280">Convocatoria ${activeAsm.convocation_num || 1} · Morosos habilitados según Ley 675 (Sentencia C-318/02)</p>
+                </div>
+                <div class="flex gap-1.5 flex-wrap">
+                  <select id="ph-asm-status-sel" class="form-input text-xs" style="max-width:155px">
+                    ${Object.entries(PH_ASM_STATUS).map(([k, v]) => `<option value="${k}" ${activeAsm.status === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+                  </select>
+                  <button class="btn btn-outline btn-sm" id="ph-asm-refresh-btn" title="Actualizar escrutinio"><i class="fas fa-rotate"></i></button>
+                  <button class="btn btn-outline btn-sm" id="ph-asm-checkin-btn"><i class="fas fa-user-check mr-1"></i>Check-in</button>
+                  <button class="btn btn-primary btn-sm" id="ph-poll-add-btn" style="background:#C85A32;border-color:#C85A32"><i class="fas fa-plus mr-1"></i>Pregunta</button>
+                </div>
+              </div>
+
+              <div class="p-3 rounded-xl border mb-4" style="background:#FBF9F5;border-color:#E5E7EB">
+                <div class="flex justify-between text-xs font-semibold mb-1.5">
+                  <span style="color:#0D2137">Quórum en vivo: ${q.presentUnits}/${q.totalUnits} unidades (${q.presentCoef}% de ${q.totalCoef}%)</span>
+                  <span style="color:${q.quorumReached ? '#059669' : '#D97706'}">${q.quorumReached ? 'Quórum alcanzado' : `Requiere ${activeAsm.quorum_required_pct || 0}%`}</span>
+                </div>
+                <div class="w-full h-2.5 rounded-full overflow-hidden" style="background:#E5E7EB">
+                  <div class="h-full rounded-full" style="width:${Math.min(100, q.quorumPct)}%;background:${q.quorumReached ? '#1B4332' : '#D97706'}"></div>
+                </div>
+              </div>
+
+              <div class="space-y-3">
+                <h5 class="font-bold text-sm" style="color:#0D2137">Proposiciones / Votaciones (${polls.length})</h5>
+                ${!polls.length ? `<p class="text-xs py-4 text-center" style="color:#9CA3AF">Aún no hay preguntas en esta sesión.</p>` : polls.map(p => `
+                  <div class="p-3.5 rounded-xl border" style="border-color:#E5E7EB">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                      <div>
+                        <span class="badge ${p.status === 'open' ? 'badge-green' : p.status === 'closed' ? 'badge-red' : 'badge-gray'} mr-1.5">${p.status === 'open' ? 'Abierta' : p.status === 'closed' ? 'Cerrada' : 'Borrador'}</span>
+                        <span class="font-semibold text-sm" style="color:#0D2137">${esc(p.title)}</span>
+                        <span class="text-xs ml-1.5" style="color:#6B7280">(${esc(p.majority_type)} · ${p.totalVotes} votos)</span>
+                      </div>
+                      <div class="flex gap-1">
+                        ${p.status !== 'open' ? `<button class="btn btn-outline btn-sm ph-poll-status" data-id="${esc(p.id)}" data-status="open">Abrir</button>` : ''}
+                        ${p.status === 'open' ? `<button class="btn btn-outline btn-sm ph-poll-status" data-id="${esc(p.id)}" data-status="closed">Cerrar</button>` : ''}
+                      </div>
+                    </div>
+                    <div class="space-y-1.5">
+                      ${(p.breakdown || []).map(b => `
+                        <div class="text-xs">
+                          <div class="flex justify-between mb-0.5">
+                            <span>${esc(b.option)}</span>
+                            <span class="font-mono">${b.votesCount} votos · ${b.coefSum}% (${b.pctOfPresent}% pres. / ${b.pctOfTotal}% total)</span>
+                          </div>
+                          <div class="w-full h-1.5 rounded-full overflow-hidden" style="background:#F3F4F6">
+                            <div class="h-full rounded-full" style="width:${Math.min(100, b.pctOfPresent)}%;background:#1B4332"></div>
+                          </div>
+                        </div>`).join('')}
+                    </div>
+                  </div>`).join('')}
+              </div>
+
+              <div class="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-2 gap-4" style="border-color:#E5E7EB">
+                <div>
+                  <h5 class="font-bold text-xs uppercase tracking-wider mb-2" style="color:#6B7280">Poderes registrados (${proxies.length})</h5>
+                  <div class="space-y-1.5 max-h-40 overflow-y-auto">
+                    ${!proxies.length ? `<p class="text-xs" style="color:#9CA3AF">Sin poderes.</p>` : proxies.map(pr => `
+                      <div class="flex items-center justify-between p-2 rounded-lg border text-xs" style="border-color:#E5E7EB">
+                        <div>
+                          <span class="font-semibold">${esc(pr.expand?.property_id?.code || pr.property_id)}</span> → ${esc(pr.proxy_holder_name)} (${esc(pr.proxy_holder_doc)})
+                        </div>
+                        <div class="flex gap-1 items-center">
+                          <span class="badge ${pr.status === 'approved' ? 'badge-green' : pr.status === 'rejected' ? 'badge-red' : 'badge-orange'}">${esc(pr.status)}</span>
+                          ${pr.status === 'pending' ? `
+                            <button class="btn btn-outline btn-sm ph-proxy-act" data-id="${esc(pr.id)}" data-status="approved" title="Aprobar"><i class="fas fa-check text-green-600"></i></button>
+                            <button class="btn btn-outline btn-sm ph-proxy-act" data-id="${esc(pr.id)}" data-status="rejected" title="Rechazar"><i class="fas fa-xmark text-red-600"></i></button>` : ''}
+                        </div>
+                      </div>`).join('')}
+                  </div>
+                </div>
+                <div>
+                  <h5 class="font-bold text-xs uppercase tracking-wider mb-2" style="color:#6B7280">Unidades en Quórum (${attendees.length})</h5>
+                  <div class="space-y-1 max-h-40 overflow-y-auto text-xs">
+                    ${!attendees.length ? `<p class="text-xs" style="color:#9CA3AF">Sin check-in registrado.</p>` : attendees.map(at => `
+                      <div class="flex justify-between p-1.5 rounded border" style="border-color:#F3F4F6">
+                        <span class="font-medium">${esc(at.expand?.property_id?.name || at.expand?.property_id?.code || at.property_id)}</span>
+                        <span class="font-mono" style="color:#1B4332">${at.coef_snapshot}%</span>
+                      </div>`).join('')}
+                  </div>
+                </div>
+              </div>
+            </div>`}
+        </div>
+      </div>`;
+
+    c.querySelectorAll('.ph-asm-select').forEach(el => {
+      el.addEventListener('click', () => renderPhVotaciones(c, (el as HTMLElement).dataset.id));
+    });
+    document.getElementById('ph-asm-add-btn')?.addEventListener('click', () => openPhAssemblyModal(c));
+    document.getElementById('ph-asm-refresh-btn')?.addEventListener('click', () => renderPhVotaciones(c, activeAsm?.id));
+    document.getElementById('ph-asm-status-sel')?.addEventListener('change', async (e) => {
+      const st = (e.target as HTMLSelectElement).value;
+      try {
+        await pb.update('ph_assemblies', activeAsm.id, { status: st });
+        showToast('Estado de asamblea actualizado.', 'success');
+        renderPhVotaciones(c, activeAsm.id);
+      } catch (err) { showToast(err.message || 'Error al actualizar estado.', 'error'); }
+    });
+    document.getElementById('ph-poll-add-btn')?.addEventListener('click', () => openPhPollModal(activeAsm.id, c));
+    document.getElementById('ph-asm-checkin-btn')?.addEventListener('click', () => openPhCheckinModal(activeAsm.id, c));
+    c.querySelectorAll('.ph-poll-status').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const b = btn as HTMLElement;
+        try {
+          await pb.update('ph_polls', b.dataset.id, { status: b.dataset.status });
+          showToast(`Votación ${b.dataset.status === 'open' ? 'abierta' : 'cerrada'}.`, 'success');
+          renderPhVotaciones(c, activeAsm.id);
+        } catch (err) { showToast(err.message || 'Error.', 'error'); }
+      });
+    });
+    c.querySelectorAll('.ph-proxy-act').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const b = btn as HTMLElement;
+        try {
+          await pb.update('ph_proxies', b.dataset.id, { status: b.dataset.status });
+          showToast('Poder actualizado.', 'success');
+          renderPhVotaciones(c, activeAsm.id);
+        } catch (err) { showToast(err.message || 'Error.', 'error'); }
+      });
+    });
+  } catch (err) {
+    c.innerHTML = `<div class="p-6 text-center" style="color:#EF4444">${esc(err.message)}</div>`;
+  }
+}
+
+function openPhAssemblyModal(container) {
+  const today = (window as any).todayStr();
+  openModal(
+    'Nueva Asamblea / Consulta Móvil',
+    `<div class="grid grid-cols-2 gap-4">
+      <div class="form-group">
+        <label class="form-label">Código <span class="text-red-500">*</span></label>
+        <input id="pa-asm-code" class="form-input" placeholder="Ej: ASM-2026-01">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <select id="pa-asm-type" class="form-input">
+          <option value="ORDINARIA">Asamblea Ordinaria (Ley 675)</option>
+          <option value="EXTRAORDINARIA">Asamblea Extraordinaria</option>
+          <option value="CONSULTA_MOVIL">Consulta Móvil Asincrónica</option>
+        </select>
+      </div>
+      <div class="form-group col-span-2">
+        <label class="form-label">Título <span class="text-red-500">*</span></label>
+        <input id="pa-asm-title" class="form-input" placeholder="Ej: Asamblea General Ordinaria 2026">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha y hora</label>
+        <input id="pa-asm-date" type="datetime-local" class="form-input" value="${today}T18:00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Convocatoria / Quórum (%)</label>
+        <div class="flex gap-2">
+          <select id="pa-asm-conv" class="form-input" style="max-width:90px">
+            <option value="1">1ra</option>
+            <option value="2">2da</option>
+          </select>
+          <input id="pa-asm-quorum" type="number" step="0.01" class="form-input" value="50.01">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Máx. poderes por persona</label>
+        <input id="pa-asm-maxp" type="number" min="0" class="form-input" value="2">
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="pa-asm-save">Crear Asamblea</button>`
+  );
+  setTimeout(() => {
+    document.getElementById('pa-asm-save')?.addEventListener('click', async () => {
+      const code = (document.getElementById('pa-asm-code') as HTMLInputElement)?.value.trim().toUpperCase();
+      const title = (document.getElementById('pa-asm-title') as HTMLInputElement)?.value.trim();
+      if (!code || !title) { showToast('Código y título son obligatorios.', 'warning'); return; }
+      try {
+        const created = await pb.create('ph_assemblies', {
+          code, title,
+          assembly_type: (document.getElementById('pa-asm-type') as HTMLSelectElement)?.value || 'ORDINARIA',
+          status: 'scheduled',
+          convocation_num: parseInt((document.getElementById('pa-asm-conv') as HTMLSelectElement)?.value || '1', 10),
+          scheduled_at: (document.getElementById('pa-asm-date') as HTMLInputElement)?.value || today,
+          quorum_required_pct: parseFloat((document.getElementById('pa-asm-quorum') as HTMLInputElement)?.value || '50.01') || 0,
+          max_proxies_per_user: parseInt((document.getElementById('pa-asm-maxp') as HTMLInputElement)?.value || '2', 10) || 0,
+          allow_delinquent_in_poll: true,
+        });
+        showToast('Asamblea creada.', 'success');
+        closeModal();
+        renderPhVotaciones(container, created.id);
+      } catch (err) { showToast(err.message || 'Error al crear asamblea.', 'error'); }
+    }, { once: true });
+  }, 50);
+}
+
+function openPhPollModal(assemblyId, container) {
+  openModal(
+    'Nueva Proposición / Pregunta',
+    `<div class="space-y-3">
+      <div class="form-group">
+        <label class="form-label">Pregunta o Proposición <span class="text-red-500">*</span></label>
+        <input id="pp-title" class="form-input" placeholder="Ej: ¿Aprueba el presupuesto de gastos 2027?">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-group">
+          <label class="form-label">Tipo de Mayoría</label>
+          <select id="pp-maj" class="form-input">
+            <option value="SIMPLE_COEF">Mayoría Simple por Coeficiente</option>
+            <option value="QUALIFIED_70_COEF">Mayoría Calificada 70% (Art. 46)</option>
+            <option value="UNIT_COUNT">Encuesta (1 voto por unidad)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Modalidad</label>
+          <select id="pp-mode" class="form-input">
+            <option value="NOMINAL">Nominal</option>
+            <option value="SECRET">Secreta</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Opciones (una por línea)</label>
+        <textarea id="pp-opts" class="form-input" rows="3">A favor\nEn contra\nAbstención</textarea>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="pp-save">Crear Pregunta</button>`
+  );
+  setTimeout(() => {
+    document.getElementById('pp-save')?.addEventListener('click', async () => {
+      const title = (document.getElementById('pp-title') as HTMLInputElement)?.value.trim();
+      const opts = ((document.getElementById('pp-opts') as HTMLTextAreaElement)?.value || '').split('\n').map(s => s.trim()).filter(Boolean);
+      if (!title || opts.length < 2) { showToast('Ingresa la pregunta y al menos 2 opciones.', 'warning'); return; }
+      try {
+        await pb.create('ph_polls', {
+          assembly_id: assemblyId,
+          title,
+          majority_type: (document.getElementById('pp-maj') as HTMLSelectElement)?.value || 'SIMPLE_COEF',
+          vote_mode: (document.getElementById('pp-mode') as HTMLSelectElement)?.value || 'NOMINAL',
+          options: opts,
+          status: 'draft',
+        });
+        showToast('Pregunta agregada.', 'success');
+        closeModal();
+        renderPhVotaciones(container, assemblyId);
+      } catch (err) { showToast(err.message || 'Error al crear pregunta.', 'error'); }
+    }, { once: true });
+  }, 50);
+}
+
+async function openPhCheckinModal(assemblyId, container) {
+  let props = [];
+  try { props = await API.getPhProperties(true); } catch (_) {}
+  openModal(
+    'Registrar Check-in de Unidad',
+    `<div class="form-group">
+      <label class="form-label">Unidad <span class="text-red-500">*</span></label>
+      <select id="pc-prop" class="form-input">
+        <option value="">Seleccionar unidad...</option>
+        ${props.map(p => `<option value="${esc(p.id)}">${esc(p.name)} (${esc(p.code)}) — ${p.coef_participacion || 0}%</option>`).join('')}
+      </select>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="pc-save">Registrar Asistencia</button>`
+  );
+  setTimeout(() => {
+    document.getElementById('pc-save')?.addEventListener('click', async () => {
+      const propId = (document.getElementById('pc-prop') as HTMLSelectElement)?.value;
+      if (!propId) { showToast('Selecciona una unidad.', 'warning'); return; }
+      try {
+        await pb.create('ph_assembly_attendees', {
+          assembly_id: assemblyId,
+          property_id: propId,
+          coef_snapshot: 0,
+          checkin_at: (window as any).nowStr(),
+        });
+        showToast('Asistencia registrada en quórum.', 'success');
+        closeModal();
+        renderPhVotaciones(container, assemblyId);
+      } catch (err) { showToast(err.message || 'No se pudo registrar asistencia.', 'error'); }
+    }, { once: true });
+  }, 50);
+}
+
 // --- VITE MIGRATION GLOBALS ---
+(window as any).renderPhVotacionesPage = renderPhVotacionesPage;
+(window as any).renderPhVotaciones = renderPhVotaciones;
 (window as any).renderPhFacturacionPage = renderPhFacturacionPage;
 (window as any).renderPhCarteraPage = renderPhCarteraPage;
 (window as any).renderPhPresupuestoPage = renderPhPresupuestoPage;

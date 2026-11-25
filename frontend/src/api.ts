@@ -6303,10 +6303,68 @@ const API = {
 
   /** Reservas */
   async getPhReservations(opts = {}) {
-    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    const { page = 1, perPage = 100, filter = '', sort = '-date' } = opts;
     return pb.list('ph_reservations', {
       page, perPage, filter, sort,
       expand: 'area_id,property_id',
+    });
+  },
+
+  async billPhReservationDeposit(reservationId) {
+    const token = pb.token || localStorage.getItem('pb_token') || '';
+    const res = await fetch(`${pb.baseUrl || ''}/api/ph/reservations/bill-deposit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ reservationId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.message || `Error ${res.status} al cargar reserva a factura.`);
+    }
+    return data;
+  },
+
+  /** Votaciones y Asambleas PH */
+  async getPhAssemblies(opts = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-scheduled_at' } = opts;
+    return pb.list('ph_assemblies', { page, perPage, filter, sort });
+  },
+
+  async getPhAssemblySummary(assemblyId) {
+    const token = pb.token || localStorage.getItem('pb_token') || '';
+    const res = await fetch(`${pb.baseUrl || ''}/api/ph/assemblies/${encodeURIComponent(assemblyId)}/summary`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.message || `Error ${res.status} al cargar resumen de asamblea.`);
+    }
+    return data;
+  },
+
+  async getPhPolls(assemblyId) {
+    return pb.listAll('ph_polls', {
+      filter: `assembly_id="${pb.escapeFilterValue(assemblyId)}"`,
+      sort: 'created',
+    });
+  },
+
+  async getPhProxies(assemblyId) {
+    return pb.listAll('ph_proxies', {
+      filter: `assembly_id="${pb.escapeFilterValue(assemblyId)}"`,
+      expand: 'property_id',
+      sort: '-created',
+    });
+  },
+
+  async getPhAssemblyAttendees(assemblyId) {
+    return pb.listAll('ph_assembly_attendees', {
+      filter: `assembly_id="${pb.escapeFilterValue(assemblyId)}"`,
+      expand: 'property_id',
+      sort: '-checkin_at',
     });
   },
 
